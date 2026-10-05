@@ -332,7 +332,6 @@ export const HUMAN_ONLY = new Set([
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   "presence.person.start",
   "files.drive.share", "files.drive.unshare",
-  "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
   "projects.access.grant",
@@ -420,7 +419,7 @@ export function readTokens(v: string | null | undefined): Record<string, string>
 
 /**
  * The person session for one box at another origin.
- * @param o.box the box's origin, e.g. "https://harlow.example.ts.net"
+ * @param o.box the box's origin, e.g. "https://juniper.example.ts.net"
  * @param o.signIn starts the sign-in hop (person.web.ts redirects); called on a 401
  * @param o.signer the key, where it is not a WebCrypto pair in stores.key (the phone)
  * @param o.nonce a fresh proof nonce, where globalThis.crypto.getRandomValues is missing (Hermes)

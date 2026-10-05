@@ -14,7 +14,7 @@ export function whyOf(w: Why): WhyOut {
   const sessions = [...new Set(turns.map((t) => t.session))];
   const threads = sessions.map((session) => {
     const said = turns.filter((t) => t.session === session);
-    return { session, name: said[0]?.name || "Untitled thread", turns: said.map((t) => ({ seq: Number.isInteger(t.seq) ? (t.seq as number) : null, text: t.text, who: t.role === "user" ? "You" : "The agent", age: t.age ?? "" })) };
+    return { session, name: said[0]?.name || "Untitled chat", turns: said.map((t) => ({ seq: Number.isInteger(t.seq) ? (t.seq as number) : null, text: t.text, who: t.role === "user" ? "You" : "The agent", age: t.age ?? "" })) };
   });
   const taught = (w.taught ?? []).map((t) => ({ module: t.module, kind: t.kind ?? "", text: t.text ?? "" }));
   const gone = w.gone ? `${w.gone} ${w.gone === 1 ? "turn" : "turns"} behind this ${w.gone === 1 ? "is" : "are"} no longer in the index.` : "";

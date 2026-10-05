@@ -53,7 +53,7 @@ test("a MEMBER's device (another person's) is enrolled in a space this home host
   assert.equal(await enrolled(b.eid, sp.space), false, "a removed member's device");
 });
 
-test("server side of a server-homed space: host-here and retire-here with no proof are refused, a caller that is not the home's owner is refused, and nothing is hosted or retired in either case", async t => {
+test("server side of a server-homed space: host-here needs no proof from the owner and hosts the space, retire-here with no proof is refused, a caller that is not the home's owner is refused, and nothing is hosted or retired for them", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
@@ -67,12 +67,14 @@ test("server side of a server-homed space: host-here and retire-here with no pro
   t.after(() => d.stop());
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller });
   const before = d.kernel.spaces.list().length;
-  const noProof = await as("cli", "spaces.host-here", { name: "nothere" });
-  assert.equal(noProof.error?.code, "presence_required", JSON.stringify(noProof));
-  assert.equal(d.kernel.spaces.list().length, before, "nothing was hosted without a proof");
-  const stranger = await as("tailnet-guest:mallory@example.com", "spaces.host-here", { name: "nothere" });
+  // host-here needs no presence proof (11391dc9d: the owner check is the gate, the owner's device calls it over the paired session): the owner's call hosts the space...
+  const owned = await as("cli", "spaces.host-here", { name: "nothere" });
+  assert.ok(owned.data && owned.data.space, JSON.stringify(owned));
+  assert.equal(d.kernel.spaces.list().length, before + 1, "the owner's call hosted one space");
+  // ...and a caller that is not the owner is refused and hosts nothing
+  const stranger = await as("tailnet-guest:mallory@example.com", "spaces.host-here", { name: "another" });
   assert.ok(stranger.error, "a caller that is not the owner is refused");
-  assert.equal(d.kernel.spaces.list().length, before);
+  assert.equal(d.kernel.spaces.list().length, before + 1, "and nothing more was hosted");
   // taking one back asks for the proof too, and a space that was never made there is not touched
   const hosted = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "keepme" });
   const noProofRetire = await as("cli", "spaces.retire-here", { id: hosted.space });

@@ -105,6 +105,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.upgrade.wrap-key", "effect": "read",
+    "reach": "person"
+   },
+   {
     "name": "spaces.upgrade.plan", "effect": "read",
     "reach": "person"
    },

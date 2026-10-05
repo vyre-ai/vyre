@@ -20,7 +20,7 @@ test("HD-1: onboard tools called by a model (mcp, mcp:thread:t, mcp:agent:a, mod
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const key = "sk-ant-api03-" + "x".repeat(60);
-  const calls = [["onboard.claude", { mode: "api-key", key }], ["onboard.name", { action: "claim", name: "rv2probe", confirm: true }], ["onboard.tailscale", { action: "connect" }], ["onboard.finish", {}]];
+  const calls = [["onboard.claude", { mode: "api-key", key }], ["onboard.name", { action: "claim", name: "rv2probe", confirm: true }], ["onboard.history", { action: "start" }], ["onboard.finish", {}]];
   const seen = [];
   for (const caller of ["mcp", "mcp:thread:t", "mcp:agent:a", "module:other"]) for (const [tool, input] of calls) {
     const r = await d.registry.call(tool, input, caller);

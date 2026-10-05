@@ -21,13 +21,14 @@ async function world(t, { before } = /** @type {{ before?: (root: string) => voi
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".vyre", "project.json"), JSON.stringify({ name: "Northwind Bakery", slug: "northwind" }));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, projectsDir: projects, settings: { claude_dir: path.join(root, "claude") } }));
   before?.(root);
   // The oven and friends are written for the in-process API, so the home's folder is trusted by path (a third-party module runs in the sandbox with the kernel on).
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
+  await d.registry.call("projects.create", { name: "Northwind", home }, "cli");
+  await d.registry.call("projects.rename", { project: "northwind", name: "Northwind Bakery" }, "cli");
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   const file = path.join(root, "hub.json");
   const hub = () => JSON.parse(fs.readFileSync(file, "utf8"));

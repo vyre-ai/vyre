@@ -1,7 +1,7 @@
 #!/bin/bash
 # The base of the image: current Ubuntu security updates, a firewall that is ON (DigitalOcean rejects an image
 # whose ufw is off), and unattended security updates so a droplet keeps patching itself (the Marketplace terms
-# require prompt security patches). Vyre listens only on 127.0.0.1 and over Tailscale (outbound), so SSH is the
+# require prompt security patches). Vyre listens only on 127.0.0.1 and reaches out through its own network and the relay (outbound), so SSH is the
 # only port that needs to be open.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive

@@ -11,7 +11,7 @@ const CHAIN = ["person:chris", "assistant:kit"];
 async function* gen(/** @type {any[]} */ events) { for (const e of events) yield e; }
 /** The text a screen holds for a message, and how much of it is still provisional. */
 const shown = (/** @type {any[]} */ frames, /** @type {string} */ message, done = false) => {
-  const text = frames.filter(f => f.type === "session.text-delta" && f.data.message === message).map(f => f.data.text).join("");
+  const text = frames.filter(f => f.type === "chat.text-delta" && f.data.message === message).map(f => f.data.text).join("");
   return { text, ...settle(text, done) };
 };
 
@@ -23,7 +23,7 @@ test("text, tool_call, done: frames with the chain's author and acts_for, all va
     { type: "text", text: "Rye is 4." },
     { type: "done", id: "r1", usage: { in: 1, out: 2 } },
   ]), { message: "m1", chain: CHAIN });
-  assert.deepEqual(frames.map(f => f.type.slice(8)), ["text-delta", "text-done", "tool-started", "text-delta", "text-done"]);
+  assert.deepEqual(frames.map(f => f.type.slice(5)), ["text-delta", "text-done", "tool-started", "text-delta", "text-done"]);
   for (const f of frames) {
     assert.deepEqual(validate(f), { ok: true });
     assert.equal(f.author, "assistant:kit");
@@ -31,7 +31,7 @@ test("text, tool_call, done: frames with the chain's author and acts_for, all va
     assert.equal(f.message, "m1");
   }
   assert.deepEqual(frames.map(f => f.cur), [1, 2, 3, 4, 5]);
-  assert.deepEqual(frames.filter(f => f.type === "session.text-delta").map(f => f.data.index), [0, 1], "text after a tool call is a new block");
+  assert.deepEqual(frames.filter(f => f.type === "chat.text-delta").map(f => f.data.index), [0, 1], "text after a tool call is a new block");
   assert.equal(frames[2].data.tool, "Read");
   assert.equal(frames[2].data.kind, "read");
   assert.equal(frames[2].data.tool_id, "t1");
@@ -66,7 +66,7 @@ test("a cut ends the message: text-cut with a note and no value, nothing after i
   pipeDoor(log, ad, { type: "text", text: "Your account number is " });
   const cut = pipeDoor(log, ad, { type: "cut", code: "sealed_shape", class: "bank_account" });
   assert.equal(cut.length, 1);
-  assert.equal(cut[0].type, "session.text-cut");
+  assert.equal(cut[0].type, "chat.text-cut");
   assert.deepEqual(validate(cut[0]), { ok: true });
   assert.equal(cut[0].data.note, "stopped: a sealed value was about to be shown");
   assert.equal(cut[0].data.code, "sealed_shape");
@@ -75,7 +75,7 @@ test("a cut ends the message: text-cut with a note and no value, nothing after i
   assert.equal(cut[0].turn, "t1");
   assert.deepEqual(pipeDoor(log, ad, { type: "text", text: "1234567" }), [], "nothing after a cut");
   assert.deepEqual(pipeDoor(log, ad, { type: "done", id: "r" }), []);
-  assert.ok(!log.read(0).some(f => f.type === "session.text-done"));
+  assert.ok(!log.read(0).some(f => f.type === "chat.text-done"));
   assert.ok(!JSON.stringify(log.read(0)).includes("1234567"));
 });
 
@@ -87,6 +87,6 @@ test("unknown events and empty text are ignored; two answers in one log keep the
     drainDoor(log, gen([{ type: "text", text: "one" }, { type: "done", id: "a" }]), { message: "m1", chain: ["person:alex", "assistant:kit"] }),
     drainDoor(log, gen([{ type: "text", text: "two" }, { type: "done", id: "b" }]), { message: "m2", chain: ["person:alex", "assistant:juno"] }),
   ]);
-  const by = new Map(log.read(0).filter(f => f.type === "session.text-delta").map(f => [f.message, f.author]));
+  const by = new Map(log.read(0).filter(f => f.type === "chat.text-delta").map(f => [f.message, f.author]));
   assert.deepEqual([...by], [["m1", "assistant:kit"], ["m2", "assistant:juno"]]);
 });

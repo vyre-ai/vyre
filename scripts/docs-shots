@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-// docs-shots: the screenshots on docs.vyre.run, taken from the sample world (alex, Harlow Legal,
+// docs-shots: the screenshots on docs.vyre.run, taken from the sample world (alex, Juniper Studio,
 // Northwind Bakery, juno, kit) and never from anyone's real data.
 //
 //   scripts/docs-shots [--only NAME,NAME] [--list] [--cli]
@@ -12,7 +12,7 @@
 // Runs on testbox (Linux, headless Chrome at $CHROME, default /usr/local/bin/vyre-chrome), not on
 // a Mac someone is using. Everything it starts lives in a temp folder under the test SCRATCH
 // folder and is stopped and removed on the way out, Ctrl-C included:
-//   - the Deck world: deck/test/world.js (a real vyred in a temp home with the fictional corpus,
+//   - the Deck world: web/test/world.js (a real vyred in a temp home with the fictional corpus,
 //     two projects, juno and kit, vault items, two holds at the Gate, its own sample tailnet and
 //     fake claude, VYRE_NO_DIALOGS=1), plus a fake stdio MCP server and a Google account that is
 //     only named, for Settings, Connections. Chrome opens every world as
@@ -103,7 +103,7 @@ function child(cmd, argv, opts) {
  * A fake `tailscale` whose state is a file: off (signed out), up (on the tailnet), serving (up,
  * and its tailnet address is 127.0.0.1 so the box's HTTPS listener can bind here). `up` signs
  * in at once; `cert` makes a self-signed certificate and moves to serving. alex's phone and Mac
- * are on the tailnet as peers (as in deck/test/fake-tailscale.js, the Deck world's own), and
+ * are on the tailnet as peers (as in web/test/fake-tailscale.js, the Deck world's own), and
  * `whois 100.64.0.2` is the Mac. A pairing request made from 127.0.0.2 (pairFrom below) reads as
  * 100.64.0.2 through the preload's VYRE_SHOTS_PEER, so it
  * comes from alex-mbp.
@@ -114,12 +114,12 @@ function fakes(dir, start) {
   fs.writeFileSync(state, start);
   const node = ip => JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: [HOST],
     Self: { ID: "nAlexBox1CNTRL", HostName: "alex-box", DNSName: HOST + ".", TailscaleIPs: ip === "127.0.0.1" ? [ip] : [ip, "fd7a:115c:a1e0::1"], UserID: 1 },
-    User: { 1: { LoginName: "alex@harlowlegal.com" } },
+    User: { 1: { LoginName: "alex@juniperstudio.example" } },
     Peer: {
       mac: { ID: "n2", HostName: "alex-mbp", DNSName: "alex-mbp.tail0000.ts.net.", OS: "macOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.2"] },
       phone: { ID: "n3", HostName: "alex-iphone", DNSName: "alex-iphone.tail0000.ts.net.", OS: "iOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.3"] },
     } });
-  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@harlowlegal.com" } });
+  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@juniperstudio.example" } });
   const ts = path.join(dir, "tailscale");
   fs.writeFileSync(ts, `#!/bin/sh
 S=$(cat '${state}' 2>/dev/null)
@@ -156,7 +156,7 @@ esac
 
 /** The environment every vyred and vyre here runs with. */
 const worldEnv = (home, bins, extra = {}) => {
-  const env = { ...process.env, VYRE_NO_DIALOGS: "1", VYRE_DECK_FIXTURES: "1", NO_COLOR: "1",
+  const env = { ...process.env, VYRE_NO_DIALOGS: "1", NO_COLOR: "1",
     // vyred's existing test mode (core/daemon/peer.js peerHosting): a world over a temp home may run under a hosted parent (a CI runner, an ssh login)
     // without the person-only tools asking for a presence proof. Shipped code never turns it on, and it never touches ~/.vyre.
     VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT || "docs-shots", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
@@ -168,17 +168,17 @@ const worldEnv = (home, bins, extra = {}) => {
 
 // ---- the Deck world --------------------------------------------------------------------------
 
-/** A stdio MCP server for the sample world: Harlow Legal's documents, two tools, no data. */
+/** A stdio MCP server for the sample world: Juniper Studio's documents, two tools, no data. */
 const FAKE_MCP = `import readline from "node:readline";
 const tools = [
-  { name: "search_docs", description: "Search Harlow Legal's documents.", inputSchema: { type: "object", properties: { query: { type: "string" } } } },
-  { name: "read_doc", description: "Read one Harlow Legal document.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
+  { name: "search_docs", description: "Search Juniper Studio's documents.", inputSchema: { type: "object", properties: { query: { type: "string" } } } },
+  { name: "read_doc", description: "Read one Juniper Studio document.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
 ];
 const say = m => process.stdout.write(JSON.stringify(m) + "\\n");
 readline.createInterface({ input: process.stdin }).on("line", line => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (m.id === undefined) return;
-  if (m.method === "initialize") say({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: m.params?.protocolVersion || "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "harlow-docs", version: "1.0.0" } } });
+  if (m.method === "initialize") say({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: m.params?.protocolVersion || "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "juniper-docs", version: "1.0.0" } } });
   else if (m.method === "tools/list") say({ jsonrpc: "2.0", id: m.id, result: { tools } });
   else if (m.method === "tools/call") say({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: "No documents in the sample world." }] } });
   else say({ jsonrpc: "2.0", id: m.id, result: {} });
@@ -189,10 +189,10 @@ let deckWorld = null;
 async function deck() {
   if (deckWorld) return deckWorld;
   const port = await freePort();
-  // world.js brings its own sample tailnet (deck/test/fake-tailscale.js) and fake claude.
+  // world.js brings its own sample tailnet (web/test/fake-tailscale.js) and fake claude.
   const bins = fakes(path.join(WORK, "deck-bin"), "up");
   // world.js makes its own home under SCRATCH and removes it when it stops.
-  const w = child(process.execPath, [path.join(REPO, "deck", "test", "world.js"), String(port)],
+  const w = child(process.execPath, [path.join(REPO, "web", "test", "world.js"), String(port)],
     { env: worldEnv(null, bins), stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   w.stderr.on("data", c => { const s = String(c); if (!/ExperimentalWarning|trace-warnings/.test(s)) process.stderr.write("world: " + s); });
@@ -214,10 +214,10 @@ async function deck() {
   // one Google account whose vault item is only named. Nothing reaches Google or any real server.
   const mcpDir = path.join(deckWorld.home, "mcp");
   fs.mkdirSync(mcpDir, { recursive: true });
-  fs.writeFileSync(path.join(mcpDir, "harlow-docs.mjs"), FAKE_MCP);
+  fs.writeFileSync(path.join(mcpDir, "juniper-docs.mjs"), FAKE_MCP);
   for (const [tool, input] of /** @type {[string, any][]} */ ([
-    ["mcp.add", { name: "harlow-docs", transport: "stdio", command: "node", args: [path.join(mcpDir, "harlow-docs.mjs")], scope: { projects: ["harlow-legal"], agents: "*" } }],
-    ["google.add", { name: "harlow", email: "alex@harlowlegal.com", auth: { type: "oauth", item: "harlow-google" } }],
+    ["mcp.add", { name: "juniper-docs", transport: "stdio", command: "node", args: [path.join(mcpDir, "juniper-docs.mjs")], scope: { projects: ["juniper-legal"], agents: "*" } }],
+    ["google.add", { name: "juniper", email: "alex@juniperstudio.example", auth: { type: "oauth", item: "juniper-google" } }],
   ])) {
     const x = await call(tool, input, { root: deckWorld.home, caller: "cli" });
     if (x.error) log(`docs-shots: ${tool}: ${x.error.message}`);
@@ -275,9 +275,9 @@ async function glassWorld() {
   const bins = fakes(path.join(home, "bin"), "up");
   const work = path.join(home, "alex", "Work");
   const files = {
-    "harlow-site/README.md": "# Harlow Legal site\n\nThe intake form sits above the fold on harlowlegal.com.\n",
-    "harlow-site/src/intake.tsx": "export function Intake() { return null; }\n",
-    "harlow-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
+    "juniper-site/README.md": "# Juniper Studio site\n\nThe intake form sits above the fold on juniperstudio.example.\n",
+    "juniper-site/src/intake.tsx": "export function Intake() { return null; }\n",
+    "juniper-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
     "northwind/invoices-week-35.csv": "date,amount\n2026-08-28,412.50\n2026-08-29,188.00\n",
     "northwind/weekly-total.md": "Week 35: 600.50\n",
     "Q3 report.md": "# Q3, the short version\n\nConsult bookings rose every month this quarter.\n",
@@ -405,6 +405,44 @@ const report = (shot, page) => {
   for (const e of errs) log(`  ${shot.name}: page error: ${e}`);
 };
 
+
+// ---- the app's sample export --------------------------------------------------------------------
+
+/** Build apps/app's web export with the sample world, into the temp folder (root base, no service worker). */
+async function buildApp() {
+  // DOCS_SHOTS_APP_DIST: reuse an export already built with the sample world (to retake a shot without waiting for the build).
+  if (process.env.DOCS_SHOTS_APP_DIST) return path.resolve(process.env.DOCS_SHOTS_APP_DIST);
+  const appDir = path.join(REPO, "apps", "app");
+  const out = path.join(WORK, "app-dist");
+  const env = { ...process.env, EXPO_PUBLIC_VYRE_MOCK: "1", VYRE_APP_BASE: "root", EXPO_PUBLIC_VYRE_APP_BASE: "root", CI: "1" };
+  if (!fs.existsSync(path.join(appDir, "node_modules"))) throw new Error("apps/app has no node_modules: run npm ci there first");
+  log("docs-shots: building the app's sample export (about two minutes)");
+  for (const argv of [["scripts/term-assets.mjs"], ["scripts/glass-assets.mjs"]]) {
+    const r = spawnSync(process.execPath, argv, { cwd: appDir, env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`apps/app ${argv[0]} failed: ${(r.stderr || r.stdout).slice(-400)}`);
+  }
+  const r = spawnSync("npx", ["expo", "export", "-p", "web", "--output-dir", out], { cwd: appDir, env, encoding: "utf8", timeout: 600_000 });
+  if (r.status !== 0) throw new Error(`expo export failed: ${(r.stderr || r.stdout).slice(-600)}`);
+  return out;
+}
+
+/** Serve a folder of static files on a free local port; a path with no file is the app's one page, a missing asset is a 404. */
+async function serveApp(dir) {
+  const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".woff2": "font/woff2", ".ttf": "font/ttf", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
+  const srv = http.createServer((req, res) => {
+    const p = decodeURIComponent(String(req.url).split("?")[0]);
+    let f = path.join(dir, p);
+    const missing = !f.startsWith(dir) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
+    if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
+    if (missing) f = path.join(dir, "index.html");
+    res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
+    fs.createReadStream(f).pipe(res);
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  stops.push(() => new Promise(r => srv.close(() => r(undefined))));
+  return { port: /** @type {any} */ (srv.address()).port, close: () => srv.close() };
+}
+
 // ---- the CLI's output ---------------------------------------------------------------------------
 
 async function cliOutput() {
@@ -463,6 +501,35 @@ try {
   await shootDeck(ready.filter(s => s.world === "deck"), w);
   if (gl) await shootDeck(ready.filter(s => s.world === "glass"), gl);
 
+  // The app: its web export, built with the sample world, served from a folder here. It is not the
+  // Deck and it talks to no box: EXPO_PUBLIC_VYRE_MOCK=1 gives it the sample world (alex, Juniper Studio).
+  const appShots = ready.filter(s => s.world === "app");
+  if (appShots.length) {
+    const appDist = await buildApp();
+    const server = await serveApp(appDist);
+    try {
+      for (const shot of appShots) for (const theme of shot.themes) {
+        log(`${shot.name} (${theme})`);
+        const page = await browser.page();
+        try {
+          await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme === "light" ? "light" : "dark" }] });
+          // The first run keeps its progress on the device so a closed app resumes: every shot starts from nothing.
+          // A fixed clock, so "Good morning" and the date on Now read the same every time the shots are taken.
+          await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const R = Date, t0 = new R("2026-10-05T09:30:00").getTime(), s0 = R.now();
+            const now = () => t0 + (R.now() - s0);
+            class D extends R { constructor(...a) { if (a.length === 0) super(now()); else super(...a); } static now() { return now(); } }
+            globalThis.Date = D; })();` });
+          await page.send("Storage.clearDataForOrigin", { origin: `http://127.0.0.1:${server.port}`, storageTypes: "all" });
+          await save(shot, theme, await capture(page, shot, { navigate: `http://127.0.0.1:${server.port}${shot.url}`, homes }));
+          report(shot, page);
+        } catch (e) {
+          log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1;
+          log("  at " + String(await page.run("return location.href").catch(() => "")) + ", the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 1500).replace(/\n+/g, " | "));
+        } finally { await page.close(); }
+      }
+    } finally { server.close(); }
+  }
+
   // The onboarding: one tab, the steps in order, as a person walks them.
   const obs = ready.filter(s => s.world === "onboard" || s.world === "fresh");
   if (obs.length) {
@@ -473,7 +540,7 @@ try {
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.open = () => null;" });
     await page.viewport(1280, 800);
     await page.goto(ob.url, 3000);
-    // The onboarding's order (deck/onboard/onboard.js STEPS): You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ... Your devices.
+    // The onboarding's order (web/onboard/onboard.js STEPS): You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ... Your devices.
     // The steps between history and devices (secrets, accounts, computers, drive) have no shots: the walk goes to them by address, as it did before they were steps.
     const order = ["you", "live", "tailscale", "name", "claude", "history", "devices", "ready"];
     for (const step of order) {

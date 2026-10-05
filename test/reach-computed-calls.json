@@ -146,6 +146,16 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/work/index.js": {
+   "count": 2,
+   "owner": "chat",
+   "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
+  },
+  "core/wink/index.js": {
+   "count": 1,
+   "owner": "network",
+   "note": "reviewed (network, 5 Oct): dirCall reaches only names.directory.acme, acme-clear and publish, which the names module restricts to module:wink"
+  },
   "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",

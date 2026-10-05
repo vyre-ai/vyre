@@ -9,7 +9,7 @@ status: draft
 # The vyre command
 
 `vyre` is Vyre in a terminal, on your Mac or on your own server over SSH. Every command is a
-call to Vyre's background service on that machine, so the terminal, the [Deck](deck.md), your
+call to Vyre's background service on that machine, so the terminal, the Vyre app, your
 phone and [Lumen](capsule.md) never disagree about what is true. This page is organised by task. Every command and its usage line is in the
 [CLI reference](../reference/cli.md); `vyre help` prints the same list, and `vyre help <command>`
 shows one command's usage and flags.
@@ -47,7 +47,7 @@ See [Box care](box-care.md).
 ## Start Vyre and check on it
 
 ```sh
-vyre up        # start Vyre; print the onboarding link, or your box's address
+vyre up        # start Vyre; print your box's address
 vyre status    # is it running, which version, how many modules
 vyre modules   # every module and whether it started
 vyre down      # stop Vyre
@@ -71,15 +71,15 @@ Inside a project's folder, that project is preselected. Piped, it prints the lis
 
 ```sh
 vyre projects             # every project
-vyre open harlow-intake   # what a project's threads are told, and its threads
+vyre open juniper-intake   # what a project's threads are told, and its threads
 vyre new                  # make a project by picking sessions
 ```
 
 ## Find something you said
 
 ```sh
-vyre recall "retainer letter for Harlow Legal"
-vyre threads harlow       # sessions on this machine that mention harlow
+vyre recall "retainer letter for Juniper Studio"
+vyre threads juniper       # sessions on this machine that mention juniper
 ```
 
 `vyre recall` searches every past session by meaning and by words. Its flags:
@@ -116,11 +116,11 @@ terminal, browser tab and closed laptop.
 1. Start one:
 
    ```sh
-   vyre threads start --project harlow-intake "draft the intake checklist"
+   vyre threads start --project juniper-intake "draft the intake checklist"
    ```
 
    ```output
-     started 3f9c2a71-...  harlow-intake · ~/Vyre/projects/harlow-intake
+     started 3f9c2a71-...  juniper-intake · ~/Vyre/projects/juniper-intake
      vyre threads watch 3f9c2a71
    ```
 
@@ -177,7 +177,7 @@ vyre agents usage juno               # turns, time, tokens, spend, rate limits
 `vyre agents ask` waits for the answer (up to ten minutes). If the agent stops on a permission
 question, it prints the ask and the `vyre threads answer` line to answer it.
 
-`vyre agents create kit --projects harlow-intake` makes an agent; see [Agents](agents.md) for
+`vyre agents create kit --projects juniper-intake` makes an agent; see [Agents](agents.md) for
 every flag, and for `vyre agents computer kit` to look after an agent's own computer.
 
 ## Ask what memory knows
@@ -230,7 +230,7 @@ shows whether one does.
 `vyre sessions` shows and sets how the sessions Vyre starts run: `vyre sessions status` (driver,
 sign-in, Claude Code, Agent SDK), `vyre sessions models` (the model per kind of session) and
 `vyre sessions prompt` (the system prompt at three levels, with history and undo). Changing a
-model or a prompt is refused from inside a Claude session: do it from the Deck or a plain
+model or a prompt is refused from inside a Claude session: do it from the Vyre app or a plain
 terminal. [Sessions](sessions.md) has the rest.
 
 ## Next

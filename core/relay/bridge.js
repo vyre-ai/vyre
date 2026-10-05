@@ -57,7 +57,7 @@ const fail = (s, status, code, message) => {
  *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
  *   oninvitee?: { opened: () => void, closed: () => void },
  *   invitees?: { acceptInvitee: (stream: any, who: { inviteeId: string }, head: any) => void }, perMin?: number,
- *   peers?: { space: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
+ *   peers?: { space: string, serverId?: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
  *     perMin?: number, open?: number, now?: () => number } }} o
  */
 export function bridge(channel, o) {
@@ -117,7 +117,8 @@ export function bridge(channel, o) {
     const p = o.peers;
     if (!p) return fail(s, 403, "denied", "this box does not serve peer streams");
     if (h.peer !== "wink" || Object.keys(h).some(k => k !== "peer" && k !== "space") || typeof h.space !== "string") return fail(s, 400, "bad_input", "a peer stream is {peer: \"wink\", space}");
-    const device = deviceIdOf(o.caller) || "";
+    // a paired server of this home (caller `server:<id>`) names its own Wink device id; every other caller is a `device:` label
+    const device = (/^server:/.test(String(o.caller)) && typeof p.serverId === "string" ? p.serverId : deviceIdOf(o.caller)) || "";
     if (!device || !/^[A-Za-z0-9_-]{1,64}$/.test(device)) return fail(s, 403, "denied", "peer streams are for paired devices");
     if (h.space !== p.space) return fail(s, 403, "denied", "this device has no peer access to that space");
     let ok = false;

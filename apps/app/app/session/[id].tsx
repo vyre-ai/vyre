@@ -1,8 +1,10 @@
 // One session: the 0.3 chat screen on the real session stream (src/chat, core/stream), with the
 // session's terminal beside it on a desktop and full screen on a phone (src/terminal). `demo` is the
-// same screen on the mock stream. The old transcript path (src/session/store.ts) is no longer
+// same screen on the mock stream. The old transcript path is gone;
 // reached from here; its Transcript list is what the chat screen virtualises with.
 
+import { RC } from "../../screens/shell/rc";
+import { useChats } from "../../src/state/chats";
 import { useCallback, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,7 +26,7 @@ import { TerminalScreen } from "../../src/terminal/TerminalScreen";
 /** /session/demo is the chat screen on the mock stream; every other id is a box session on the real stream. */
 export default function SessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return String(id) === "demo" ? <ChatDemo /> : <ThemeProvider><BoxSession thread={String(id)} /></ThemeProvider>;
+  return /^demo(-three|-people|-assistant)?$/.test(String(id)) ? <ChatDemo sample={String(id)} /> : <ThemeProvider><BoxSession thread={String(id)} /></ThemeProvider>;
 }
 
 /** This screen's name for the terminal: a ticket is bound to the surface that asked for it (core/term). */
@@ -36,6 +38,7 @@ function BoxSession({ thread }: { thread: string }) {
   const router = useRouter();
   const { phone } = useUiTheme();
   const listed = useThread(thread);
+  const chatRow = useChats().rows.find((r) => r.id === thread);
   const [term, setTerm] = useState<Term | null>(null);
   const [termNote, setTermNote] = useState<string | null>(null);
   const [width, setWidth] = useState(520);
@@ -60,9 +63,9 @@ function BoxSession({ thread }: { thread: string }) {
   );
   // The WebView on a phone loads the terminal page from the box; on the web the app's own copy serves it.
   const frameUrl = Platform.OS === "web" || !boxOrigin() ? undefined : boxOrigin() + DEFAULT_FRAME_URL;
-  const title = listed?.name ?? "Session";
+  const title = chatRow?.title ?? listed?.name ?? "Chat";
   const handlers = useMemo(() => ({ onFaceId: async () => true, onOpenTerminal: () => void openTerminal() }), [openTerminal]);
-  const guts = useMemo(() => <ThreadGlass agent={listed?.agent ?? null} thread={thread} />, [listed?.agent, thread]);
+  const guts = useMemo(() => (RC.glass ? <ThreadGlass agent={listed?.agent ?? null} thread={thread} /> : null), [listed?.agent, thread]);
 
   const chat = (
     <ChatScreen
@@ -70,7 +73,7 @@ function BoxSession({ thread }: { thread: string }) {
       title={title}
       belowHeader={guts}
       onBack={() => router.back()}
-      onBranched={(id) => router.push({ pathname: "/session/[id]", params: { id } })}
+      onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
       onOpenTerminal={() => void openTerminal()}
       handlers={handlers}
     />

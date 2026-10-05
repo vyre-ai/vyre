@@ -17,7 +17,7 @@ import { currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from ".
 
 export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
 export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[] };
-export type ShellSpace = { id: string; name: string; sub: string };
+export type ShellSpace = { id: string; name: string; sub: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
 export type ShellProps = NavDef & {
   /** The path now showing (usePathname). */
   current: string;

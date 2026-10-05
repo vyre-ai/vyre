@@ -112,8 +112,7 @@ export async function createKernel(cfg) {
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
     moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
-    // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
-    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); },
+    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); }, // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
     verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
     verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
@@ -170,7 +169,7 @@ export async function createKernel(cfg) {
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
       for: (/** @type {string} */ id) => (id === cfg.space ? Object.freeze({ space: cfg.space, hosted: true, gateway, surfaces }) : spaces ? spaces.for(id) : (() => { throw new KernelError("unavailable", "this kernel has no Spaces registry"); })()),
       proofFrom, acceptProofRequest: (/** @type {any} */ card, /** @type {string} */ person) => acceptProofRequest(cfg.space, card, person), proofChainHash: (/** @type {string} */ person) => proofChainHash(cfg.space, person), proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
-      leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats ? Object.freeze({ ...gateway.grants.chats, append: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.append(token, message); }, beginTurn: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.beginTurn(token); }, appendOpen: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.appendOpen(token, message); }, ...(needs.room === true ? { roomFor: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.roomFor(token); } } : {}), mayReceive: (/** @type {any} */ chain, /** @type {string} */ messageId) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.mayReceive(chain, messageId); } }) : undefined,
+      leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats ? Object.freeze({ ...gateway.grants.chats, mine: async (/** @type {any} */ chain) => { const ids = gateway.grants.chats.mineIds(chain); let recs = []; try { recs = (await records.query(chain, "chat-record", { page: { limit: 500 } })).rows || []; } catch { /* the record type is not defined here: ids only */ } const byChat = new Map(recs.map((/** @type {any} */ r) => [r.data.chat, r])); return ids.map((/** @type {string} */ id) => { const r = byChat.get(id); return { chat: id, ...(r ? { project: r.data.project && r.data.project.urn, location: r.data.location, title: r.data.title } : {}) }; }); }, append: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.append(token, message); }, beginTurn: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.beginTurn(token); }, appendOpen: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.appendOpen(token, message); }, ...(needs.room === true ? { roomFor: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.roomFor(token); } } : {}), mayReceive: (/** @type {any} */ chain, /** @type {string} */ messageId) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.mayReceive(chain, messageId); } }) : undefined,
       // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
       // The pool behind this Space's Drive, for the Wink module only: it adds a node for every storage device a person paired (core/wink/storage/pool.js) and builds each node's backend with `backendFor`; `createBridge` serves
       // a drive on this computer to the Space's home. The Pool is what the Drive's chunks are placed on, so a module that holds it can place data: nothing else is given it.
@@ -224,6 +223,19 @@ export async function createKernel(cfg) {
        *  - serviceChain(name): the module's own service chain (the name is the module's, never another's).
        *  - tasks.list(chain): the queue of the person the chain acts for; tasks.forRecord(chain, urn): the open tasks on a record, read through the caller's own chain.
        */
+      // Whether a named agent, acting for this Space's owner, may do a READ-risk act on a resource: the answer only. The agent's chain is built here and never leaves the kernel, so no module can mint an
+      // agent chain; a chain of [owner, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. Used by the projects module for "may this agent reach this project".
+      ...(needs.reach === true ? {
+        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource) => {
+          if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
+          const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
+          if (!def || def.risk !== "read") throw new KernelError("not_allowed", "only a read can be asked this way");
+          try {
+            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true });
+            return (await gateway.authorize({ chain, action, resource })).effect === "allow";
+          } catch { return false; }
+        },
+      } : {}),
       ...(needs.work === true ? (() => {
         const personOnly = async (/** @type {any} */ meta) => {
           const c = await handle.chain(meta || {});
@@ -346,7 +358,6 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
-        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
         setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }

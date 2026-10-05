@@ -24,6 +24,7 @@ import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
 import { isPerson, deviceIdOf } from "../../lib/caller.js";
+import { projectRecordIdOf } from "../../lib/project-id.js";
 import { createHash } from "node:crypto";
 import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
@@ -199,8 +200,6 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
-  // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
-  tailscale: ["network"],
   thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
@@ -460,7 +459,7 @@ export const SURFACE_LABELS = PERSON_SURFACES;
 const LEGACY_PHONE = "mobile";
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
-export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "server", "unknown", "core", "vault"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "tailnet", "device", "space", "agent"]);
@@ -608,6 +607,8 @@ const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
   memory: ["spaces.storage."],
   work: ["spaces.storage."],
+  // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
+  term: ["threads.get"],
 });
 
 export class Registry {
@@ -1200,7 +1201,9 @@ export class Registry {
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
-        return this.call(tool, input, String(as), m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {});
+        // pluginagent relays the revoking person to agents.delete WITH that person's own verified facts and proof (the ones its own revoke call arrived with), so the agent's reach grants are taken back in the person's own act
+        const relayed = m.name === "pluginagent" && tool === "agents.delete" && opts && opts.relay && typeof opts.relay === "object" ? { ...(opts.relay.kernelFacts ? { kernelFacts: opts.relay.kernelFacts } : {}), ...(opts.relay.kernel_proof ? { kernel_proof: opts.relay.kernel_proof } : {}) } : {};
+        return this.call(tool, input, String(as), { ...(m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -1296,7 +1299,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "chatFor", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1325,7 +1328,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
@@ -1507,6 +1510,26 @@ export class Registry {
       const extra = Object.keys(input).filter(k => !Object.hasOwn(def.input.properties, k));
       if (extra.length) return { error: { code: "bad_input", message: `${tool} does not take ${extra.slice(0, 5).join(", ")}` } };
     }
+    // One keying scheme: a project is named by its Project record's id (or its vyre:// address). The tools behind the project tabs still work on the short name, so a declared projectArg given as
+    // an id or an address is turned into the short name here, once, for every module alike; a short name goes through as it is (a person at a terminal types it). An id Records does not know is not_found.
+    /** @type {Record<string, any> | null} what a record-keyed tool is handed back after the grant check, which judges the short name */
+    let recordKept = null;
+    if (def.projectArg && input && typeof input === "object") {
+      for (const arg of (Array.isArray(def.projectArg) ? def.projectArg : [def.projectArg])) {
+        const v = input[arg];
+        const ids = (Array.isArray(v) ? v : [v]).map(x => projectRecordIdOf(x));
+        if (!ids.some(Boolean)) continue;
+        const slugs = [];
+        for (const [k, x] of (Array.isArray(v) ? v : [v]).entries()) {
+          if (!ids[k]) { slugs.push(x); continue; }
+          const ref = await within(this.call("work.project.ref", { project: ids[k] }, "module:vyred", { door: true }), TARGET_MS);
+          if (!ref || ref.error || !ref.data || typeof ref.data.slug !== "string") return { error: { code: "not_found", message: "no such project" } };
+          slugs.push(ref.data.slug);
+        }
+        if (def.projectIsRecord) (recordKept ||= {})[arg] = v;
+        input = { ...input, [arg]: Array.isArray(v) ? slugs : slugs[0] };
+      }
+    }
     // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
     // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
     // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the
@@ -1573,6 +1596,7 @@ export class Registry {
         meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
       }
     }
+    if (recordKept) input = { ...input, ...recordKept };
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };

@@ -2,7 +2,7 @@
 // adapter: today's events become frames (ADR 0052). A pure mapping: no I/O, no clock, no log.
 //
 // Three sources feed the stream:
-//   1. the switchboard's thread.* and ask.* events (as deck/chat/core/session-state.js reads them),
+//   1. the switchboard's thread.* and ask.* events (as the app's chat core session-state reads them),
 //   2. transcript blocks (core/transcripts blocks(), for history),
 //   3. terminal bytes (core/term ring offsets).
 // Each call returns specs `{ kind, data, turn? }`; log.append(kind, data, { turn }) mints the frame.

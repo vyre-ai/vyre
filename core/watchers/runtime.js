@@ -10,7 +10,7 @@
 //
 // Three kinds of schedule: cron, "webhook" (vyred's /v1/watchers/<name>/hook, token-checked), and
 // "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
-// `where`. For hook.received (core/hooks, an internet webhook through Funnel) the runtime reads the
+// `where`. For hook.received (core/hooks, an internet webhook through the Wink public gate) the runtime reads the
 // delivery with hooks.delivery and hands it to the watcher, which stays in its sandbox and never
 // calls a tool itself.
 //
@@ -327,7 +327,7 @@ export class Runtime {
     const f = folder.read(this.d.dir, name);
     if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
     this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
-    if (DUTY_NAME.test(name)) fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true });
+    if (DUTY_NAME.test(name)) { fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true }); if (this.d.defs) void this.d.defs.forget(name).catch(() => {}); }
     this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
     return { name, deleted: true };
   }

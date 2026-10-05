@@ -1,16 +1,16 @@
 // @ts-check
-import { PHONE_SAY } from "./first-run.js";
+import { PHONE_SAY, WEB_SAY } from "./first-run.js";
 // The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
 // Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
 
-export const NAMES_TAKEN = ["alex", "chris", "harlow", "vyre", "admin"];
+export const NAMES_TAKEN = ["alex", "chris", "juniper", "vyre", "admin"];
 export const MIN_NAME = 3;
 export const RECOVERY_CODE = "R7K4-Q2MX-9HDP-W3NB";
 /** What the server prints: a long code (also drawn as a QR). The app reads it by scan or paste; there is no short code to type. */
 export const SERVER_LONG_CODE = "vyre://wink/2?t=SGVsbG9TYW1wbGVTZWNyZQ&r=wss%3A%2F%2Frelay.example";
 
-/** "Harlow Legal" > "harlow-legal". The slug is what goes before .vyre.run. */
+/** "Juniper Studio" > "juniper-studio". The slug is what goes before .vyre.run. */
 export function slug(/** @type {string} */ s) {
   return String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -39,15 +39,16 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", mcwords: "mycloud", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
 export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
-  if (ctx.welcome && (step === "name" || step === "have")) return "welcome";
+  if (ctx.welcome && step === "name") return "question";
+  if (ctx.welcome && step === "have") return "welcome";
   if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
   // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
   if (ctx.macFlow) {
@@ -101,7 +102,7 @@ export const connectedLine = (/** @type {string} */ space, /** @type {string} */
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
   // "phone" is the Mac's Add your phone, and "connect" is a phone or browser scanning a code from its Vyre: the actions of the empty states (first-run.js GAP).
-  return start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
+  return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
 }
 
 /** Where "Where will it live?" sends each choice. */
@@ -156,13 +157,24 @@ export const SERVER_FAILED = {
 };
 
 // A sentence a phone already says (first-run.js PHONE_SAY) passes through again unchanged.
-const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
+/** The Vyre name in "This server belongs to <name>..." (a plain name or name.vyre.run), as name.vyre.run, or null. @param {string} text */
+export function ownedBy(text) {
+  const m = /^This server belongs to ([a-z0-9][a-z0-9-]{0,40})(?:\.vyre\.run\b|(?=\.(?:\s|$)))/i.exec(String(text ?? "").trim());
+  return m ? `${m[1].toLowerCase()}.vyre.run` : null;
+}
+
+const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY), ...Object.values(WEB_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
   // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.
   const c = String(e?.code ?? "");
   // A plain string is a sentence that already went through here (the screens pass the mapped words back): it counts as the message.
   const m0 = String(e?.message ?? (typeof e === "string" ? e : "")).trim();
+  // A server that already has an owner says whose it is. That one sentence is shown (with the name cut out of it and checked, never the server's own text): the person needs it to know what to do.
+  const owner = ownedBy(m0);
+  if (owner) return `This server belongs to ${owner}. Ask them to add you to a space, or reset the server to start over.`;
+  // The code says it even when the words carry no name: a server that is someone else's is never reported as a pairing that merely "did not finish".
+  if (c === "owned_by_other") return "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.";
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;

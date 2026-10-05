@@ -1,7 +1,7 @@
 // The composer (design idea 5). Never disabled: while a turn is on, Send says Queue and the message
 // waits above the composer until it is picked up. `@` people and assistants, `#` records (a record
-// with sealed fields carries a chip that says so), `/` commands. Attachments, photos and voice are
-// callbacks. A model switcher with the fit score, and a "runs on" chip. On a phone it grows to a
+// with sealed fields carries a chip that says so), `/` commands. Attachments and photos are
+// callbacks (voice capture has no control until it exists: team/BACKLOG.md). A model switcher with the fit score, and a "runs on" chip. On a phone it grows to a
 // sheet with 44 px targets when it is focused or holds text; on a desktop it is the prototype's
 // card with the bar under the input.
 
@@ -9,8 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
-import { COMMANDS } from "../../../../deck/chat/core/commands.js";
+import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
+import { busyState } from "./frames.js";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant" };
@@ -24,17 +25,20 @@ export type ComposerProps = {
   records?: readonly RecordPick[];
   models?: readonly ModelChoice[];
   model?: string;
-  onModel?: (id: string) => void;
+  onModel?: (id: string, slot?: string) => void;
+  /** The slots in a chat with several assistants or models: each gets its own chip to switch that one's model. Fewer than two: the one model chip. */
+  slots?: readonly { id: string; label: string; provider?: string | null }[];
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
-  onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[] }) => void;
+  onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
+  /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
+  onTyping?: () => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
-  onVoice?: () => void;
   phone: boolean;
   autoFocus?: boolean;
   /** Called on every keystroke with performance.now(); the perf script reads it. */
@@ -60,10 +64,15 @@ export function ChatComposer(p: ComposerProps) {
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
+  const [slotSel, setSlotSel] = useState<string | undefined>(undefined);
+  // While the assistant works, a message either steers it now or waits in the queue for the end of the turn.
+  const [mode, setMode] = useState<"steer" | "queue">("steer");
+  const lastTyping = useRef(0);
   const [askAll, setAskAll] = useState(false);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
-  const assistants = (p.people ?? []).filter((x) => x.family === "assistant").length;
+  // "Ask all" is for the assistants and models IN this chat (its slots), not every agent the space has to @mention.
+  const assistants = p.slots?.length ?? 0;
   const input = useRef<TextInput>(null);
   const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
   const editId = p.editing?.id;
@@ -99,12 +108,13 @@ export function ChatComposer(p: ComposerProps) {
     if (!t) return;
     const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
-    if (to.to.length || mentions.length) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}) }); else p.onSend(t);
+    const working = busyState(p.state);
+    if (to.to.length || mentions.length || working) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}), ...(working ? { mode } : {}) }); else p.onSend(t);
     picked.current.clear();
     setText("");
     setCaret(0);
     setAskAll(false);
-  }, [text, p, askAll]);
+  }, [text, p, askAll, mode]);
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const current = (p.models ?? []).find((m) => m.id === p.model);
@@ -112,7 +122,7 @@ export function ChatComposer(p: ComposerProps) {
       <TextInput
         ref={input}
         value={text}
-        onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); }}
+        onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); if (t.trim() && p.onTyping && Date.now() - lastTyping.current > 3000) { lastTyping.current = Date.now(); p.onTyping(); } }}
         onSelectionChange={onSel}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -127,14 +137,23 @@ export function ChatComposer(p: ComposerProps) {
   );
   const chips = (
     <>
-      {p.models?.length ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => setModels((m) => !m)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+      {busyState(p.state) ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip tone="accent" icon={mode === "steer" ? "bolt" : "clock"}>{mode === "steer" ? "Steer now" : "Queue"}</Chip>
+        </Pressable>
+      ) : null}
+      {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
+        <Pressable key={sl.id} accessibilityRole="button" accessibilityLabel={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip>{sl.label}</Chip>
+        </Pressable>
+      )) : p.models?.length ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
           <Chip>{current ? `${current.label}${current.fit != null ? `, fit ${current.fit}` : ""}` : "Model"}</Chip>
         </Pressable>
       ) : null}
       {assistants > 1 ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip tone={askAll ? "accent" : "plain"} icon="agents">Ask all</Chip>
+          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{assistants === 2 ? "Ask both" : "Ask all"}</Chip>
         </Pressable>
       ) : null}
       {p.runsOn ? (
@@ -172,7 +191,7 @@ export function ChatComposer(p: ComposerProps) {
       {models ? (
         <View style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
           {(p.models ?? []).map((m) => (
-            <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
+            <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id, slotSel); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
               <Text strong style={{ flex: 1 }}>{m.label}</Text>
               {m.fit != null ? <Text size="caption" tone="label">{`fit ${m.fit}`}</Text> : null}
               {m.id === p.model ? <Icon name="check" /> : null}
@@ -202,7 +221,6 @@ export function ChatComposer(p: ComposerProps) {
             <>
               <Tool big={big} icon="file" label="Attach a file" onPress={p.onAttachFile} />
               <Tool big={big} icon="eye" label="Attach a photo" onPress={p.onAttachPhoto} />
-              <Tool big={big} icon="mic" label="Dictate" onPress={p.onVoice} />
               <Tool big={big} icon="chat" label="Mention a person or assistant" onPress={() => insert("@")} />
               <Tool big={big} icon="todo" label="Tag a record" onPress={() => insert("#")} />
             </>

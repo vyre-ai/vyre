@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { asOwner, tempHome, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 import * as config from "../config/index.js";
@@ -25,6 +25,7 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -46,7 +47,7 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   assert.ok(m0.data, JSON.stringify(m0.error));
   const mine = m0.data;
   await finished(mine.id, 1);
-  assert.equal(turnOf(mine.id)?.chat ?? null, null, "a person's surface cannot name a chat or an asker");
+  assert.notEqual(turnOf(mine.id)?.chat ?? null, chat.id, "a person's surface cannot name a chat or an asker (the run's own chat is one the daemon made, not the one it named)");
   assert.equal(turnOf(mine.id)?.person, owner, "its own thread is the home owner's");
 
   // the stream: a thread for the chat, asked by the owner
@@ -70,6 +71,7 @@ test("a turn keeps its asker for its whole run: another person's message mid-tur
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -103,7 +105,7 @@ async function chatDaemon(t, root) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts, { recursive: true });
   if (!fs.existsSync(path.join(root, "config.json"))) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  return start({ root, presence: present, log: () => {}, kernel: true });
+  return asOwner(await start({ root, presence: present, log: () => {}, kernel: true }), root);
 }
 
 test("a dormant thread that the stream sends to comes back with THIS turn's chat and asker, not the thread's default session", { timeout: 90_000 }, async t => {
@@ -175,7 +177,7 @@ test("SS-3: two askers sending to an idle thread at the same moment: one runs no
   await until(async () => (await d.registry.call("threads.asks", { thread: mine.data.id }, "cli")).data.some(a => a.tool === "Edit"), "the turn to be busy");
   const behind = await d.registry.call("threads.send", { thread: mine.data.id, text: "from the chat", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
   assert.ok(behind.data && (behind.data.queued_id || behind.data.queued), `queued, not swapped in: ${JSON.stringify(behind)}`);
-  assert.equal(turnOf(mine.data.id)?.chat ?? null, null, "the running turn keeps the session it has (no chat)");
+  assert.notEqual(turnOf(mine.data.id)?.chat ?? null, chat.id, "the running turn keeps the session it has (its own chat, not the stream's)");
 });
 
 test("the ordinary path the chat path shares code with: a plain threads.start and threads.send, no chat and no asker, on a real daemon with the kernel on", { timeout: 90_000 }, async t => {
@@ -257,7 +259,7 @@ test("a chat message queued behind a turn survives a restart and then runs under
   t.after(() => d.stop());
   await until(async () => (await d.registry.call("threads.get", { thread: mine.data.id, limit: 500 }, "cli")).data.events.some(e => e.type === "thread.sent" && e.payload.via === "turn" && /queued from the chat/.test(String(e.payload.text))), "the queued message to run after the restart", 40_000);
   // (thread.sent is said as the message is taken; its kernel session opens just before the words are written)
-  const turnOf = async () => { const r = d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(mine.data.id); const b = r && JSON.parse(r.body); return b && b.chat ? b : null; };
+  const turnOf = async () => { const r = d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(mine.data.id); const b = r && JSON.parse(r.body); return b && b.chat === chat.id ? b : null; };
   const turn = await until(turnOf, "the queued message's own turn to be open", 20_000);
   assert.deepEqual([turn.person, turn.chat], [owner, chat.id], "under its own asker, in its chat");
 });

@@ -25,7 +25,9 @@ fi
 wait=${VYRE_WALL_WAIT:-120}
 i=0
 while [ "$i" -lt "$wait" ]; do
-  read -r mid mst <"$state/wall-ready" 2>/dev/null || { mid=""; mst=""; }
+  # A file that is not there yet is the usual first answer: look before reading (a redirect that fails prints its own error before any 2>/dev/null after it applies).
+  mid=""; mst=""
+  if [ -r "$state/wall-ready" ]; then read -r mid mst <"$state/wall-ready" || { mid=""; mst=""; }; fi
   case "$mst" in ""|*[!0-9]*) ;; *)
     d=$((mst - mystart)); [ "$d" -ge 0 ] || d=$((0 - d))
     if [ "$mid" = "$me" ] && [ "$d" -le 3 ]; then exit 0; fi ;;

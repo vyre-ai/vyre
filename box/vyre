@@ -3,10 +3,10 @@
 # on the host is the same one command as on a Mac. Installed to /usr/local/bin/vyre by
 # scripts/install-box.sh. The stack lives in VYRE_DIR (default /srv/vyre).
 #
-#   vyre up        start the stack if needed, then print the onboarding link or the address
+#   vyre up        start the stack if needed, then say whether this server is paired, and how to pair it
 #   vyre up --print-link
-#                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
-#                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
+#                  the same, but stdout is only VYRE_PAIRED=<space> or VYRE_PAIR=<command>, for a
+#                  program to read (or VYRE_LINK_ONLY=1)
 #   vyre update [--channel stable|beta] [--to <version>] [--allow-unsigned]
 #                  bring the box to the newest release (ADR 0033, section 4). The release comes
 #                  from GitHub Releases (repo vyre-ai/vyre; stable is the newest
@@ -351,18 +351,16 @@ cli() {
   exit $?
 }
 
-# print_link: run the CLI's `vyre up`, and reduce what it prints to VYRE_LINK and VYRE_SSH.
-# The link is the onboarding URL, or the box's address once onboarding is done.
+# print_link: run the CLI's `vyre up`, and reduce what it prints to one machine-readable line. A server has no setup link (the kernel is always on):
+# VYRE_PAIRED=<space> once it is paired, or VYRE_PAIR=<the command that shows the pairing code> while it is not. Only a `vyre up` that printed neither fails.
 print_link() {
   esc=$(printf '\033')
   out=$(compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
     -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre up 2>&1 | sed "s/${esc}\[[0-9;]*m//g")
-  link=$(printf '%s\n' "$out" | sed -n 's|^ *\(https\{0,1\}://[^ ]*/onboard?t=[^ ]*\).*|\1|p' | head -n 1)
-  [ -n "$link" ] || link=$(printf '%s\n' "$out" | sed -n 's|^ *your address: *\(https://[^ ]*\).*|\1|p' | head -n 1)
-  if [ -z "$link" ]; then printf '%s\n' "$out" >&2; die "vyre up printed no link"; fi
-  ssh=$(printf '%s\n' "$out" | sed -n 's|^ *\(ssh -N -L .*[^ ]\) *$|\1|p' | head -n 1)
-  printf 'VYRE_LINK=%s\n' "$link"
-  if [ -n "$ssh" ]; then printf 'VYRE_SSH=%s\n' "$ssh"; fi
+  paired=$(printf '%s\n' "$out" | sed -n 's|^ *paired to \([^ ·]*\).*|\1|p' | head -n 1)
+  if [ -n "$paired" ]; then printf 'VYRE_PAIRED=%s\n' "$paired"; return 0; fi
+  if printf '%s\n' "$out" | grep -q 'not paired yet'; then printf '%s\n' "VYRE_PAIR=vyre call wink.server.code '{\"qr\":true}'"; return 0; fi
+  printf '%s\n' "$out" >&2; die "vyre up said neither paired nor how to pair"
 }
 
 # The image the vyre service runs: built here as vyre:local, or pulled.
@@ -489,15 +487,15 @@ prepare_run() {
   # (the key is spelled in two parts so the release build, which must not name any test override, stays checkable by grep)
   k=VYRE_UPDATE; { echo "${k}_ROOT=$UPD_ROOT"; [ "$BUILDF" = 0 ] || echo "VYRE_SOURCE=$SRCDIR"
     if [ -f "$DIR/.env" ]; then
-      sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
+      sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
   chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
   # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
-  skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|TS_AUTHKEY|VYRE_DRIVE_ACCESS|VYRE_TS_HOSTNAME|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
-    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
+  skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
+    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
   [ -z "$skipped" ] || echo "vyre: an update run by root ignores these settings from $DIR/.env and vyre.env (root passes on only the few it checks; start the stack yourself with them set, or see vyre.env.example): $skipped" >&2
 }
 
@@ -521,7 +519,7 @@ put_wrapper() {
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
 # publish_release SRC: the release's SHA256SUMS, its signature, shell.json and modules.json (the signed list of first-party modules,
-# kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/deck/release.
+# kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/web/release.
 # The folder is replaced as a whole by rename, never file by file, so a running vyred keeps the one consistent release it was started with and the
 # next one sees the next. The list's counter only ever goes up: a modules.json whose counter is below the one already published (a rollback, or an old
 # signed release shown again) is refused and nothing changes.
@@ -1103,7 +1101,7 @@ vol_says() {
 
 # uninstall: complete and easy. Containers, agents' computers and the network always go, and so does
 # this wrapper. The volumes go only when the person says so. It never removes their Docker, their
-# Tailscale, or their Claude, Codex and Gemini installs on any device.
+# Claude, Codex and Gemini installs on any device.
 uninstall() {
   choice=ask
   yes=0
@@ -1494,7 +1492,7 @@ sp_swap() {
   fi
   if [ ! -f "$SP_SWAPFILE" ]; then
     ( umask 077; fallocate -l 2G "$SP_SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SP_SWAPFILE" bs=1M count=2048 2>/dev/null ) || { sp_log "swap: could not make $SP_SWAPFILE"; rm -f "$SP_SWAPFILE"; return 0; }
-    chmod 600 "$SP_SWAPFILE" || { rm -f "$SP_SWAPFILE"; return 0; }
+    if ! { chmod 600 "$SP_SWAPFILE" && mkswap "$SP_SWAPFILE" >/dev/null 2>&1; }; then sp_log "swap: mkswap failed"; rm -f "$SP_SWAPFILE"; return 0; fi
   fi
   # the file is used only if it is what this function makes: a regular file owned by the user running it (root), mode 600
   { [ -f "$SP_SWAPFILE" ] && [ ! -L "$SP_SWAPFILE" ] && [ "$(stat -c '%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "$(id -un)|600" ]; } || { sp_log "swap: $SP_SWAPFILE is not a 0600 file of this user; left alone"; return 0; }
@@ -1526,6 +1524,7 @@ sp_up() {
   sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
   # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
   sp_attach "$n" || return 1
+  sp_repair "$n" || return 1
   sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
   if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
   # the saved database has been restored: from here the compose file has no restore step, and the server skips its migration steps
@@ -1537,7 +1536,30 @@ sp_up() {
       if grep -v -e '^ADMIN_PASSWORD=' -e '^GOLDEN_DUMP=' "$SP_PRIV/spaces/$n/secrets.env" >"$t" && chmod 600 "$t"; then mv -f "$t" "$SP_PRIV/spaces/$n/secrets.env"; else rm -f "$t"; fi
     fi
   fi
+  # The first start is over and the database has its schema: the Space gets its mark, and sp_repair never touches it again.
+  if t=$(sp_schema "$n") && [ -n "$t" ]; then : >"$SP_PRIV/spaces/$n/ready"; fi
   MSG="the store is up and the agents are firewalled from it"
+}
+# sp_schema NAME: the name of the Space's core user table, or nothing when the database has none. Run after the Space's database is up.
+# It fails (nothing printed) when the database cannot be asked, which is not the same as an empty answer.
+sp_schema() { o=$(sp_dc "$1" exec -T db psql -U postgres -d default -tAc 'select to_regclass($$core."user"$$)' 2>/dev/null) || return 1; printf '%s' "$o" | tr -d ' \r\n'; }
+# sp_repair NAME: a first start cut off by a restart leaves a database with an empty `core` schema: Twenty's own start finds the schema, skips its migrations and reports healthy, and nothing repaired it
+# (issue 90). A Space with no `ready` mark whose database already exists is looked at once, here, before the store starts: a database with no core user table holds nothing, so its volumes are removed and
+# it starts again from the beginning (from the saved database when there is one). A Space with the mark, or whose database has the table, is never touched, and a Space that cannot be looked at is left as it is.
+sp_repair() {
+  n=$1; d=$SP_PRIV/spaces/$n
+  [ ! -f "$d/ready" ] || return 0
+  hdock volume inspect "vyre-$n-twenty_db-data" >/dev/null 2>&1 || return 0
+  sp_dc "$n" up -d --wait db >/dev/null 2>&1 || return 0
+  t=$(sp_schema "$n") || return 0
+  [ -z "$t" ] || return 0
+  sp_log "repair: empty core schema from a cut off first start, removed and made again"
+  hdock network disconnect -f "vyre-$n-twenty_store" "$CTR_NAME" >/dev/null 2>&1 || true
+  sp_dc "$n" down -v >/dev/null 2>&1 || { MSG="the Space's empty database could not be removed"; return 1; }
+  if type sp_golden >/dev/null 2>&1; then sp_golden "$n" || true; fi
+  sp_gen "$n" || return 1
+  sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
+  sp_attach "$n" || return 1
 }
 sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
 sp_down() {

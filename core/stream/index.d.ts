@@ -51,7 +51,7 @@ export interface Frame<K extends Kind | ControlKind | EphemeralKind = Kind | Con
   cur: number;
   session: string;
   turn: string | null;
-  type: `session.${K}`;
+  type: `chat.${K}`;
   time: number;
   corr: string | null;
   /** Who wrote it. Optional: frames from before group chats have none. */

@@ -1,10 +1,10 @@
-import { Pressable, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
 import { Avatar, type AvatarKind } from "../components/Avatar";
 import { StageMini } from "../components/StageSteps";
-import { addrText, actorIdOf, fmtDate, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
+import { addrText, actorIdOf, fmtDate, linkHref, linkLabel, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
 import type { ViewProps } from "./types";
 
 const Empty = () => <Text tone="faint">Empty</Text>;
@@ -15,6 +15,18 @@ export const familyOf = (f?: string): AvatarKind => (f === "assistant" ? "assist
 
 export function TextView({ p }: ViewProps) {
   return isEmpty(p.value) ? <Empty /> : <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
+}
+
+/** A url field: an http or https address is a link that opens it; anything else reads as plain text. */
+export function UrlLinkView({ p }: ViewProps) {
+  if (isEmpty(p.value)) return <Empty />;
+  const href = linkHref(p.value);
+  if (!href || p.mode === "compact") return <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${linkLabel(href)}`} onPress={() => { void Linking.openURL(href); }} className="self-start">
+      <Text tone="accent" numberOfLines={1}>{linkLabel(href)}</Text>
+    </Pressable>
+  );
 }
 
 export function RichTextView({ p }: ViewProps) {

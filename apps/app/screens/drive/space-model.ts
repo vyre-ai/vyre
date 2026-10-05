@@ -1,17 +1,25 @@
+import { dayOf as dayOfTime } from "../../src/time/show.js";
 // The pure half of the Space's own Drive (files.drive.space.list, read, upload, versions, restore): the versioned, permissioned files of the space, not the box's shared folders.
 // The box lists files under a folder as paths; a folder is the first step of a path below the one you are in.
 
+/** A listing entry: a file's path, size, version and time. */
 export type SpaceEntry = { path?: string; name?: string; size?: number; ver?: number; version?: number; at?: number | string; mtime?: number | string; by?: string };
-export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number };
+/**
+ * What files.drive.space.list adds to its entries (core/files/space-drive.js): `names` maps a folder's path to the name to show (a project's name, a chat's title; the id only when the name is not readable),
+ * and `folders` lists the chat folders of a project under `Projects/<id>/chat/` or `.../made/`, each with `open`: false for a chat the caller is not in, which shows its name and is not offered.
+ */
+export type Listing = { entries: SpaceEntry[]; names?: Record<string, string>; folders?: { path: string; name: string; open: boolean }[] };
+export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number; /** A chat folder the caller is not in: its name shows greyed and it does not open. */ locked?: boolean };
 export type Version = { ver: number; size: number; at: number; by?: string; base?: number };
 
 const ms = (v: unknown): number => { if (typeof v === "number") return v; const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? 0 : t; };
 const clean = (p: string): string => p.replace(/^\/+|\/+$/g, "");
 
-/** The files and folders directly under `prefix`, folders first. A folder is a path step with more below it. */
-export function children(entries: SpaceEntry[], prefix: string): Item[] {
+/** The files and folders directly under `prefix`, folders first. A folder is a path step with more below it, or a chat folder the listing names; a folder is shown by its name (names) and greyed when not open. */
+export function children(entries: SpaceEntry[], prefix: string, extra: Pick<Listing, "names" | "folders"> = {}): Item[] {
   const base = clean(prefix);
   const out = new Map<string, Item>();
+  const nameOf = (path: string, head: string) => (typeof extra.names?.[path] === "string" && extra.names[path].trim() ? extra.names[path].trim() : head);
   for (const e of entries) {
     const full = clean(String(e.path ?? e.name ?? ""));
     if (!full || (base && !full.startsWith(base + "/"))) continue;
@@ -19,13 +27,19 @@ export function children(entries: SpaceEntry[], prefix: string): Item[] {
     const [head, ...more] = rest.split("/");
     if (!head) continue;
     const path = base ? `${base}/${head}` : head;
-    if (more.length) { const cur = out.get(head); out.set(head, { name: head, dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)) }); }
+    if (more.length) { const cur = out.get(head); out.set(head, { name: nameOf(path, head), dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)) }); }
     else out.set(head, { name: head, dir: false, path, size: Number(e.size ?? 0), ver: Number(e.ver ?? e.version ?? 1), at: ms(e.at ?? e.mtime) });
+  }
+  for (const f of extra.folders ?? []) {
+    const p = clean(String(f.path ?? ""));
+    const head = p.split("/").pop() ?? "";
+    if (!p || !head || (base && !p.startsWith(base + "/")) || out.has(head)) continue;
+    out.set(head, { name: String(f.name || head), dir: true, path: p, size: 0, ver: 0, at: 0, ...(f.open === false ? { locked: true } : {}) });
   }
   return [...out.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
 }
 
-export const dayOf = (at: number): string => (at ? new Date(at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");
+export const dayOf = (at: number): string => (at ? dayOfTime(at) : "");
 
 export function sizeOf(n: number): string {
   if (n < 1024) return `${n} B`;

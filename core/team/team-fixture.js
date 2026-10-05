@@ -34,6 +34,14 @@ export const until = async (fn, what, ms = 15_000) => {
   }
 };
 
+/**
+ * The Project record's id for a project made through projects.create. The team's rows are keyed by it, and the hub makes the record when the project is made, so wait for it.
+ * @param {string} root @param {{ slug: string }} project
+ */
+export async function recordOf(root, project) {
+  return (await until(async () => { const r = await call("work.project.ref", { project: project.slug }, { root, caller: "cli", timeout: 20_000 }); return r.error ? null : r.data; }, `the Project record of ${project.slug}`)).id;
+}
+
 /** A vyred in a temp home, on the fake claude, with a project already made. */
 export async function boot(t) {
   const root = tempHome(t);
@@ -55,6 +63,7 @@ export async function boot(t) {
     return r.data;
   };
   const project = await tool("projects.create", { name: "Harlow Legal" });
+  project.record = await recordOf(root, project);
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   return { root, d, stop, logs, tool, raw, project, launches };

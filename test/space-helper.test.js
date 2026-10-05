@@ -66,11 +66,13 @@ if (a[0] === "compose") {
   const n = nameOf(a[a.indexOf("--project-name") + 1]);
   const sub = a[a.indexOf("-f") + 2];
   if (sub === "create") { if (has("create-fails")) process.exit(1); fs.writeFileSync(F + "/net-" + n, "1"); try { fs.copyFileSync(a[a.indexOf("-f") + 1], F + "/compose-at-create-" + n); fs.copyFileSync(a[a.indexOf("--env-file") + 1], F + "/env-at-create-" + n); } catch {} process.exit(0); }
-  if (sub === "up") { if (has("up-fails")) process.exit(1); fs.writeFileSync(F + "/running-" + n, "1"); process.exit(0); }
+  if (sub === "up") { fs.writeFileSync(F + "/db-volume-" + n, "1"); if (has("up-fails")) process.exit(1); fs.writeFileSync(F + "/running-" + n, "1"); process.exit(0); }
+  if (sub === "exec") { if (has("exec-fails")) process.exit(1); out(has("core-empty-" + n) ? "" : "core.\\"user\\""); }
   if (sub === "stop") { fs.rmSync(F + "/running-" + n, { force: true }); process.exit(0); }
-  if (sub === "down") { fs.rmSync(F + "/running-" + n, { force: true }); fs.rmSync(F + "/net-" + n, { force: true }); if (a.includes("-v")) fs.appendFileSync(F + "/purged", n + "\\n"); process.exit(0); }
+  if (sub === "down") { fs.rmSync(F + "/running-" + n, { force: true }); fs.rmSync(F + "/net-" + n, { force: true }); if (a.includes("-v")) { fs.appendFileSync(F + "/purged", n + "\\n"); fs.rmSync(F + "/db-volume-" + n, { force: true }); fs.rmSync(F + "/core-empty-" + n, { force: true }); } process.exit(0); }
   process.exit(0);
 }
+if (a[0] === "volume" && a[1] === "inspect") process.exit(has("db-volume-" + nameOf(a[2])) ? 0 : 1);
 if (a[0] === "volume" && a[1] === "rm") { fs.rmSync(F + "/vol-content", { force: true }); fs.appendFileSync(F + "/vol-rm", a.join(" ") + "\\n"); process.exit(0); }
 if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-e")) {
   // publish-fill: the throwaway container. The last argument is the shell command it runs.
@@ -592,6 +594,7 @@ test("space helper SH-1, SH-4, SH-5: the host writes a marker that names this ST
   // A container started and no marker yet: the daemon does not start.
   let w = as("abcdef012345", S1);
   assert.equal(w.status, 1); assert.match(w.stderr, /the daemon is not starting/);
+  assert.ok(!/cannot open/.test(w.stderr), "a marker that is not there yet is waited for quietly: " + w.stderr);
   // The helper proves the rules for the running container and names this start.
   const ok = /** @type {any} */ (await r.run(["space-helper", "reattach"])); assert.equal(ok.code, 0, ok.out);
   assert.equal(fs.readFileSync(path.join(r.SP, "status", "wall-ready"), "utf8").trim(), `abcdef012345 ${S1}`);
@@ -956,4 +959,46 @@ test("space helper: a lock left by a run that is gone does not leave its Space u
   assert.ok(!/was stopped/.test((await again()).out), "a fresh lock with no pid is respected");
   const old = new Date(Date.now() - 3 * 3600 * 1000); fs.utimesSync(lock, old, old);
   assert.match((await again()).out, /the Space harlow was stopped/, "a lock older than two hours does not count");
+
+test("space helper #90: a first start cut off midway leaves a database with an empty core schema; the next up removes that empty database and starts again, with no manual step", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const d = path.join(r.SP, "private", "spaces", "harlow");
+  // the first start is cut off: the store never became healthy, and what is left is a database with no core user table
+  r.flag("up-fails");
+  const a = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(a).state, "failed");
+  assert.ok(!fs.existsSync(path.join(d, "ready")), "no completion mark after a start that did not finish");
+  fs.rmSync(path.join(r.F, "up-fails")); r.flag("core-empty-harlow");
+  // the next up (the daemon's retry) finds it, removes it and starts again
+  const b = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(b).state, "ok", JSON.stringify(r.status(b)));
+  assert.match(fs.readFileSync(path.join(r.F, "purged"), "utf8"), /harlow/, "the empty database's volumes were removed");
+  assert.match(fs.readFileSync(path.join(r.SP, "private", "log"), "utf8"), /repair: empty core schema from a cut off first start/, "the log says what was repaired");
+  assert.ok(fs.existsSync(path.join(d, "ready")), "and the Space has its mark now");
+  assert.ok(!fs.existsSync(path.join(r.F, "core-empty-harlow")));
+});
+
+test("space helper #90: a Space with its mark is never touched, a Space with data and no mark is marked and kept, and a Space that cannot be looked at is left as it is", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const d = path.join(r.SP, "private", "spaces", "harlow");
+  const a = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(a).state, "ok");
+  assert.ok(fs.existsSync(path.join(d, "ready")));
+  // marked: even a database that looks empty (it is not asked about) keeps its volumes
+  r.flag("core-empty-harlow");
+  const b = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(b).state, "ok");
+  assert.ok(!fs.existsSync(path.join(r.F, "purged")), "a Space with its mark is never purged");
+  // data and no mark (a Space made before the mark existed): kept, and marked after it starts
+  fs.rmSync(path.join(d, "ready")); fs.rmSync(path.join(r.F, "core-empty-harlow"));
+  const c = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(c).state, "ok");
+  assert.ok(!fs.existsSync(path.join(r.F, "purged")) && fs.existsSync(path.join(d, "ready")));
+  // no mark and the database cannot be asked: left alone, and nothing is purged
+  fs.rmSync(path.join(d, "ready")); r.flag("core-empty-harlow"); r.flag("exec-fails");
+  const e = r.ask("up harlow\n"); await r.helper();
+  assert.ok(!fs.existsSync(path.join(r.F, "purged")), "a Space that cannot be looked at is not purged");
+  void e;
 });

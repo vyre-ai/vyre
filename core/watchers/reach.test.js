@@ -15,6 +15,8 @@ import { tempHome, writeModule } from "../../test/helpers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(here, "module.json"), "utf8"));
+// the callers list the real tools declare (core/watchers/index.js): the person's surfaces, a module and a model; a state-changing tool open to anyone that declared none would be the person's surfaces only (RG-1)
+const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
 const REACH = {
   "watchers.list": "anyone", "watchers.test": "anyone", "watchers.card": "anyone", "watchers.logs": "anyone", "watchers.items": "anyone",
   "watchers.create": "asked", "watchers.preset": "asked", "watchers.pause": "anyone",

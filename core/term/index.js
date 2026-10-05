@@ -343,7 +343,7 @@ export default {
     /** The thread, as the caller reads it. Throws denied or not_found; never answers for a thread the caller may not use. @param {string} thread @param {string} caller */
     const threadOf = async (thread, caller) => {
       let r;
-      try { r = await ctx.call("threads.get", { thread, limit: 1 }, { as: String(caller || "") }); }
+      try { r = await ctx.call("threads.get", { thread, limit: 1 }, { relay: true }); }
       catch (e) { throw fail("denied", /** @type {Error} */ (e).message); }
       if (r && r.error) throw fail(["denied", "forbidden", "person_session_required"].includes(String(r.error.code)) ? "denied" : "not_found", "no such session on this box, or you may not use it");
       const rec = r && r.data && (r.data.thread || r.data);

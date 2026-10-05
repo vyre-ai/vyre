@@ -8,17 +8,16 @@ status: stable
 
 # Vyre docs
 
-Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out. Your sessions run on a server you control (the box), so untrusted code never touches your laptop and you can reach them from anywhere. Vyre sorts those sessions into projects and threads, remembers what was said across all of them, and marks in gold anything that came from memory rather than a model. You can launch agents that run on your own Claude subscription or an API key with a budget, each with its own computer. A built-in vault lets agents use credentials nobody sees. Tailscale puts it all at your own private address, reachable only from your devices. Vyre is not a fork or a wrapper: it plugs into Claude Code as a plugin, and improves when Claude Code does. The full statement is [Section 1 of the spec](architecture/spec.md#1-what-vyre-is).
+Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out. Your sessions run on a server you control (the box), so untrusted code never touches your laptop and you can reach them from anywhere. Vyre sorts those sessions into projects and threads, remembers what was said across all of them, and marks in gold anything that came from memory rather than a model. You can launch agents that run on your own Claude subscription or an API key with a budget, each with its own computer. A built-in vault lets agents use credentials nobody sees. Vyre's built-in private network puts it all at your own address, reachable only from your devices. Vyre is not a fork or a wrapper: it plugs into Claude Code as a plugin, and improves when Claude Code does. The full statement is [Section 1 of the spec](architecture/spec.md#1-what-vyre-is).
 
 ## Start here
 
 The fastest path, in order:
 
 1. [Install](get-started/install.md): put Vyre on a Linux server and your Mac. From the Mac it is one command.
-2. [Onboarding](get-started/onboarding.md): six screens in the browser. Your name, Claude sign-in, Tailscale, your address, your history, your devices.
-3. [Your first day](get-started/first-day.md): open the Capsule, start a thread in a project, launch an agent, store a secret, find something from last week.
+2. [Your first day](get-started/first-day.md): open the Capsule, start a thread in a project, launch an agent, store a secret, find something from last week.
 
-On a Mac with Tailscale signed in, the install starts here (new to Tailscale? See [Tailscale, from zero](get-started/tailscale.md)):
+On a Mac, the install starts here:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
@@ -32,8 +31,8 @@ Vyre is not on npm yet, so the package comes from vyre.run. `vyre up` asks where
 | Section | For | What is in it |
 | --- | --- | --- |
 | [Get started](get-started/install.md) | users | Install, onboarding, the first day, fixes for common failures. |
-| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Deck, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, Tailscale, the phone, looking after the box. |
-| [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, the tailnet, presence, the security floor, modules. |
+| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Vyre app, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
+| [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, your private network, presence, the security floor, modules. |
 | [Build on Vyre](build/module-contract.md) | builders, agents | The module contract, tools and events, writing a module, the MCP hub. |
 | [Reference](reference/cli.md) | everyone | Generated from the code: every [command](reference/cli.md), [tool](reference/tools.md), [event](reference/events.md), [config key](reference/config.md) and [module](reference/modules.md). |
 | [Architecture](architecture/index.md) | builders, operators | Layers, surfaces, the repository, the [spec](architecture/spec.md), [performance](architecture/performance.md), and the decision records. |

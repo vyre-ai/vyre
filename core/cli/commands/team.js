@@ -16,12 +16,16 @@ const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); r
 const USAGE = "vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]";
 const FLAGS = { values: ["project", "brief", "instructions", "isolation", "priority", "part"], bool: ["urgent", "wait", "edit"], cmd: "team" };
 
-/** The project this terminal is in, unless --project overrides it. */
+/** The Project record id of the project this terminal is in, unless --project (a short name or an id) overrides it: a teammate's rows are keyed by the record's id. */
 async function projectFlag(flags) {
-  if (flags.project) return String(flags.project);
-  const here = await call("projects.of", { cwd: process.cwd() });
-  if (here.error || !here.data) return null;
-  return here.data.slug;
+  let named = flags.project ? String(flags.project) : null;
+  if (!named) {
+    const here = await call("projects.of", { cwd: process.cwd() });
+    if (here.error || !here.data) return null;
+    named = String(here.data.slug);
+  }
+  const ref = await call("work.project.ref", { project: named });
+  return !ref.error && ref.data ? String(ref.data.id) : null;
 }
 
 function showTeammate(tm) {
@@ -53,7 +57,7 @@ async function add(args) {
   const r = await callAsPerson("team.add", input);
   if (r.error) { failTool(r.error); return 1; }
   if (json()) return emit(r.data);
-  out(`  ${signal("made")} ${bold(r.data.agent)}  ${dim([r.data.project, r.data.brief].filter(Boolean).join(" · "))}`);
+  out(`  ${signal("made")} ${bold(r.data.agent)}  ${dim(String(r.data.brief || ""))}`);
   if (r.data.notice) out(dim(`  ${r.data.notice}`));
   return 0;
 }

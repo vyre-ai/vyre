@@ -11,7 +11,7 @@
 // person is proving before they prove it, and every held item carries `presence: {required,
 // covered}` so a surface never guesses from the kind. A module may
 // approve only when config.json names it under gate.approvers, for a caller not already on the
-// explicit allowlist (deck, capsule); Vyre Chat is deck/chat/, so it calls as "deck" and needs no
+// explicit allowlist (deck, capsule); Vyre Chat in the app calls as "deck" and needs no
 // entry there.
 //
 // Credentials come from ctx.vault.fetch at the moment of sending (needs.vault "per-sender": the

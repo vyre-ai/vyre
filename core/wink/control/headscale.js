@@ -362,6 +362,8 @@ export function createHeadscale(opts) {
       ips: n.ip_addresses || n.ipAddresses || [],
       tags: n.tags || n.forced_tags || n.forcedTags || [],
       user: n.user ? String(n.user.name || n.user) : null, online: !!n.online,
+      /** The pre-auth key this node joined with (Headscale records it on the node): what binds a node to the device the key was minted for. */
+      preAuthKeyId: (n.pre_auth_key || n.preAuthKey) && Number.isFinite(Number((n.pre_auth_key || n.preAuthKey).id)) ? Number((n.pre_auth_key || n.preAuthKey).id) : null,
       createdAt: n.created_at || n.createdAt || null, lastSeen: n.last_seen || n.lastSeen || null,
       stableId: String(id),
     };

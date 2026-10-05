@@ -1,7 +1,8 @@
 // The space calendar, as pure functions: every record with a date on it (an Event, a deadline, a task's due date) as one dated item, shown by day, week or month.
 // Nothing here knows a record type. An Event type, when the space has one, is read by its fields: the first datetime field is the start, a field named
 // like end/ends/until after it is the end. Any other type shows once for each date field it has.
-import { viewDefOf } from "../../../../deck/ui/view-defs.js";
+import { clock, showTimes, systemZone } from "../../../../lib/time/index.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { isoDay, toDate } from "../../ui/fields/logic.js";
 
 export const VIEWS = /** @type {const} */ (["day", "week", "month"]);
@@ -131,15 +132,20 @@ export function heading(view, anchor) {
   return `${d(a)} to ${d(b)}`;
 }
 
-/** "9:30" or "All day"; a timed event with an end says "9:30 to 10:15". @param {Item} i */
-export function timeLine(i) {
+/**
+ * "9:30 am" or "All day"; a timed event with an end says "9:30 am to 10:15 am". Every time is shown in the viewer's own zone (lib/time, the one place that converts); a time that belongs to a space with a zone
+ * of its own also says the space's: "9:00 am PT · 9:00 pm your time". With no zone given the viewer's device zone is used and no space zone is shown.
+ * @param {Item} i @param {{ person?: string, space?: string | null }} [z]
+ */
+export function timeLine(i, z = {}) {
   if (i.allDay) return "All day";
-  const t = (/** @type {Date} */ d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  return i.end ? `${t(i.start)} to ${t(i.end)}` : t(i.start);
+  const person = z.person || systemZone();
+  const first = showTimes(i.start.getTime(), { person, space: z.space ?? null }).text;
+  return i.end ? `${first} to ${clock(i.end.getTime(), person)}` : first;
 }
 
-/** The line under a title: when, then what it is ("Deadline" for a Matter's closing date, "Event" for an Event). @param {Item} i */
-export const subLine = (i) => `${timeLine(i)}, ${i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`}`;
+/** The line under a title: when, then what it is ("Deadline" for a Matter's closing date, "Event" for an Event). @param {Item} i @param {{ person?: string, space?: string | null }} [z] */
+export const subLine = (i, z) => `${timeLine(i, z)}, ${i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`}`;
 
 /** A day key as a heading for an agenda: "Sunday 4 October". @param {string} key */
 export function dayHeading(key) { const d = toDate(key); return d ? heading("day", d) : key; }
@@ -150,4 +156,26 @@ export function monthGrid(anchor) {
   const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => new Date(y, m, i + 1))];
   while (cells.length % 7) cells.push(null);
   return Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7));
+}
+
+/**
+ * A repeating Event's occurrences come from the box, not from the app: planner.agenda { from, to } answers every occurrence of an Event inside the window, each with its record, start and end (ms),
+ * all_day, url, occurrence and the rrule (core/planner, planner-events). The app does not expand a rule itself. An entry is an occurrence when it has a record and a rule.
+ * @param {any} agenda planner.agenda's answer: { entries: [...] } @returns {Item[]}
+ */
+export function occurrencesFrom(agenda) {
+  const rows = Array.isArray(agenda?.entries) ? agenda.entries : [];
+  /** @type {Item[]} */ const out = [];
+  for (const e of rows) {
+    if (!e || typeof e.record !== "string" || !e.rrule || typeof e.start !== "number") continue;
+    out.push({ urn: `occurrence:${e.record}:${e.start}`, id: e.record, type: "event", typeLabel: "Event", title: String(e.title ?? "Event"), field: "start", fieldLabel: "Start", start: new Date(e.start), end: typeof e.end === "number" && e.end >= e.start ? new Date(e.end) : null, allDay: e.all_day === true, event: true });
+  }
+  return out;
+}
+
+/** The record items with each repeating Event's single first-date item replaced by the box's occurrences in the window. @param {Item[]} items @param {Item[]} occurrences */
+export function withOccurrences(items, occurrences) {
+  if (!occurrences.length) return items;
+  const repeating = new Set(occurrences.map((o) => o.id));
+  return [...items.filter((i) => !(i.event && repeating.has(i.id))), ...occurrences].sort((a, b) => a.start.getTime() - b.start.getTime() || a.title.localeCompare(b.title));
 }

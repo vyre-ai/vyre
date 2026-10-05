@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "start"];
+const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "start", "privacy"];
 const read = (p) => fs.readFileSync(path.join(SITE, p), "utf8");
 const pageFile = (slug) => (slug ? `${slug}/index.html` : "index.html");
 const BANNED = /[—§]/;
@@ -67,7 +67,8 @@ test("site v2: llms.txt, llms-full.txt, agents.md and the agent file exist and a
   for (const f of ["llms.txt", "llms-full.txt", "agents.md"]) assert.ok(!BANNED.test(read(f)), f);
   const agent = JSON.parse(read(".well-known/agent.json"));
   assert.equal(agent.license, "Apache-2.0");
-  assert.match(read("llms-full.txt"), /Tailscale is required/);
+  assert.match(read("llms-full.txt"), /Network: built in/);
+  assert.ok(!/Tailscale/i.test(read("llms-full.txt")), "no other VPN product in the full text");
   assert.match(read("agents.md"), /Do not run the install line/);
 });
 

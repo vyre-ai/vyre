@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, kernelCaller } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
@@ -31,7 +31,7 @@ async function rig(/** @type {any} */ t) {
   ok(await d.registry.call("projects.create", { name: "One", home: p1 }, "cli"));
   ok(await d.registry.call("projects.create", { name: "Two", home: p2 }, "cli"));
   ok(await d.registry.call("agents.create", { name: "assistant", kind: "assistant", projects: "*" }, "cli"));
-  ok(await d.registry.call("agents.create", { name: "kit", projects: ["one"] }, "cli"));
+  ok(await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["one"] }));
   const person = ok(await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "deck" }, "cli")).id;
   const other = ok(await d.registry.call("threads.start", { cwd: work, prompt: "someone else's thread", surface: "deck" }, "cli")).id;
   const asAssistant = { thread: person, agent: "assistant", agentKind: "assistant", granted: "*" };

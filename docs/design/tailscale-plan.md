@@ -49,7 +49,7 @@ exists more clearly for the person.
 ## 3. Simplest install
 
 Current: onboarding step 3 (`tailscale`, after `you` and `claude`, in `core/onboard/index.js:19`)
-calls `names.connect`, gets a login URL, and `poll`s until whois shows Running. That's already
+calls names.connect (a tool that has since been removed), gets a login URL, and `poll`s until whois shows Running. That's already
 one link, no separate account creation. What adds friction today:
 
 - The person still writes tailnet policy JSON by hand for Taildrive, Taildrop's grant, SSH, and

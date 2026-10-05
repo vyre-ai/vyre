@@ -1,5 +1,5 @@
 // @ts-check
-// records: the app's Store calls over the kernel's gateway, one tool each (deck/ui/contracts.js maps a Store method to a kernel call; this registers it). Every tool runs under the caller's own
+// records: the app's Store calls over the kernel's gateway, one tool each (apps/app/src/store-core/contracts.js maps a Store method to a kernel call; this registers it). Every tool runs under the caller's own
 // chain in the Space it names (lib/gateway-door.js: a token's or the person's facts, never the body), so the kernel's grants, sealed fields and rooms decide each answer. A refusal is
 // { error: { code, message } } with the kernel's own codes (not_found, version_conflict, sealed_value_refused, bad_input, denied).
 import { createDoor } from "../../lib/gateway-door.js";
@@ -59,9 +59,9 @@ export default {
       const list = await d.gateway.grants.members.list(d.chain);
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
-    // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
-    const SYSTEM_TYPES = new Set(["goal", "memory_fact", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
-    const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-");
+    // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, installed Kits and the proposals waiting for a yes, Kit roles and views, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
+    const SYSTEM_TYPES = new Set(["goal", "memory_fact", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run", "kit-install", "kit-proposal"]);
+    const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-") || n.startsWith("kit-");
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
       const withFlag = all.map((/** @type {any} */ t) => (isSystem(String(t.name)) ? { ...t, system: true } : t));

@@ -3,7 +3,7 @@
 //   node scripts/build-wink-scan.mjs          write it
 //   node scripts/build-wink-scan.mjs --check  exit 1 when it differs from what the sources would make (the test runs this)
 //
-// The decoder is the shared one (lib/wink-code: geometry, Reed-Solomon, payload, decode-core2), the same code deck/js/scan.js runs in a browser, so a phone and a
+// The decoder is the shared one (lib/wink-code: geometry, Reed-Solomon, payload, decode-core2), the same code web/js/scan.js runs in a browser, so a phone and a
 // browser read a drawn Wink code with one decoder. The page opens the back camera (getUserMedia), grabs a square frame every few hundred ms and hands it to a worker
 // that runs the rotation, scale and perspective search; a frame that decodes posts the 8-byte ticket to the app. A decode attempt takes 1 to 2 s of JIT time, which is why
 // this runs in the system WebView and not in Hermes. The page's backdrop colour is the placeholder __PAGE_BG__, which WinkScan.native.tsx fills from the theme (a literal colour here fails the raw-colours test). Nothing here logs or stores the ticket: it goes to the app once and the page stops.
@@ -27,7 +27,7 @@ function inline(name, file) {
   return `const ${name} = (function () {\n${src}\nreturn { ${names.join(", ")} };\n})();\n`;
 }
 
-/** The worker: the decoder modules and the same message protocol as deck/js/scan-worker.js. */
+/** The worker: the decoder modules and the same message protocol as web/js/scan-worker.js. */
 export function workerSource() {
   return [
     inline("geo", "lib/wink-code/geometry.js"),

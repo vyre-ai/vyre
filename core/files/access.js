@@ -1,6 +1,6 @@
 // @ts-check
 // access — which folders a named agent may read through files.search/stat/preview/fetch, and
-// which Taildrive shares files.drive may offer it (Vyre Drive step 5, federation). The user's
+// which VyreDrive shares files.drive may offer it (Vyre Drive step 5, federation). The user's
 // own surfaces, modules and the person's own sessions see every configured root, unrestricted,
 // exactly as before this existed. THE assistant rule (binding, 2026-09-28): the assistant walks
 // every MAPPED project, same as a projects: "*" agent and NOT checked against projects.access

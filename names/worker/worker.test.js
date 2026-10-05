@@ -398,3 +398,22 @@ test("admin rebind: the old route's moved note goes when that route holds a name
   data(await a.post("/v1/names/claim", { name: "blake" }));
   assert.equal(data(await a.get("/v1/names/mine")).moved, undefined, "claiming again clears the note");
 });
+
+test("publish: the name's A record is the public IPv4 the request came from, and nothing the caller names", async t => {
+  const w = world(t), a = boxOf(w);
+  data(await a.post("/v1/names/claim", { name: "pubby" }, { ip: "93.184.216.34" }));
+  const p = data(await a.post("/v1/names/publish", { name: "pubby", ip: "8.8.8.8" }, { ip: "93.184.216.34" }));
+  assert.deepEqual([p.type, p.ip, p.fqdn], ["A", "93.184.216.34", "pubby.vyre.run"], "the observed address, not the body's");
+  assert.deepEqual(w.dns.at("pubby.vyre.run", "A").map(r => r.content), ["93.184.216.34"]);
+  data(await a.post("/v1/names/publish", { name: "pubby" }, { ip: "93.184.216.35" }));
+  assert.deepEqual(w.dns.at("pubby.vyre.run", "A").map(r => r.content), ["93.184.216.35"], "a new address updates the one record");
+  assert.equal(data(await a.get("/v1/names/mine")).state, "live");
+  const before = w.dns.records.length;
+  for (const ip of ["10.0.0.5", "192.168.1.1", "100.64.0.9", "127.0.0.1", "169.254.1.1", "172.16.0.1", "203.0.113.7", "224.0.0.1", "unknown"]) {
+    assert.equal(code(await a.post("/v1/names/publish", { name: "pubby" }, { ip })), "not_public", ip);
+  }
+  assert.equal(w.dns.records.length, before);
+  const b = boxOf(w);
+  assert.notEqual(b.route, a.route);
+  assert.ok(code(await b.post("/v1/names/publish", { name: "pubby" }, { ip: "93.184.216.34" })), "another route cannot publish a name it does not hold");
+});

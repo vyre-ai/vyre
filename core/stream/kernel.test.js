@@ -74,45 +74,45 @@ test("stream.open through chats.read: a participant opens; a member outside, the
   const w = await world(t);
   const C = w.k.gateway.grants.chats;
   const chat = await C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  assert.equal(codeOf(await w.as("bob")("stream.open", { session: chat.id })), "ok", "bob is in it");
-  assert.equal(codeOf(await w.as("carol")("stream.open", { session: chat.id })), "ok", "carol is in it");
-  assert.equal(codeOf(await w.as("ada")("stream.open", { session: chat.id })), "not_found", "a member who is not in it");
-  assert.equal(codeOf(await w.as("owner")("stream.open", { session: chat.id })), "not_found", "the owner who is not in it");
-  assert.equal(codeOf(await w.as("adaKit")("stream.open", { session: chat.id })), "not_found", "ada's assistant on a chat between bob and carol");
-  assert.equal(codeOf(await w.as("ada")("stream.open", { session: "chat_nonesuch0" })), "not_found");
+  assert.equal(codeOf(await w.as("bob")("stream.open", { chat: chat.id })), "ok", "bob is in it");
+  assert.equal(codeOf(await w.as("carol")("stream.open", { chat: chat.id })), "ok", "carol is in it");
+  assert.equal(codeOf(await w.as("ada")("stream.open", { chat: chat.id })), "not_found", "a member who is not in it");
+  assert.equal(codeOf(await w.as("owner")("stream.open", { chat: chat.id })), "not_found", "the owner who is not in it");
+  assert.equal(codeOf(await w.as("adaKit")("stream.open", { chat: chat.id })), "not_found", "ada's assistant on a chat between bob and carol");
+  assert.equal(codeOf(await w.as("ada")("stream.open", { chat: "chat_nonesuch0" })), "not_found");
   // a refused id makes no log
   assert.equal(w.stream().logs.has("chat_nonesuch0"), false);
   // a person added by the kernel's change reads at once; one removed stops at once
   await C.change(w.chains.bob, chat.id, { add_people: [ADA] });
-  assert.equal(codeOf(await w.as("ada")("stream.open", { session: chat.id })), "ok");
+  assert.equal(codeOf(await w.as("ada")("stream.open", { chat: chat.id })), "ok");
   await C.change(w.chains.bob, chat.id, { remove_people: [CAROL] });
-  assert.equal(codeOf(await w.as("carol")("stream.open", { session: chat.id })), "not_found");
+  assert.equal(codeOf(await w.as("carol")("stream.open", { chat: chat.id })), "not_found");
 });
 
 test("one store: the group's people are the kernel's; a speaker outside the chat is refused and nobody joins by naming people", async t => {
   const w = await world(t);
   const C = w.k.gateway.grants.chats;
   const chat = await C.create(w.chains.bob, { people: [CAROL] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "hello carol", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "hello carol", to: [] }));
   const grp = w.stream().groups;
   assert.deepEqual([...grp.people(chat.id)].sort(), [`person:${BOB}`, `person:${CAROL}`]);
-  assert.equal(codeOf(await w.as("ada")("stream.send", { session: chat.id, text: "hi", to: [] })), "not_found");
-  assert.equal(codeOf(await w.as("owner")("stream.react", { session: chat.id, message: "m1", emoji: "x" })), "not_found");
-  assert.equal(codeOf(await w.as("bob")("stream.send", { session: chat.id, text: "add ada", people: [`person:${ADA}`], to: [] })), "bad_input", "people are added with the kernel's chat change");
+  assert.equal(codeOf(await w.as("ada")("stream.send", { chat: chat.id, text: "hi", to: [] })), "not_found");
+  assert.equal(codeOf(await w.as("owner")("stream.react", { chat: chat.id, message: "m1", emoji: "x" })), "not_found");
+  assert.equal(codeOf(await w.as("bob")("stream.send", { chat: chat.id, text: "add ada", people: [`person:${ADA}`], to: [] })), "bad_input", "people are added with the kernel's chat change");
   await C.change(w.chains.bob, chat.id, { add_people: [ADA], remove_people: [CAROL] });
-  ok(await w.as("ada")("stream.send", { session: chat.id, text: "now me", to: [] }));
+  ok(await w.as("ada")("stream.send", { chat: chat.id, text: "now me", to: [] }));
   assert.deepEqual([...grp.people(chat.id)].sort(), [`person:${ADA}`, `person:${BOB}`]);
-  assert.equal(codeOf(await w.as("carol")("stream.send", { session: chat.id, text: "still here?", to: [] })), "not_found");
-  assert.ok(w.stream().logs.get(chat.id).read(0).some((/** @type {any} */ f) => f.type === "session.participant-left" && f.data.who === `person:${CAROL}`));
+  assert.equal(codeOf(await w.as("carol")("stream.send", { chat: chat.id, text: "still here?", to: [] })), "not_found");
+  assert.ok(w.stream().logs.get(chat.id).read(0).some((/** @type {any} */ f) => f.type === "chat.participant-left" && f.data.who === `person:${CAROL}`));
   // a session the kernel does not hold as a chat cannot be founded by a send
-  assert.equal(codeOf(await w.as("bob")("stream.send", { session: "chat_founded_here", text: "x", to: [] })), "not_found");
+  assert.equal(codeOf(await w.as("bob")("stream.send", { chat: "chat_founded_here", text: "x", to: [] })), "not_found");
 });
 
 test("per-role filtering through the real stream: a manager and a member in one chat, the assistant cites a manager-only field", async t => {
   const w = await world(t);
   const C = w.k.gateway.grants.chats;
   const chat = await C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "what is the fee?", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "what is the fee?", to: [] }));
   const seen = /** @type {any[]} */ ([]);
   w.stream().setFieldSource(async (/** @type {any} */ o) => { seen.push(o); return { label: "Fee", kind: "money", value: { amount: 4200, currency: "USD" }, read_roles: ["manager"] }; });
   const log = w.stream().logs.get(chat.id);
@@ -121,15 +121,15 @@ test("per-role filtering through the real stream: a manager and a member in one 
   log.append("text-delta", { message: "m10", index: 0, text: "Anything else?" }, { author: "assistant:kit", acts_for: `person:${BOB}`, message: "m10" });
   const watch = async (/** @type {string} */ who) => {
     /** @type {any[]} */ const got = [];
-    const c = connect({ open: async ({ from }) => { const o = ok(await w.as(who)("stream.open", { session: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+    const c = connect({ open: async ({ from }) => { const o = ok(await w.as(who)("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
     t.after(() => c.close());
     const end = Date.now() + 5000;
-    while (!got.some(f => f.type === "session.text-delta" && f.data.message === "m10") && Date.now() < end) await new Promise(r => setTimeout(r, 5));
-    assert.ok(got.some(f => f.type === "session.text-delta" && f.data.message === "m10"), "the later frame arrives after the cited one, in order");
+    while (!got.some(f => f.type === "chat.text-delta" && f.data.message === "m10") && Date.now() < end) await new Promise(r => setTimeout(r, 5));
+    assert.ok(got.some(f => f.type === "chat.text-delta" && f.data.message === "m10"), "the later frame arrives after the cited one, in order");
     return got;
   };
   const mgr = await watch("bob"), mem = await watch("carol");
-  const cite = (/** @type {any[]} */ g) => g.find(f => f.type === "session.text-done" && f.data.message === "m9").data.blocks[0];
+  const cite = (/** @type {any[]} */ g) => g.find(f => f.type === "chat.text-done" && f.data.message === "m9").data.blocks[0];
   assert.deepEqual([cite(mgr).block, cite(mgr).label, cite(mgr).value], ["field", "Fee", { amount: 4200, currency: "USD" }], "the manager sees the value");
   assert.equal(cite(mem).block, "field");
   assert.equal(cite(mem).placeholder, true, "the member sees the chip");
@@ -138,7 +138,7 @@ test("per-role filtering through the real stream: a manager and a member in one 
   assert.deepEqual(seen.map(s => [s.viewer.id, s.viewer.roles]).sort(), [[`person:${BOB}`, ["manager"]], [`person:${CAROL}`, ["member"]]], "roles come from the kernel's members");
   assert.deepEqual(mem.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), mgr.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), "same cursors for both");
   // the shared frame in the log is never mutated: a late viewer still gets the ref resolved for them
-  assert.equal(log.read(0).find((/** @type {any} */ f) => f.type === "session.text-done" && f.data.message === "m9").data.blocks[0].block, "field-ref");
+  assert.equal(log.read(0).find((/** @type {any} */ f) => f.type === "chat.text-done" && f.data.message === "m9").data.blocks[0].block, "field-ref");
 });
 
 test("an assistant reads what its person reads and nothing else (the user's rule: only the kernel's chats.read decides)", async t => {
@@ -149,18 +149,18 @@ test("an assistant reads what its person reads and nothing else (the user's rule
   const other = await C.create(w.chains.bob, { people: [OWNER], assistants: ["kit"] });
   const carolOnly = await C.create(w.chains.carol, { people: [], assistants: ["kit"] });
   // ada's assistant opens the chat ada is alone in, and a group ada is in: through the registry's reach rule, as a real session calls it
-  for (const c of [mine, group]) { const r = ok(await w.asst("adaKit")("stream.open", { session: c.id })); assert.equal(r.viewer, `person:${ADA}`, "it reads as the person it acts for"); }
+  for (const c of [mine, group]) { const r = ok(await w.asst("adaKit")("stream.open", { chat: c.id })); assert.equal(r.viewer, `person:${ADA}`, "it reads as the person it acts for"); }
   // a chat between others is not found (not denied: existence is not leaked)
-  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: other.id })), "not_found");
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { chat: other.id })), "not_found");
   // naming another person does nothing: the identity is the session's chain, and the chat is not ada's
-  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: other.id, as: `person:${BOB}` })), "not_found");
-  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: carolOnly.id, as: `person:${CAROL}` })), "not_found");
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { chat: other.id, as: `person:${BOB}` })), "not_found");
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { chat: carolOnly.id, as: `person:${CAROL}` })), "not_found");
   // `as` on a chat ada is in cannot make the assistant someone else either
-  assert.equal(ok(await w.asst("adaKit")("stream.open", { session: group.id, as: `person:${CAROL}` })).viewer, `person:${ADA}`);
+  assert.equal(ok(await w.asst("adaKit")("stream.open", { chat: group.id, as: `person:${CAROL}` })).viewer, `person:${ADA}`);
   // an assistant that is not listed in the chat is refused, though its person is in it
-  assert.equal(codeOf(await w.asst("adaJuno", "juno")("stream.open", { session: mine.id })), "not_found");
+  assert.equal(codeOf(await w.asst("adaJuno", "juno")("stream.open", { chat: mine.id })), "not_found");
   // carol's assistant cannot read ada's own chat, and reads carol's
-  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { session: mine.id })), "not_found");
-  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { session: carolOnly.id })), "ok");
+  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { chat: mine.id })), "not_found");
+  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { chat: carolOnly.id })), "ok");
   assert.equal(w.stream().logs.has(other.id), false, "a refused id makes no log");
 });

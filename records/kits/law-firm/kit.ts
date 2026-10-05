@@ -11,7 +11,7 @@ export const Lead = defineType({
   icon: "IconUserPlus",
   role: { link: "contact", ended: ["Converted", "Lost"] },
   fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "leads", label: "Leads" } }),
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     source: defineField.choice(["Website", "Referral", "Ad", "Event", "Phone", "Other"], { label: "Source" }),
     summary: defineField.rich_text({ label: "What they need" }),
@@ -26,7 +26,7 @@ export const Appointment = defineType({
   icon: "IconCalendarEvent",
   fields: {
     title: defineField.text({ label: "Title", required: true }),
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "appointments", label: "Appointments" } }),
     kind: defineField.choice(["Consultation", "Meeting", "Follow-up", "Signing", "Call", "Other"], { label: "Kind" }),
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     starts: defineField.datetime({ label: "Starts", required: true }),
@@ -43,7 +43,7 @@ export const Client = defineType({
   icon: "IconUserCheck",
   role: { link: "contact", ended: ["Closed"] },
   fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "clients", label: "Clients" } }),
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     since: defineField.date({ label: "Client since" }),
     stage: defineStage(["Onboarding", "Active", "Closed"]),
@@ -58,7 +58,7 @@ export const Project = defineType({
   fields: {
     // `name` and `client` are the core Project's own; owner and due are the base Kit's.
     name: defineField.text({ label: "Name", required: true }),
-    client: defineField.link({ to: "contact", label: "Client", required: true }),
+    client: defineField.link({ to: "contact", label: "Client", required: true, inverse: { name: "projects", label: "Projects" } }),
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     owner: defineField.actor({ label: "Owner" }),
     due: defineField.date({ label: "Due" }),

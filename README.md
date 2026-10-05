@@ -11,18 +11,13 @@ Vyre is an open-source, self-hosted home for your AI agents. They run on a serve
 
 Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-now.dark.png">
-  <img src="docs/using/shots/deck-now.png" alt="The Deck's Now page: what needs you, and which agents are working, for the Harlow Legal and Northwind Bakery projects" width="640">
-</picture>
-
 ## Set up
 
-Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI, connecting Tailscale and adding your phone.
+Open the Vyre app on your phone or Mac, choose your name and create a space. It gives you one line to paste on your server, then pairs the server with a code and three words, and walks you through your AI account, your tools and a Kit.
 
 - **The server** is a Linux machine with Docker, or a Mac that stays on.
-- **Tailscale** is required. The free plan is enough.
-- **Your Mac** (Node 22.5 or newer, Tailscale signed in) pairs with your server and gets Vyre Lumen:
+- **The network** is built in. There is nothing to install and nothing to sign in to.
+- **Your Mac** (Node 22.5 or newer) pairs with your server and gets Vyre Lumen:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
@@ -34,7 +29,7 @@ vyre capsule install
 
 Or take the app as a disk image: `Vyre.dmg` (from the capsule-mac run's artifacts until releases carry it), open it and drag Vyre to Applications. It is self-signed: Vyre has no Apple Developer ID and the app is not notarized, so the first time macOS refuses a plain double-click. Right-click Vyre in Applications, choose Open, then Open again; after that it opens normally. Or build the image yourself on a Mac with `sh local/capsule/native/build.sh app && sh scripts/make-dmg.sh`.
 
-The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
+The line the app shows is `curl -fsSL vyre.run/i | sh`. It prints a QR and a long code; scan it or paste it into the app, then confirm the same three words in the app and the terminal. Step by step: [Install](docs/get-started/install.md).
 
 ## On your Mac: Vyre Lumen
 
@@ -43,7 +38,7 @@ Press Option-Space in any app. Ask a question, send work to one of your agents, 
 
 ## On your phone
 
-Vyre on your phone is the web app, added to your Home Screen from your server's address. Your phone needs Tailscale signed in. The setup page shows a ring to scan with your phone to pair it, shows your server's name and fingerprint, and pairs only after you tap Pair.
+Vyre on your phone is the Vyre app. Scan the code your server or a signed-in computer shows (or paste the long code). Both screens show the same three words, and the phone pairs only after you confirm them.
 
 <picture>
   <img src="docs/images/readme/wink-confirm.png" alt="The phone's pairing success screen, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
@@ -66,11 +61,6 @@ There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, 
 - **Vyre for Chrome.** An extension that lets your agents use Chrome in a tab group of their own. It learns how sites work so later runs are faster, which you can see and forget under Memory, and it says plainly what it does not block. See [Learning](docs/using/learning.md).
 - **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-chat.dark.png">
-  <img src="docs/using/shots/deck-chat.png" alt="The Deck showing a session in the Harlow Legal project, with the thread and each reply's author" width="640">
-</picture>
-
 ## Updates
 
 Releases are signed (an Ed25519 signature on the release files, and cosign on the server image) and Vyre checks both before it installs one. The stable channel ignores prereleases.
@@ -79,7 +69,7 @@ Releases are signed (an Ed25519 signature on the release files, and cosign on th
 
 - Your keys, memory and sessions stay on your server.
 - Your prompts go to the provider you choose (Anthropic, OpenAI, xAI or OpenRouter), the same as when you use that provider on its own.
-- Your server publishes no port to the internet. You reach it over Tailscale.
+- Your server publishes no port to the internet. You reach it through Vyre's own built-in network, or through the relay.
 - Vyre's relay at relay.vyre.run carries setup progress and phone pairing. That traffic is end-to-end encrypted, so the relay can see that a server and a device talk, and when, but never what they say.
 
 ## Not in 0.2.0
@@ -90,13 +80,13 @@ Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safa
 
 **What is Vyre?** A daemon and a set of apps that give your AI agents a permanent home on a server you own: Vyre Lumen for your Mac, an app for your phone and one for Windows. It runs your Claude, Codex and Grok agents with your own accounts.
 
-**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), Tailscale, and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
+**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
 
 **What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
 
 **Is it secure?** Your server publishes no port, your keys are encrypted at rest, relay traffic is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Releases are signed.
 
-**How do I add my phone?** Open the setup page or your server's address on the phone, scan the ring, check the name and fingerprint, and tap Pair.
+**How do I add my phone?** Open the Vyre app on the phone, scan or paste the code your server or a signed-in device shows, and confirm the three words.
 
 ## Develop
 

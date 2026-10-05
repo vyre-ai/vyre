@@ -24,7 +24,7 @@ function setup(t, { failOn, items = [] } = {}) {
     if (tool === "watchers.items") return { data: items };
     return { data: { ok: true } };
   };
-  return { api: duties({ db, call, emit: (e, p) => events.push([e, p]) }), calls, events, db };
+  return { api: duties({ db, call, emit: (e, p) => events.push([e, p]), slugOf: async id => id }), calls, events, db };
 }
 
 test("create writes the watcher owned by the teammate, and the duty is on", async t => {

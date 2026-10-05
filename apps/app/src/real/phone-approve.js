@@ -4,7 +4,7 @@
 
 import { hashMatches, payloadHash } from "./payload-hash.js";
 
-/** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, expires_in_s?: number }} Pending */
+/** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, acted_via?: string, expires_in_s?: number }} Pending */
 /** @typedef {{ signPresence(req: { op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }): Promise<any> }} Signer */
 
 /** The cards from approvals.pending, newest asks last as the box lists them. @param {any} answer @returns {Pending[]} */
@@ -28,7 +28,7 @@ export function factLines(c) {
 }
 
 /** The line under a card: where it was asked from and how long it lasts. @param {Pending} c */
-export const askedLine = (c) => [c.asked_from ? `Asked from ${c.asked_from}` : "", c.expires_in_s ? `ends in ${Math.max(1, Math.round(c.expires_in_s / 60))} min` : ""].filter(Boolean).join(", ");
+export const askedLine = (c) => [c.asked_from ? `Asked from ${c.asked_from}` : "", c.acted_via === "assistant" ? "(Sent by Vyre Assistant)" : "", c.expires_in_s ? `ends in ${Math.max(1, Math.round(c.expires_in_s / 60))} min` : ""].filter(Boolean).join(", ");
 
 /** The words for how an answer went. @param {string | undefined} code @param {string} [how] the method on this device (on-phone.js howWord): "fingerprint", "Face ID or Touch ID", "passkey" */
 export function answerRefusal(code, how = "Face ID or Touch ID") {

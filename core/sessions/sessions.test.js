@@ -20,7 +20,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
@@ -393,7 +393,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null);
-    assert.equal((await w.tool("agents.create", { name: "kit", projects: "*" })).error, undefined);
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: "*" })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
     // the person's own call passes the input check with each of them
@@ -1284,11 +1284,13 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [];
+    const PROJECT_RECORD = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f"; // the Project record's id: team's rows (and so its asked-for keys) are keyed by it
     let roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [{ id: "d1", teammate: "harlow-legal-design", title: "inbox triage", hash: "h1a2b3c", enabled: false, started: false }] };
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
       if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
-      if (tool === "team.roster") return roster ? { data: roster } : { error: { code: "no_such_tool" } };
+      if (tool === "work.project.ref") return { data: { id: PROJECT_RECORD, urn: `vyre://spc/project/${PROJECT_RECORD}`, slug: input.project, name: "Harlow Legal" } };
+      if (tool === "team.roster") return roster && input.project === PROJECT_RECORD ? { data: roster } : { error: { code: "no_such_tool" } };
       if (tool === "agents.list") return { data: [{ name: "juno", kind: "assistant", projects: "*" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }, { name: "sam", kind: "agent", projects: ["other"] }] };
       return realCall(tool, input, caller, meta);
     };
@@ -1301,15 +1303,15 @@ for (const driver of ["cli", "sdk"]) {
       await w.finished(th.id, turns + 1);
     };
     await say("Retire the design teammate.");
-    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.retire:harlow-legal/design"]]]);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", [`team.retire:${PROJECT_RECORD}/design`]]]);
     recorded.length = 0;
     await say("Add a researcher teammate to this project.");
-    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.add:harlow-legal/researcher"]]]);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", [`team.add:${PROJECT_RECORD}/researcher`]]]);
     recorded.length = 0;
     await say("Add a design teammate.");                // already live in this project
     assert.equal(recorded.length, 0);
     await say("Fill the design role with kit.");
-    assert.deepEqual(recorded.map(r => r.to), [["team.role.fill:harlow-legal/design/kit"]]);
+    assert.deepEqual(recorded.map(r => r.to), [[`team.role.fill:${PROJECT_RECORD}/design/kit`]]);
     recorded.length = 0;
     await say("Fill the design role with sam.");      // sam is not one of the project's agents; the assistant is never a filler
     await say("Fill the design role with juno.");
@@ -1971,7 +1973,7 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
-    assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
     // (an agent's session is started by the agents module, as it is in the product; the person's own threads.start names no agent)
     const thr = await w.d.registry.call("threads.launch", { cwd: w.work, agent: "kit", agent_kind: "agent", purpose: "agent", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" }, "module:agents");
     if (thr.error) throw new Error(JSON.stringify(thr.error));

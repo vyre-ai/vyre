@@ -276,18 +276,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a live DNS check of the records for an own domain, a read"
  },
  {
-  "tool": "network.funnel.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state of the public share path on Tailscale Funnel"
- },
- {
-  "tool": "network.guests.check",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads who could reach the box as a guest now"
- },
- {
-  "tool": "network.guests.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the guests from other tailnets the box serves and their tools"
- },
- {
   "tool": "planner.settings",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads and sets the planner's zone and escalation timing, the person's own preferences"
  },

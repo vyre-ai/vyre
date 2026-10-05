@@ -30,7 +30,14 @@
   },
   "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted", "watcher.woke"] },
   "shows": { "deck": ["panel:watchers"], "capsule": [], "cli": ["watchers"] },
-  "needs": { "vault": ["per-watcher"] },
+  "needs": { "vault": ["per-watcher"], "kernel": { "actions": ["records.read", "records.create", "records.update", "records.remove"], "types": [
+    { "name": "def-watcher", "label": "Watcher", "icon": "IconEye", "fields": [
+      { "name": "name", "kind": "text", "label": "Name", "required": true, "unique": true },
+      { "name": "project", "kind": "text", "label": "Project" },
+      { "name": "schedule", "kind": "text", "label": "Runs" },
+      { "name": "hash", "kind": "text", "label": "Hash" },
+      { "name": "spec", "kind": "text", "label": "Settings (watcher.json)" },
+      { "name": "code", "kind": "text", "label": "Code (watch.js)" } ] } ] } },
   "teaches": {
     "memory": ["watcher.item"],
     "tips": [

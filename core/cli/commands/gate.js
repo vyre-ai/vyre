@@ -1,6 +1,6 @@
 // @ts-check
 // `vyre gate` (also `vyre drafts`): what is held at the Gate, from the terminal. The Deck's gate
-// card (deck/chat/gate-item.js) in words: list the held drafts, read one in full, change it,
+// card (the app's gate item) in words: list the held drafts, read one in full, change it,
 // send it or discard it.
 //
 // Who may do what is vyred's to say (core/gate/index.js, core/presence): approving a send, a spend

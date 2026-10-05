@@ -1,5 +1,5 @@
 // AvatarMath: the JavaScript arithmetic the Deck's avatar renderers lean on, reproduced exactly so
-// the Capsule's SVG is the Deck's byte for byte (deck/js/avatars.js and deck/vendor/vyrecode, ADR
+// the Capsule's SVG is the Deck's byte for byte (deck/js/avatars.js and web/vendor/vyrecode, ADR
 // 0043). Three things differ between Swift and JS by default, and each is pinned here:
 //
 //   numbers   JS prints a double as its shortest round-trip digits with its own layout rules

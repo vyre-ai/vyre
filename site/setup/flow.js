@@ -34,7 +34,7 @@ export const STEPS = Object.freeze([
   { id: "install", title: "Install", where: "On your server", optional: false },
   { id: "words", title: "Check the words", where: "On your server", optional: false },
   { id: "address", title: "Choose your address", where: "In your browser", optional: false },
-  { id: "tailscale", title: "Connect Tailscale", where: "In your browser", optional: false },
+  { id: "network", title: "Your network", where: "In your browser", optional: false },
   { id: "ai", title: "Sign in to your AI", where: "In your browser", optional: false },
   { id: "phone", title: "Add your phone", where: "In your browser", optional: true },
   { id: "passkey", title: "Create your passkey", where: "At your address", optional: false },
@@ -50,7 +50,7 @@ export function stepNumber(s) {
     case "install": return 1;
     case "found": return s.confirm === "pending" ? 2 : 3;
     case "named": return 3;
-    case "tailscale": return 4;
+    case "network": return 4;
     case "ai": return 5;
     case "devices": return 6;
     case "claim": return 7;
@@ -77,7 +77,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"network"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -85,8 +85,7 @@ export function suggestName(text) {
  *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
  *   domain: { open: boolean, input: string, checking: boolean, error: string|null,
  *     result: null | { domain: string, ok: boolean, cname: { host: string, expected: string, found: string[], ok: boolean }, caa: { present: boolean, ok: boolean|null, optional: boolean } } },
- *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
- *     address: null | { phase: string, why: string|null } },
+ *   network: { status: null | { state: "connected"|"relayed"|"offline"|"joining"|"unknown", path: string|null }, busy: boolean, error: string|null },
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[], keyKind: null|"openai-compatible"|"anthropic-compatible"|"openrouter", keyBusy: boolean },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
@@ -108,13 +107,13 @@ export function createFlow(o) {
   const pollMs = o.pollMs ?? 3000;
   const debounceMs = o.debounceMs ?? 350;
   /** @type {FlowState} */
-  const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
+  const blankNet = () => ({ status: null, busy: false, error: null });
   const blankAi = () => ({ accounts: [], keyKind: null, keyBusy: false });
   const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -130,13 +129,10 @@ export function createFlow(o) {
   /** What the page itself saw happen, in its own fixed words (never text from the network): one line per step as it moves. */
   const seen = (a, b) => {
     const out = [];
-    const tsOf = x => (x.tailscale.status ? x.tailscale.status.state : "");
     if (a.confirm !== "matched" && b.confirm === "matched") out.push("The four words matched.");
     if (a.channel !== "ready" && b.channel === "ready") out.push("Connected to your server.");
     if (a.stage !== "named" && b.stage === "named" && b.named) out.push(`Claimed ${b.named.name}.vyre.run.`);
-    if (tsOf(a) !== "connected" && tsOf(b) === "connected") out.push("Your server joined Tailscale.");
-    const ph = x => (x.tailscale.address ? x.tailscale.address.phase : "");
-    if (ph(a) !== ph(b)) { if (ph(b) === "serving") out.push("Your address is live."); else if (ph(b) === "failed") out.push("The address could not be published."); else if (ph(b)) out.push("Publishing your address."); }
+    if (!a.network.status && b.network.status) out.push(b.network.status.state === "relayed" ? "Your server is reachable through the relay." : b.network.status.state === "connected" ? "Your server is reachable directly." : "Looked at your server's network.");
     for (const acc of b.ai.accounts) { const was = a.ai.accounts.find(x => x.id === acc.id); if (acc.step === "done" && (!was || was.step !== "done")) out.push(`${acc.provider === "claude" ? "Claude" : acc.provider === "codex" ? "ChatGPT (Codex)" : "Grok"} signed in.`); }
     if (b.skipped.includes("ai") && !a.skipped.includes("ai")) out.push("Skipped the AI sign-in. One can be added later in Settings.");
     if (a.devices.phone !== "paired" && b.devices.phone === "paired") out.push("Your phone paired.");
@@ -165,7 +161,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -293,7 +289,7 @@ export function createFlow(o) {
   async function checkDomain(text) {
     if (!chan || !domainOk() || state.domain.checking) return;
     const domain = tidy(text ?? state.domain.input);
-    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example harlowlegal.com.", result: null } });
+    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example juniperstudio.example.", result: null } });
     const mine = run;
     set({ domain: { ...state.domain, input: domain, checking: true, error: null } });
     try {
@@ -333,8 +329,6 @@ export function createFlow(o) {
     }
   }
 
-  // ---- Tailscale: the box joins, and the address is published once it has a tailnet address ----
-
   /** A link the box hands back is followed only if it is a plain https address with no login in it. @param {unknown} u @param {(host: string) => boolean} [okHost] */
   function safeUrl(u, okHost) {
     try {
@@ -343,18 +337,33 @@ export function createFlow(o) {
       return !okHost || okHost(x.hostname) ? x.href : null;
     } catch { return null; }
   }
-  const isTailscaleHost = h => h === "tailscale.com" || h.endsWith(".tailscale.com");
 
-  /** After the recovery code is saved: on to Tailscale. */
-  function continueToTailscale() {
+  // ---- Your network: built in, so there is nothing to connect; the page only shows how the server is reachable ----
+
+  /** After the recovery code is saved: on to the network step, which reads the server's status once. */
+  function continueToNetwork() {
     if (state.stage !== "named" || !state.named || (state.named.recoveryCode && !state.named.saved)) return;
-    set({ stage: "tailscale", tailscale: blankTs() });
-    watchTailscale(run);
+    set({ stage: "network", network: blankNet() });
+    readNetwork(run);
   }
 
-  /** Once the address is live: on to the AI sign-in. */
+  /** Read how the server is reachable: network.wink.status, the one network tool this channel may call. Said in fixed words, never in text from the network. */
+  async function readNetwork(mine) {
+    if (!chan || state.stage !== "network" || state.network.busy) return;
+    set({ network: { ...state.network, busy: true, error: null } });
+    try {
+      const st = await chan.call("network.wink.status");
+      if (mine !== run) return;
+      const rows = st && Array.isArray(st.spaces) ? st.spaces : [];
+      const first = rows[0] || null;
+      const ok = first && ["connected", "relayed", "offline", "joining"].includes(first.state) ? first.state : st && st.relay && (st.relay.ok || st.relay.connected) ? "relayed" : "unknown";
+      set({ network: { status: { state: /** @type {any} */ (ok), path: first && first.path ? String(first.path).slice(0, 20) : null }, busy: false, error: null } });
+    } catch (e) { if (mine === run) set({ network: { ...state.network, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  }
+
+  /** On to the AI sign-in, once the page has looked at the network (an answer or an error: it never blocks the setup). */
   function continueToAi() {
-    if (state.stage !== "tailscale" || !state.tailscale.address || state.tailscale.address.phase !== "serving") return;
+    if (state.stage !== "network" || (!state.network.status && !state.network.error)) return;
     set({ stage: "ai" });
   }
 
@@ -368,105 +377,6 @@ export function createFlow(o) {
   function skipAi() {
     if (state.stage !== "ai" || state.ai.accounts.some(a => a.step === "done")) return;
     set({ stage: "devices", devices: blankDevices(), skipped: [...state.skipped, "ai"] });
-  }
-
-  /**
-   * Read the box's Tailscale state now, then again whenever the box says it changed (tailscale.changed) until it is connected and
-   * the address is up. If the box's event stream is not there or breaks, a capped poll takes over: every few seconds, for at most
-   * fifteen minutes, stopping at once when the box says the setup is over or answers with an error.
-   */
-  let watching = false;
-  async function watchTailscale(mine) {
-    if (watching) return;
-    watching = true;
-    try { await watchTailscaleLoop(mine); } finally { watching = false; }
-  }
-  async function watchTailscaleLoop(mine) {
-    let stopFollow = () => {};
-    let poked = false, over = false;
-    // Serving, or failed: either way there is nothing more to wait for (a failed one says why, and Connect tries again).
-    const done = () => Boolean(state.tailscale.address && (state.tailscale.address.phase === "serving" || state.tailscale.address.phase === "failed"));
-    const read = async () => {
-      const st = await chan.call("network.tailscale.status");
-      if (mine !== run) return;
-      const status = { state: String(st.state || ""), login: st.login ? String(st.login).slice(0, 120) : null, tailnet: st.tailnet ? String(st.tailnet).slice(0, 120) : null, tailnetKind: st.tailnetKind ? String(st.tailnetKind) : null, ip: st.ip ? String(st.ip).slice(0, 60) : null };
-      set({ tailscale: { ...state.tailscale, status, error: null, loginUrl: status.state === "connected" ? null : state.tailscale.loginUrl } });
-      if (status.state === "connected" && !done()) await publishAddress(mine);
-    };
-    const live = () => mine === run && state.stage === "tailscale" && chan;
-    // The address goes from dns to certificate to serving on the box without a tailscale.changed: the certificate says so through its own
-    // events. They are read from the start of the list each time (a short read), so one that landed before this page looked is not missed.
-    let lastCert = 0;
-    const certEvery = () => Math.max(pollMs, 1000);
-    const certCheck = async () => {
-      if (!chan || !state.named || !state.tailscale.address || done() || typeof chan.events !== "function") return;
-      lastCert = now();
-      // The backstop: the box's own answer for its name, so a missed event can never strand a person on "Publishing your address".
-      try {
-        const st = await chan.call("names.status");
-        if (mine !== run) return;
-        if (st && st.phase === "serving") return void set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
-        if (st && st.phase === "failed") return void set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: st.why ? String(st.why).slice(0, 200) : "the address could not be published" } } });
-      } catch { /* a box that does not answer this (older) leaves it to the events below */ }
-      const mineName = event => { const n = event && event.payload && event.payload.name; return !n || String(n).toLowerCase().startsWith(state.named.name + "."); };
-      const issued = (await chan.events("certificate.issued", 0)).filter(mineName).reduce((n, e) => Math.max(n, e.id), 0);
-      const failed = (await chan.events("certificate.failed", 0)).filter(mineName).reduce((m, e) => (e.id > m.id ? e : m), { id: 0, payload: null });
-      if (mine !== run) return;
-      if (issued > 0 && issued > failed.id) set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
-      else if (failed.id > 0) set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: failed.payload && failed.payload.why ? String(failed.payload.why).slice(0, 200) : "the certificate could not be made" } } });
-    };
-    try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
-    if (!live() || done()) return;
-    // Events first: each one is a reason to read again, and nothing polls while the box is quiet.
-    let fellBack = typeof chan.follow !== "function";
-    if (!fellBack) {
-      stopFollow = chan.follow("tailscale.changed", () => { poked = true; }, err => { if (err && err.status === 401) over = true; fellBack = true; });
-      while (live() && !done() && !fellBack && !over) {
-        if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
-        if (poked) { poked = false; try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); stopFollow(); return; } }
-        await sleep(200);
-      }
-      stopFollow();
-    }
-    if (!live() || done() || over) return;
-    // The fallback: capped, and it stops when the box says the setup is over.
-    const until = now() + 15 * 60_000;
-    while (live() && !done() && now() < until) {
-      await sleep(Math.max(pollMs, 1000));
-      if (!live()) return;
-      if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
-      if (done()) return;
-      try { await read(); } catch (e) {
-        if (!live()) return;
-        // Any error ends the watching (setup_over most of all); Connect starts it again.
-        set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
-        return;
-      }
-    }
-  }
-
-  /** With a tailnet address the name is claimed again, which publishes it and gets its certificate (names.claim's second run). */
-  async function publishAddress(mine) {
-    if (!chan || !state.named) return;
-    try {
-      const r = await chan.call("names.claim", { name: state.named.name });
-      if (mine !== run) return;
-      set({ tailscale: { ...state.tailscale, address: { phase: String((r && r.phase) || "dns"), why: r && r.why ? String(r.why).slice(0, 200) : null } } });
-    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
-  }
-
-  /** "Connect": ask the box for Tailscale's own sign-in link. It is shown as a link to click, never opened for the person. */
-  async function connectTailscale() {
-    if (!chan || state.stage !== "tailscale" || state.tailscale.busy) return;
-    const mine = run;
-    set({ tailscale: { ...state.tailscale, busy: true, error: null } });
-    try {
-      const r = await chan.call("network.tailscale.login");
-      if (mine !== run) return;
-      const url = r && r.loginUrl ? safeUrl(r.loginUrl, isTailscaleHost) : null;
-      set({ tailscale: { ...state.tailscale, busy: false, loginUrl: url, error: r && r.loginUrl && !url ? "The box gave a sign-in link that is not Tailscale's, so it was not shown." : null } });
-      watchTailscale(mine);
-    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
   }
 
   // ---- Sign in to your AI: each provider's own login, one is enough to go on ----
@@ -608,7 +518,7 @@ export function createFlow(o) {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
     continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => null,
-    continueToAi, continueToTailscale, skipAi, connectTailscale, startAi, submitAiCode, openAiKey, submitAiKey,
+    continueToAi, continueToNetwork, readNetwork: () => readNetwork(run), skipAi, startAi, submitAiCode, openAiKey, submitAiKey,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */

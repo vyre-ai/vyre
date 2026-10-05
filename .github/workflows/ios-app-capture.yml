@@ -39,7 +39,7 @@ jobs:
       - run: npx expo prebuild -p ios --clean
       - name: "Build for the simulator, Release so the bundle is inside the app, no signing"
         env:
-          # The capture shows the sample world on purpose (deck/ui/store.js); a release build never sets this.
+          # The capture shows the sample world on purpose (apps/app/src/store-core/store.js); a release build never sets this.
           EXPO_PUBLIC_VYRE_MOCK: "1"
         run: |
           ws=$(ls -d ios/*.xcworkspace | head -1)

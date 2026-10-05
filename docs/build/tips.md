@@ -52,7 +52,7 @@ Keys that start with `x-` are free for your own notes. Any other key is refused.
 - Lead with the action: "Press", "Type", "Run". One idea per tip.
 - Show the key or command. A tip nobody can act on right away is a paragraph.
 - Plain words. No em dashes, no hype, no "you can".
-- Use the sample world in examples (alex, Harlow Legal, Northwind Bakery, juno, kit), never a real
+- Use the sample world in examples (alex, Juniper Studio, Northwind Bakery, juno, kit), never a real
   person or client.
 - Give a module 6 to 10 tips: two or three first-use, a few power, one or two discovery, and one or
   two idle.

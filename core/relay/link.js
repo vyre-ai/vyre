@@ -44,6 +44,7 @@ export function relayLink(o) {
   /** @type {any} */
   let pinger = null;
   let connected = false;
+  let upSince = Date.now();
   /** @type {Map<string, any>} */
   const data = new Map();
   /** Ticket registrations (ADR 0045) waiting for a connected control socket to carry them; sent
@@ -120,6 +121,7 @@ export function relayLink(o) {
         // What this relay says it does (an older one says nothing): whether it answers a registration, so silence can mean "older" or "failed".
         relayFeatures = Array.isArray(m.features) ? m.features.map(String) : [];
         backoff = BACKOFF_MIN;
+        upSince = Date.now();
         state("connected");
         flushRegs();
         clearInterval(pinger);
@@ -145,6 +147,8 @@ export function relayLink(o) {
       if (control !== ws) return;
       control = null;
       clearInterval(pinger);
+      // one line that says how long the link had been up and what the relay (or the network) said, so a flap shows its own cause in the log the next time it happens
+      if (!stopped && connected) log(`relay: control link closed after ${Math.round((Date.now() - upSince) / 1000)} s up (code ${e && e.code}${e && e.reason ? `, "${String(e.reason).slice(0, 80)}"` : ""})`);
       state("disconnected", e && e.reason ? String(e.reason) : `closed ${e && e.code}`);
       if (stopped) return;
       // Replaced means another process holds this route key (a restored copy of the box, say).

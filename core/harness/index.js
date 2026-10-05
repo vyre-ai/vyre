@@ -7,8 +7,8 @@
 // every one of them may be missing (not installed, failed, not built yet): each tool then
 // returns less, never an error, so Claude Code behaves exactly as it would without Vyre.
 
-import { timeLine, personZone } from "../../lib/time/index.js";
 import fs from "node:fs";
+import { timeLine, personZone } from "../../lib/time/index.js";
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
@@ -154,7 +154,9 @@ export default {
         // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
         // nudge toward team_ask, ahead of the project's own brief - null when the person turned
         // team.default off for this project, or core/team is not running.
-        const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
+        // team's rows are keyed by the Project record's id: the thread still carries the short name.
+        const ref = slug ? await ask("work.project.ref", { project: slug }) : null;
+        const teamAppend = ref && ref.id ? await ask("team.project-append", { project: ref.id }) : null;
         const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
         // Defense in depth (both style and team already cap their own text; this bounds the sum
         // even if either drifts, or a third append joins them later): a hard ceiling at the one

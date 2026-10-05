@@ -24,7 +24,7 @@ A module is a folder with a `module.json` and an entry file. The loader in `core
 {
   "name": "invoices",
   "version": "0.1.0",
-  "description": "Invoices for Harlow Legal, filed from the billing inbox.",
+  "description": "Invoices for Juniper Studio, filed from the billing inbox.",
   "roles": ["box"],
   "requires": ["projects"],
   "main": "index.js",
@@ -60,7 +60,7 @@ gives the same answer with no dependencies, and a test holds every manifest in t
 | `needs` | `vault` | vault items it fetches with `ctx.vault.fetch` |
 | `teaches` | `memory` | kinds of fact it hands the curator with `ctx.memory.teach` |
 
-The loader does not act on `shows`. Surfaces read it through `GET /v1/modules`: the Capsule reads `shows.capsule` (`results:<tool>` and `action:<tool>` keys). The Deck lists modules in Settings but does not read `shows.deck` yet, and `vyre <module> <tool>` from `shows.cli` is not built; both come with the slots in ADR 0033.
+The loader does not act on `shows`. Surfaces read it through `GET /v1/modules`: the Capsule reads `shows.capsule` (`results:<tool>` and `action:<tool>` keys). The Vyre app lists modules in Settings but does not read `shows.deck` yet, and `vyre <module> <tool>` from `shows.cli` is not built; both come with the slots in ADR 0033.
 
 ## What the loader checks
 
@@ -156,12 +156,12 @@ ctx.tool("invoices.file", {
 | `description` | what the tool does; Claude reads this |
 | `input` | a JSON schema. The loader checks `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`), `required`, `enum`, nested `properties` and `items`. Anything subtler, check in `run` |
 | `run` | `async (input, meta)`. Return any JSON value; it becomes `{ data }`. Throw to fail |
-| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings. On a box the Deck arrives as `tailnet:<login>`, the owner at the box's address, so a tool open to `deck` is open to that caller too; an agent's node (`tailnet:agent:<name>`) and a guest (`tailnet-guest:...`) are not |
+| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings. The owner's Vyre app on a box arrives as the `deck` caller kind, so a tool open to `deck` is open to the app; an agent's node and a guest are not |
 | `internal` | only other modules may call it, and it is left out of every listing |
 | `hook` | the tool answers only the webhook route and no other caller. The route `POST /v1/<module>/<name>/hook` calls the tool `<module>.hook` with `{ name, token, body }` as the caller `hook`, so name the tool `<module>.hook`. The tool checks the token itself |
 | `presence` | the call needs a person present. See [presence](../concepts/presence.md) |
 
-`meta` holds what vyred verified, not what the input claims: `caller` (a label), `thread` and `agent` (only when proved with a key the Switchboard or the SessionStart hook gave out), `peer` (the tailnet node a listener identified), and `presence` (`{ method, keyId }` after a proof). A thread or agent named in the input is only a claim.
+`meta` holds what vyred verified, not what the input claims: `caller` (a label), `thread` and `agent` (only when proved with a key the Switchboard or the SessionStart hook gave out), `peer` (the network node a listener identified), and `presence` (`{ method, keyId }` after a proof). A thread or agent named in the input is only a claim.
 
 A thrown error with a `code` of lowercase letters, digits and underscores (such as `conflict`) reaches the caller as that code; anything else is `failed`. An `err.detail` object is passed along.
 
@@ -170,7 +170,7 @@ A thrown error with a `code` of lowercase letters, digits and underscores (such 
 A tool is defined once and reaches every caller through one function, `Registry.call`:
 
 - **Claude**, through the Harness MCP server `vyre`. Dots become underscores: `invoices.list` is `invoices_list`, which Claude Code shows as `mcp__vyre__invoices_list` (or `mcp__plugin_vyre_vyre__invoices_list` when installed as a plugin). Tools named `harness.*` are not offered. Inside an agent that is not the assistant, `threads.*` and `agents.*` are not offered either. See [the MCP hub](mcp-hub.md).
-- **Surfaces**, over HTTP: `POST /v1/tools/invoices.list` on vyred's socket, or on the box's tailnet listener. `GET /v1/tools` lists what the caller may use.
+- **Surfaces**, over HTTP: `POST /v1/tools/invoices.list` on vyred's socket, or on the box's network listener. `GET /v1/tools` lists what the caller may use.
 - **The terminal**: `vyre call invoices.list '{"limit":5}'`. `vyre tools` lists every tool.
 
 The spec also promises a generated `vyre <module> <tool>` command for modules that list it under `shows.cli`. Not built yet: CLI commands are files in `core/cli/commands/`.
@@ -181,9 +181,9 @@ Every call runs these checks, in order:
 |---|---|---|
 | the tool exists (and is not `internal` for a non-module caller, nor a `hook` tool outside the webhook route) | `no_such_tool` | 404 |
 | the caller's kind is in `callers` | `denied` | 403 |
-| a guest from another tailnet is not calling a presence tool | `denied` | 403 |
+| a guest from another network is not calling a presence tool | `denied` | 403 |
 | the input matches the schema | `bad_input` | 400 |
-| the floor's rules allow it, for any caller but you at the CLI, `local`, the Deck or the Capsule (see [the security floor](../concepts/floor.md#where-the-floor-lives)) | `denied` | 403 |
+| the floor's rules allow it, for any caller but you at the CLI, `local`, the Vyre app or the Capsule (see [the security floor](../concepts/floor.md#where-the-floor-lives)) | `denied` | 403 |
 | a person proved presence, for a presence tool and a caller that is not a module | `presence_required` | 403 |
 | a Touch ID proof was asked for where Vyre may raise no dialog (under tests, or a home other than `~/.vyre`) | `no_dialog` | 403 |
 | `run` succeeds | the thrown code, or `failed` | 500 |

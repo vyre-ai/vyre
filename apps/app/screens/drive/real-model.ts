@@ -1,3 +1,4 @@
+import { dayOf } from "../../src/time/show.js";
 // The pure half of Drive's real source: files.drive.list entries and files.drive.read chunks as the lines the screen shows. The box has already
 // refused secrets, dot folders and links leading out; nothing here decides what may be seen.
 
@@ -18,7 +19,7 @@ export function sizeWord(n: number): string {
 /** The line under an entry: a folder says nothing but its date; a file says its size and date. */
 export function entryLine(e: Entry): string {
   const d = e.mtime ? new Date(e.mtime) : null;
-  const when = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "";
+  const when = d && !Number.isNaN(d.getTime()) ? dayOf(d.getTime()) : "";
   return [e.dir ? "" : sizeWord(e.size), when].filter(Boolean).join(", ");
 }
 

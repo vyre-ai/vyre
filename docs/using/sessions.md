@@ -31,7 +31,7 @@ cannot touch a file or run a command; it is there so a conversation can carry on
 else is out of usage. Codex and Grok cannot be steered mid-turn or rewound, and the effort
 levels are Claude's only.
 
-You sign Claude, Codex and Grok in on the setup page (vyre.run/setup), with each
+You connect Claude when you set up Vyre, or later in Settings, with the
 provider's own sign-in: you open its page, enter the code it shows, and the token goes into
 that account's own private folder, which Vyre never reads. An account can also hold an API key
 from the [Vault](vault.md). Store the key, let sessions read it, and add the account:
@@ -278,4 +278,4 @@ where sessions run as their own user.
 `vyre resume <thread>` opens any thread in `claude` in your terminal, where it ran. A session Vyre
 is running is handed over first: if it is idle Vyre closes it, and your terminal takes it. If it
 is in the middle of a turn or waiting on a question, it is left alone and the command says so. A
-message from the Deck or Lumen after you exit brings it back to Vyre.
+message from the Vyre app or Lumen after you exit brings it back to Vyre.
