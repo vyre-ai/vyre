@@ -195,6 +195,8 @@ export function toFilter(p, f) {
   if (f.or) { const sub = f.or.map((/** @type {any} */ x) => toFilter(p, x)).filter(Boolean); return sub.length ? { or: sub } : undefined; }
   if (f.not) { const s = toFilter(p, f.not); return s ? { not: s } : undefined; }
   if (typeof f.field !== "string") throw new PlanError("invalid", "a filter names a field");
+  // Twenty refuses an empty `in` list; "in nothing" matches nothing, and `id` is never null
+  if (f.op === "in" && Array.isArray(f.value) && f.value.length === 0) return { id: { is: "NULL" } };
   if (f.field === "id") return { id: sys(f.op, f.value) };
   if (f.field === "created_at" || f.field === "updated_at") return { [f.field === "created_at" ? "createdAt" : "updatedAt"]: sys(f.op, typeof f.value === "number" ? new Date(f.value).toISOString() : f.value) };
   if (f.field === "version") return { [VERSION_FIELD]: sys(f.op, f.value) };

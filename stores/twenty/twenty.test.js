@@ -224,3 +224,16 @@ test("twenty: links stored as urn text move onto relations when the type is defi
   // run again: nothing to do
   assert.equal((await b.store.upgradeLinks()).applied, false);
 });
+
+test("twenty: an empty `in` list matches nothing and is never sent to Twenty as an empty list; a list link with no link rows is found by nothing and is_null finds it", async () => {
+  const b = await boot();
+  await b.store.define({ add_types: [CONTACT, { name: "lead", label: "Lead", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "refs", kind: "link", label: "Refs", to: "contact", many: true, inverse: { name: "refd", label: "Refd" } }] }] });
+  const c = await b.store.create("contact", mintUuid(), { name: "A" });
+  const l = await b.store.create("lead", mintUuid(), { title: "x" });
+  assert.deepEqual((await b.store.query("lead", { filter: { field: "id", op: "in", value: [] }, page: { limit: 5 } })).rows, []);
+  assert.deepEqual((await b.store.query("lead", { filter: { field: "refs", op: "contains", value: { urn: cu(c.id) } }, page: { limit: 5 } })).rows, []);
+  assert.deepEqual((await b.store.query("lead", { filter: { field: "refs", op: "is_null" }, page: { limit: 5 } })).rows.map((x) => x.id), [l.id]);
+  await b.store.update("lead", l.id, { refs: [{ urn: cu(c.id) }] }, 1);
+  assert.deepEqual((await b.store.query("lead", { filter: { field: "refs", op: "is_null" }, page: { limit: 5 } })).rows, []);
+  assert.ok(!JSON.stringify(fake.requests).includes('"in":[]'), "no empty list went to Twenty");
+});
