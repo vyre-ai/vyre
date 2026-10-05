@@ -304,7 +304,7 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
+      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(OUTWARD.has(risk) ? { outward: true } : {}), ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 
