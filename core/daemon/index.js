@@ -875,7 +875,7 @@ export async function asTaken(caller, socket, registry, thread, deps) {
     mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`ancestry: unknown for a socket call (${a.why || "not definite"}; not a person; asked again next call)`); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell, why: a.why } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell, why: a.why };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) };
 }
 const PEER_RETRIES = 3;
 /** Sockets whose unknown ancestry was already logged. @type {WeakSet<object>} */
