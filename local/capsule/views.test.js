@@ -263,3 +263,12 @@ test("capsule: the install card lists the commands, the tools they call and the 
   assert.deepEqual(widened(card, card), [], "nothing new installs quietly");
   assert.equal(capabilities({ name: "plain", version: "0.1.0" }).capsule, undefined, "a module with no view: entries has no capsule line");
 });
+
+test("capsule.status is the person's surfaces, modules and a model: refused to a guest, an anonymous and an unknown caller", async t => {
+  const reg = await registry(t);
+  for (const caller of ["anonymous", "tailnet-guest:juno", "unknown", "web:abc", "setup:abc"]) {
+    const r = await reg.call("capsule.status", {}, caller);
+    assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${caller} read the capsule status: ${JSON.stringify(r).slice(0, 120)}`);
+  }
+  for (const caller of ["cli", "capsule", "local", "deck", "mcp", "harness", "module:chat"]) { const r = await reg.call("capsule.status", {}, caller); assert.ok(!r.error || !["denied", "no_such_tool", "not_declared"].includes(r.error.code), `${caller}: ${JSON.stringify(r).slice(0, 120)}`); }
+});
