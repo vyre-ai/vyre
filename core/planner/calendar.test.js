@@ -8,7 +8,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import planner, { seams } from "./index.js";
-import { rowId } from "./calendar.js";
+import fs from "node:fs";
+import { createKernel } from "../../kernel/index.js";
 import { migrate } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { callerAllowed } from "../modules/index.js";
@@ -18,6 +19,8 @@ const Z = (/** @type {number[]} */ ...a) => Date.UTC(a[0], a[1] - 1, a[2], a[3] 
 const T0 = Z(2026, 9, 24, 5); // Thursday 10:00 in Karachi
 const iso = ms => new Date(ms).toISOString();
 let homes = 0;
+const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
+const PERSON = { kind: "device", device_key_id: "d", person: "per_owner", path: "direct" };
 
 /** A fake google module: accounts, their events, a failing switch per account, and what was held. */
 function fakeGoogle() {
@@ -64,6 +67,7 @@ async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle()
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   const events = new Events(db);
+  const k = await createKernel({ space: "spc_aaaaaaaaaaaa", owner: "per_owner", owner_uid: 501, key: Buffer.alloc(32, 4) });
   const root = `/planner-cal-test-${++homes}`;
   const clock = { t: start };
   /** @type {Map<number, { at: number, ms: number, fn: () => void }>} */
@@ -79,6 +83,7 @@ async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle()
   const ctx = {
     name: "planner", config: { role: "box", planner: { timezone: tz } }, paths: { root },
     store: { db, migrate: steps => migrate(db, "planner", steps) },
+    kernel: k.kernelFor({ name: "planner", needs: NEEDS }),
     log: () => {},
     events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),
@@ -88,7 +93,7 @@ async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle()
   const handle = await planner.start(ctx);
   t.after(() => handle.stop());
   const w = {
-    db, events, clock, timers, fired, acked, google, handle,
+    db, events, clock, timers, fired, acked, google, handle, k,
     settled: () => handle.calendar.settled(),
     async call(name, input = {}, caller = "cli") {
       const def = tools.get(name);
@@ -117,7 +122,15 @@ async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle()
     },
     /** The google module telling everyone an account came or went. */
     async announce(type, name) { events.emit("google", type, { name }); await handle.calendar.settled(); },
-    rows: () => db.prepare("SELECT account, event_id, title, start, end, all_day FROM planner_calendar ORDER BY start").all().map(r => ({ ...r })),
+    /** The connected calendars' events as the Event records hold them, in the shape the cache always had. */
+    rows: async () => {
+      await handle.flush();
+      const page = await k.gateway.records.query(k.chains.fromFacts(PERSON), "event", { page: { limit: 200 } });
+      const ms = v => (v == null ? null : Date.parse(v));
+      return page.rows.filter(r => r.data.source === "google").map(r => ({ id: r.id, account: r.data.calendar, event_id: r.data.external_id, title: r.data.title, start: ms(r.data.starts_at),
+        end: ms(r.data.ends_at), all_day: r.data.all_day ? 1 : 0 })).sort((a, b) => a.start - b.start);
+    },
+    idOf: async (account, event) => (await (await w.rows())).find(r => r.account === account && r.event_id === event)?.id,
     lists: () => google.calls.filter(c => c[0] === "google.calendar.list").length,
   };
   await w.settled();
@@ -140,11 +153,10 @@ test("calendar: sync caches the window, drops what is gone, keeps a failing acco
   assert.equal(r.synced_at, T0);
   const list = google.calls.find(c => c[0] === "google.calendar.list")[1];
   assert.deepEqual([list.from, list.to], [iso(T0 - DAY), iso(T0 + 14 * DAY)], "a day back to 14 days ahead");
-  assert.deepEqual(w.rows().map(x => [x.account, x.event_id, x.all_day]), [["alex", "a1", 0], ["alex", "a2", 1], ["northwind", "n1", 0]]);
+  assert.deepEqual((await w.rows()).map(x => [x.account, x.event_id, x.all_day]), [["alex", "a1", 0], ["alex", "a2", 1], ["northwind", "n1", 0]]);
   // An all-day date is midnight to midnight in the planner's zone.
-  const offsite = w.rows().find(x => x.event_id === "a2");
+  const offsite = (await w.rows()).find(x => x.event_id === "a2");
   assert.deepEqual([offsite.start, offsite.end], [Z(2026, 9, 24, 19), Z(2026, 9, 25, 19)]);
-  assert.equal(w.db.prepare("SELECT synced_at FROM planner_calendar WHERE event_id = 'a1'").get().synced_at, T0);
 
   // a1 is cancelled; northwind's token is revoked and its event is gone too, but its copy stays.
   google.accounts.set("alex", google.accounts.get("alex").filter(e => e.id !== "a1"));
@@ -153,12 +165,12 @@ test("calendar: sync caches the window, drops what is gone, keeps a failing acco
   const r2 = await w.ok("planner.calendar.sync");
   assert.equal(r2.removed, 1);
   assert.deepEqual(r2.errors, [{ account: "northwind", error: "northwind: 401 token revoked" }]);
-  assert.deepEqual(w.rows().map(x => x.event_id), ["a2", "n1"]);
+  assert.deepEqual((await w.rows()).map(x => x.event_id), ["a2", "n1"]);
 
   // The account is removed: its events go with it.
   google.accounts.delete("northwind");
   await w.announce("google.removed", "northwind");
-  assert.deepEqual(w.rows().map(x => x.event_id), ["a2"]);
+  assert.deepEqual((await w.rows()).map(x => x.event_id), ["a2"]);
 });
 
 test("calendar: the 15-minute sync runs only while an account is connected", async t => {
@@ -197,7 +209,8 @@ test("calendar: a timed event rings once, event_lead before its start, however o
   await w.advance(1000);
   assert.equal(w.fired.length, 1);
   const f = w.fired[0];
-  assert.deepEqual({ ...f, firing: "x" }, { at: start - 10 * MIN, firing: "x", key: `planner-${rowId("alex", "e1")}-${(start - 10 * MIN) / 1000}`, item: rowId("alex", "e1"), kind: "event", title: "Call juno",
+  const e1 = await w.idOf("alex", "e1");
+  assert.deepEqual({ ...f, firing: "x" }, { at: start - 10 * MIN, firing: "x", key: `planner-${e1}-${(start - 10 * MIN) / 1000}`, item: e1, kind: "event", title: "Call juno",
     due: start - 10 * MIN, ring: 1, missed: false, actions: ["done", "snooze"], account: "alex", start });
   // Synced again (by hand and by the timer), renamed with the same start: no second ring.
   google.accounts.get("alex")[0].title = "Call juno about Northwind Bakery";
@@ -205,7 +218,7 @@ test("calendar: a timed event rings once, event_lead before its start, however o
   await w.ok("planner.calendar.sync");
   await w.advance(2 * DAY);
   assert.equal(w.fired.length, 1, "one ring for one start; all-day events never ring");
-  assert.equal(w.rows().find(r => r.event_id === "e1"), undefined, "past the window, dropped");
+  assert.equal((await w.rows()).find(r => r.event_id === "e1"), undefined, "past the window, dropped");
 
   // A moved event is a new start: it rings for that one.
   const later = w.clock.t + 3 * HOUR;
@@ -216,7 +229,7 @@ test("calendar: a timed event rings once, event_lead before its start, however o
   google.accounts.get("alex").at(-1).end = iso(moved + HOUR);
   await w.ok("planner.calendar.sync");
   await w.advance(6 * HOUR);
-  assert.deepEqual(w.fired.slice(1).map(x => [x.item, x.at]), [[rowId("alex", "e2"), moved - 10 * MIN]]);
+  assert.deepEqual(w.fired.slice(1).map(x => [x.item, x.at]), [[await w.idOf("alex", "e2"), moved - 10 * MIN]]);
 });
 
 test("calendar: a calendar ring snoozes and is done like any other; a new event_lead moves pending rings", async t => {
@@ -296,12 +309,12 @@ test("calendar: create makes the planner's own event, or goes through google.cal
   const sent = google.calls.find(c => c[0] === "google.calendar.create")[1];
   assert.deepEqual(sent, { title: "Harlow Legal kickoff", start: "2026-09-25T10:00:00.000Z", account: "alex", time_zone: "Asia/Karachi",
     where: "Harlow Legal", attendees: ["kit@example.com"] });
-  assert.equal(w.rows().length, 0);
+  assert.equal((await w.rows()).length, 0);
 
   // No attendees: written at once, and the copy has it with its reminder.
   const made = await w.ok("planner.calendar.create", { title: "Northwind Bakery order", start: iso(T0 + 2 * HOUR), account: "alex" });
   assert.equal(made.event.title, "Northwind Bakery order");
-  assert.deepEqual(w.rows().map(r => r.title), ["Northwind Bakery order"]);
+  assert.deepEqual((await w.rows()).map(r => r.title), ["Northwind Bakery order"]);
   await w.advance(2 * HOUR);
   assert.deepEqual(w.fired.map(f => [f.title, f.at]), [["Northwind Bakery order", T0 + 2 * HOUR - 10 * MIN]]);
 
@@ -328,7 +341,8 @@ test("calendar: upcoming carries the calendar's rings; one answered by key on a 
   w.events.on("planner.schedule", e => moved.push(e.payload.reason));
   await w.ok("planner.calendar.sync");
   const up = await w.ok("planner.upcoming");
-  const K = (ev, due) => `planner-${rowId("alex", ev)}-${due / 1000}`;
+  const ids = { e1: await w.idOf("alex", "e1"), e2: await w.idOf("alex", "e2") };
+  const K = (ev, due) => `planner-${ids[ev]}-${due / 1000}`;
   assert.deepEqual(up.entries.map(e => [e.key, e.kind, e.account, e.start]), [[K("e1", a - 10 * MIN), "event", "alex", a], [K("e2", b - 10 * MIN), "event", "alex", b]]);
   await w.ok("planner.dismiss", { key: K("e1", a - 10 * MIN) });
   assert.equal(w.acked.at(-1).unrung, true);

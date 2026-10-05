@@ -268,6 +268,7 @@
  "core/planner/module.test.js": 1,
  "core/planner/parse.test.js": 16,
  "core/planner/planner.test.js": 26,
+ "core/planner/records.test.js": 7,
  "core/planner/time.test.js": 4,
  "core/presence/hello-fixture.test.js": 3,
  "core/presence/presence.test.js": 41,

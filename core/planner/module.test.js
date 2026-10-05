@@ -3,6 +3,8 @@
 // registry and its callers, and ringing on a fake clock into the event log every surface reads.
 
 import "../../scripts/mac-test-guard.mjs";
+// The planner keeps its things in the Space's records, so these homes run with the kernel on, as core/memory's daemon tests do.
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,7 +23,7 @@ test("planner module: discovered, callers enforced by the registry, and a firing
   let timer = null;
   seams.set(root, { now: () => clock.t, setTimer: (fn, ms) => (timer = { fn, at: clock.t + ms }), clearTimer: () => { timer = null; } });
   t.after(() => seams.delete(root));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
 
   const mod = d.registry.status().find(m => m.name === "planner");

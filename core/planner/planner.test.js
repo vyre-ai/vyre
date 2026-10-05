@@ -11,22 +11,30 @@ import planner, { seams } from "./index.js";
 import { CAP_MS } from "./scheduler.js";
 import { localParts } from "./time.js";
 import { migrate } from "../store/index.js";
+import fs from "node:fs";
+import { createKernel } from "../../kernel/index.js";
 import { Events } from "../events/index.js";
 import { callerAllowed } from "../modules/index.js";
+import { isPerson } from "../../lib/caller.js";
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 const Z = (/** @type {number[]} */ ...a) => Date.UTC(a[0], a[1] - 1, a[2], a[3] ?? 0, a[4] ?? 0);
 const T0 = Z(2026, 9, 24, 5); // Thursday 10:00 in Karachi
 let homes = 0;
+const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
+const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
+/** The person's own call into the kernel, for the acts only a person does (finishing a todo). */
+export const PERSON = { kind: "device", device_key_id: "d", person: OWNER, path: "direct" };
 
 /**
  * A planner on a fake clock. `boot()` starts (or restarts, after downtime) the module on the same
  * store; `advance(ms)` runs every timer that falls due on the way, in order.
  */
-async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0 } = {}) {
+async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0, kernel = true } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   const events = new Events(db);
+  const k = kernel ? await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4) }) : null;
   const root = `/planner-test-${++homes}`;
   const clock = { t: start };
   /** @type {Map<number, { at: number, ms: number, fn: () => void }>} */
@@ -42,7 +50,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   events.on("planner.acked", e => acked.push(e.payload));
   events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
-    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null), k,
     agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
     /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
@@ -51,6 +59,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       const ctx = {
         name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
         store: { db, migrate: steps => migrate(db, "planner", steps) },
+        ...(k ? { kernel: k.kernelFor({ name: "planner", needs: NEEDS }) } : {}),
         log: m => logs.push(m),
         events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
@@ -81,7 +90,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       const def = w.tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
-      try { return { data: await def.run(input, { caller, ...meta }) }; }
+      try { return { data: await def.run(input, { caller, ...(isPerson(caller) ? { kernelFacts: PERSON } : {}), ...meta }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
     async ok(name, input = {}, caller = "cli", meta = {}) {
@@ -177,11 +186,15 @@ test("planner: a snoozed reminder rings again after the snooze, as a new firing"
   assert.equal((await w.ok("planner.get", { item: r.id })).item.state, "done", "a dismissed one-off reminder is over");
 });
 
-test("planner: a todo rings once when due; a timer rings when it runs out", async t => {
+test("planner: a todo is a task in the Space, done by the person, and rings nothing; a timer rings when it runs out", async t => {
   const w = await world(t);
   await w.ok("planner.settings", { escalate_max: 0 });
   const todo = await w.ok("planner.add", { kind: "todo", title: "File Northwind Bakery's return", due: "2026-09-24T18:00:00+05:00", list: "work", priority: 2 });
   assert.equal(todo.due, "2026-09-24");
+  assert.deepEqual([todo.list, todo.priority], ["work", 2], "what the planner knew of it rides with the task");
+  assert.match(todo.id, /^[0-9a-f]{8}-/, "its id is the task's");
+  const task = await w.k.tasks.get(w.k.chains.fromFacts(PERSON), todo.id);
+  assert.deepEqual([task.title, task.doer.id, task.output.kind], ["File Northwind Bakery's return", OWNER, "note"], "a kernel task, the person the doer");
   const undated = await w.ok("planner.add", { kind: "todo", title: "Buy flour", due: "2026-09-26" });
   assert.equal(undated.next_fire, null, "a todo due on a day rings on no hour");
   const timer = await w.ok("planner.add", { kind: "timer", in_ms: 10 * MIN });
@@ -189,12 +202,20 @@ test("planner: a todo rings once when due; a timer rings when it runs out", asyn
   w.advance(10 * MIN);
   assert.deepEqual(w.fired.map(f => [f.kind, f.at]), [["timer", T0 + 10 * MIN]]);
   w.advance(3 * DAY);
-  assert.deepEqual(w.fired.map(f => [f.kind, f.at]), [["timer", T0 + 10 * MIN], ["todo", Z(2026, 9, 24, 13)]], "the todo rang once");
-  assert.equal((await w.ok("planner.get", { item: todo.id })).item.state, "open", "rung, still to do");
+  assert.deepEqual(w.fired.map(f => [f.kind, f.at]), [["timer", T0 + 10 * MIN]], "a todo rings nothing");
+  assert.equal((await w.ok("planner.get", { item: todo.id })).item.state, "open");
   await w.ok("planner.done", { item: todo.id });
   assert.equal((await w.ok("planner.get", { item: todo.id })).item.state, "done");
+  assert.equal((await w.k.tasks.get(w.k.chains.fromFacts(PERSON), todo.id)).state, "done", "the task is done in the kernel");
   const agenda = await w.ok("planner.agenda", { from: "2026-09-24", to: "2026-09-30" });
   assert.deepEqual(agenda.todos.map(x => x.title), ["Buy flour"]);
+  // Dropping one skips the task; it does not come back. A todo does not repeat and its words do not change.
+  await w.ok("planner.delete", { item: undated.id });
+  assert.equal((await w.ok("planner.get", { item: undated.id })).item.state, "cancelled");
+  assert.equal((await w.call("planner.delete", { item: undated.id, restore: true })).error.code, "bad_input");
+  assert.equal((await w.call("planner.add", { kind: "todo", title: "x", wall: "09:00", repeat: { every: "day" } })).error.code, "bad_input");
+  const other = await w.ok("planner.add", { kind: "todo", title: "Fix me" });
+  assert.equal((await w.call("planner.update", { item: other.id, priority: 3 })).error.code, "bad_input");
 });
 
 test("planner: an unacknowledged alarm rings escalate_max more times, then stops; an ack stops it at once", async t => {
@@ -233,9 +254,9 @@ test("planner: after downtime, what fell due rings once, marked missed; a day st
   await w.boot();
   const got = w.fired.map(f => [f.item, f.missed, new Date(f.due).toISOString()]);
   assert.deepEqual(got, [[daily.id, true, "2026-09-27T02:00:00.000Z"]], "one ring for the daily alarm, for this morning's 07:00");
-  const firings = id => w.db.prepare("SELECT state, missed, ring FROM planner_firings WHERE item = ?").all(id).map(r => ({ ...r }));
-  assert.deepEqual(firings(soon.id), [{ state: "missed", missed: 1, ring: 0 }]);
-  assert.deepEqual(firings(old.id), [{ state: "missed", missed: 1, ring: 0 }]);
+  const firings = async id => (await w.ok("planner.get", { item: id })).firings.map(f => ({ state: f.state, missed: f.missed ? 1 : 0, ring: f.ring }));
+  assert.deepEqual(await firings(soon.id), [{ state: "missed", missed: 1, ring: 0 }]);
+  assert.deepEqual(await firings(old.id), [{ state: "missed", missed: 1, ring: 0 }]);
   assert.equal((await w.ok("planner.get", { item: daily.id })).item.next_fire, Z(2026, 9, 28, 2));
 
   // Down for two hours only: that rings, marked missed.
@@ -293,9 +314,9 @@ test("planner: anyone adds alarms, reminders, todos and notes; an agent changes 
   assert.equal((await w.call("planner.add", { kind: "event", title: "x", at: T0 + HOUR }, kit)).error.code, "denied", "an event is an invite");
 
   // kit edits, snoozes, finishes and deletes what kit added.
-  await w.ok("planner.update", { item: todo.id, priority: 3 }, kit);
+  assert.equal((await w.call("planner.update", { item: todo.id, priority: 3 }, kit)).error.code, "bad_input", "a todo's words do not change");
   await w.ok("planner.snooze", { item: alarm.id, minutes: 5 }, kit);
-  await w.ok("planner.done", { item: todo.id }, kit);
+  assert.equal((await w.call("planner.done", { item: todo.id }, kit)).error.code, "denied", "a todo is done by a person");
   await w.ok("planner.delete", { item: alarm.id }, kit);
   await w.ok("planner.delete", { item: alarm.id, restore: true }, kit);
   // Nothing anyone else added: the person's, the assistant's, another module's.
@@ -339,7 +360,7 @@ test("planner: a paired Mac forwards to the box and keeps its timer idle; an unp
   const mac = await world(t, { role: "local", linked: true, remote: box });
   assert.deepEqual(await mac.ok("planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }), { id: "i_box", kind: "reminder" });
   assert.deepEqual(sent, [["planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }]]);
-  assert.equal(mac.db.prepare("SELECT COUNT(*) AS n FROM planner_items").get().n, 0, "nothing kept on the Mac");
+  assert.equal((await mac.k.gateway.records.query(mac.k.chains.fromFacts(PERSON), "reminder", { page: { limit: 5 } })).rows.length, 0, "nothing kept on the Mac");
   assert.equal(mac.timers.size, 0, "the Mac's scheduler is idle");
   // The box sees a forwarded call as the owner, so an agent's call names the agent (as), and the
   // box holds it to the agent's rules. A person's call carries nothing, and nobody can forge as.
@@ -411,12 +432,14 @@ test("planner: an idle planner never asks Intl for a zone (ICU's zone data is ab
     Intl.DateTimeFormat = function (l, o) { if (o && o.timeZone) zoned++; return new Real(l, o); };
     const { DatabaseSync } = await import("node:sqlite");
     const { migrate } = await import(${JSON.stringify(new URL("../store/index.js", import.meta.url).href)});
+    const { createKernel } = await import(${JSON.stringify(new URL("../../kernel/index.js", import.meta.url).href)});
+    const k = await createKernel({ space: "spc_aaaaaaaaaaaa", owner: "per_owner", owner_uid: 501, key: Buffer.alloc(32, 4) });
     const planner = (await import(${JSON.stringify(new URL("./index.js", import.meta.url).href)})).default;
     const db = new DatabaseSync(":memory:");
     db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
     const tools = new Map();
     const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
-      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
+      store: { db, migrate: s => migrate(db, "planner", s) }, kernel: k.kernelFor({ name: "planner", needs: ${JSON.stringify(NEEDS)} }), log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
       tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
     await tools.get("planner.list").run({}, { caller: "cli" });
     const idle = zoned;
@@ -664,7 +687,8 @@ test("planner: a chained task (waits_on) runs when its dependency is marked done
 
 test("planner: reopening a chained task's dependency and finishing it again does not re-fire it a second time for the same completion", async t => {
   const w = await world(t);
-  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
+  // A reminder, not a todo: a done todo is a done task in the kernel and does not reopen.
+  const first = await w.ok("planner.add", { kind: "reminder", title: "Sign the contract", project: "harlow-legal", at: T0 + 5 * HOUR });
   await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
   await w.ok("planner.done", { item: first.id });
   await new Promise(r => setImmediate(r));

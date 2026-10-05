@@ -4,6 +4,7 @@
 // package; with no Vyre it says how to install it once and is otherwise silent.
 
 import "../scripts/mac-test-guard.mjs";
+process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -228,7 +229,8 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
         run: async () => ({ tz: "UTC", from: 0, to: 0, entries: items.filter(i => i.at != null).map(i => ({ source: "planner", item: i.id, kind: i.kind, title: i.title, at: i.at })),
           todos: [] }) });
       return {}; } };`);
-  const d = await start({ root, log: () => {} });
+  // The real planner keeps its things in the Space's records, so this home runs with the kernel on.
+  const d = await start({ root, log: () => {}, ...(REAL_PLANNER ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   // What /vyre remind, todo and agenda send (harness/commands/vyre.md).

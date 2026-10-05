@@ -5,6 +5,8 @@
 // with a hand-driven timer, so the alarm rings the moment the test says, not after a real wait.
 
 import "../../scripts/mac-test-guard.mjs";
+// The planner keeps its things in the Space's records, so these homes run with the kernel on, as core/memory's daemon tests do.
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -90,8 +92,8 @@ test("planner over the link: the Mac adds on the box, hears the box ring, and it
   assert.ok(!onBox.error, JSON.stringify(onBox.error));
   assert.equal(onBox.data.item.title, "Call Northwind Bakery");
   assert.equal(onBox.data.item.next_fire, at);
-  const macRows = /** @type {any} */ (s.mac.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM planner_items").get()).n;
-  assert.equal(macRows, 0, "nothing is stored on the Mac");
+  const macOwner = s.mac.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: s.mac.kernel.id.owner, path: "direct" });
+  assert.equal((await s.mac.kernel.gateway.records.query(macOwner, "reminder", { page: { limit: 5 } })).rows.length, 0, "nothing is stored on the Mac");
   assert.equal(macPlanner().scheduler.timer, null, "the Mac's scheduler holds no timer");
   assert.deepEqual(c.macArms, [], "the Mac's scheduler never armed");
   // The box's one timer waits for the alarm.
@@ -120,5 +122,5 @@ test("planner over the link: the Mac adds on the box, hears the box ring, and it
   const after = (await s.boxCall("planner.get", { firing })).data;
   assert.equal(after.firing.state, "acked");
   assert.equal(after.item.state, "done", "a one-off alarm ends when it is done");
-  assert.equal(/** @type {any} */ (s.mac.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM planner_firings").get()).n, 0, "no firing on the Mac");
+  assert.equal((await s.mac.kernel.gateway.records.query(macOwner, "planner-ring", { page: { limit: 5 } })).rows.length, 0, "no firing on the Mac");
 });

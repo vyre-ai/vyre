@@ -38,17 +38,19 @@ function chaosModule(root) {
   } };`);
 }
 
-async function world(t, paths = 1) {
+// The planner keeps its things in the Space's records, so the R6 test runs its home with the kernel on.
+process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
+async function world(t, paths = 1, kernel = false) {
   const root = tempHome(t);
   chaosModule(root);
-  let d = await start({ root, log: () => {} });
+  let d = await start({ root, log: () => {}, ...(kernel ? { kernel: true } : {}) });
   const proxies = [];
   for (let i = 0; i < paths; i++) proxies.push(await proxy(d.paths.socket));
   const w = {
     root, proxies, get d() { return d; },
     applied: () => d.events.since(0, { type: "chaos.added", limit: 1000 }).map(e => e.payload.n),
     emit: n => d.events.emit("test", "thread.text", { n }),
-    async restart() { await d.stop(); d = await start({ root, log: () => {} }); },
+    async restart() { await d.stop(); d = await start({ root, log: () => {}, ...(kernel ? { kernel: true } : {}) }); },
   };
   t.after(async () => { for (const p of proxies) await p.close(); await d.stop(); });
   return w;
@@ -406,7 +408,7 @@ test("R2: offline writes wait in the browser outbox and land once, in order, whe
 });
 
 test("R6: a ring answered from a device's own schedule while the box was out of reach is never rung by the box, and the answer lands once", { timeout: 30_000 }, async t => {
-  const w = await world(t);
+  const w = await world(t, 1, true);
   const [p] = w.proxies;
   const call = node.caller(p.url, { headers: { "x-vyre-caller": "deck" }, timeoutMs: 1_000 });
   const timer = /** @type {any} */ ((await call("planner.add", { kind: "timer", title: "Tea", in_ms: 4_000 })).data);
