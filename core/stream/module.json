@@ -6,6 +6,7 @@
   "does": { "tools": [
     { "name": "stream.open", "reach": "person", "effect": "write" },
     { "name": "stream.open-peer", "reach": "person", "effect": "write" },
+    { "name": "stream.typing", "reach": "person", "effect": "write" },
     { "name": "stream.send", "reach": "person", "effect": "write" },
     { "name": "stream.react", "reach": "person", "effect": "write" },
     { "name": "stream.pin", "reach": "person", "effect": "write" },

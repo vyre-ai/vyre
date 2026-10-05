@@ -33,9 +33,9 @@ async function boot(/** @type {any} */ t) {
 const granted = async (/** @type {any} */ call, /** @type {string} */ project, /** @type {string} */ agent) => (await call("projects.access.check", { project, agent })).data.granted;
 
 test("an agent reaches a project only by a kernel grant: deny by default, grant, revoke; no other project and no other agent is reached", { timeout: 180_000 }, async t => {
-  const { call, home, addAgent } = await boot(t);
+  const { call, home } = await boot(t);
   for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
-  for (const a of ["kit", "other"]) await addAgent(a);
+  for (const a of ["kit", "other"]) assert.ok(!(await call("agents.create", { name: a, projects: [] })).error, a);
   assert.equal(await granted(call, "northwind", "kit"), false, "deny by default");
   const g = await call("projects.access.grant", { project: "northwind", agent: "kit" });
   assert.ok(!g.error, JSON.stringify(g));
@@ -51,18 +51,17 @@ test("an agent reaches a project only by a kernel grant: deny by default, grant,
 });
 
 test("without the person's proof nothing is granted: a grant is a person's act with the kernel's own proof", { timeout: 180_000 }, async t => {
-  const { call, home, addAgent, SI_FACTS } = await boot(t);
+  const { call, home, SI_FACTS } = await boot(t);
   assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
-  await addAgent("kit");
+  assert.ok(!(await call("agents.create", { name: "kit", projects: [] })).error);
   const noProof = await call("projects.access.grant", { project: "northwind", agent: "kit" }, { kernelFacts: SI_FACTS });
   assert.ok(noProof.error, "no proof, no grant");
   assert.equal(await granted(call, "northwind", "kit"), false);
 });
 
 test("an agent's projects list is kept in step with its grants, '*' is one grant on every project (later ones too), and deleting the agent takes them away", { timeout: 180_000 }, async t => {
-  const { call, home, addAgent } = await boot(t);
+  const { call, home } = await boot(t);
   for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
-  await addAgent("kit");
   const made = await call("agents.create", { name: "kit", projects: ["northwind"] });
   assert.ok(!made.error, JSON.stringify(made));
   assert.equal(await granted(call, "northwind", "kit"), true);
@@ -76,4 +75,27 @@ test("an agent's projects list is kept in step with its grants, '*' is one grant
   assert.equal(await granted(call, "later", "kit"), true, "a project made after the grant is reached too");
   { const r = await call("agents.delete", { agent: "kit" }); assert.ok(!r.error, JSON.stringify(r)); }
   assert.equal(await granted(call, "harlow", "kit"), false, "a deleted agent reaches nothing");
+});
+
+test("an agent's grants are keyed by its stable id: a deleted agent's name given to a new agent inherits nothing, and a delete with no person is refused", { timeout: 180_000 }, async t => {
+  const { d, call, home, SI_FACTS } = await boot(t);
+  assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
+  const made = await call("agents.create", { name: "kit", projects: ["northwind"] });
+  assert.ok(!made.error, JSON.stringify(made));
+  const uid = made.data.uid;
+  assert.match(uid, /^agt_[0-9a-f-]{36}$/, "a stable id");
+  assert.equal(await granted(call, "northwind", "kit"), true);
+  const grants = (await d.kernel.gateway.grants.list(d.kernel.chains.fromFacts(SI_FACTS), {}));
+  const mine = (Array.isArray(grants) ? grants : grants.grants).filter((/** @type {any} */ g) => g.actions.includes("project.reach") && g.subject.kind === "actor" && g.subject.actor.kind === "agent");
+  assert.ok(mine.length > 0 && mine.every((/** @type {any} */ g) => g.subject.actor.id === uid), "the grant names the id, not the name");
+  // a delete that carries no person is refused, and nothing is deleted
+  const bare = await d.registry.call("agents.delete", { agent: "kit" }, "cli", {});
+  assert.equal(bare.error && bare.error.code, "denied", JSON.stringify(bare));
+  assert.equal(await granted(call, "northwind", "kit"), true, "the agent and its reach are untouched");
+  // the person's delete, then a new agent with the same name: new id, no reach
+  assert.ok(!(await call("agents.delete", { agent: "kit" })).error);
+  const again = await call("agents.create", { name: "kit", projects: [] });
+  assert.ok(!again.error, JSON.stringify(again));
+  assert.notEqual(again.data.uid, uid, "never the same id");
+  assert.equal(await granted(call, "northwind", "kit"), false, "the name given again inherits nothing");
 });

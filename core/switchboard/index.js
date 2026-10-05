@@ -3519,13 +3519,16 @@ export default {
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
     const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
-    // One Chat (reviewer-3 G5): a person's call on a run is allowed only if the person is in the run's chat (the kernel's own chat read, on the caller's own chain); a chat they are not in does not exist for
-    // them. A first-party module's call is checked by that module (the stream asks the kernel for every asker); a run with no chat (an older one, a daemon without the kernel) is as before.
+    // One Chat (reviewer-3 G5, reviewer-5): with the kernel on, a call on a run that is in a chat needs a person in that chat, on the caller's OWN chain (the kernel's chat read). It fails closed: a chain
+    // that could not be built, or whose first hop is not a person, is not_found like a person outside the chat. Only a first-party module's call is exempt (it checks its own asker: the stream asks the
+    // kernel for every person), and a daemon with no kernel has no chats to protect.
     const chatGate = async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any} */ kchain) => {
-      if (!i || typeof i.thread !== "string" || !kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
+      if (!i || typeof i.thread !== "string" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
       const chat = sb.chatOf(i.thread);
       if (!chat) return;
-      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" }); throw e; }
+      const refuse = () => Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" });
+      if (!kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person") throw refuse();
+      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw refuse(); throw e; }
     };
     const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; await chatGate(i, m, kchain); return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
@@ -4059,8 +4062,9 @@ export default {
         guard(meta.caller, "stop a chat's turn");
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
         const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
-        for (const r of runs) if (r.live) await sb.interrupt(r.thread);
-        return { stopped: runs.filter(r => r.live).map(r => r.thread) };
+        const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
+        for (const r of busy) await sb.interrupt(r.thread);
+        return { stopped: busy.map(r => r.thread) };
       });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },

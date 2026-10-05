@@ -144,7 +144,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   [ "$(hostv)" = "$NEWV" ] || fail "$1: after the update the box holds $(hostv), not $NEWV"
   docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || fail "$1: after the update the kernel is not on (VYRE_KERNEL=1 is missing)"
   case "$2" in
-    kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || fail "$1: after the update VYRE_STORE=auto is not kept" ;;
+    kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=twenty' || fail "$1: after the update VYRE_STORE=twenty is not kept" ;;
     none) docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "$1: the update added a VYRE_STORE the box never had (a silent switch of store)"
           # (a shared test box may hold other people's Twenty stacks, so the question is whether THIS box asked for one: its helper has recorded no Space store)
           [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
@@ -190,9 +190,9 @@ ready || fail "the old release did not come back after the rollback"
 say "3 ok: rolled back to $OLDV, data intact"
 
 # 4. the update again, from the rolled-back home, now on a box that HAS a VYRE_STORE (as a 0.3 install writes it): the setting is kept, and the same set runs (a migration that is not repeatable fails here).
-printf 'VYRE_STORE=auto\n' >>/srv/vyre/vyre.env
+printf 'VYRE_STORE=twenty\n' >>/srv/vyre/vyre.env
 do_update "4 second update" kept
-say "4 ok: updated again with VYRE_STORE=auto kept, every module runs, records intact"
+say "4 ok: updated again with VYRE_STORE=twenty kept, every module runs, records intact"
 
 # 5. (dev-owned run only) the owner's software key, `vyre signin` and a call after it: the whole presence path of a terminal on a box, with a signed proof made by the owner's key. The daemon is stopped to enrol (the sealing
 # process owns its folder), then started with the two developer switches that let its own sealing process accept the software key.

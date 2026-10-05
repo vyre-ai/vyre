@@ -112,16 +112,13 @@ export async function proposeKitFor(space: string, id: string): Promise<{ ok: bo
 
 /**
  * Make the space on the server this device is paired to (claimServerSpace through chat's hooks), keep its root public key beside it, and answer the id.
- * Refusals keep their codes: needs_store_confirmation (the server asks before using its built-in store), server_too_old, on_phone (a browser), the directory's own.
+ * Refusals keep their codes: store_unavailable (the server cannot run the record store, Twenty; its plain words are shown), server_too_old, on_phone (a browser), the directory's own.
  */
-export async function makeServerSpace(slug: string, displayName: string, acceptBuiltinStore = false): Promise<string> {
+export async function makeServerSpace(slug: string, displayName: string): Promise<string> {
   const { makeSpaceOnPairedServer } = await import("./claim-space");
   const { keepRootPublic } = await import("../state/space-roots");
-  const made = await makeSpaceOnPairedServer({ name: slug, displayName, acceptBuiltinStore });
+  const made = await makeSpaceOnPairedServer({ name: slug, displayName });
   await keepRootPublic(made.space, made.rootPublic);
   return made.space;
 }
 
-/** Our words for a store question from the server. The server's text is never shown. */
-export const STORE_ASK = "This server will keep your space in Vyre's built-in store. Create it there?";
-export const storeAsked = (e: unknown) => (e as { code?: string })?.code === "needs_store_confirmation";

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { asOwner, tempHome, present } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
@@ -26,6 +26,7 @@ async function boot(/** @type {any} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false } }));
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -156,12 +157,16 @@ test("MV-1: moving a folder checks every file under the caller's own chain and a
 
 test("a chat move is all or nothing: if any file of either folder is refused, neither folder moves", { timeout: 120_000 }, async t => {
   const { d, admin, memberChain } = await boot(t);
-  await d.kernel.gateway.drive.put(admin, "Projects/A/chat/s1/one.txt", new TextEncoder().encode("1"));
-  await d.kernel.gateway.drive.put(admin, "Projects/A/made/s1/two.txt", new TextEncoder().encode("2"));
+  // a chat's folders are its participants' only (kernel/core/folders.js), so the chat is a real kernel chat the admin is in
+  const chatId = (await d.kernel.gateway.grants.chats.create(admin, {})).id;
+  const D = d.kernel.gateway.drive;
+  await D.put(admin, `Projects/A/chat/${chatId}/one.txt`, new TextEncoder().encode("1"));
+  await D.put(admin, `Projects/A/made/${chatId}/two.txt`, new TextEncoder().encode("2"));
   const member = await memberChain("per_" + "q".repeat(26));
-  await assert.rejects(() => d.kernel.gateway.drive.moveFolders(member, [["Projects/A/chat/s1", "Projects/B/chat/s1"], ["Projects/A/made/s1", "Projects/B/made/s1"]]));
-  await d.kernel.gateway.drive.get(admin, "Projects/A/chat/s1/one.txt");
-  await d.kernel.gateway.drive.get(admin, "Projects/A/made/s1/two.txt");
-  assert.equal((await d.kernel.gateway.drive.moveFolders(admin, [["Projects/A/chat/s1", "Projects/B/chat/s1"], ["Projects/A/made/s1", "Projects/B/made/s1"]])).moved, 2);
-  await d.kernel.gateway.drive.get(admin, "Projects/B/made/s1/two.txt");
+  const pairs = [[`Projects/A/chat/${chatId}`, `Projects/B/chat/${chatId}`], [`Projects/A/made/${chatId}`, `Projects/B/made/${chatId}`]];
+  await assert.rejects(() => D.moveFolders(member, pairs));
+  await D.get(admin, `Projects/A/chat/${chatId}/one.txt`);
+  await D.get(admin, `Projects/A/made/${chatId}/two.txt`);
+  assert.equal((await D.moveFolders(admin, pairs)).moved, 2);
+  await D.get(admin, `Projects/B/made/${chatId}/two.txt`);
 });

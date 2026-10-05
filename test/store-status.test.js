@@ -39,6 +39,14 @@ test("a home set up on Twenty that now runs on the built-in store is named, and 
   assert.match(String(st2.note), /Twenty is not answering: no reply/);
 });
 
+test("a store that refuses every record call is reported as none, with its plain words", async t => {
+  const root = tempHome(t);
+  const { createRefusingStore } = await import("../kernel/store/refusing.js");
+  const st = await storeStatus({ root, server: true, store: createRefusingStore("not enough free memory"), env: { VYRE_STORE: "twenty" } });
+  assert.equal(st.store, "none"); assert.equal(st.reachable, false);
+  assert.match(String(st.note), /cannot run the record store \(Twenty\): not enough free memory/);
+});
+
 test("a real daemon reports records_store on /v1/health: the built-in store, from the default, with a count", { timeout: 120_000 }, async t => {
   process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
   const root = tempHome(t);

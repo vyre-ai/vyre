@@ -194,6 +194,19 @@ async function upFixture(home, fixture, env = process.env) {
  * @param {any} d a started daemon @param {string} root its home @param {string} [caller]
  * @returns {(tool: string, input?: any) => Promise<any>}
  */
+/**
+ * A test daemon whose plain registry calls from a person's local surfaces (cli, deck, local, capsule) arrive as the owner's own enrolled device, as they do through the real socket (the daemon sets the
+ * kernel facts of a surface it verified). A call with no person chain on a run in a chat is refused (core/switchboard chatGate fails closed), so a kernel-on test that calls threads.* as "cli" with
+ * no meta uses this once after `start`. Calls that already carry a token, facts or a caller of another class are untouched.
+ * @param {any} d @param {string} root @returns {any} d
+ */
+export function asOwner(d, root) {
+  const meta = (() => { kernelCaller(d, root); return { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } }; })();
+  const orig = d.registry.call.bind(d.registry);
+  d.registry.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => orig(tool, input, caller, m !== undefined ? m : (/^(cli|deck|local|capsule)$/.test(String(caller)) ? meta : undefined));
+  return d;
+}
+
 export function kernelCaller(d, root, caller = "cli") {
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   try { d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone"); } catch { /* no relay table in this home: the call carries its facts anyway */ }
