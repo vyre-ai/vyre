@@ -71,7 +71,17 @@ export async function runRemoteMove({ from, to, plan, ports }) {
     else left = [...(plan.files || [])];
     if (left.length) { state.left_behind = left; } else state.emptied = true;
   }
-  if (ports.know && state.pulled.know && !state.know_forgotten) { step("forget-know"); await ports.know.forget({ records: knowRecords, receipt: state.pulled.know }); state.know_forgotten = true; }
+  if (ports.know && state.pulled.know && !state.know_forgotten) {
+    step("forget-know");
+    try { await ports.know.forget({ records: knowRecords, receipt: state.pulled.know }); }
+    catch (e) {
+      // a line was written meanwhile: the target pulls the lines again (`ports.know.repull`, idempotent) and the source forgets against the new receipt, once
+      if (/** @type {any} */ (e).code !== "conflict" || typeof ports.know.repull !== "function") throw e;
+      state.pulled.know = await ports.know.repull({ move_id: state.move_id, records: knowRecords });
+      await ports.know.forget({ records: knowRecords, receipt: state.pulled.know });
+    }
+    state.know_forgotten = true;
+  }
   if (ports.memory && state.memory_receipt && !state.memory_forgotten) {
     step("forget-memory");
     try { await ports.memory.forget({ receipt: state.memory_receipt }); }
