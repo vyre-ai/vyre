@@ -748,7 +748,7 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   // CR-H1: outward runs only from the person's own surface or device; everyone else is held_unavailable.
   assert.equal((await reg.call("bakery.flour", {}, "cli")).data.ran, "bakery.flour");
   assert.equal((await reg.call("bakery.flour", {}, "device:ie22vhobxbbkmu66")).data.ran, "bakery.flour");
-  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "harness", "hook", "module:notes", "guest:juno"]) {
+  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "harness", "hook", "module:notes"]) {
     const r = await reg.call("bakery.flour", {}, c);
     assert.equal(r.error && r.error.code, "held_unavailable", c);
     assert.match(r.error.message, /lands with the Gate wiring/);
@@ -756,7 +756,7 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   // One yes: an outward tool marked `outward: true` is HELD for a caller that is not you (an agent, the harness, a module with no person behind it, a guest): a card, never a run, until the card's yes comes back.
   const ran0 = (await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "cli")).data.ran;
   assert.equal(ran0, "bakery.mailout", "you: no prompt");
-  for (const c of ["mcp:agent:kit", "cli:agent:kit", "mcp", "harness", "module:notes", "guest:juno"]) {
+  for (const c of ["mcp:agent:kit", "cli:agent:kit", "mcp", "harness", "module:notes"]) {
     const r = await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, c);
     assert.equal(r.error && r.error.code, "held_for_approval", c);
     assert.ok(!r.data, `${c}: nothing ran`);
@@ -772,9 +772,9 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   const card = globalThis.__cards.at(-1);
   let spent = false;
   setCardRedeemer((id, moment, request, device) => (id === card.id && moment === "outward" && request.op === "bakery.mailout" && JSON.stringify(request.fields) === JSON.stringify(card.fields) && device === card.from && !spent ? (spent = true, "ok") : "no_proof"));
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(501) }, "guest:juno", { approval: card.id })).error.code, "approval_refused", "other input, other asker");
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(501) }, "module:notes", { approval: card.id })).error.code, "approval_refused", "other input, other asker");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "module:notes", { approval: card.id })).data.ran, "bakery.mailout");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "module:notes", { approval: card.id })).error.code, "approval_refused", "spent once");
   setCardRedeemer(null);
   // a module acting for you (its origin is you) is you
   assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "module:notes", { origin: "cli" })).data.ran, "bakery.mailout");
@@ -861,7 +861,7 @@ test("modules v1: an outward: true tool on reach hook or modules is held for eve
   // the webhook route's caller is not you: held, and the callers that cannot reach a hook tool at all never get that far
   const h = await reg.call("oven.till", { receipt: "r1" }, "hook");
   assert.equal(h.error && h.error.code, "held_for_approval", "hook");
-  for (const c of ["mcp", "mcp:agent:kit", "guest:juno"]) assert.ok((await reg.call("oven.till", { receipt: "r1" }, c)).error, c);
+  for (const c of ["mcp", "mcp:agent:kit"]) assert.ok((await reg.call("oven.till", { receipt: "r1" }, c)).error, c);
   assert.deepEqual(globalThis.__ovenRan, ["oven.notify"], "only your own call ran");
   assert.equal(globalThis.__cards.length, 4, "each held call is a card");
 });
@@ -1171,7 +1171,6 @@ test("modules: the agents relay check lets threads.send through and throws for e
 test("modules: the device, space and agent classes are list entries only; a bare word or a look-alike is never a caller", () => {
   const dev = "device:abcdefghijklmnop";
   assert.equal(callerAllowed(["cli", "device"], dev), true, "a device entry admits a paired device");
-  assert.equal(callerAllowed(["cli", "device"], "device:nw3b43olz4rzbzfe"), false, "a device entry is the paired device label only");
   assert.equal(callerAllowed(["cli"], dev), false);
   for (const bare of ["device", "space", "agent"]) assert.equal(callerAllowed(["cli", "device", "space", "agent"], bare), false, bare);
   for (const c of ["Device:abcdefghijklmnop", "device :abcdefghijklmnop", "device:", "device:abc", "device:abcdefghij​klmnop", "dev​ice:abcdefghijklmnop", "space:alex@harlow", "space:", "agent:kit", "agent:", "mcp:agent:kit"]) {

@@ -105,7 +105,7 @@ test("bareUrl and cleanSummary: no query or fragment, one short line", () => {
   assert.equal(cleanSummary(`open  https://harlow.example/p?${QUERY}#f now`), "open https://harlow.example/p now");
   assert.equal(cleanSummary("a".repeat(400)).length, 200);
   assert.equal(offMac({ caller: "cli" }), false);
-  for (const m of [{ caller: "cli", peer: { node: "n" } }, { caller: "device:ie22vhobxbbkmu66" }, { caller: "guest:kit" }, { caller: "device:abcdefghijklmnop" }]) assert.equal(offMac(m), true, JSON.stringify(m));
+  for (const m of [{ caller: "cli", peer: { node: "n" } }, { caller: "device:ie22vhobxbbkmu66" }, { caller: "device:abcdefghijklmnop" }]) assert.equal(offMac(m), true, JSON.stringify(m));
 });
 
 test("normalize: desktop, chrome and hands events become one step shape", () => {

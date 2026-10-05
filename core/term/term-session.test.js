@@ -260,7 +260,8 @@ test("C-2: a typed command is recorded under the typist (author, via, surface), 
   const { reg, work, events } = await registry(t);
   const port = await server(t, reg);
   const peer = { login: "carol@example.com", stableId: "n_carol" };
-  const o = (await reg.call("term.open", { session: "s_one", surface: "deck:carols" }, "device:4dkhzin4d23c4zip", { peer, person: { id: "s1", kind: "cookie" } }));
+  const carolDevice = deviceFor("carol@example.com");
+  const o = (await reg.call("term.open", { session: "s_one", surface: "deck:carols" }, carolDevice, { peer, person: { id: "s1", kind: "cookie" } }));
   assert.ok(!o.error, JSON.stringify(o.error));
   const c = await connect(port, o.data.path);
   await c.until(/\$ $|# $|> $|%/);
@@ -271,10 +272,10 @@ test("C-2: a typed command is recorded under the typist (author, via, surface), 
   assert.equal(ev.length, 1);
   assert.equal(ev[0].thread, "s_one");
   assert.equal(ev[0].payload.author, "person:carol@example.com");
-  assert.equal(ev[0].payload.via, "device:4dkhzin4d23c4zip");
+  assert.equal(ev[0].payload.via, carolDevice);
   assert.equal(ev[0].payload.surface, "deck:carols");
   // the session is no longer hers: attach is refused
   globalThis.__fakeThreadsKnown.set("s_one", { cwd: path.join(work, "proj"), deny: "carol" });
-  const a = await reg.call("term.attach", { term: o.data.term, surface: "deck:carols" }, "device:4dkhzin4d23c4zip", { peer, person: { id: "s1", kind: "cookie" } });
+  const a = await reg.call("term.attach", { term: o.data.term, surface: "deck:carols" }, carolDevice, { peer, person: { id: "s1", kind: "cookie" } });
   assert.equal(a.error?.code, "not_found");
 });

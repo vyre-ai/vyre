@@ -51,7 +51,7 @@ const media = (/** @type {boolean} */ light) => () => ({ matches: light, addEven
 test("themeHref: the device and rev when known, plain /theme.css without them", () => {
   assert.equal(themeHref({}), "/theme.css");
   assert.equal(themeHref({ rev: 42 }), "/theme.css?rev=42");
-  assert.equal(themeHref({ device: "device:2uwffior5lehgnfh", rev: 7 }), "/theme.css?device=tailnet%3Aalex-phone&rev=7");
+  assert.equal(themeHref({ device: "device:2uwffior5lehgnfh", rev: 7 }), "/theme.css?device=device%3A2uwffior5lehgnfh&rev=7");
 });
 
 test("schemeFor: paper, dark, system follows the OS, anything else leaves the device's own choice", () => {
@@ -76,9 +76,9 @@ test("start: the snapshot's rev and device go on the link; the old sheet leaves 
   await tick();
   assert.equal(kept.get("vyre.theme"), "paper", "the saved choice follows the hub, so the next launch paints it first");
   assert.deepEqual(hub.asked, [["settings.snapshot", {}]]);
-  assert.deepEqual(links.map(l => l.href), ["/theme.css", "/theme.css?device=tailnet%3Aalex-phone&rev=42"], "both while the new one loads: no flash");
+  assert.deepEqual(links.map(l => l.href), ["/theme.css", "/theme.css?device=device%3A2uwffior5lehgnfh&rev=42"], "both while the new one loads: no flash");
   links[1].fire("load");
-  assert.deepEqual(links.map(l => l.href), ["/theme.css?device=tailnet%3Aalex-phone&rev=42"]);
+  assert.deepEqual(links.map(l => l.href), ["/theme.css?device=device%3A2uwffior5lehgnfh&rev=42"]);
   assert.equal(doc.documentElement.dataset.theme, "paper");
 });
 
@@ -97,7 +97,7 @@ test("settings.changed: an appearance key reads again and swaps; another key or 
   hub.emit({ type: "settings.changed", payload: { key: "appearance.scheme", device: "device:gpzhvr7irq45zdmx", level: "device", rev: 2 } });
   await tick();
   assert.equal(hub.asked.length, 2);
-  assert.equal(links.at(-1).href, "/theme.css?device=tailnet%3Aalex-mbp&rev=2");
+  assert.equal(links.at(-1).href, "/theme.css?device=device%3Agpzhvr7irq45zdmx&rev=2");
   assert.equal(doc.documentElement.dataset.theme, undefined, "dark");
 });
 

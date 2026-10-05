@@ -10,7 +10,7 @@
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
 import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
-import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
+import { PERSON_ONLY } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
@@ -45,7 +45,7 @@ export function createLegacyGates(cfg) {
   const chains = createLegacyChainBuilder({ space: SPACE });
   const flags = (/** @type {string} */ tool, /** @type {any} */ def, /** @type {any} */ input) => {
     const pr = reg.deps.presence ? Boolean(reg.deps.presence.required(tool, def, input)) : Boolean(def.presence);
-    return `pr=${pr ? 1 : 0};ms=${machineSelf(tool, input) ? 1 : 0}`;
+    return `pr=${pr ? 1 : 0}`;
   };
 
   /** The compiled policy: which gate grants exist for this hop, tool and request. Written once; this is the old code as data. */
@@ -54,7 +54,7 @@ export function createLegacyGates(cfg) {
     const tool = req.resource.slice(`vyre://${SPACE}/tool/`.length);
     const def = reg.tools.get(tool);
     const c = String(hop.via.legacy);
-    const pr = /pr=1/.test(req.input_class || ""), ms = /ms=1/.test(req.input_class || "");
+    const pr = /pr=1/.test(req.input_class || "");
     const isModule = c.startsWith("module:");
     let allowed = false, conditions = {};
     switch (gate) {
@@ -70,7 +70,7 @@ export function createLegacyGates(cfg) {
       case "session": {
         allowed = true;
         // The owner's device acts as the person only with the person's session, for a person-only or proof-needing tool.
-        if (ownerDevice(c) && !PERSON_FREE.has(tool) && !ms && (PERSON_ONLY.has(tool) || def.reach === "person" || pr)) conditions = { how: { presence: "session" } };
+        if (ownerDevice(c) && !PERSON_FREE.has(tool) && (PERSON_ONLY.has(tool) || def.reach === "person" || pr)) conditions = { how: { presence: "session" } };
         break;
       }
       case "presence": allowed = true; if (!isModule && pr) conditions = { how: { presence: "fresh" } }; break;

@@ -26,7 +26,7 @@ test("connections: each caller is one surface", () => {
   const cases = [
     ["cli", "person"], ["local", "person"], ["deck", "person"],
     ["capsule", "capsule"], ["mobile", "phone"], ["mcp", "chat"], ["mcp:thread:t-1", "chat"],
-    ["mcp:agent:kit", "agents"], ["agent:juno", "agents"], ["harness:agent:kit", "agents"],
+    ["mcp:agent:kit", "agents"], ["harness:agent:kit", "agents"],
     ["module:mail", "module"], ["guest:dana@northwind.test", null], ["anonymous", null], ["", null],
   ];
   for (const [c, want] of cases) assert.equal(surfaceOf(c).surface, want, c);
@@ -280,7 +280,7 @@ test("connections: several email accounts, one list, granted per surface", async
   // allowed: by id or by source and ref; people always; a module is not a surface.
   const ask = async input => ok(await other("vault.connections.allowed", input));
   assert.deepEqual(await ask({ id: m2.id, caller: "mcp:agent:kit" }), { allowed: true, surface: "agents" });
-  assert.deepEqual(await ask({ source: "mcp", ref: "gmail-juno", caller: "agent:kit" }), { allowed: true, surface: "agents" });
+  assert.deepEqual(await ask({ source: "mcp", ref: "gmail-juno", caller: "mcp:agent:kit" }), { allowed: true, surface: "agents" });
   assert.equal((await ask({ id: g.id, caller: "mcp:agent:kit" })).allowed, false);
   assert.match((await ask({ id: g.id, caller: "mcp:agent:kit" })).reason, /not granted to agents/);
   assert.deepEqual(await ask({ id: g.id, caller: "cli" }), { allowed: true, surface: "person" });

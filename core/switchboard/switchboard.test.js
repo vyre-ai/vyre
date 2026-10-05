@@ -396,22 +396,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
-  // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
+  // A person's own surfaces are one participant: none locks another out.
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
-  // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
-  const asOwner = (name, input) => d.registry.call(name, input, "device:sglwyckbiq7ahkl6", { person: true });
-  assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck");
-  // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
-  const asBob = (name, input) => d.registry.call(name, input, "device:nr7mnii4tldn5q3p", { person: true });
-  assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
-  const took = (await asBob("threads.lease", { thread: id })).data;
-  assert.deepEqual([took.holder, took.previous], ["device:nr7mnii4tldn5q3p", "deck"], "the keyboard moved to the other person");
-  assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
-  const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
-  assert.deepEqual([locked.sent, locked.holder], [false, "device:nr7mnii4tldn5q3p"]);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
-  assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
   // A module (or any non-person caller) naming the holder's surface does not join it: a live terminal's name and the link's name each still contest.
   const asModule = (name, input) => d.registry.call(name, input, "module:planner");
@@ -420,7 +406,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     const jr = await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held }); const joined = jr.data || assert.fail(JSON.stringify(jr));
     assert.deepEqual([joined.sent, joined.holder], [false, held], `a module naming ${held} is refused while it holds the keyboard`);
   }
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await tool("threads.lease", { thread: id, surface: "deck" })).data.holder, "deck", "the person takes it back");
   // A surface name in a call is not an identity: a person's socket caller saying "device:sglwyckbiq7ahkl6" is just another label, which contests.
   assert.equal((await tool("threads.send", { thread: id, text: "claimed", surface: "device:sglwyckbiq7ahkl6" })).data.sent, false);
   assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);

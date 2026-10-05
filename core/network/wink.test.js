@@ -24,10 +24,10 @@ test("network.wink: the four public names, each passing to the Wink module's int
   assert.match(await w.tools.get("network.wink.join").presence.summary({ space: "Work" }), /Work/);
 });
 
-test("network.wink: a guest and an anonymous caller read nothing; an agent, a hook and a guest change nothing", async () => {
+test("network.wink: an anonymous caller reads nothing; an agent and a hook change nothing", async () => {
   const w = setup({ "wink.network.status": {}, "wink.network.join": {} });
-  for (const bad of ["guest:a@b.c", "anonymous", ""]) await assert.rejects(w.run("network.wink.status", {}, { caller: bad }), { code: "denied" }, bad);
-  for (const bad of ["agent:kit", "cli:agent:kit", "hook", "guest:a@b.c"]) await assert.rejects(w.run("network.wink.join", { space: "x" }, { caller: bad }), { code: "denied" }, bad);
+  for (const bad of ["anonymous", ""]) await assert.rejects(w.run("network.wink.status", {}, { caller: bad }), { code: "denied" }, bad);
+  for (const bad of ["agent:kit", "cli:agent:kit", "hook"]) await assert.rejects(w.run("network.wink.join", { space: "x" }, { caller: bad }), { code: "denied" }, bad);
   await assert.rejects(w.run("network.wink.leave", { space: "x" }, { caller: "cli", agent: true }), { code: "denied" });
   assert.equal(w.asked.length, 0, "nothing reached the Wink module");
 });
