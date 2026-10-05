@@ -26,7 +26,7 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
-import { TASK_TYPE } from "./tasks/type.js";
+import { TASK } from "../records/core-types.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -91,7 +91,7 @@ export async function createKernel(cfg) {
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
-  await store.define({ add_types: [TASK_TYPE] });
+  await store.define({ add_types: [TASK] });
   await tasks.migrate();
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.

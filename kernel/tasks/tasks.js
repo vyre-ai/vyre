@@ -11,7 +11,10 @@ import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
 import { createIdem } from "../core/idem.js";
-import { TASK_PERSON_FIELDS, TASK_TYPE } from "./type.js";
+import { TASK } from "../../records/core-types.js";
+
+/** The fields a task's own calls set (and `records.update` routes through `tasks.edit`); every other field of the type is the person's, custom, and plain. */
+const TASK_PERSON_FIELDS = Object.freeze(["title", "note", "due", "parent", "project"]);
 import { createMemoryStore } from "../store/memory.js";
 
 /** The actions task calls register with the authorizer (contract 6.1). */
@@ -114,7 +117,7 @@ export function createTasks(cfg) {
   // keeps is what decides who may act. `status` on the record mirrors the kernel's state and is written only here. Reads lay the record's fields over the kernel's task.
   // The Space's store (the kernel hands it in); a bare caller (a test rig) gets a memory store with the type defined.
   const recs = cfg.records || createMemoryStore({ clock: cfg.clock });
-  const recsReady = cfg.records ? Promise.resolve() : Promise.resolve(recs.define({ add_types: [TASK_TYPE] }));
+  const recsReady = cfg.records ? Promise.resolve() : Promise.resolve(recs.define({ add_types: [TASK] }));
   const RESERVED = new Set([...TASK_PERSON_FIELDS, "status", "stage", "record"]);
   const CACHE_MS = 5000;
   /** @type {Set<string>} tasks whose status the record has not been told yet */ const dirty = new Set();
@@ -128,8 +131,12 @@ export function createTasks(cfg) {
     recCache.set(id, { at: Date.now(), rec });
     return rec;
   }
+  /** A link field holds a reference, { urn } (the contract's shape); the kernel keeps a task's parent as an id and its project and record as urns. */
+  const link = (/** @type {string} */ urn) => ({ urn });
+  const urnIn = (/** @type {any} */ v) => (v && typeof v.urn === "string" ? v.urn : undefined);
+  const parentIn = (/** @type {any} */ v) => { const u = urnIn(v); return u ? u.split("/").pop() : undefined; };
   /** The record's person-facing fields from a task: only what is there. */
-  const recFieldsOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.due !== undefined ? { due: isoOf(t.due) } : {}), status: t.state, ...(t.parent ? { parent: t.parent } : {}), ...(t.project ? { project: t.project } : {}), ...(t.stage ? { stage: t.stage } : {}), ...(t.record ? { record: t.record } : {}) });
+  const recFieldsOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.due !== undefined ? { due: isoOf(t.due) } : {}), status: t.state, ...(t.parent ? { parent: link(`vyre://${cfg.space}/task/${t.parent}`) } : {}), ...(t.project ? { project: link(t.project) } : {}), ...(t.stage ? { stage: t.stage } : {}), ...(t.record && String(t.record).startsWith("vyre://") ? { record: link(t.record) } : {}) });
   /** The task as a reader sees it: the kernel's task with the record's title, note, due, parent and project laid over it. A task whose record is not there yet reads as the kernel has it. */
   async function overlay(/** @type {any} */ t) {
     let r = null;
@@ -137,7 +144,7 @@ export function createTasks(cfg) {
     if (!r) return t;
     const d = r.data || {};
     const { note: _n, due: _d, parent: _p, project: _pr, ...rest } = t;
-    return freeze({ ...rest, title: d.title ?? t.title, ...(d.note !== undefined && d.note !== null ? { note: d.note } : {}), ...(d.due ? { due: Date.parse(d.due) } : {}), ...(d.parent ? { parent: d.parent } : {}), ...(d.project ? { project: d.project } : {}) });
+    return freeze({ ...rest, title: d.title ?? t.title, ...(d.note !== undefined && d.note !== null ? { note: d.note } : {}), ...(d.due ? { due: Date.parse(d.due) } : {}), ...(parentIn(d.parent) ? { parent: parentIn(d.parent) } : {}), ...(urnIn(d.project) ? { project: urnIn(d.project) } : {}) });
   }
   async function recUpdate(/** @type {string} */ id, /** @type {any} */ patch) {
     for (let i = 0; i < 3; i++) {
@@ -593,8 +600,8 @@ export function createTasks(cfg) {
           if (k === "title") rp.title = next.title;
           else if (k === "note") rp.note = patch.note === null || patch.note === "" ? null : next.note;
           else if (k === "due") rp.due = patch.due === null ? null : isoOf(next.due);
-          else if (k === "parent") rp.parent = patch.parent === null ? null : next.parent;
-          else if (k === "project") rp.project = patch.project === null ? null : next.project;
+          else if (k === "parent") rp.parent = patch.parent === null ? null : link(`vyre://${cfg.space}/task/${next.parent}`);
+          else if (k === "project") rp.project = patch.project === null ? null : link(next.project);
         }
         if (Object.keys(rp).length) await recUpdate(id, rp);
       }

@@ -118,7 +118,7 @@ test("task records: the stage and the record a task concerns are kernel-owned fi
   const { k, owner, R, T } = await boot();
   const t = await T.request(owner, spec({ stage: "intake", record: `vyre://${SPACE}/contact/c1`, title: "Collect Jane Doe's ID", note: "ssn 123-45-6789" }));
   const rec = await R.get(owner, "task", t.id);
-  assert.deepEqual([rec.data.stage, rec.data.record], ["intake", `vyre://${SPACE}/contact/c1`]);
+  assert.deepEqual([rec.data.stage, rec.data.record], ["intake", { urn: `vyre://${SPACE}/contact/c1` }]);
   await assert.rejects(() => R.update(owner, "task", t.id, { stage: "done" }, rec.version), { code: "field_not_allowed" });
   await assert.rejects(() => R.update(owner, "task", t.id, { record: "vyre://x/y/z" }, rec.version), { code: "field_not_allowed" });
   const cleared = await T.scrubTexts({ record: `vyre://${SPACE}/contact/c1` });
