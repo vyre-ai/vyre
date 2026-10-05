@@ -1303,3 +1303,11 @@ test("modules: a first-party module relays the person it acts for to the tools i
   const direct = await reg.call("memory.upgrade.plan", {}, "cli", { kernelFacts: facts });
   assert.deepEqual(direct.data, { facts }, "the daemon's own facts are the daemon's to set");
 });
+
+test("modules: an added module may emit only events named for itself; Vyre's own modules keep the reserved-owner rule", () => {
+  const m = (name, emits) => ({ name, version: "0.1.0", apiVersion: 1, description: "x", roles: ["box", "local"], does: { tools: [] }, watches: { emits } });
+  assert.deepEqual(validate(m("oven", ["oven.heated", "oven-x.cooled"])), []);
+  for (const e of ["name.claimed", "wink.removed", "device.paired", "turn.completed", "vault.changed", "settings.changed", "spaces.created", "relay.opened"])
+    assert.match(validate(m("oven", [e])).join("; "), /may emit only events named for itself/, e);
+  assert.deepEqual(validate(m("wink", ["wink.removed"]), { firstParty: true }), [], "a first-party module is not held to its own name");
+});

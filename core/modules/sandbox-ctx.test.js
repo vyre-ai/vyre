@@ -124,6 +124,10 @@ test("a module tool marked flow is an action of the Space the owner may run from
   assert.equal(n, 1, "the Flow's call step ran the module's tool once");
   // A tool that was not marked is no action a Flow may name.
   assert.ok(!d.registry.flowActionTools.has("stamp.peek"));
+  // The event the added module said is in the log under its own trust (external), not as a first-party service's.
+  const said = d.kernel.log.read({ type: "stamp.marked" });
+  assert.ok(said.length >= 1, "the module's event is in the kernel log");
+  assert.equal(said[0].labels.trust, "external", "an added module's event is logged external");
 });
 
 test("ctx.store: SQL stays in the module's own file (no ATTACH, VACUUM INTO, PRAGMA, extensions), by any spelling", async () => {

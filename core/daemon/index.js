@@ -389,7 +389,11 @@ async function startLocked(opts, root, p, release) {
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     // The event bus becomes an adapter over the kernel's log: from here every event is a log entry and its id a log position (what was emitted before the boot moves in).
-    events.attach(kernel.log, (/** @type {string} */ name) => kernel.gateway.serviceChain(name), kernel.id.space);
+    events.attach(kernel.log, (/** @type {string} */ name) => {
+      // An event is logged under the chain of the module that said it, with that module's own trust: an added module's is external, never first-party (the daemon's own sources and Vyre's modules are).
+      const rec = registry.modules.get(name);
+      return rec && rec.dir && !registry.isFirstParty(rec.dir) ? kernel.chains.fromFacts({ kind: "module", module: String(name), first_party: false }) : kernel.gateway.serviceChain(name);
+    }, kernel.id.space);
     { const n = events.importLegacy(db); if (n) log(`events: ${n} events from before the upgrade were copied into the kernel log (thread history and activity)`); }
     // The narrow verbs an added module declared under needs.kernel (`records`: types it may make, read and change; `files`: folders of the Space's Drive it may write into): the module becomes a service
     // of the Space with exactly those grants (the kernel's own install grants, the machinery a built-in module's needs.kernel uses), acts as itself with an EXTERNAL label (what it brings in is never
