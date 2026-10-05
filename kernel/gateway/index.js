@@ -13,9 +13,12 @@ import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
 import { createLeases } from "./leases.js";
 import { createDriveGateway } from "./drive.js";
+import { createMemoryGateway, MEMORY_ACTIONS } from "./memory.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
+import { createMoves } from "./moves.js";
+import { canonical as canon, sha256 as sha } from "../core/canonical.js";
 
 /**
  * @param {{ expr?: any, stageTasks?: any, onStageEnter?: any, limits?: any, grantsStore?: any, presence?: any, tasks?: any, sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
@@ -31,11 +34,11 @@ export function createGateway(cfg) {
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
   const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource), touches: (chain, action) => gs.rulesTouch(chain, action) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...(cfg.actions || [])] });
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...MEMORY_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
+  records = createRecords({ tasks: cfg.tasks, room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -98,6 +101,7 @@ export function createGateway(cfg) {
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
 
+  const memory = createMemoryGateway({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, clock: cfg.clock, enforce });
   const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
   const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, enforce, ...(drive ? { drive } : {}), log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, forward: cfg.forwardCredential, routeAction: cfg.routeAction }) : undefined;
 
@@ -189,7 +193,7 @@ export function createGateway(cfg) {
         else if (f.kind === "file" && v && typeof v === "object" && typeof v.file === "string") files++;
       }
     } catch { /* the counts are best effort; the forget itself does not depend on them */ }
-    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
+    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? await cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
     try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
     // Its sealed values are destroyed in the sealing process (overwritten, then removed); a value the process cannot drop is counted, never hidden.
     let sealed_dropped = 0;
@@ -200,10 +204,15 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
+  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+
   return Object.freeze({
     authorize: authorizer.authorize,
+    /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
+    moves,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
+    memory,
     ...(drive ? { drive } : {}),
     ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */

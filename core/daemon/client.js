@@ -1,6 +1,7 @@
 // @ts-check
 // client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
 
+import { ZONE_HEADER, systemZone } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import http from "node:http";
 import * as config from "../config/index.js";
@@ -15,8 +16,6 @@ import { readSession } from "../../lib/cli-session.js";
  * @param {string} method @param {string} path @param {any} [payload]
  * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string>, socket?: string }} [opts]
  */
-/** The IANA zone of the machine this call is made from, so the server reads this person's times in it (lib/time). */
-const clientZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; } };
 
 export function request(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
   // Inside a session Vyre started, VYRE_SOCKET is that session's own socket (ADR 0030 phase 3):
@@ -35,7 +34,8 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     const cliToken = /^cli$/.test(caller) && !socket && !headers.authorization ? readSession(root) : null;
     const signedIn = cliToken ? { authorization: `Vyre ${cliToken}` } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { "x-vyre-zone": clientZone(), ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      // The zone of the device making the call (a person on the move is in the zone of the device in hand): lib/time reads it as `meta.zone`.
+      headers: { [ZONE_HEADER]: systemZone(), ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });
