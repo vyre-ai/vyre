@@ -14,6 +14,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
+import { IdentityLive, purgeTables } from "./identity/live.js";
+import { FileBackend } from "./identity/home.js";
+import { yes as oneYes } from "../../lib/one-yes.js";
 import { projectMarker, spaceMarker, visible as visibleMarkers, find as findMarker } from "./markers.js";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
@@ -89,6 +92,12 @@ export default {
     const quickDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "quick") : null;
     const personal = new Personal(ctx.store.db, { log: ctx.log,
       trust: () => ({ scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
+    // The identity home (identity/home.js): on a space server the person's identity memory is kept as ciphertext, unlocked only for their own assistant after their phone's yes. Off unless
+    // memory.identity names the home (the server's blob folder) and the person's identity id.
+    const idCfg = ctx.config.memory && ctx.config.memory.identity;
+    const identity = idCfg && idCfg.id && idCfg.home ? new IdentityLive({ db: ctx.store.db, id: String(idCfg.id), backend: new FileBackend(String(idCfg.home), String(idCfg.name || "this server")), log: ctx.log }) : null;
+    // A crash while unlocked left the rows where they were: sealed means they are not kept in the clear.
+    if (identity && identity.sealed && !identity.unlocked) { try { purgeTables(ctx.store.db); } catch (e) { ctx.log("identity memory: " + /** @type {Error} */ (e).message); } }
     /** Read every unread turn for personal facts, then derive if anything changed. */
     // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.
@@ -107,6 +116,8 @@ export default {
     const metaSet = ctx.store.db.prepare("INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('me_known', ?)");
     let knownNames = new Set((() => { try { return JSON.parse(String(/** @type {any} */ (metaGet.get())?.v ?? "[]")); } catch { return []; } })());
     const personalPass = async ({ full = false } = {}) => {
+      // Sealed and locked: nothing is read into the identity tables, which are not in the clear here.
+      if (identity && identity.sealed && !identity.unlocked) return { turns: 0, claims: 0, changed: false, locked: true };
       let turns = 0, claims = 0;
       while (!stopping) {
         const r = await personal.pass({ limit: PERSONAL_BATCH, stopped: () => stopping, full });
@@ -806,9 +817,9 @@ export default {
       callers: PEOPLE_MOD,
       description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre Memory answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
       input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
-      run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
+      run: readerOnly(async input => { lockedCheck(); return input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
         : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
-        : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
+        : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) }); }),
     });
     // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
     // devices read them; agents never do.
@@ -818,6 +829,7 @@ export default {
       description: "What memory knows about the user and the people and things in their life: facts like \"your wife is Jordan\", each with confidence, how many conversations said it and whether it still holds. about names one of them (\"my wife\", \"Jordan\", \"car\"); without it, the strongest facts.",
       input: { type: "object", properties: { about: { type: "string" }, limit: { type: "integer" } } },
       run: readerOnly(async ({ about, limit }) => {
+        lockedCheck();
         const n = Math.min(200, Math.max(1, limit ?? 50));
         if (about) {
           const a = personal.about(String(about));
@@ -844,6 +856,12 @@ export default {
     // user's life as the user's surfaces do.
     const ownSession = caller => { const w = whoNow(); return w ? w.ownSession : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller)); };
     const personalOnly = async (input, caller, name) => {
+      await personalAccess(input, caller, name);
+      lockedCheck();
+    };
+    /** The identity memory is sealed and nobody has unlocked it: what is read from it is refused, not answered as if empty. */
+    const lockedCheck = () => { if (identity && identity.sealed && !identity.unlocked) throw denied("the person's identity memory is locked: their assistant asks their phone to unlock it (memory.identity.unlock.begin)"); };
+    const personalAccess = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
       // THE assistant rule: it keeps personal facts (distilled, not raw), even though it no
       // longer reaches the unfiled room most of them are drawn from. r.all is never true for a
@@ -1122,6 +1140,63 @@ export default {
         const room = rooms.find(x => x.slug === m.slug);
         const r = await retrieveRun({ question: String(input.question || ""), project_cwds: room ? room.folders : [], k: input.k, ...(input.agent ? { agent: input.agent } : {}) }, extra);
         return { marker: m.urn, layer: "project", ...r };
+      },
+    });
+    // ---- the identity home (identity/live.js): the person's identity memory sealed on a server, unlocked for their assistant by their phone's yes
+    const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });
+    ctx.tool("memory.identity.status", {
+      effect: "read",
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
+      description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it and where it was moved to. For the person and their assistant.",
+      input: { type: "object", properties: { ...agentField } },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false }; },
+    });
+    ctx.tool("memory.identity.enroll", {
+      effect: "write",
+      description: "Seal the person's identity memory: it moves into the identity home as ciphertext readable only with one of these devices' keys (or the recovery code), and leaves this server's database. The person's own act.",
+      input: { type: "object", required: ["devices"], properties: { devices: { type: "array", items: { type: "object", required: ["publicJwk"], properties: { label: { type: "string" }, publicJwk: { type: "object" } } } }, recovery_code: { type: "string" } } },
+      run: async (input, extra = {}) => {
+        if (!identity) throw noIdentity();
+        if (!reader(extra.caller)) throw denied("sealing the identity memory is the person's own act");
+        return identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
+      },
+    });
+    ctx.tool("memory.identity.unlock.begin", {
+      effect: "write",
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
+      description: "The person's assistant asks to read their identity memory: returns the request their phone shows as a card. After their yes (Face ID) the phone's answer goes to memory.identity.unlock.finish. Nothing is readable before that.",
+      input: { type: "object", properties: { ...agentField } },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.unlock.begin"); if (!identity || !identity.sealed) throw noIdentity(); return identity.begin(); },
+    });
+    ctx.tool("memory.identity.unlock.finish", {
+      effect: "write",
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
+      description: "The phone's answer to an unlock request, with the person's yes over exactly this request: the identity memory is readable for a short time, then locks again by itself.",
+      input: { type: "object", required: ["request", "answer", "proof"], properties: { request: { type: "string" }, answer: { type: "object" }, proof: { type: "object" }, ...agentField } },
+      run: async (input, extra = {}) => {
+        await personalAccess(input, extra.caller, "memory.identity.unlock.finish");
+        if (!identity || !identity.sealed) throw noIdentity();
+        // One yes, from the person's own device, over this request: nobody else's answer, and not an answer to some other request.
+        const y = await oneYes("vault", { op: "memory.identity.unlock", fields: { identity: String(idCfg.id), request: String(input.request) } }, input.proof);
+        if (!y.ok) throw denied(`the person's yes was not given for this (${y.reason})`);
+        return identity.finish(String(input.request), input.answer);
+      },
+    });
+    ctx.tool("memory.identity.lock", {
+      effect: "write",
+      callers: [...PEOPLE_MOD, "mcp", "harness"],
+      description: "Lock the identity memory now: what changed is saved as ciphertext and the rows leave this server's database.",
+      input: { type: "object", properties: { ...agentField } },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.lock"); return identity ? identity.lock() : { kept: "none", unlocked: false }; },
+    });
+    ctx.tool("memory.identity.move", {
+      effect: "write",
+      description: "Move the sealed identity memory to another server's folder, for example the person's own: the ciphertext is copied and checked, the old place keeps only a marker, and nothing is decrypted or re-keyed on the way. The person's own act.",
+      input: { type: "object", required: ["to"], properties: { to: { type: "string", description: "the other server's identity folder" }, name: { type: "string" } } },
+      run: async (input, extra = {}) => {
+        if (!identity) throw noIdentity();
+        if (!reader(extra.caller)) throw denied("moving the identity memory is the person's own act");
+        return identity.move(new FileBackend(String(input.to), String(input.name || input.to)));
       },
     });
     // Vyre Memory's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
@@ -1657,6 +1732,7 @@ export default {
     return {
       async stop() {
         stopping = true;
+        if (identity) identity.stop();
         clearTimeout(timer);
         off();
         for (const o of offs) o();

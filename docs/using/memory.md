@@ -174,6 +174,18 @@ vyre call memory.follow '{"marker":"Northwind","question":"what did we decide ab
 You and your assistant follow every marker. An agent bound to a project reads only its own layer; a marker for a project it is not granted is only named ("exists"), with no
 summary, and following it is refused. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
 
+### Where your identity memory lives
+
+On a space server, your identity memory is stored encrypted to your own key, so the people who run that server (admins, root) see only ciphertext at rest. It opens only for your own
+assistant, for a few minutes at a time, after you say yes on your phone with Face ID. If you have a server of your own, even a small one, it can live there instead: `memory.identity.move`
+copies the encrypted memory across and leaves only a marker behind; nothing is decrypted on the way and the same phone unlocks it there.
+
+```
+vyre call memory.identity.status '{}'
+```
+
+Locked, the memory tools say "locked" rather than answering as if you knew nothing. Your recovery code can unlock it on your own device if you lose your phone.
+
 ## See what memory holds
 
 ```

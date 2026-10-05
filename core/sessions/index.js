@@ -682,42 +682,20 @@ export default {
 
     /**
      * The environment brief for one agent (environment.js), from live reads: what it can reach (the registry's own list for its caller class), the Space and the others the person
-     * belongs to, the record types, the connectors, the team. Each read is optional: one that fails drops its line. Types and spaces come from the kernel directly (the person's own tools refuse a module), so a build
+     * belongs to, the record types, the connectors, the team. Each read is optional: one that fails drops its line. Spaces come from spaces.brief and the types from work.space-brief (the person's own tools refuse a module); a build
      * whose kernel does not answer says "ask records.types" instead of listing them.
      * @param {{ agent?: string, agent_kind?: string, project?: string, provider?: string }} i
      */
     const environment = async i => {
       const label = i.agent ? `mcp:agent:${i.agent}` : "mcp";
       const ok = (/** @type {any} */ r) => (r && !r.error ? r.data : null);
-      // spaces.list and records.types are the person's own tools (reach person), which a module cannot call: the kernel is asked directly, for the home's own person. No kernel, or one that does not answer: no line.
-      const K = /** @type {any} */ (ctx).kernel;
-      const kernelSpaces = async () => {
-        try {
-          if (!K || !K.spaces || typeof K.spaces.list !== "function") return null;
-          const out = [];
-          for (const id of K.spaces.list()) {
-            const m = typeof K.membership === "function" ? await K.membership(K.owner, id).catch(() => null) : null;
-            if (!m || m.member !== true) continue;
-            const d = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-            out.push({ name: d && d.name ? String(d.name).replace(/\.vyre\.run$/, "") : id, role: m.role || null, current: id === K.space });
-          }
-          return out;
-        } catch { return null; }
-      };
-      const kernelTypes = async () => {
-        try {
-          if (!K || typeof K.definitions !== "function" || typeof K.chainForPerson !== "function") return null;
-          const defs = await K.definitions(await K.chainForPerson(K.owner));
-          return { types: (Array.isArray(defs) ? defs : []).filter((/** @type {any} */ t) => t && t.name && !String(t.name).startsWith("_")).map((/** @type {any} */ t) => ({ name: t.name, fields: t.fields })) };
-        } catch { return null; }
-      };
       let names = [];
       try { names = (ctx.modules.tools(label) || []).map((/** @type {any} */ t) => String(t.name)); } catch { names = []; }
       // An assistant does what its person can: the person-reach tools the agent rules leave open are its too.
       if (i.agent_kind === "assistant") { try { const all = new Set((ctx.modules.tools("cli") || []).map((/** @type {any} */ t) => String(t.name))); for (const t of AGENT_OPEN) if (all.has(t) && !names.includes(t)) names.push(t); } catch { /* none */ } }
-      const [agent, sp, ty, mcp, team] = await Promise.all([i.agent ? ctx.call("agents.list", {}).then(ok, () => null) : null, kernelSpaces(), kernelTypes(),
+      const [agent, sp, ty, mcp, team] = await Promise.all([i.agent ? ctx.call("agents.list", {}).then(ok, () => null) : null, ctx.call("spaces.brief", {}).then(ok, () => null), ctx.call("work.space-brief", {}).then(ok, () => null),
         ctx.call("mcp.servers", {}).then(ok, () => null), ctx.call("team.list", {}).then(ok, () => null)]);
-      const spaces = (Array.isArray(sp) ? sp : sp && Array.isArray(sp.spaces) ? sp.spaces : []).map((/** @type {any} */ x) => ({ name: String(x.label || x.name || ""), role: x.role || null, current: Boolean(x.current || (x.home && x.home.kind === "this-computer")) })).filter((/** @type {any} */ x) => x.name);
+      const spaces = (sp && Array.isArray(sp.spaces) ? sp.spaces : []).map((/** @type {any} */ x) => ({ name: String(x.name || ""), role: x.role || null, current: Boolean(x.current) })).filter((/** @type {any} */ x) => x.name);
       const types = ty && Array.isArray(ty.types) ? ty.types.map((/** @type {any} */ t) => ({ name: String(t.name), fields: Array.isArray(t.fields) ? t.fields.map((/** @type {any} */ f) => String(f.name || f)) : [] })) : null;
       const a = (Array.isArray(agent) ? agent : agent && Array.isArray(agent.agents) ? agent.agents : []).find((/** @type {any} */ x) => x && x.name === i.agent);
       return environmentOf({

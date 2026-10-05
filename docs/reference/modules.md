@@ -49,7 +49,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 48 | 15 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 54 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
@@ -74,7 +74,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 84 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 85 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 7 | 0 | none |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 16 | 0 | cli |
 
 ## about
 
@@ -463,7 +463,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [48](tools.md#memory), 2 of them only for other modules
+- Tools: [54](tools.md#memory), 2 of them only for other modules
 - Emits: [15 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"sealDetect":true}`
@@ -753,7 +753,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [84](tools.md#spaces), 25 of them only for other modules
+- Tools: [85](tools.md#spaces), 26 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`
@@ -987,7 +987,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [15](tools.md#work)
+- Tools: [16](tools.md#work)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`

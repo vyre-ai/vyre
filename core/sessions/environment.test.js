@@ -85,6 +85,21 @@ test("environment: every family of tools an agent can reach is taught in the bri
   for (const f of r.data.families) assert.ok(FAMILIES[f], `${f} is reachable and not in FAMILIES`);
 });
 
+test("environment: the Spaces and record types in the brief come from the kernel through spaces.brief and work.space-brief", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const real = d.registry.call.bind(d.registry);
+  d.registry.call = async (tool, input, caller, meta) => tool === "spaces.brief" ? { data: { spaces: [{ name: "Studio", role: "owner", current: true }, { name: "Harlow", role: "member", current: false }] } }
+    : tool === "work.space-brief" ? { data: { space: "spc_x", types: [{ name: "matter", fields: ["title", "stage"] }] } } : real(tool, input, caller, meta);
+  const r = (await d.registry.call("sessions.environment", { agent: "kit", agent_kind: "agent" }, "module:vyred")).data;
+  assert.match(r.text, /This session is in the Space Studio, where the person is owner\./);
+  assert.match(r.text, /They also belong to: Harlow \(member\)/);
+  assert.match(r.text, /Types here: matter \(title, stage\)/);
+  assert.doesNotMatch(r.text, /Ask records\.types for the types/);
+});
+
 // ---------------------------------------------------------------------------------------------------- the same brief on every driver
 
 const shim = (t, w, name) => {

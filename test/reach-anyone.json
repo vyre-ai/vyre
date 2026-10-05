@@ -857,6 +857,22 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
+  "memory.identity.lock": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.status": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.begin": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.finish": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
   "names.check": {
    "module": "names",
    "reason": "read-only: whether a name is free; no side effect"
