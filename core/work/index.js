@@ -10,7 +10,8 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
-import { planUpgrade, runUpgrade, HISTORY_FILE } from "./chat-upgrade.js";
+import { planUpgrade, runUpgrade, manifestPath } from "./chat-upgrade.js";
+import crypto from "node:crypto";
 import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
@@ -362,7 +363,7 @@ export default {
       },
     });
     ctx.tool("work.chat.history-import", {
-      description: "Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read from the file the move carried in the chat's own folder. You must be in the chat. A chat that already has its history here is left as it is.",
+      description: "Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read in order from the numbered chunks the move carried in the chat's own folder, each checked against its hash. You must be in the chat. It resumes where it stopped; a chat that already had its own frames here is left as it is.",
       input: obj({ chat: { type: "string" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
@@ -370,13 +371,32 @@ export default {
         if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
         if (!rec || !rec.data.drive) throw Object.assign(new Error("this chat has no folder here"), { code: "not_found" });
-        let bytes;
-        try { const got = await kernelOf().drive.get(chain, `${rec.data.drive}/chat/${chat}/${HISTORY_FILE}`); bytes = got && (got.bytes || got.data || got); } catch { throw Object.assign(new Error("this chat carried no history"), { code: "not_found" }); }
-        const bundle = JSON.parse(Buffer.from(bytes).toString("utf8"));
-        if (!bundle || bundle.chat !== chat || bundle.v !== 1) throw Object.assign(new Error("that history is not this chat's"), { code: "bad_input" });
-        const st = await ctx.call("stream.import-chat", { chat, frames: bundle.frames || [], members: bundle.members || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
-        const th = await ctx.call("threads.import-chat", { chat, runs: bundle.runs || [], events: bundle.events || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
-        return { chat, frames: st.frames || 0, members: st.members || 0, runs: th.runs || 0, events: th.events || 0 };
+        const folder = `${rec.data.drive}/chat/${chat}`;
+        const read = async (/** @type {string} */ path) => { const got = await kernelOf().drive.get(chain, path); return Buffer.from(/** @type {any} */ (got && (got.bytes || got.data || got))); };
+        /** @type {any} */ let manifest;
+        try { manifest = JSON.parse((await read(manifestPath(folder))).toString("utf8")); } catch { throw Object.assign(new Error("this chat carried no history"), { code: "not_found" }); }
+        if (!manifest || manifest.v !== 1 || manifest.chat !== chat || !Array.isArray(manifest.chunks)) throw Object.assign(new Error("that history is not this chat's"), { code: "bad_input" });
+        // which chunks are already back, so a stopped import carries on instead of putting anything twice
+        const db = ctx.store && ctx.store.db;
+        if (!db) throw Object.assign(new Error("this module has no store here"), { code: "unavailable" });
+        db.exec("CREATE TABLE IF NOT EXISTS work_history_imports (chat TEXT NOT NULL, n INTEGER NOT NULL, sha256 TEXT NOT NULL, PRIMARY KEY (chat, n))");
+        const done = new Set(/** @type {any[]} */ (db.prepare("SELECT n FROM work_history_imports WHERE chat = ?").all(chat)).map(r => Number(r.n)));
+        const total = { frames: 0, members: 0, runs: 0, events: 0, chunks: 0 };
+        let first = done.size === 0;
+        for (const c of [...manifest.chunks].sort((x, y) => x.n - y.n)) {
+          if (done.has(c.n)) continue;
+          const bytes = await read(String(c.path));
+          if (crypto.createHash("sha256").update(bytes).digest("hex") !== c.sha256) throw Object.assign(new Error(`a chunk of this chat's history did not arrive intact (${c.n}); nothing after it was put back`), { code: "verify_failed" });
+          const part = JSON.parse(bytes.toString("utf8"));
+          if (part.chat !== chat || part.n !== c.n) throw Object.assign(new Error(`chunk ${c.n} is not this chat's`), { code: "bad_input" });
+          const st = await ctx.call("stream.import-chat", { chat, frames: part.frames || [], members: part.members || [], fresh: first }).then((/** @type {any} */ r) => (r && r.data) || {});
+          if (st.note) { db.prepare("INSERT OR IGNORE INTO work_history_imports (chat, n, sha256) VALUES (?,?,?)").run(chat, c.n, "skipped"); return { chat, ...total, note: st.note }; }
+          const th = await ctx.call("threads.import-chat", { chat, runs: part.runs || [], events: part.events || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
+          db.prepare("INSERT OR IGNORE INTO work_history_imports (chat, n, sha256) VALUES (?,?,?)").run(chat, c.n, c.sha256);
+          first = false;
+          total.frames += st.frames || 0; total.members += st.members || 0; total.runs += th.runs || 0; total.events += th.events || 0; total.chunks++;
+        }
+        return { chat, ...total };
       },
     });
     ctx.tool("work.chat.create", {

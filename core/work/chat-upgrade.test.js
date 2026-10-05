@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planUpgrade, runUpgrade } from "./chat-upgrade.js";
+import { planUpgrade, runUpgrade, chunksOf } from "./chat-upgrade.js";
 
 function space(/** @type {string} */ name) {
   /** @type {Map<string, any>} */ const rows = new Map(); let n = 0;
@@ -56,8 +56,10 @@ test("the chats move with their ids under General in the target, files sealed un
   const history = async (/** @type {string} */ chat) => (chat === "chat_one" ? { frames: [{ cur: 1, first: 1, json: "{}" }], members: [], runs: [], events: [] } : { frames: [], members: [], runs: [], events: [] });
   const out = await runUpgrade({ from: a, to: b, rows: [c1, c2], ports: { move_id: "up1", history } });
   assert.deepEqual([out.moved, out.files, out.left], [2, 1, []]);
-  assert.deepEqual(puts.map(x => x[0]), ["Projects/gp/chat/chat_one/.history.json"], "a chat with history gets its history file beside its files; one with none does not");
+  assert.deepEqual(puts.map(x => x[0]), ["Projects/gp/chat/chat_one/.history/000001.json", "Projects/gp/chat/chat_one/.history/manifest.json"], "a chat with history gets its chunks and then its manifest beside its files; one with none does not");
   assert.equal(puts[0][1].chat, "chat_one");
+  assert.deepEqual([puts[1][1].chunks.length, puts[1][1].counts.frames], [1, 1]);
+  assert.match(puts[1][1].chunks[0].sha256, /^[0-9a-f]{64}$/);
   const there = [...b.rows.values()].filter(r => r.type === "chat-record").sort((x, y) => x.data.chat.localeCompare(y.data.chat));
   assert.deepEqual(there.map(r => r.data.chat), ["chat_one", "chat_two"], "the ids are kept");
   assert.equal(there[0].data.title, "Docket");
@@ -82,4 +84,21 @@ test("a chat that cannot move is named, stays in the source, and does not stop t
   assert.deepEqual(out.left.map(l => l.chat), ["chat_bad"]);
   assert.match(out.left[0].why, /no room/);
   assert.ok([...a.rows.values()].some(r => r.type === "chat-record" && r.data.chat === "chat_bad"), "it is still in the source");
+});
+
+
+test("a long history is written in numbered chunks that each stay under the limit, in the order it must come back, with nothing left out", () => {
+  const frames = Array.from({ length: 50 }, (_, i) => ({ cur: i + 1, first: i + 1, json: "x".repeat(100) }));
+  const events = Array.from({ length: 30 }, (_, i) => ({ thread: "t1", at: i, type: "thread.text", payload: "y".repeat(100) }));
+  const parts = chunksOf({ runs: [{ id: "t1", chat: "c" }], members: [{ grp: "c", who: "a" }], events, frames }, 2000);
+  assert.ok(parts.length > 4, `many chunks (${parts.length})`);
+  for (const p of parts) assert.ok(JSON.stringify(p).length <= 2000 + 400, "each chunk is bounded");
+  const order = parts.map(p => Object.keys(p)[0]);
+  assert.deepEqual([...new Set(order)], ["runs", "members", "events", "frames"], "runs, then who answers, then events, then frames");
+  assert.equal(parts.flatMap(p => p.frames || []).length, 50);
+  assert.equal(parts.flatMap(p => p.events || []).length, 30);
+  assert.deepEqual(parts.flatMap(p => p.frames || []).map(f => f.cur), frames.map(f => f.cur), "frames in order");
+  assert.deepEqual(chunksOf({}), []);
+  const one = chunksOf({ frames: [{ cur: 1, first: 1, json: "z".repeat(5000) }] }, 1000);
+  assert.equal(one.length, 1, "an item larger than a chunk is a chunk of its own");
 });

@@ -4191,7 +4191,13 @@ export default {
           const cols = Object.keys(row).filter(k => /^[a-z_]+$/.test(k));
           sb.db.prepare(`INSERT INTO threads_runs (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(...cols.map(k => /** @type {any} */ (row)[k]));
           runs++;
-          for (const e of /** @type {any[]} */ (i.events)) if (e && e.thread === r.id) { sb.db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)").run(e.at, e.type, e.source, e.project ?? null, e.thread, e.payload); events++; }
+        }
+        // events come in later chunks than their run: they go to a run of this chat that is here and was carried (the caller's ledger keeps a chunk from being put back twice)
+        for (const e of /** @type {any[]} */ (i.events)) {
+          if (!e || typeof e.thread !== "string") continue;
+          const run = /** @type {any} */ (sb.db.prepare("SELECT chat, stopped_reason FROM threads_runs WHERE id = ?").get(e.thread));
+          if (!run || String(run.chat) !== String(i.chat) || run.stopped_reason !== "carried") continue;
+          sb.db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)").run(e.at, e.type, e.source, e.project ?? null, e.thread, e.payload); events++;
         }
         return { runs, events };
       },

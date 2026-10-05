@@ -279,13 +279,14 @@ export default {
       },
     });
     ctx.tool("stream.import-chat", {
-      description: "Put a chat's frames and member rows back (the other end of the chat upgrade); a chat that already has frames here is left as it is. First-party modules only.", internal: true, callers: ["module"],
-      input: obj({ chat: str, frames: { type: "array" }, members: { type: "array" } }, ["chat", "frames", "members"]),
+      description: "Put a chat's frames and member rows back (the other end of the chat upgrade); with fresh: true, a chat that already has frames here is left as it is. First-party modules only.", internal: true, callers: ["module"],
+      input: obj({ chat: str, frames: { type: "array" }, members: { type: "array" }, fresh: { type: "boolean" } }, ["chat", "frames", "members"]),
       run: async (/** @type {any} */ i) => {
         if (!db) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
         const chat = String(i.chat);
         logs.get(chat); // the log's table is made the first time any log is opened
-        if (db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
+        // the first chunk of a history: a chat that already has frames of its own here is left as it is (a later chunk is the same import carrying on)
+        if (i.fresh === true && db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
         let frames = 0, members = 0;
         for (const f of /** @type {any[]} */ (i.frames)) { if (f && Number.isInteger(f.cur) && typeof f.json === "string") { db.prepare("INSERT OR IGNORE INTO stream_frames (session, cur, first, json) VALUES (?,?,?,?)").run(chat, f.cur, Number.isInteger(f.first) ? f.first : f.cur, f.json); frames++; } }
         for (const m of /** @type {any[]} */ (i.members)) { if (m && m.grp === chat && typeof m.who === "string") { db.prepare("INSERT OR IGNORE INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)").run(chat, m.who, m.thread ?? null, m.cwd ?? null, m.name ?? null, m.asker ?? null, m.answer ?? null, Number(m.last_event) || 0, m.kind ?? null); members++; } }

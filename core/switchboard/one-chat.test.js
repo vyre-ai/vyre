@@ -519,17 +519,32 @@ test("a chat's history leaves one device and comes back on another: its logged f
   const twice = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
   assert.equal(twice.data.frames, 0);
   assert.equal((await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work")).data.runs, 0);
-  // the tool the other end calls: it reads the history file the move carried in the chat's own folder, as the person, and puts it back
+  // the tool the other end calls: it reads the chunks and the manifest the move carried in the chat's own folder, as the person, checks each, and puts it back in order; it carries on where it stopped
   const C = await boot();
   const cOwner = C.d.kernel.id.owner;
   const cChain = C.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: cOwner, path: "direct", session: "s1" });
   await C.d.kernel.gateway.grants.chats.create(cChain, { id: chat });
   const cCaller = kernelCaller(C.d, C.root);
   const rec = await until(async () => (await cCaller("work.chat.list", {})).data.chats.find(r => r.chat === chat), "the chat's record on the other device");
-  await C.d.kernel.gateway.drive.put(cChain, `${rec.drive}/chat/${chat}/.history.json`, new TextEncoder().encode(JSON.stringify({ v: 1, chat, frames: st.frames, members: st.members, runs: th.runs, events: th.events })));
+  const folder = `${rec.drive}/chat/${chat}`;
+  const { writeHistory, chunkPath } = await import("../work/chat-upgrade.js");
+  const wrote = await writeHistory({ drive: C.d.kernel.gateway.drive, chain: cChain }, folder, chat, { frames: st.frames, members: st.members, runs: th.runs, events: th.events }, 1500);
+  assert.ok(wrote.chunks >= 4, `a small limit makes many chunks (${wrote.chunks})`);
+  // a chunk that does not match its hash stops the import before anything after it is put back
+  const bad = new TextEncoder().encode(JSON.stringify({ v: 1, chat, n: wrote.chunks, frames: [] }));
+  const good = await C.d.kernel.gateway.drive.get(cChain, chunkPath(folder, wrote.chunks));
+  await C.d.kernel.gateway.drive.put(cChain, chunkPath(folder, wrote.chunks), bad);
+  const stopped = await cCaller("work.chat.history-import", { chat });
+  assert.equal(stopped.error && stopped.error.code, "verify_failed", JSON.stringify(stopped));
+  // put the real chunk back: it carries on from the chunk that failed, and the chunks before it are not put twice
+  await C.d.kernel.gateway.drive.put(cChain, chunkPath(folder, wrote.chunks), good.bytes || good.data || good);
   const imported = await cCaller("work.chat.history-import", { chat });
   assert.ok(imported.data, JSON.stringify(imported.error));
-  assert.deepEqual([imported.data.frames, imported.data.runs], [st.frames.length, 1]);
-  assert.ok(C.d.registry.modules.get("stream").handle.logs.get(chat).read(0).some(f => f.type === "chat.text-done"));
+  assert.equal(imported.data.chunks, 1, "only the chunk that failed was left to put back");
+  const logsC = C.d.registry.modules.get("stream").handle.logs;
+  assert.equal(logsC.get(chat).read(0).length, st.frames.length, "every frame is there, none twice");
+  assert.ok(logsC.get(chat).read(0).some(f => f.type === "chat.text-done"));
+  assert.equal((await C.d.registry.call("threads.get", { thread: th.runs[0].id, limit: 1000 }, "module:work")).data.events.length, th.events.length, "every event is there, none twice");
+  assert.equal((await cCaller("work.chat.history-import", { chat })).data.chunks, 0, "nothing is put back twice");
   assert.equal((await cCaller("work.chat.history-import", { chat: "chat_nonesuch" })).error.code, "not_found");
 });

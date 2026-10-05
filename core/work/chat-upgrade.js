@@ -3,12 +3,60 @@
 // spaces module asks for. A chat keeps its id (a Space is its own namespace, and a chat's key ring is bound to the id), its title and its people; it is filed under the target's General project;
 // its record and its folders (chat/ and made/) move with it, the files sealed through the move's own carry (`from.carry`), never read by the mover. Agents that exist in the target stay in it, others
 // and people who are not members of the target are listed as `former`. Resumable: a chat already in the target is skipped.
+import crypto from "node:crypto";
 import { carryChat } from "./chat-carry.js";
 
 const CHAT = "chat-record", PROJECT = "project";
-/** Where a chat's history travels, in its own folder, and the most of it one chat carries. */
-export const HISTORY_FILE = ".history.json";
-const HISTORY_MAX = 30 * 1048576;
+/** Where a chat's history travels: numbered chunks and a manifest in the chat's own folder (sealed with its files), never anywhere else. */
+export const HISTORY_DIR = ".history";
+/** A chunk holds about this much JSON; one item larger than that is a chunk of its own (up to ONE_MAX). */
+export const CHUNK_MAX = 8 * 1048576;
+const ONE_MAX = 64 * 1048576;
+const pad = (/** @type {number} */ n) => String(n).padStart(6, "0");
+export const chunkPath = (/** @type {string} */ folder, /** @type {number} */ n) => `${folder}/${HISTORY_DIR}/${pad(n)}.json`;
+export const manifestPath = (/** @type {string} */ folder) => `${folder}/${HISTORY_DIR}/manifest.json`;
+
+/**
+ * Split a chat's history into chunks in the order it must come back: the runs, then who answers, then the runs' events, then the logged frames. Each chunk is at most `max` bytes of JSON.
+ * @param {{ runs?: any[], members?: any[], events?: any[], frames?: any[] }} bundle @param {number} [max]
+ * @returns {{ runs?: any[], members?: any[], events?: any[], frames?: any[] }[]}
+ */
+export function chunksOf(bundle, max = CHUNK_MAX) {
+  /** @type {any[]} */ const out = [];
+  /** @type {any} */ let cur = {}; let size = 0;
+  const flush = () => { if (size) { out.push(cur); cur = {}; size = 0; } };
+  for (const kind of ["runs", "members", "events", "frames"]) {
+    for (const item of /** @type {any[]} */ ((/** @type {any} */ (bundle))[kind] || [])) {
+      const n = JSON.stringify(item).length;
+      if (n > ONE_MAX) throw new Error(`one item of this chat's history is too large to carry (${Math.round(n / 1048576)} MB)`);
+      if (size && size + n > max) flush();
+      (cur[kind] ||= []).push(item); size += n;
+    }
+    flush(); // a kind never shares a chunk with the next: the order is the chunks' order
+  }
+  return out;
+}
+
+/**
+ * Write the history into the chat's own folder: chunks first, the manifest last (a manifest means every chunk is there), so a move that stops half way writes the whole thing again and nothing half-read is trusted.
+ * @param {any} from the source side @param {string} folder `<project folder>/chat/<chat id>` @param {string} chat @param {any} bundle @param {number} [max]
+ * @returns {Promise<{ chunks: number, bytes: number }>}
+ */
+export async function writeHistory(from, folder, chat, bundle, max = CHUNK_MAX) {
+  const parts = chunksOf(bundle, max);
+  if (!parts.length) return { chunks: 0, bytes: 0 };
+  /** @type {{ n: number, path: string, bytes: number, sha256: string }[]} */ const chunks = [];
+  let total = 0;
+  for (const [i, part] of parts.entries()) {
+    const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, chat, n: i + 1, ...part }));
+    await from.drive.put(from.chain, chunkPath(folder, i + 1), bytes);
+    chunks.push({ n: i + 1, path: chunkPath(folder, i + 1), bytes: bytes.length, sha256: crypto.createHash("sha256").update(bytes).digest("hex") });
+    total += bytes.length;
+  }
+  const counts = { runs: (bundle.runs || []).length, members: (bundle.members || []).length, events: (bundle.events || []).length, frames: (bundle.frames || []).length };
+  await from.drive.put(from.chain, manifestPath(folder), new TextEncoder().encode(JSON.stringify({ v: 1, chat, chunks, counts })));
+  return { chunks: chunks.length, bytes: total };
+}
 
 /** The folders a chat's files live in under its project's folder. @param {any} data */
 const foldersOf = data => (data.drive && data.chat ? [`${data.drive}/chat/${data.chat}`, `${data.drive}/made/${data.chat}`] : []);
@@ -57,12 +105,11 @@ export async function runUpgrade({ from, to, rows, ports = {} }) {
         const c = await carryChat({ to, src: r.data, newRoot: root, id });
         await to.records.create(to.chain, CHAT, { title: r.data.title, project: { urn: general.urn }, chat: c.chat, people: c.people.join(","), agents: c.agents.join(","), ...(c.former.length ? { former: c.former.join(",") } : {}), started: r.data.started, last_active: r.data.last_active, status: r.data.status === "working" ? "idle" : r.data.status, drive: root, location: `${root}/chat/${c.chat}/` });
       }
-      // the chat's history (its logged frames, its runs and their events) is written beside its files, in the chat's own folder, so it travels sealed with them; the other end puts it back (work.chat.history-import)
+      // the chat's history (its logged frames, its runs and their events) is written in numbered chunks and a manifest beside its files, in the chat's own folder, so it travels sealed with them; the
+      // other end puts it back in order (work.chat.history-import). Nothing of it is written anywhere else.
       if (ports.history && from.drive && typeof from.drive.put === "function" && r.data.drive) {
         const bundle = await ports.history(id);
-        const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, chat: id, ...bundle }));
-        if (bytes.length > HISTORY_MAX) throw new Error(`this chat's history is too large to carry (${Math.round(bytes.length / 1048576)} MB)`);
-        if (bundle && ((bundle.frames && bundle.frames.length) || (bundle.runs && bundle.runs.length))) await from.drive.put(from.chain, `${r.data.drive}/chat/${id}/${HISTORY_FILE}`, bytes);
+        if (bundle && ((bundle.frames && bundle.frames.length) || (bundle.runs && bundle.runs.length))) await writeHistory(from, `${r.data.drive}/chat/${id}`, id, bundle);
       }
       if (from.drive && typeof from.drive.inventory === "function" && typeof from.carry === "function") {
         const inv = (await from.drive.inventory(from.chain, r.data.drive, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat && foldersOf(r.data).some(f => String(e.path).startsWith(`${f}/`)));
