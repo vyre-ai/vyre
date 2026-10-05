@@ -104,6 +104,15 @@ export function createTasks(cfg) {
     if (rule.approver.person !== undefined) return canon(h.id) === canon(rule.approver.person);
     return Boolean(cfg.members && typeof cfg.members.roleOf === "function" && cfg.members.roleOf(h) === rule.approver.role);
   };
+  /** AT-1: an approval is spent only while the person who gave it still holds the right to: still a member of the Space, and not demoted to a role that cannot decide a task (a temp). A removed approver's yes does not pass inside the day it is good for. */
+  const approverStands = (/** @type {any} */ by) => {
+    const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length >= 1 ? by.approver_chain.hops[0].actor : null;
+    if (!h || h.kind !== "person") return false;
+    // a members port with no `has` cannot say the approver still stands: fail closed (the real grants store always has one)
+    if (!cfg.members || typeof cfg.members.has !== "function" || !cfg.members.has(h)) return false;
+    const role = typeof cfg.members.roleOf === "function" ? cfg.members.roleOf(h) : null;
+    return role !== "temp";
+  };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
@@ -695,17 +704,22 @@ export function createTasks(cfg) {
     /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
-     * @param {{ id: string, chain: any, action: string, resource: string, bind?: string }} q
+     * @param {{ id: string, chain: any, action: string, resource: string, bind?: string, outward?: boolean }} q
      */
     approvedAct(q) {
       const a = api.approvalFor(q.id), t = tasks.get(q.id);
       // The bind: when the approval recorded the bind of exactly what the person saw (form.bind, a digest of the request as it would be sent), the request being sent must carry that same one: a different
-      // request, or one that states none, is a different act and is refused (the connectors' calendar sync checks it for itself; this makes it universal for every outward act). An approval that recorded
-      // none is judged as before.
+      // request, or one that states none, is a different act and is refused (the connectors' calendar sync checks it for itself; this makes it universal for every outward act). A task approved for an outward act always records one (a Flow's held act, the calendar sync, the vault's held request).
       const recorded = t && t.form && typeof /** @type {any} */ (t.form).bind === "string" ? /** @type {any} */ (t.form).bind : null;
       const asked = typeof q.bind === "string" && q.bind ? q.bind : null;
+      // One rule, no older looser path: an OUTWARD approval that recorded no bind covers nothing, since it could be spent on any act of that kind.
+      if (q.outward === true && recorded === null) return false;
       if (recorded !== null && recorded !== asked) return false;
-      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
+      // What the approval covers: the act the approved body names (a draft task's evidence) or, for a Flow's or a connector's held act, the act the task's own form names (kind held_act: action, resource, bind),
+      // which the checker was shown and which is frozen with the task. Nothing else is covered.
+      const form = t && t.form && /** @type {any} */ (t.form).kind === "held_act" ? /** @type {any} */ (t.form) : null;
+      const coveredAction = a && a.body.action !== undefined ? a.body.action : form && form.action, coveredResource = a && a.body.resource !== undefined ? a.body.resource : form && form.resource;
+      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && coveredAction === q.action && coveredResource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)) && approverStands(approvedBy.get(q.id)));
     },
     /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
     useApproval(q) {
