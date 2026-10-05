@@ -1,5 +1,5 @@
 // @ts-check
-// egress: Glass egress through the person's own Mac, over the Wink peer link (TAILSCALE-removal D2).
+// egress: Glass egress through the person's own Mac, over the Wink peer link (team/0.3 removal plan, decision D2).
 //
 // A bank or a court that sees a datacenter address asks questions, or refuses. With config glass.egress on, the listed sites leave an agent's Chrome (core/computers/egress.js
 // writes the proxy script) from the person's Mac instead of the box. The Mac's own vyred holds one connection open to its home (core/wink/storage/hold.js: the device dials out, the
