@@ -71,3 +71,18 @@ test("isYou on a kernel chain is the kernel's own isExactlyPerson (the gate uses
   assert.equal(isYou(chains[0]), true);
   assert.equal(isYou(chains[2]), false);
 });
+
+test("the moments: wink.code.open is a pair moment (a browser or server typed pairing starts there), and filling or revealing a sealed field (records.seal-put, records.reveal) is the vault moment", async () => {
+  const { momentOf, opFitsMoment, lineOfOp } = await import("../../lib/one-yes.js");
+  assert.equal(momentOf("wink.code.open"), "pair");
+  assert.equal(opFitsMoment("pair", "wink.code.open"), true);
+  for (const op of ["records.seal-put", "records.reveal"]) {
+    assert.equal(momentOf(op), "vault", op);
+    assert.equal(opFitsMoment("vault", op), true);
+    assert.equal(opFitsMoment("pair", op), false);
+    assert.match(lineOfOp(op, {}, "A device"), /sealed/);
+  }
+  // not widened: a prefix never counts
+  assert.equal(momentOf("records.update"), null);
+  assert.equal(momentOf("wink.code.status"), null);
+});

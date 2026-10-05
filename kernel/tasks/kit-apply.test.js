@@ -48,7 +48,7 @@ test("an approved Kit installs: the approval is the presence for exactly the Kit
   const r = await k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver });
   assert.equal(r.applied, true);
   await k.gateway.records.define(kitChain, { add_types: [PET] }, { waiver });
-  assert.deepEqual((await k.store.types()).map(t => t.name).sort(), ["contact", "pet"]);
+  assert.deepEqual((await k.store.types()).map(t => t.name).sort(), ["contact", "pet", "task"], "the Kit's two types and the kernel's own task type");
   k.gateway.kits.end(waiver);
 });
 
@@ -142,7 +142,7 @@ test("KT-4 kits.resume (repeatable, one approval): a define that fails leaves th
   for (let n = 0; n < 3; n++) assert.deepEqual({ ...(await k.gateway.kits.resume({ chain: kitChain, task, kit: KIT })) }, { already_installed: true });
   assert.equal(k.log.read({ type: "kit.installed" }).length, 1);
   assert.equal(k.log.read({ type: "kit.resumed" }).length, 2, "no resume was written when nothing was missing");
-  assert.deepEqual((await k.store.types()).map(t => t.name).sort(), ["contact", "pet"]);
+  assert.deepEqual((await k.store.types()).map(t => t.name).sort(), ["contact", "pet", "task"], "the Kit's two types and the kernel's own task type");
   // the Kit changed since the approval: refused, even with nothing missing
   await assert.rejects(() => k.gateway.kits.resume({ chain: kitChain, task, kit: { ...KIT, types: [CONTACT, PET, { name: "extra", label: "E", fields: [] }] } }), { code: "not_allowed" });
   // a Kit with no types begins and is installed at once

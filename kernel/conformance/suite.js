@@ -383,7 +383,9 @@ export function conformance(make, { test, assert }, label = "store") {
     const p1 = await s.query("lead", { filter: f, page: { limit: 2 } });
     assert.equal(p1.rows.length, 2); assert.ok(p1.next_cursor);
     const seen = [...p1.rows];
-    for (let cursor = p1.next_cursor; cursor;) { const p = await s.query("lead", { filter: f, page: { limit: 2, cursor } }); seen.push(...p.rows); cursor = p.next_cursor; }
+    // bounded: a store whose cursor repeats the first page forever must fail here, not grow without end (the "teeth" test with a repeating pager once ran a 4 GB heap out)
+    let pages = 1;
+    for (let cursor = p1.next_cursor; cursor;) { assert.ok(++pages <= 10, "paging did not finish: the cursor never advances"); const p = await s.query("lead", { filter: f, page: { limit: 2, cursor } }); seen.push(...p.rows); cursor = p.next_cursor; }
     assert.deepEqual(ids(seen), mine.slice().sort(), "every linked record once");
     assert.equal(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(b.id) }, page: { limit: 20 } })).rows).length, 5, "the many side lists the same way");
     const total = await s.aggregate("lead", { group_by: [], measures: [{ fn: "count" }], filter: f });

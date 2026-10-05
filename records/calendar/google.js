@@ -12,7 +12,7 @@ export function fromGoogle(g, calendar) {
   return {
     title: g.summary || "(no title)", starts_at: new Date(start).toISOString(), ...(end ? { ends_at: new Date(end).toISOString() } : {}), all_day: allDay,
     ...(s.timeZone ? { time_zone: s.timeZone } : {}), ...(g.location ? { place: g.location } : {}), ...(people.length ? { people } : {}),
-    ...(g.description ? { notes: g.description } : {}), source: "google", calendar, external_id: g.id,
+    ...(g.description ? { notes: g.description } : {}), ...(typeof g.htmlLink === "string" && /^https?:\/\//.test(g.htmlLink) ? { url: g.htmlLink } : {}), source: "google", calendar, external_id: g.id,
   };
 }
 

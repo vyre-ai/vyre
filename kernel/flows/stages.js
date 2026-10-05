@@ -17,7 +17,7 @@
 // - A stuck or rejected task simply is not done: nothing advances, nothing is made twice. A record that was moved by hand before the tasks
 //   finished is left alone. Coming back into a stage later is a new entry with new tasks.
 
-import { holds, stagesFor } from "../expr/conditions.js";
+import { holds, stagesFor } from "../../lib/expr/conditions.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {

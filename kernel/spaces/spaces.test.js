@@ -339,6 +339,36 @@ test("moving a project between two Spaces of one home: approved once where it st
   await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, from: b.space }), { code: "bad_input" });
 });
 
+test("moving several projects at once: one approval covers the target, the plan and the exact list; each project is then received on its own, single use", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  const ids = ["0190c3f2-1111-4abc-8def-000000000011", "0190c3f2-1111-4abc-8def-000000000012", "0190c3f2-1111-4abc-8def-000000000013"];
+  const projects = ids.map(x => `vyre://${a.space}/project/${x}`);
+  const plan_hash = "p".repeat(43);
+  const req = { projects, to: b.space, plan_hash };
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req), { code: "needs_presence" });
+  // a proof for fewer projects, another plan or another target is no proof for this batch
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, projects: projects.slice(0, 2) })), { code: /needs_presence|bad_proof|wrong/ });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, plan_hash: "q".repeat(43) })), { code: /needs_presence|bad_proof|wrong/ });
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 0, "nothing was started by a refused call");
+  // every project is checked before the proof is spent; a duplicate or a foreign one is refused
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [projects[0], projects[0]] }), { code: "bad_input" });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [`vyre://${b.space}/project/${ids[0]}`] }), { code: "bad_input" });
+  const proof = sign(a.space, "moveOutMany", req);
+  const out = await a.gateway.moves.outMany(ca, req, proof);
+  assert.equal(out.moves.length, 3);
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 3, "one event per project");
+  // the same proof cannot start the batch again
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, proof), { code: /needs_presence|bad_proof|replay|used|wrong/ });
+  for (const m of out.moves) {
+    const got = await b.gateway.moves.in(cb, { from: a.space, project: m.project, plan_hash, move_id: m.move_id });
+    assert.deepEqual(got, { received: true, move_id: m.move_id });
+  }
+  assert.equal(b.kernel.log.read({ type: "project.move_in" }).length, 3);
+  await assert.rejects(() => b.gateway.moves.in(cb, { from: a.space, project: out.moves[0].project, plan_hash, move_id: out.moves[0].move_id }), { code: "invalid" });
+});
+
 test("a module tool's cross-space action: the hosted Space's own authorize allows a member's chain and refuses a stranger and another Space's chain", async () => {
   const { spaces } = await home();
   const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
