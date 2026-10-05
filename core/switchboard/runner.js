@@ -29,14 +29,16 @@ import { vyreMcpConfig } from "../../lib/mcp-config.js";
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
- * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, native?: string|null, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
   // A fork continues another session's conversation as a new one, with the id given here.
-  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // native: the session id this thread's Claude runs under now, when a rollover gave it a fresh one (a session id names one transcript); else the thread's own id.
+  const sid = o.native || o.id;
+  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", sid] : ["--session-id", sid]));
   // A rewind: resume only up to this entry, as Claude Code's double Esc does (the flag the SDK passes).
   if (o.resumeAt && (o.resume || o.forkFrom)) a.push("--resume-session-at", o.resumeAt);
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
