@@ -159,8 +159,8 @@ test("a damaged drop is refused: the file does not appear, the drop stays for an
 test("the server's bounds: a file over the cap, a server holding as much as it will, an open drop that never finished, and an expired drop", () => {
   let T = 1_000_000;
   const st = createDropStore({ dir: dir("drop-cap-"), maxBytes: 100, homeBytes: 150, ttlMs: 1000, now: () => T });
-  const k = newDropKey().pub;
-  st.register("B", k, { eid: "B", sig: "s" });
+  const k = "k".repeat(44);
+  st.register("B", "B");
   assert.throws(() => st.begin({ id: "a".repeat(30), from: "A", to: "B", total: 2, size: 101, eph: k }), { code: "too_large" });
   const id = "b".repeat(30); st.begin({ id, from: "A", to: "B", total: 2, size: 90, eph: k }); st.put(id, "A", 0, Buffer.alloc(40)); st.put(id, "A", 1, Buffer.alloc(40)); st.finish(id, "A");
   assert.throws(() => st.begin({ id: "c".repeat(30), from: "A", to: "B", total: 2, size: 90, eph: k }), { code: "no_room" }, "the server holds as much as it will");
