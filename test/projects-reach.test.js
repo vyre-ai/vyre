@@ -50,12 +50,14 @@ test("an agent reaches a project only by a kernel grant: deny by default, grant,
   assert.deepEqual((await call("projects.access.list", {})).data.grants, []);
 });
 
-test("without the person's proof nothing is granted: a grant is a person's act with the kernel's own proof", { timeout: 180_000 }, async t => {
+test("without a person nothing is granted: a project.reach grant is a person's own call (no proof since the role rules, but a person it must be)", { timeout: 180_000 }, async t => {
   const { call, home, SI_FACTS } = await boot(t);
   assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: [] })).error);
+  const noPerson = await call("projects.access.grant", { project: "northwind", agent: "kit" }, {});
+  assert.ok(noPerson.error, "no person, no grant");
   const noProof = await call("projects.access.grant", { project: "northwind", agent: "kit" }, { kernelFacts: SI_FACTS });
-  assert.ok(noProof.error, "no proof, no grant");
+  assert.ok(!noProof.error, "the person's own call needs no proof for an agent's reach: " + JSON.stringify(noProof.error));
   assert.equal(await granted(call, "northwind", "kit"), false);
 });
 
