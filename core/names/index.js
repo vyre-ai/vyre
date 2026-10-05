@@ -95,6 +95,28 @@ export default {
       callers: WHO,
       run: async (_, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release(); },
     });
+    // The box's public gate (core/wink/control/publicgate.js) gets its certificate and its address through the directory, which this module alone can sign for.
+    // Modules only, and only the Wink module: it never sees the route key, only these three answers.
+    const fromWink = meta => { if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("the name directory's DNS calls are the Wink module's"), { code: "denied" }); };
+    const myName = () => { const n = ctx.config.name; if (!n) throw Object.assign(new Error("this box has no name yet"), { code: "no_name" }); return String(n); };
+    ctx.tool("names.directory.acme", {
+      description: "Put an ACME DNS-01 challenge value under this box's name (Wink module only).",
+      input: obj({ token: { type: "string" } }, ["token"]),
+      internal: true,
+      run: async ({ token }, meta) => { fromWink(meta); return dir.acme(myName(), String(token)); },
+    });
+    ctx.tool("names.directory.acme-clear", {
+      description: "Clear this box's ACME challenge record (Wink module only).",
+      input: obj(),
+      internal: true,
+      run: async (_, meta) => { fromWink(meta); return dir.acmeClear(myName()); },
+    });
+    ctx.tool("names.directory.publish", {
+      description: "Point this box's name at the public IPv4 the directory sees it at (Wink module only).",
+      input: obj(),
+      internal: true,
+      run: async (_, meta) => { fromWink(meta); return dir.publish(myName()); },
+    });
     // A recovery of this box's name is cancelled by the box itself, so look often (the rebind waits 72 hours).
     const watching = () => svc.watch().catch(e => ctx.log("names: directory check failed: " + e.message));
     const watch = setInterval(watching, HOUR);
