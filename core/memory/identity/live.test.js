@@ -82,14 +82,14 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   // The person's one yes for this server. Without it, or over some other request, nothing is granted.
   const fp = (await ask("memory.identity.status", {}, "mcp:agent:juno")).data.server;
   assert.match(fp, /^[0-9a-f]{16}$/);
-  assert.equal((await ask("memory.identity.grant", { proof: {} }, "mcp:agent:juno")).error?.code, "denied");
-  assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno")).error?.code, "denied", "a yes nobody was shown this for");
+  assert.equal((await ask("memory.identity.grant", { proof: {} }, "deck")).error?.code, "denied");
+  assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "deck")).error?.code, "denied", "a yes nobody was shown this for");
   const early = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
   assert.equal(early.error, undefined);
   await assert.rejects(() => phone.answer(early.data.ask), { code: "needs_yes" }, "the phone does not answer a server it was not granted");
   assert.equal((await ask("memory.identity.unlock.finish", { request: early.data.ask.request, answer: {} }, "mcp:agent:juno")).error?.code, "denied", "and the server takes no answer without the grant");
   w.shown.push({ server: fp, identity: "ident_alex" });
-  const granted = await ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno");
+  const granted = await ask("memory.identity.grant", { proof: { signed: true } }, "deck");
   assert.equal(granted.error, undefined, JSON.stringify(granted));
   assert.deepEqual(granted.data.granted.map(g => g.fp), [fp]);
   phone.grant(w.serverKey().publicJwk);
@@ -122,7 +122,7 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   assert.equal((await ask("memory.identity.revoke", {}, "mcp:agent:juno")).error?.code, "denied", "revoking is the person's own act");
 
   // Grant again, then the person gets their own server (even a tiny one): the home moves there, nothing decrypted, and the same phone opens it.
-  assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno")).error, undefined);
+  assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "deck")).error, undefined);
   const own = path.join(w.root, "my-own-tiny-server");
   const moved = await ask("memory.identity.move", { to: own, name: "my server" });
   assert.equal(moved.error, undefined, JSON.stringify(moved));
@@ -142,7 +142,7 @@ test("a restart is answered from the phone without asking again, while the grant
   await w.ask("memory.identity.enroll", { devices: [{ publicJwk: w.device.publicJwk }] });
   const fp = (await w.ask("memory.identity.status", {}, "mcp:agent:juno")).data.server;
   w.shown.push({ server: fp, identity: "ident_alex" });
-  assert.equal((await w.ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno")).error, undefined);
+  assert.equal((await w.ask("memory.identity.grant", { proof: { signed: true } }, "deck")).error, undefined);
   phone.grant(w.serverKey().publicJwk);
   await w.d.stop();
   // The server comes back: locked, and it tells the phone it wants the memory (an event); the phone calls begin, answers, finish: no prompt, no yes.
