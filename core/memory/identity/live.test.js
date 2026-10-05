@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import { tempHome } from "../../../test/helpers.js";
-import { newDeviceKey } from "./crypto.js";
+import { newDeviceKey } from "../../../lib/keywrap.js";
 import { Phone } from "./home.js";
 import { configureYes } from "../../../lib/one-yes.js";
 

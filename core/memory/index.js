@@ -32,6 +32,7 @@ import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
+import { createMoves, slugOf } from "./move.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
@@ -305,7 +306,7 @@ export default {
       if (r.error && r.error.code !== "no_such_tool") throw new Error(r.error.message);
       const list = r.error ? [] : (Array.isArray(r.data) ? r.data : r.data?.projects || []);
       const ids = p => (Array.isArray(p.picks) ? p.picks : Array.isArray(p.threads) ? p.threads : []).map(x => String(x && typeof x === "object" ? x.id : x));
-      return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), name: String(p.name || p.slug),
+      return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), id: p.id ? String(p.id) : undefined, name: String(p.name || p.slug),
         folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))], threads: ids(p) }));
     };
     /** Store the rooms. A change marks the curator dirty, so the pass that follows derives. */
@@ -1151,6 +1152,21 @@ export default {
         return { marker: m.urn, layer: "project", ...r };
       },
     });
+    // ---- a project's memory moves between Spaces (move.js): offer (target), export (source), import (target, returns the receipt), forget (source, needs the receipt). One approval was given where the move
+    // started; each call refuses unless this Space's own log holds the kernel's event for the move. Flows runs them inside its move, under the mover's chain.
+    const moves = createMoves({ db: ctx.store.db, space: rawCtx.kernel && rawCtx.kernel.space ? String(rawCtx.kernel.space) : "local",
+      events: type => { try { return rawCtx.kernel && rawCtx.kernel.log ? rawCtx.kernel.log.read({ type }) : []; } catch { return []; } } });
+    const moveOf = { type: "object", required: ["move_id", "plan_hash", "project"], properties: { move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } } };
+    const mover = (/** @type {any} */ extra, /** @type {string} */ what) => { if (!reader(extra.caller)) throw denied(`${what} is the person's own act, run by the move`); };
+    const roomTool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {(i: any, slug: (r: string) => Promise<string>) => any} */ run) =>
+      ctx.tool(name, { effect: "write", description, input, run: async (i, extra = {}) => { mover(extra, name); const slug = async (/** @type {string} */ r) => slugOf(r, await projectList().catch(() => [])); return run(i, slug); } });
+    roomTool("memory.room.offer", "Target side of a project memory move: makes a one-use key for this move and returns its public half (to_key); the private half stays in this process's memory. Refused unless this Space's log holds project.move_in for the move.", moveOf, i => moves.offer(i));
+    roomTool("memory.room.export", "Source side: reads the project's portable memory (writes, decisions, corrections) and seals it to the target's to_key. Returns { counts, digest, package }; only ciphertext leaves. Refused unless this Space's log holds project.move_started for the move. The graph is derived and is not carried.",
+      { ...moveOf, required: [...moveOf.required, "to_key"], properties: { ...moveOf.properties, to_key: { type: "object" } } }, async (i, slug) => moves.export({ ...i, slug: await slug(i.project) }));
+    roomTool("memory.room.import", "Target side: opens the package with the move's key, writes the rows under the target project in one transaction (a repeat is a no-op) and returns the receipt { move_id, project, plan_hash, space, slug, digest, counts, at }. `into` names the target project when its slug differs.",
+      { ...moveOf, required: [...moveOf.required, "package"], properties: { ...moveOf.properties, package: { type: "object" }, into: { type: "string" } } }, async (i, slug) => moves.import({ ...i, ...(i.into ? { slug: await slug(i.into) } : {}) }));
+    roomTool("memory.room.forget", "Source side, after the target imported: needs the receipt; refuses if the project's memory changed since the export; removes the moved rows for good and leaves moved_to. Returns { forgotten: counts, moved_to }.",
+      { ...moveOf, required: [...moveOf.required, "receipt"], properties: { ...moveOf.properties, receipt: { type: "object" } } }, async (i, slug) => moves.forget({ ...i, slug: await slug(i.project) }));
     // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
     // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
     const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });

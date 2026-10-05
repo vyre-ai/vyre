@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 import { IdentityHome, FileBackend, Lease, newServerKey } from "./home.js";
-import { fingerprint } from "./crypto.js";
+import { fingerprint } from "../../../lib/keywrap.js";
 
 /** The tables that are the person's identity memory: what they said about themselves and their life, what memory answered from it, and what was offered to correct it. */
 export const IDENTITY_TABLES = Object.freeze([

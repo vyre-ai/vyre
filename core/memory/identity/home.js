@@ -16,7 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { newKey, seal, open, newDeviceKey, wrapForDevice, unwrapWithDevice, wrapWithCode, unwrapWithCode, fingerprint, sha256 } from "./crypto.js";
+import { newKey, seal, open, newDeviceKey, wrapForDevice, unwrapWithDevice, wrapWithCode, unwrapWithCode, fingerprint, sha256 } from "../../../lib/keywrap.js";
 
 /** An unlocked key lives in the assistant's process until it is locked, revoked or the process ends: there is no timer that asks the person again (the no-nagging rule). */
 export const LEASE_MS = Infinity;

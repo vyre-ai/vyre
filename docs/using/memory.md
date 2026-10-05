@@ -174,6 +174,10 @@ vyre call memory.follow '{"marker":"Northwind","question":"what did we decide ab
 You and your assistant follow every marker. An agent bound to a project reads only its own layer; a project it is not granted does not appear in its markers and is not counted, and
 following it answers as if there were none. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
 
+### Moving a project between Spaces
+
+When a project moves to another of your Spaces, its memory goes with it: the facts and notes filed to it, its decisions and your corrections. They travel sealed to a key the receiving Space makes for that one move, are checked by digest, and only then are removed from the old Space, which keeps a note of where they went (`moved_to`). The graph of people and topics is built again in the new Space from the sessions that arrive with the project. The move itself is one yes, given where it starts.
+
 ### Where your identity memory lives
 
 On a space server, your identity memory is stored encrypted to your own key, so the people who run that server (admins, root) see only ciphertext at rest. On your own devices (phone,
