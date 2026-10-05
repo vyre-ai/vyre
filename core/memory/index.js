@@ -1259,13 +1259,13 @@ export default {
     ctx.tool("memory.backup.restore", {
       effect: "write",
       description: "Bring the encrypted backup back onto this device: every file and row file in the newest backup is rebuilt from its chunks, checked by hash, and written under `to` (default: a new folder in this home's restore folder), each at its own relative path. This device's key opens it; on a new device with no key yet, pass the recovery code. Returns { rev, restored, missing: [{ name, why }], to }. A missing or damaged chunk is named, never skipped.",
-      input: { type: "object", properties: { to: { type: "string" }, recovery_code: { type: "string" } } },
+      input: { type: "object", properties: { to: { type: "string" }, recovery_code: { type: "string" }, recovery_password: { type: "string" } } },
       run: async (input, extra = {}) => {
         if (!reader(extra.caller)) throw denied("restoring the backup is the person's own act");
         if (!bkCfg || !identity) throw Object.assign(new Error("there is no team server to restore from"), { code: "not_found" });
         const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
         let imk;
-        if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code)).key());
+        if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code), String(input.recovery_password || "")).key());
         else { const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8")); const l = await identity.home.unlockWithDevice(dev); imk = Buffer.from(l.key()); l.lock(); }
         try {
           const b = await Backup.open({ backend: be, identity: String(bkCfg.id), imk });
@@ -1321,7 +1321,7 @@ export default {
       run: async (input, extra = {}) => {
         if (!identity) throw noIdentity();
         if (!reader(extra.caller)) throw denied("sealing the identity memory is the person's own act");
-        const r = identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
+        const r = identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code), recoveryPassword: String(input.recovery_password || "") } : {}) });
         ctx.events.emit("memory.sealed", { kept: r.kept });   // about.md must stop carrying the person's facts in the clear
         return r;
       },
