@@ -5,12 +5,13 @@
 import { p256 } from "@noble/curves/p256";
 import { sha256 } from "@noble/hashes/sha2";
 import { unwrapWithDevice, wrapForDevice, unb64, utf8 } from "../../../../lib/keywrap.js";
+import { canonical } from "../../../../kernel/core/canonical.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const aadOf = (/** @type {string} */ id, /** @type {string} */ what) => `vyre-identity-home/${id}/${what}`;
 
-/** The bytes a server signs for a request (home.js askBytes, field for field and in this order). @param {any} ask */
-export const askBytes = (ask) => utf8(JSON.stringify({ id: ask.id, home: ask.home, request: ask.request, sessionPub: ask.sessionPub, rev: ask.rev, server: ask.server && ask.server.fp }));
+/** The bytes a server signs for a request (home.js askBytes): the sorted-key canonical JSON of these fields, so the order a field arrives in never decides validity. @param {any} ask */
+export const askBytes = (ask) => utf8(canonical({ id: ask.id, home: ask.home, request: ask.request, sessionPub: ask.sessionPub, rev: ask.rev, server: ask.server ? ask.server.fp : null }));
 
 /** The 65-byte point of a P-256 public JWK. @param {{ x: string, y: string }} jwk */
 const point = (jwk) => { const p = new Uint8Array(65); p[0] = 4; p.set(unb64(jwk.x), 1); p.set(unb64(jwk.y), 33); return p; };

@@ -50,3 +50,10 @@ test("unlock: an answer is for one request; another request's secret does not op
   const answer = await answerUnlock(one.ask, w.agree, w.granted);
   await assert.rejects(() => w.home.finishUnlock(two.ask, two.secret, answer), { code: "cannot_open" });
 });
+
+test("unlock: the signature holds when the request's fields arrive in another order", async (t) => {
+  const w = world(t);
+  const { ask } = w.home.beginUnlock(w.server);
+  const shuffled = { sig: ask.sig, server: ask.server, rev: ask.rev, wraps: ask.wraps, sessionPub: { y: ask.sessionPub.y, x: ask.sessionPub.x, crv: ask.sessionPub.crv, kty: ask.sessionPub.kty }, request: ask.request, home: ask.home, id: ask.id };
+  assert.ok(askSignedBy(shuffled, w.server.publicJwk));
+});
