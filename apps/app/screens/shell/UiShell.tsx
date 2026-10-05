@@ -10,6 +10,7 @@ import { loadReal } from "./real";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
+import { startKeepingAppearance } from "../../src/state/keep-appearance";
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
 export function UiShell({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { space, looks, setShowing } = useSpaces();
   const { data: DATA, set, fail } = useShell();
+  useEffect(() => { startKeepingAppearance(); }, []);
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
