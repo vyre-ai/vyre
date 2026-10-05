@@ -213,11 +213,11 @@
  },
  {
   "tool": "connectors.declared",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.declared opened to a model or a module in 1cb1cdd71 (4 Oct 2026); the body decides: a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
  },
  {
   "tool": "connectors.logging",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.logging opened to a model or a module in 1cb1cdd71 (4 Oct 2026); the body decides: a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
  },
  {
   "tool": "files.deliver",
@@ -550,6 +550,18 @@
  {
   "tool": "projects.watchers.remove",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): removes watchers from a project"
+ },
+ {
+  "tool": "recall.links",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; recall.links opened to a model or a module in e8a4645fd (4 Oct 2026); the body decides: a read of the turns that touched a file, commit or url; callers are READERS and the body holds a model to its own project's folders (reach() and inFolders in core/recall/index.js), the same guard as recall.search"
+ },
+ {
+  "tool": "recall.pointers",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; recall.pointers opened to a model or a module in e8a4645fd (4 Oct 2026); the body decides: the rollover split of a thread's own windows for Vyre's seed; callers are OWNERS_ONLY (core/recall/index.js), so a cli label such as agent:kit is the cli surface, not a model's session"
+ },
+ {
+  "tool": "recall.turn",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; recall.turn opened to a model or a module in e8a4645fd (4 Oct 2026); the body decides: a read of one past session's turns, word for word; callers are READERS and the body holds a model to its own project's sessions (reach() and readableSession in core/recall/index.js), the same guard as recall.search"
  },
  {
   "tool": "records.actors",
