@@ -22,6 +22,7 @@ import { createAggregator } from "../../kernel/store/query.js";
 import { inversesOf } from "../../kernel/gateway/links.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
+import { syncViews, syncFieldOrder, FIELD_ICON } from "./views.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty, idOfLink, camel } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
@@ -300,7 +301,7 @@ export class TwentyStore {
   }
   async health() {
     const h = await twentyGet(this.client, "/healthz");
-    if (h.status !== 200) return { ok: false, detail: `Twenty is not answering (${h.status || "no reply"})`, checked_at: this.now() };
+    if (h.status !== 200) return { ok: false, detail: `Records is not answering (${h.status || "no reply"})`, checked_at: this.now() };
     try { await this.client.gql("metadata", "query Health { objects(paging: { first: 1 }) { edges { node { id } } } }"); } catch (e) { return { ok: false, detail: /** @type {Error} */ (e).message, checked_at: this.now() }; }
     return { ok: true, checked_at: this.now() };
   }
@@ -331,7 +332,7 @@ export class TwentyStore {
   async define(diff, o = {}) {
     const changes = [];
     const audit = await this.#auditSwitch();
-    const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }`));
+    const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
     // every link to a type must name a type that exists once this define is done: checked before anything is made in Twenty, so a refusal leaves no half-made object behind
     { const will = new Set([...this.plans.keys(), ...(diff.add_types ?? []).map((/** @type {any} */ t) => t.name), ...(diff.change_types ?? []).map((/** @type {any} */ t) => t.name)]);
@@ -403,7 +404,7 @@ export class TwentyStore {
       for (const f of wanted) {
         const ex = have.get(f.twenty);
         if (!ex) {
-          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.def.unique === true ? { isUnique: true } : {}), ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}) };
+          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.vyre !== VERSION_FIELD && f.vyre !== HELD_FIELD ? { icon: /** @type {any} */ (FIELD_ICON)[f.kind] ?? "IconAbc", ...(f.def.description ? { description: String(f.def.description).slice(0, 500) } : {}) } : {}), ...(f.def.unique === true ? { isUnique: true } : {}), ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}) };
           await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field } });
           if (f.twenty !== VERSION_FIELD && f.twenty !== HELD_FIELD) changes.push(`added field ${def.name}.${f.vyre}`);
           continue;
@@ -411,6 +412,11 @@ export class TwentyStore {
         if (ex.type !== f.type) throw new StoreError("unsupported", `Field ${f.vyre} of ${def.name} changed kind: that is a migration, not a define`);
         // `unique` on or off: Twenty builds or drops the index; over existing duplicates it refuses, which the client reports as unique_violation
         if (f.vyre !== VERSION_FIELD && f.vyre !== HELD_FIELD && Boolean(ex.isUnique) !== (f.def.unique === true)) { await this.client.gql("metadata", "mutation UpdUnique($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { isUnique: f.def.unique === true } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
+        // the icon of its kind and the description the definition gives it, so the Records' own screens read as ours do
+        if (f.vyre !== VERSION_FIELD && f.vyre !== HELD_FIELD && ex.icon !== undefined) {
+          const icon = /** @type {any} */ (FIELD_ICON)[f.kind] ?? "IconAbc", description = f.def.description ? String(f.def.description).slice(0, 500) : "";
+          if (ex.icon !== icon || (ex.description ?? "") !== description) await this.client.gql("metadata", "mutation UpdLook($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { icon, description } } });
+        }
         if (f.options) {
           const exVals = new Set((ex.options ?? []).map((/** @type {any} */ o) => o.value));
           for (const v of exVals) if (!f.options.some((o) => o.value === v)) throw new StoreError("unsupported", `An option of ${def.name}.${f.vyre} was removed: that is a migration, not a define`);
@@ -419,6 +425,16 @@ export class TwentyStore {
       }
       // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
       for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
+      // The Records' own copy of how the type is shown (stores/twenty/views.js): the field order of its table, and its stored views (new, changed or gone).
+      {
+        const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
+        const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
+        if (o) {
+          const target = { id: o.id, fields: new Map(o.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node.id])) };
+          await syncFieldOrder(this.client, target, p);
+          if ((def.views && def.views.length) || (known && known.def.views && known.def.views.length)) for (const c of await syncViews(this.client, target, p, this.space, known ? known.def : undefined)) changes.push(c);
+        }
+      }
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
       this.plans.set(def.name, p);

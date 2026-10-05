@@ -233,7 +233,7 @@ export async function provisionSpace(o) {
   const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
   await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
   await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
-  await phase("start Twenty (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
+  await phase("start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
   if (o.gatewayContainer) await runner.exec("docker", ["network", "connect", "--alias", n.gatewayAlias, n.network, o.gatewayContainer]).catch((e) => { if (!/already exists/i.test(String(e.message))) throw e; });
   const url = await reachUrl(o, runner, n, origin);
   await waitHealthy(runner, url);
@@ -274,7 +274,7 @@ async function reachUrl(o, runner, n, origin) {
   }
   const out = await runner.exec("docker", ["inspect", "-f", `{{(index .NetworkSettings.Networks "${n.network}").IPAddress}}`, `${n.project}-server-1`]);
   const ip = out.stdout.trim();
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("Could not find the Twenty server's address on its network");
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("Could not find the Records server's address on its network");
   return `http://${ip}:3000`;
 }
 
@@ -284,7 +284,7 @@ async function waitHealthy(runner, url, tries = 90) {
     try { const r = await runner.fetch(`${url}/healthz`); if (r.ok) return; } catch { /* not up yet */ }
     await runner.sleep(2000);
   }
-  throw new Error("Twenty did not become healthy in time");
+  throw new Error("Records did not become healthy in time");
 }
 
 /**
@@ -296,7 +296,7 @@ export async function bootstrap(o) {
   const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token) => {
     const res = await o.runner.fetch(`${o.url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin: o.origin, ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ query }) });
     const j = /** @type {any} */ (await res.json());
-    if (j.errors) throw new Error(`Twenty bootstrap failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    if (j.errors) throw new Error(`Records bootstrap failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
     return j.data;
   };
   const q = (/** @type {string} */ s) => JSON.stringify(s);
@@ -469,7 +469,7 @@ export async function rotateApiKey(o) {
   const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token, /** @type {string | undefined} */ useKey) => {
     const res = await runner.fetch(`${url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin, ...(token || useKey ? { authorization: `Bearer ${token ?? useKey}` } : {}) }, body: JSON.stringify({ query }) });
     const j = /** @type {any} */ (await res.json());
-    if (j.errors) throw new Error(`Twenty key rotation failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    if (j.errors) throw new Error(`Records key rotation failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
     return j.data;
   };
   const q = (/** @type {string} */ x) => JSON.stringify(x);

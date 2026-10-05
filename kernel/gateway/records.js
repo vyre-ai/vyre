@@ -289,6 +289,29 @@ export function createRecords(cfg) {
       }
     }
   }
+  /**
+   * A new type needs its own name and label: a second type with the label of one the Space already has (another name, same words) is refused, and so is an
+   * "add" of an existing name that would drop its fields (that is a change, made from the type itself). The same definition added again is no change at all.
+   */
+  async function checkNames(/** @type {any} */ diff) {
+    const adding = diff.add_types || [];
+    if (!adding.length) return;
+    let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
+    const words = (/** @type {any} */ s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+    const seen = new Map();
+    for (const t of adding) {
+      const label = words(t.label || t.name);
+      const same = defs.find((/** @type {any} */ d) => d.name === t.name);
+      if (same) {
+        const dropped = (same.fields || []).filter((/** @type {any} */ f) => !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name));
+        if (dropped.length) throw new KernelError("type_exists", `There is already a type called ${same.label || same.name}. Open it to change it.`);
+      } else {
+        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
+        if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
+      }
+      seen.set(label, t.name);
+    }
+  }
   const VIEW_TYPES = new Set(["list", "board", "calendar", "page", "dashboard"]);
   const VIEW_KEYS = new Set(["name", "type", "label", "groupBy", "dateField", "columns", "filter", "sort"]);
   /**
@@ -312,6 +335,8 @@ export function createRecords(cfg) {
         }
       };
       for (const f of fields) {
+        if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
+        if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
         if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
         if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);
@@ -555,6 +580,8 @@ export function createRecords(cfg) {
       const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
+      // a field owned by the kernel (a task's status) is written only by the kernel's own service: the type says so, this is where it is kept to
+      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && h.actor.id === "kernel")) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
       linkFields = fields;
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
@@ -664,7 +691,7 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      checkKinds(diff); await checkRoles(diff); await checkShape(diff);
+      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space

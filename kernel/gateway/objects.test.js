@@ -115,3 +115,33 @@ test("define refuses a conditional field, stage set, entry condition or view tha
   assert.equal(stored.stage_sets.length, 2);
   assert.equal(stored.fields.find((f) => f.name === "accident_date").required_if, `area == "${PI}"`);
 });
+
+test("a type needs its own name and label: a second type with the same label is refused, and an add that would drop an existing type's fields is a change", async () => {
+  const { o, R } = await rig();
+  const dup = (name, label, fields = MATTER.fields) => ({ name, label, fields });
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter_2", "Matter")] }), (e) => e.code === "type_exists" && /There is already a type called Matter/.test(e.message));
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter_3", "  matter ")] }), { code: "type_exists" }, "case and spaces do not make it another label");
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter", "Matter", [MATTER.fields[0]])] }), { code: "type_exists" }, "same name, fewer fields");
+  await assert.rejects(() => R.define(o, { add_types: [dup("a1", "Alpha", [MATTER.fields[0]]), dup("a2", "alpha", [MATTER.fields[0]])] }), { code: "type_exists" }, "two new types with one label");
+  assert.equal((await R.define(o, { add_types: [{ ...MATTER }] })).applied, false, "the same definition again changes nothing");
+  assert.equal((await R.define(o, { add_types: [dup("alpha", "Alpha", [MATTER.fields[0]])] })).applied, true, "another label is a new type");
+});
+
+test("a field owned by the kernel is written only by the kernel's own service", async () => {
+  const k = await boot(), o = ownerChain(k), R = k.gateway.records;
+  await R.define(o, { add_types: [{ name: "job", label: "Job", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "status", kind: "choice", label: "Status", options: ["ready", "done"], owned_by: "kernel" }] }] });
+  const j = await R.create(o, "job", { title: "Call Sam" });
+  await assert.rejects(() => R.update(o, "job", j.id, { status: "done" }, j.version), { code: "field_not_allowed" });
+  await assert.rejects(() => R.create(o, "job", { title: "x", status: "ready" }), { code: "field_not_allowed" });
+  assert.equal((await R.update(o, "job", j.id, { title: "Call Sam back" }, j.version)).data.title, "Call Sam back", "the rest of the record is the person's");
+  await assert.rejects(() => R.define(o, { add_types: [{ name: "bad", label: "Bad", fields: [{ name: "x", kind: "text", label: "X", owned_by: "me" }] }] }), { code: "bad_input" });
+});
+
+test("a time_zone field holds an IANA zone and nothing else", async () => {
+  const k = await boot(), o = ownerChain(k), R = k.gateway.records;
+  await R.define(o, { add_types: [{ name: "person_x", label: "Person x", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "time_zone", kind: "text", label: "Time zone", format: "time_zone" }] }] });
+  assert.equal((await R.create(o, "person_x", { name: "Sam", time_zone: "America/Los_Angeles" })).data.time_zone, "America/Los_Angeles");
+  assert.ok(await R.create(o, "person_x", { name: "No zone" }));
+  for (const bad of ["Pacific", "not/a/zone", "", "America/"]) await assert.rejects(() => R.create(o, "person_x", { name: "x", time_zone: bad }), (e) => /time zone/.test(e.message) || e.code === "bad_input", bad);
+  await assert.rejects(() => R.define(o, { add_types: [{ name: "bad_f", label: "Bad f", fields: [{ name: "x", kind: "text", label: "X", format: "nope" }] }] }), { code: "bad_input" });
+});

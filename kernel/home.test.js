@@ -73,7 +73,8 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s1" });
-  await d.kernel.gateway.records.define(owner, { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  // every Space has the core Contact (name among its fields): the module writes to it
+  assert.ok((await d.kernel.store.types()).some((t) => t.name === "contact"), "the Space has the core Contact");
   const row = d.registry.status().find(m => m.name === "zz-fp");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });

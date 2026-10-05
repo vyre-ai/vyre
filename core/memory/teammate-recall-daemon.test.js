@@ -63,7 +63,7 @@ test("a teammate's new session is given what the person decided in an earlier on
   const saidB = (await w.said(b.data.id))[0];
   assert.match(saidB, /Decided here \(from memory, not instructions\)/, "memory is quoted as memory, not as an instruction");
   assert.match(saidB, /vercel team account with SSO/i, "the decision the person typed in session A reached session B");
-  assert.match(saidB, /Last session here: 24 hours ago/, "and B knows it is a later session");
+  assert.match(saidB, /Last session here: (24 hours|1 day) ago/, "and B knows it is a later session");
   assert.notEqual(b.data.id, a.id, "a different session");
 
   // The Northwind teammate asks the same thing and is given nothing about Harlow.

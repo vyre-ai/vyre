@@ -92,7 +92,7 @@ test("a hostile file cannot hold the daemon: the worker parse enforces the limit
 
 test("kit checks: references, sealed fields and expressions", () => {
   fails(kitOf("", 't: defineField.link({ to: "ghost" })'), "invalid_definition", /ghost/);
-  fails(kitOf("", 't: defineField.link()'), "invalid_definition", /name/);
+  assert.equal(compile(kitOf("", 't: defineField.link()')).types[0].fields[0].to, undefined, "a link with no `to` is a link to any record");
   fails(kitOf("", 't: defineField.ref({ to: "a" })'), "unknown_function");
   fails(wrap(`export const A = defineType({ name: "a", fields: { s: defineField.sealed({ class: "us-ssn" }) }, rules: [defineRule({ require: "s == 'x'" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /sealed and cannot be used/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text() }, rules: [defineRule({ require: "nope == 1" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /not a field/);
@@ -168,9 +168,9 @@ test("conditional fields and stage sets are checked against the type", () => {
   fails(kitOf("", 'u: defineField.text(), st: defineStage(["A", "B"], { sets: [{ name: "x", when: \'st == "A"\', stages: ["A", "C"] }] })'), "invalid_definition", /not by its stage/);
 });
 
-test("the checked-in base kit is what its source compiles to, and its text is a fixed point", () => {
-  const src = fs.readFileSync(new URL("../kits/base/kit.ts", import.meta.url), "utf8");
-  const stored = JSON.parse(fs.readFileSync(new URL("../kits/base/kit.json", import.meta.url), "utf8"));
-  assert.deepEqual(stored, compile(src), "regenerate with: node records/language/cli.js compile records/kits/base/kit.ts > records/kits/base/kit.json");
+for (const id of ["base", "law-firm"]) test(`the checked-in ${id} kit is what its source compiles to, and its text is a fixed point`, () => {
+  const src = fs.readFileSync(new URL(`../kits/${id}/kit.ts`, import.meta.url), "utf8");
+  const stored = JSON.parse(fs.readFileSync(new URL(`../kits/${id}/kit.json`, import.meta.url), "utf8"));
+  assert.deepEqual(stored, compile(src), `regenerate with: node records/language/cli.js compile records/kits/${id}/kit.ts > records/kits/${id}/kit.json`);
   assert.deepEqual(compile(print(stored)), stored);
 });

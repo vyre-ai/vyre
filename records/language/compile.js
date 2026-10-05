@@ -14,7 +14,7 @@ import { FIELD_ORDER } from "./sdk.js";
 const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event"]);
+export const CORE_TYPES = Object.freeze(["note", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event", "project", "session-summary", "task"]);
 
 /**
  * A Kit may add fields to a core type (a Kit's `contact` carries the fields its practice needs). The stored type is the whole thing: the core fields first, then
@@ -108,7 +108,7 @@ export function checkKit(kit) {
     for (const f of t.fields) {
       if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
       fieldNames.add(f.name);
-      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+      if (f.kind === "link" && f.to !== undefined && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
     const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");

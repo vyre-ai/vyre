@@ -192,13 +192,22 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // name only with the key of the agent's live thread, so Memory's part is checked in-process.
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp:agent:kit" })).error?.message || "", /no thread of that agent/);
   for (const caller of ["mcp agent:kit", "mcp:agent:kit"]) {
-    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", /main graph is for the assistant/, caller);
-    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", /came from agent kit/, caller);
+    // With the kernel on a bare label carries no kernel chain, so personal memory is not read at all (stricter than the label rule below, which only the kernel-off build runs).
+    const none = process.env.VYRE_KERNEL !== "0";
+    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", none ? /no kernel chain/ : /main graph is for the assistant/, caller);
+    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", none ? /no kernel chain/ : /came from agent kit/, caller);
   }
   // A session that has not said who it is gets a project's graph, not the main one.
-  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
-  assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
-  assert.equal((await call("memory.graph", {}, { ...opts, caller: "deck" })).data?.scope, "main");
+  if (process.env.VYRE_KERNEL === "0") {
+    assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
+    assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
+  } else {
+    // With the kernel on a bare `mcp` carries no kernel chain (the plain session's chain is the daemon's to build): personal memory is not read, whichever graph it asks for.
+    assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /no kernel chain/);
+    assert.match((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).error?.message || "", /no kernel chain/);
+  }
+  // The person's own surface on the socket (the Deck's label is a claim there: only the terminal gets person facts with the kernel on).
+  assert.equal((await call("memory.graph", {}, { ...opts, caller: process.env.VYRE_KERNEL === "0" ? "deck" : "cli" })).data?.scope, "main");
 });
 
 test("graph: a projects: \"*\" agent is not the assistant — every mapped project's room, never the main graph, unfiled, or personal facts", async t => {

@@ -564,6 +564,17 @@ export class Switchboard {
     return out;
   }
 
+  /** A new name for a thread. Says thread.renamed only when the name really changed, so two sides that both sync names settle. @param {string} id @param {string} name */
+  rename(id, name) {
+    const nm = String(name ?? "").trim().slice(0, 120);
+    if (!nm) throw Object.assign(new Error("a session needs a name"), { code: "bad_input" });
+    const r = this.must(id);
+    if (r.name === nm) return { thread: id, name: nm, changed: false };
+    this.set(id, { name: nm });
+    this.emitRaw("thread.renamed", { name: nm }, id, r.project);
+    return { thread: id, name: nm, changed: true };
+  }
+
   must(id) {
     const r = this.record(id);
     if (!r) throw new Error(`no thread ${id}`);
@@ -3411,7 +3422,7 @@ export default {
       const me = sb.record(m.thread);
       return Boolean(me && me.project && t.project === me.project);
     };
-    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
+    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
       "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
     const SESSION_READS = new Set(["threads.fork", "threads.branch", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
@@ -3924,6 +3935,9 @@ export default {
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+    tool("threads.rename", "Give a thread a new name. The name is the session's title everywhere (the project's session list, its record in Records); thread.renamed is said, and a rename made in Records comes back here the same way.",
+      { type: "object", required: ["thread", "name"], properties: { thread: str, name: str } },
+      async (i, meta) => { guard(meta.caller, "rename sessions"); mayReach(meta, sb.must(i.thread)); return sb.rename(i.thread, i.name); });
     tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });
