@@ -154,6 +154,45 @@ export const OPEN_NOTES = Object.freeze({
   "work.team.add": "adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen",
 });
 
+/**
+ * The tools a manifest declares reach `anyone` (or leaves open with `effect: "read"`) that opened to a model, a module or a guest cell of the golden set on 4 Oct 2026, with the commit
+ * that did it. Each one's guard is the reason test/reach-anyone.json already holds for it (one source); a tool the reach file has no line for says its own in DECLARED_NOTES.
+ * threads.delete and threads.rewind are not here: they are on ASK_FIRST (destructive), so they get their entry there.
+ */
+export const DECLARED = Object.freeze({
+  ...Object.fromEntries(["agents.ask", "threads.archive", "threads.effort", "threads.fork", "threads.interrupt", "threads.model", "threads.send", "threads.send-now", "threads.start", "threads.stop",
+    "threads.switch", "threads.thinking", "threads.unarchive", "threads.unwatch", "threads.watch"].map(t => [t, "06c2f3bcc"])),
+  ...Object.fromEntries(["learn.add", "memory.curate", "memory.mute", "memory.pin", "team.charter.draft"].map(t => [t, "3b0ea63d2"])),
+  ...Object.fromEntries(["apps.list", "apps.send", "apps.targets", "capsule.status", "hands.act", "hands.commit", "hands.find", "hands.observe", "hands.stop",
+    "chrome.act", "chrome.api", "chrome.approve", "chrome.batch", "chrome.click", "chrome.console", "chrome.eval", "chrome.fill", "chrome.frames", "chrome.ghl", "chrome.inspect", "chrome.login",
+    "chrome.net", "chrome.open", "chrome.parallel", "chrome.plan", "chrome.point", "chrome.recipe", "chrome.screenshot", "chrome.site", "chrome.snapshot", "chrome.sources", "chrome.state",
+    "chrome.status", "chrome.stop", "chrome.summary", "chrome.tabs", "chrome.type", "chrome.wait"].map(t => [t, "cb69aea6d"])),
+  ...Object.fromEntries(["threads.release", "github.accounts"].map(t => [t, "3c2ce3bcf"])),
+  "vault.revoke": "59980bf43",
+  "connectors.declared": "1cb1cdd71",
+  "connectors.logging": "1cb1cdd71",
+  "pluginagent.ask": "2bbe50159",
+  "pluginagent.status": "2bbe50159",
+  "link.pending": "235da322d",
+  "presence.remove": "235da322d",
+});
+
+/** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
+export const DECLARED_NOTES = Object.freeze({
+  "apps.list": "a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
+  "apps.targets": "a read of the notes and lists inside one app; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
+  "apps.send": "sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module",
+  "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
+  "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
+  "capsule.status": "a read of whether the Capsule can run on this machine: build and autostart, no data",
+  "learn.add": "a model's lesson is proposed and never made active; the person accepts it",
+  "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
+  "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
+  "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+});
+
+const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;
+
 /** What each flows tool does, in its own words (the descriptions in core/flows/index.js). */
 export const FLOWS_NOTES = Object.freeze({
   "flows.propose": "proposes a Flow for the person to approve: nothing runs, nothing is installed, until a person approves it",
@@ -172,6 +211,7 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.kit.card": "the install card for a Kit, a read",
   "flows.kit.propose": "proposes a Kit for approval, and installing waits for a person",
   "flows.kit.list": "lists the Kits of a Space",
+  "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
 });
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";
@@ -193,6 +233,12 @@ export function generate() {
   for (const [tool, why] of [...ASK_FIRST].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     const note = /** @type {Record<string, string>} */ (OPEN_NOTES)[tool];
     out.push({ tool, reason: `${RULING}; open to the person's assistant but held for a one-tap task (${why})${note ? `: ${note}` : ""}` });
+  }
+  const reasons = DECLARED_REASONS();
+  for (const [tool, commit] of Object.entries(DECLARED)) {
+    const guard = /** @type {Record<string, string>} */ (DECLARED_NOTES)[tool] || (reasons[tool] && reasons[tool].reason);
+    if (!guard) throw new Error(`gen-allow: ${tool} is in DECLARED with no guard in DECLARED_NOTES or test/reach-anyone.json`);
+    out.push({ tool, reason: `${RULING}; ${tool} opened to a model or a module in ${commit} (4 Oct 2026); the body decides: ${guard}` });
   }
   for (const tool of flowsAnyone()) {
     const note = /** @type {Record<string, string>} */ (FLOWS_NOTES)[tool];

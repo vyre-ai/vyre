@@ -377,6 +377,8 @@ export const ASK_FIRST = new Map([
   ["files.drive.url", "leaves the Space: makes a link"],
   ["files.send", "leaves the Space: sends a file"],
   ["agents.delete", "destructive"],
+  ["threads.delete", "destructive: deletes a thread for good"],
+  ["threads.rewind", "destructive: rewinds a thread, and with restore its files, to an earlier turn"],
   ["bridges.kit.export", "leaves the Space"],
   ["bridges.kit.install", "changes the Space's shape"],
   ["hooks.close", "changes what reaches the Space from outside"],
