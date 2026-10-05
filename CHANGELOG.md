@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a browser build that may claim a name (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes it with a passkey through claimIdentityWithPasskey, and a kept passkey is restored as a passkey device key. RC1 browsers stay blocked as before.
+
 - feat(app): a chat's header has a Chat tools button that opens the chat tools sheet (fork, effort, mode, mention, context, transcript); a mention picked there is added to the draft. The app's deck imports now read src/vendor/deck (Find's command parser, session titles and answer-with added there; commands.js typed so tsc is clean).
 - feat(identity): claim a name from a browser with a passkey (0.2.9, gap A29). `claimIdentityWithPasskey` (apps/app/src/identity/claim.js) makes a WebAuthn credential (P-256, user verification required) as the identity's first device and signs the genesis and the claim's record with it; `createPasskeyKey` and `restorePasskeyKey` (apps/app/src/identity/passkey.js) read the attestation with a small CBOR reader, normalise the high-s twin an authenticator may return, and keep only the credential id and public key. A passkey is a full device (unlike a key a page can reach). The directory could verify a passkey's signature on a chain op but not on a name record or an act; `verifyWith` now takes the signing entry (`signing` from `signerKey`) and checks a passkey's assertion as one, in the Worker, the client directory, the audit key, the seal's bindings and spaces. The pinned hash of kernel/identity/chain.js is updated; merging with work/no-labels needs it recomputed.
 

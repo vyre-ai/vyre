@@ -35,7 +35,7 @@ export async function claimIdentity(o) {
   const key = o.key ?? await generateDeviceKey({ forceSoftware: o.forceSoftware });
   const ts = now();
   const genesis = await C.makeGenesis({
-    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(key.alg === "webauthn-es256" ? { alg: key.alg, rp: key.rp } : {}), label: o.deviceLabel ? String(o.deviceLabel).slice(0, 60) : undefined, ...(o.enclave ? { enclave: o.enclave } : {}) },
+    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(/** @type {any} */ (key).alg === "webauthn-es256" ? { alg: "webauthn-es256", rp: /** @type {any} */ (key).rp } : {}), label: o.deviceLabel ? String(o.deviceLabel).slice(0, 60) : undefined, ...(o.enclave ? { enclave: o.enclave } : {}) },
     code: { eid: ck.eid, kind: "code", pub: ck.publicKey }, nonce: C.b64u(random(12)), ts, sign: m => key.sign(m),
   });
   const state = await C.verifyChain([genesis], { now: ts + 1 });

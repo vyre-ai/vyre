@@ -17,7 +17,7 @@ test("RC1 (screens/shell/rc.ts, the one switch file): both switches are off", ()
 test("createIdentity refuses on a blocked browser before it makes a key, opens storage or asks the directory", () => {
   const src = read("./install.ts");
   const guard = src.indexOf("if (claimBlocked()) throw");
-  const claim = src.indexOf("await claimIdentity(");
+  const claim = src.indexOf("await claim(");
   assert.ok(guard > 0 && claim > guard, "the guard comes before claimIdentity");
   const body = src.slice(src.indexOf("export async function createIdentity"), claim);
   assert.ok(!/saveIdentity|indexedDB|fetch\(/.test(body), "nothing is stored or fetched before the guard");

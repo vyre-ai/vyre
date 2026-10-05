@@ -143,3 +143,10 @@ test("a name is claimed from a browser with a passkey: the directory takes the p
   assert.equal(device.held, undefined, "a passkey is not a web-held key");
   assert.ok(!JSON.stringify(r).includes("label"), "and no device name rides the list");
 });
+
+import { restoreDeviceKey } from "./keys.js";
+test("a kept passkey comes back as a passkey device key, not a seed key", async () => {
+  const kept = { kind: "passkey", rp: "app.vyre.run", credentialId: "AQID", publicKey: "BAUG" };
+  const key = await restoreDeviceKey(kept);
+  assert.deepEqual(key.keep(), kept);
+});
