@@ -968,8 +968,8 @@ export default {
       return run;
     };
     /** The person the call is from, by the kernel's chain (LD-5): the person on the chain, else the home identity. */
-    const callerPerson = async (/** @type {any} */ meta) => {
-      const home = /** @type {string} */ (me().id);
+    const callerPerson = async (/** @type {any} */ meta, /** @type {string | undefined} */ homeId = undefined) => {
+      const home = homeId !== undefined ? homeId : /** @type {string} */ (me().id);
       if (!K || typeof K.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return home;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
@@ -1805,7 +1805,11 @@ export default {
     const devicesOf = async (i, meta) => {
       const target = String(i.person || "");
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(target)) return { devices: [] };
-      const caller = await callerPerson(meta);
+      // The person the call acts for when no person rides on it: this home's own person, or on a SERVER (no identity of its own) the owner that paired it (the kernel's claimed owner). Nobody else: with neither, the answer is empty.
+      /** @type {string | null} */ let home = null;
+      try { home = String(me().id); } catch { const claimed = K && typeof K.ownerClaimed === "function" ? K.ownerClaimed() : null; home = claimed ? String(claimed) : null; }
+      if (!home) return { devices: [] };
+      const caller = await callerPerson(meta, home);
       if (!caller) return { devices: [] };
       let shares = caller === target;
       if (!shares) {

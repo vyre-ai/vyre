@@ -1511,3 +1511,28 @@ test("spaces.identity.devices.read answers work and files (a module is not a per
   assert.deepEqual(Object.keys(r.data.devices[0]).sort(), ["agree", "device"]);
   assert.equal(r.data.devices[0].agree, fileIdentityStore(d.space).agree());
 });
+
+test("spaces.identity.devices.read on a SERVER (no identity of its own): the paired owner is the person the call acts for, and nobody else; with no owner claimed the answer is empty", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const device0 = await device(t); // a home that makes the directory's `hooks` live
+  void device0;
+  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const owner = await claim("srvowner", pt()), stranger = await claim("srvstranger", pt());
+  let claimed = /** @type {string | null} */ (owner.id);
+  const kernelFor = () => ({ for: () => null, ownerClaimed: () => claimed });
+  const server = await device(t, { kernelFor: /** @type {any} */ (kernelFor) });
+  assert.equal(fileIdentityStore(server.space).status().exists, false, "a server has no identity of its own");
+  for (const p of [owner, stranger]) await server.reg.call("spaces.person.learn", { id: p.id, name: p === owner ? "srvowner" : "srvstranger" }, "module:vyred");
+  const read = person => server.call("spaces.identity.devices.read", { person }, "module:work");
+  const mine = await read(owner.id);
+  assert.ok(!mine.error, JSON.stringify(mine.error));
+  assert.equal(mine.data.devices.length, 1, "the owner's device and its point");
+  assert.equal(mine.data.devices[0].device, owner.eid);
+  assert.match(mine.data.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
+  assert.deepEqual((await read(stranger.id)).data, { devices: [] }, "a person the owner shares no space with is not 'anyone'");
+  assert.deepEqual((await server.call("spaces.identity.devices.read", { person: owner.id }, "module:memory")).error?.code, "denied", "callers are still work and files");
+  claimed = null;
+  assert.deepEqual((await read(owner.id)).data, { devices: [] }, "no owner claimed: nothing");
+});
