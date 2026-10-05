@@ -46,6 +46,32 @@ async function namesOf(d, entries) {
   return names;
 }
 
+/**
+ * The session folders of a project, for a screen that lists `Projects/<id>/chat` or `.../made`: each session record the caller may read (they are visible to the project) as a folder with its own name
+ * and whether the caller may open it. A chat the caller is not in still shows its name, and `open: false` tells the screen not to offer it; the kernel refuses the open all the same. A project the
+ * caller cannot read has no records to show, so it is not here at all, not even as an id.
+ * @param {any} d @param {any} drive @param {string} prefix @returns {Promise<{ path: string, name: string, open: boolean }[]>}
+ */
+async function foldersOf(d, drive, prefix) {
+  const m = /^Projects\/([^/]+)\/(chat|made)\/$/.exec(prefix);
+  if (!m) return [];
+  /** @type {{ path: string, name: string, open: boolean }[]} */ const out = [];
+  try {
+    const project = await d.gateway.records.get(d.chain, "project", m[1]);
+    if (!project) return [];
+    const page = await d.gateway.records.query(d.chain, "session-summary", { filter: { field: "project", op: "eq", value: { urn: project.urn } }, page: { limit: 200 } });
+    for (const rec of page.rows) {
+      const thread = String(rec.data.thread || "");
+      if (!thread) continue;
+      const path = `Projects/${m[1]}/${m[2]}/${thread}`;
+      let open = true;
+      try { await drive.listPage(d.chain, `${path}/`, { limit: 1 }); } catch { open = false; }
+      out.push({ path, name: String(rec.data.title || thread), open });
+    }
+  } catch { /* nothing readable here */ }
+  return out;
+}
+
 /** @param {any} ctx */
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
@@ -93,7 +119,7 @@ export function registerSpaceDrive(ctx) {
       if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
       if (i.after !== undefined && typeof i.after !== "string") throw refuse("after is the cursor the last page gave", "bad_input");
       const r = await drive.listPage(d.chain, prefix, { limit: i.limit, after: i.after ?? null });
-      return { prefix, entries: r.entries, next: r.next, names: await namesOf(d, r.entries) };
+      return { prefix, entries: r.entries, next: r.next, names: await namesOf(d, r.entries), folders: await foldersOf(d, drive, prefix) };
     });
 
   tool("files.drive.space.read", `Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path, version, size, base64 } for a file of at most ${MAX_UPLOAD / 1048576} MB (\`too_large\` beyond).`,

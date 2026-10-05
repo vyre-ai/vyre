@@ -30,9 +30,11 @@ const settle = () => new Promise(r => setTimeout(r, 400));
 const folder = t => { const d = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "media-"))); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 
 async function boot(t) {
-  const was = { debounce: _test.mediaDebounce, caps: _test.mediaCaps };
+  const was = { debounce: _test.mediaDebounce, caps: _test.mediaCaps, watch: _test.captureDebounce };
   _test.mediaDebounce = 20;
-  t.after(() => { _test.mediaDebounce = was.debounce; _test.mediaCaps = was.caps; });
+  // these tests drive registration and folder events by hand and count exactly what they made: the folder watcher (its own tests are in core/sessions/project-files.test.js) is held off
+  _test.captureDebounce = 1e9;
+  t.after(() => { _test.mediaDebounce = was.debounce; _test.mediaCaps = was.caps; _test.captureDebounce = was.watch; });
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "threads", { does: { tools: ["threads.get"] } }, THREADS);

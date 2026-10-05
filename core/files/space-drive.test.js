@@ -117,3 +117,49 @@ test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad 
   assert.equal(await code(run("files.drive.versions", { path: "a/b.txt", limit: 0 })), "bad_input");
   assert.equal(await code(run("files.drive.space.list", { limit: -1 })), "bad_input");
 });
+
+/** A gateway for the listing rules: a Drive that answers only what a caller may read, and records the same way. `member` says which projects and chats the caller is in. */
+function listingRig(member) {
+  const files = ["Projects/pa/chat/s1/a.png", "Projects/pa/chat/s2/b.png", "Projects/pa/made/s1/c.md", "Projects/pb/chat/s9/d.png"];
+  const canRead = (/** @type {string} */ p) => { const m = /^Projects\/([^/]+)(?:\/(?:chat|made)\/([^/]+))?/.exec(p); return Boolean(m && member.projects.includes(m[1]) && (!m[2] || member.chats.includes(m[2]))); };
+  const gd = {
+    async listPage(c, prefix) {
+      const entries = files.filter(p => p.startsWith(prefix) && canRead(p)).map(p => ({ path: p, size: 1 }));
+      if (prefix.startsWith("Projects/") && prefix.split("/").length > 2 && !entries.length && !files.some(p => p.startsWith(prefix) && canRead(p)) && !canRead(prefix.replace(/\/$/, ""))) throw Object.assign(new Error("the drive could not do that"), { code: "not_found" });
+      return { entries, next: null };
+    },
+  };
+  const projects = { pa: { urn: `vyre://${SPACE}/project/pa`, data: { name: "Rivera Estate" } }, pb: { urn: `vyre://${SPACE}/project/pb`, data: { name: "Secret Matter" } } };
+  const sessions = [{ data: { thread: "s1", title: "Draft the welcome email", project: { urn: projects.pa.urn } } }, { data: { thread: "s2", title: "Private strategy chat", project: { urn: projects.pa.urn } } }, { data: { thread: "s9", title: "Other firm session", project: { urn: projects.pb.urn } } }];
+  const records = {
+    async get(c, type, id) { if (type !== "project" || !member.projects.includes(id)) return null; return projects[id]; },
+    async query(c, type, spec) { const urn = spec.filter && spec.filter.value && spec.filter.value.urn; return { rows: member.projects.some(id => projects[id].urn === urn) ? sessions.filter(s => s.data.project.urn === urn) : [], next_cursor: null }; },
+  };
+  const tools = new Map();
+  const ctx = { tool: (n, d) => tools.set(n, d), call: async () => ({}), kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: { drive: gd, records }, surfaces: {} }), chainIn: async () => person } };
+  registerSpaceDrive(ctx);
+  return (input) => tools.get("files.drive.space.list").run(input, {});
+}
+
+test("listing: a project the caller is not in does not appear at all, not even as a bare id", async () => {
+  const list = listingRig({ projects: ["pa"], chats: ["s1", "s2"] });
+  const r = await list({ prefix: "Projects" });
+  const all = JSON.stringify(r);
+  assert.ok(r.entries.length === 3 && r.entries.every(e => e.path.startsWith("Projects/pa/")));
+  assert.ok(!all.includes("pb") && !all.includes("Secret Matter") && !all.includes("s9") && !all.includes("Other firm session"), "nothing of the other project is in the answer: " + all);
+  assert.equal(r.names["Projects/pa"], "Rivera Estate");
+  // asking for its folder by name finds nothing either
+  const asked = await list({ prefix: "Projects/pb" }).then(x => JSON.stringify(x), e => e.code || "refused");
+  assert.ok(!/Secret Matter|s9|d\.png/.test(asked), asked);
+});
+
+test("listing: inside a project the caller belongs to, a chat they are not in shows its name but is not offered, and its files are not listed", async () => {
+  const list = listingRig({ projects: ["pa"], chats: ["s1"] });
+  const folders = (await list({ prefix: "Projects/pa/chat" })).folders;
+  assert.deepEqual(folders.map(f => [f.path, f.name, f.open]).sort(), [["Projects/pa/chat/s1", "Draft the welcome email", true], ["Projects/pa/chat/s2", "Private strategy chat", false]]);
+  const inside = await list({ prefix: "Projects/pa/chat" });
+  assert.ok(inside.entries.every(e => e.path.startsWith("Projects/pa/chat/s1/")), "the other chat's files are not listed");
+  // opening it is refused by the Drive (here: nothing comes back for the folder the caller is not in)
+  const opened = await list({ prefix: "Projects/pa/chat/s2" }).then(x => x.entries.length, e => e.code || "refused");
+  assert.ok(opened === 0 || opened === "not_found", String(opened));
+});

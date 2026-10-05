@@ -851,6 +851,8 @@ export default {
     /** @param {{ thread?: string, path?: string }} e */
     const capture = async e => {
       if (!e || typeof e.thread !== "string" || typeof e.path !== "string") return;
+      // a media file has its own settle-and-once machinery (scheduleMedia, mediaBusy); only text files, which are made and updated here, are taken one at a time
+      if (mediaFormatOf(path.basename(e.path))) return captureOne(e);
       const key = `${e.thread}/${path.basename(e.path)}`;
       const prior = capturing.get(key) || Promise.resolve();
       const run = prior.catch(() => {}).then(() => captureOne(e));
@@ -1003,7 +1005,8 @@ export default {
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
         // head > 0: an artifact is listed once its first version is kept, not while it is being made (the folder watcher makes them beside a person's own calls)
-        const where = ["deleted_at IS NULL"], args = [];
+        // head > 0: listed once the first version is kept, not while it is being made (the folder watcher makes artifacts beside a person's own calls)
+        const where = ["deleted_at IS NULL", "head > 0"], args = [];
         if (!("all" in scope)) {
           const mine = "project" in scope ? scope.project : PERSONAL;
           if (i.project !== undefined && i.project !== null && i.project !== mine) throw refuse("an agent lists only its own project's artifacts", "denied");

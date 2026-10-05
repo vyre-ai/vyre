@@ -12,13 +12,13 @@ const png = (/** @type {string} */ tag) => Buffer.concat([Buffer.from("89504e470
 
 async function world(/** @type {any} */ t) {
   const w = await boot(t, { kernel: true });
-  await w.tool("projects.create", { name: "Harlow Intake", home: w.work }).catch(() => null);
+  await w.tool("projects.create", { name: "Northgate Intake", home: w.work }).catch(() => null);
   const owner = w.d.kernel.id.owner;
   const admin = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", name: "Draft the welcome email" })).data;
   await w.finished(th.id);
   // the Project record is made with the session (the hub); its Drive folder is named by its id, and so is each session's
-  const root = await until(async () => { const r = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "harlow-intake"); return r ? r.data.drive_path : null; }, "the project folder");
+  const root = await until(async () => { const r = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "northgate-intake"); return r ? r.data.drive_path : null; }, "the project folder");
   let turn = 1;
   const say = async (/** @type {string} */ text, /** @type {any} */ more = {}) => { await w.tool("threads.send", { thread: th.id, surface: "deck", text, ...more }); await w.finished(th.id, ++turn); };
   const drive = async () => (await w.d.kernel.gateway.drive.list(admin, "Projects/")).map((/** @type {any} */ e) => e.path || e.name).filter((/** @type {string} */ p) => !p.endsWith(".project")).sort();
@@ -62,7 +62,7 @@ test("an image Claude returns as a tool result, a provider's generated media, a 
   const rows = await files();
   assert.equal(rows.length, 4);
   const session = (await w.d.kernel.gateway.records.query(admin, "session-summary", { page: { limit: 10 } })).rows[0];
-  const project = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "harlow-intake");
+  const project = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "northgate-intake");
   assert.ok(rows.every((/** @type {any} */ r) => r.data.session.urn === session.urn && r.data.project.urn === project.urn && r.data.path && r.data.sha256 && r.data.size > 0));
   assert.deepEqual(rows.map((/** @type {any} */ r) => r.data.kind).sort(), ["chat", "made", "made", "made"]);
   const linked = await w.d.kernel.gateway.records.linked(admin, project.urn, { type: "project-file" });
@@ -70,7 +70,7 @@ test("an image Claude returns as a tool result, a provider's generated media, a 
   // the Drive screen shows the Project's and the session's own names over the id folders
   const meta = { token: (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.d.kernel.id.owner, path: "direct", session: "s" }), {})).token };
   const listed = await w.d.registry.call("files.drive.space.list", { prefix: "Projects" }, "cli", meta);
-  assert.equal(listed.data.names[root], "Harlow Intake");
+  assert.equal(listed.data.names[root], "Northgate Intake");
   assert.equal(listed.data.names[`${root}/chat/${folder}`], "Draft the welcome email");
   assert.equal(listed.data.names[`${root}/made/${folder}`], "Draft the welcome email");
 });
