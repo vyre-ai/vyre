@@ -110,6 +110,14 @@ export function createFlowsHost(o) {
       const kitStorage = [...CORE_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
+      // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
+      // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
+      try {
+        const comm = (await k.store.types()).find((/** @type {any} */ t) => t.name === "communication"), want = CORE_TYPES.find((/** @type {any} */ t) => t.name === "communication");
+        if (comm && want && want.fields.some((/** @type {any} */ f) => !comm.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [want] });
+        const { migrateParticipants } = await import("../../records/comms/migrate.js");
+        await migrateParticipants({ records: gw.records }, owner(), log);
+      } catch (e) { log(`flows: communications for ${space} were not brought up to date: ${e && /** @type {Error} */ (e).message}`); }
     }
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };

@@ -10,7 +10,7 @@
 import { modelView, isSealedValue, sealedText } from "../../../lib/sealed.js";
 import { clean } from "./text.js";
 
-const COMM = "communication", PART = "participant";
+const COMM = "communication";
 const URN = /^vyre:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 /** @param {any} v @returns {string[]} urns a field value points at */
 const refsIn = v => (Array.isArray(v) ? v.flatMap(refsIn) : v && typeof v === "object" && typeof v.urn === "string" ? [v.urn] : []);
@@ -48,20 +48,17 @@ export async function recordContext(kernel, chain, rec, { space, maxLinked = 8, 
   if (fwdRecs.length) sections.push({ key: "linked", head: "Linked records:", items: fwdRecs.map(brief) });
 
   // The records that point at it (tasks of the matter, documents, parties), the communication kinds aside
-  const back = (await linked(rec.urn, { limit: 30 })).filter((/** @type {any} */ x) => x.type !== COMM && x.type !== PART && x.type !== "team-member");
+  const back = (await linked(rec.urn, { limit: 30 })).filter((/** @type {any} */ x) => x.type !== COMM && x.type !== "team-member");
   const seen = new Set(urns);
   const backItems = [];
   for (const x of back) { const r = x.record; if (!r || seen.has(r.urn)) continue; seen.add(r.urn); urns.push(r.urn); inputs.push(r.labels); backItems.push(`${brief(r)} (${clean(x.field, 30)})`); if (backItems.length >= maxLinked) break; }
   if (backItems.length) sections.push({ key: "backlinks", head: "Linked to it:", items: backItems });
 
-  // Recent communications: those that concern the record, and those with the contacts on it (through the participant records)
+  // Recent communications: those that concern the record, and those with the contacts on it (their `contacts` relation)
   /** @type {Map<string, any>} */ const comms = new Map();
   for (const x of await linked(rec.urn, { type: COMM, limit: 30 })) if (x.record) comms.set(x.record.urn, x.record);
   for (const c of fwdRecs.filter(r => r.type === "contact" || r.type === "organization").slice(0, 3)) {
-    for (const p of await linked(c.urn, { type: PART, limit: 30 })) {
-      const cu = p.record && p.record.data && p.record.data.communication && p.record.data.communication.urn;
-      if (cu && !comms.has(cu)) { const cr = await get(cu); if (cr) comms.set(cu, cr); }
-    }
+    for (const x of await linked(c.urn, { type: COMM, field: "contacts", limit: 30 })) if (x.record && !comms.has(x.record.urn)) comms.set(x.record.urn, x.record);
   }
   const recent = [...comms.values()].sort((a, b) => String(b.data.at).localeCompare(String(a.data.at))).slice(0, maxComms);
   if (recent.length) {

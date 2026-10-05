@@ -146,12 +146,12 @@ test("contacts and roles over Twenty: one person once, a role is a record that l
   assert.deepEqual((await R.roles(c, jane.urn)).map((x) => [x.role, x.current]), [["client", true], ["prospect", false]], "current first");
   assert.deepEqual((await R.holders(c, { role: "prospect", page: { limit: 10 } })).rows.map((x) => x.holder), [bob.urn], "ended prospects are not holders");
   assert.deepEqual((await R.holders(c, { role: "client", stage: "Active", page: { limit: 10 } })).rows.map((x) => x.holder), [jane.urn]);
-  // a communication with two contacts on it: the participant records tie it to both, and each contact finds it
-  const mail = await R.create(c, "communication", { kind: "email", direction: "inbound", at: "2026-10-01T09:00:00.000Z", subject: "Hello", source_key: "gmail:abc" });
+  // a communication with two contacts on it: its many to many `contacts` link ties it to both, and each contact finds it (the reverse, "Communications")
+  const mail = await R.create(c, "communication", { kind: "email", direction: "inbound", at: "2026-10-01T09:00:00.000Z", subject: "Hello", source_key: "gmail:abc", contacts: [link(jane), link(bob)] });
   await assert.rejects(() => R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:abc" }), { code: "unique_violation" }, "the same message is logged once");
-  for (const [who, how] of [[jane, "from"], [bob, "to"]]) await R.create(c, "participant", { communication: link(mail), contact: link(who), how });
-  const onJane = await R.query(c, "participant", { filter: { field: "contact", op: "eq", value: link(jane) }, page: { limit: 10 } });
-  assert.deepEqual(onJane.rows.map((p) => p.data.communication.urn), [mail.urn]);
+  const onJane = (await R.linked(c, jane.urn, { type: "communication", field: "contacts" })).rows;
+  assert.deepEqual(onJane.map((x) => x.record.urn), [mail.urn]);
+  assert.equal((await R.linked(c, bob.urn, { type: "communication", field: "contacts" })).rows.length, 1, "and Bob finds it too");
 });
 
 test("merge over Twenty: the dropped contact's unique phone moves to the kept one, links follow, unmerge gives the phone back", async () => {
@@ -160,16 +160,15 @@ test("merge over Twenty: the dropped contact's unique phone moves to the kept on
   const c = host.ownerChain(), R = host.kernel.records;
   const a = await R.create(c, "contact", { name: "Jane Doe", email: "jane@example.test" });
   const b = await R.create(c, "contact", { name: "Jane Doe", email: "jane2@example.test", phone: "+15550100" });
-  const mail = await R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:1" });
-  const part = await R.create(c, "participant", { communication: { urn: mail.urn }, contact: { urn: b.urn }, how: "from" });
+  const mail = await R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:1", from: "jane2@example.test", contacts: [{ urn: b.urn }] });
   const res = await R.merge(c, "contact", a.id, b.id);
   const kept = (await R.get(c, "contact", a.id)).data;
   assert.deepEqual([kept.phone, kept.other_emails], ["+15550100", ["jane2@example.test"]]);
-  assert.equal((await R.get(c, "participant", part.id)).data.contact.urn, a.urn);
+  assert.deepEqual((await R.get(c, "communication", mail.id)).data.contacts.map((x) => x.urn), [a.urn]);
   await R.unmerge(c, res.merge_id);
   assert.equal((await R.get(c, "contact", b.id)).data.phone, "+15550100", "the dropped contact has its phone back");
   assert.equal((await R.get(c, "contact", a.id)).data.phone ?? null, null);
-  assert.equal((await R.get(c, "participant", part.id)).data.contact.urn, b.urn);
+  assert.deepEqual((await R.get(c, "communication", mail.id)).data.contacts.map((x) => x.urn), [b.urn]);
 });
 
 test("computed fields over Twenty: a total over linked records, an expression, a hidden-from role, and a removed field keeps its data", async () => {

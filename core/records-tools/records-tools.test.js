@@ -185,6 +185,6 @@ test("every Space has the core types (contact, communication, event ...) the cal
   t.after(() => d.stop());
   const { call } = await import("../daemon/client.js");
   const types = (await call("records.types", {}, { root, caller: "cli" })).data.types.map(x => x.name);
-  for (const n of ["contact", "contact_point", "organization", "communication", "participant", "event"]) assert.ok(types.includes(n), `${n} is defined in a fresh Space`);
+  for (const n of ["contact", "contact_point", "organization", "communication", "event"]) assert.ok(types.includes(n), `${n} is defined in a fresh Space`);
   assert.ok(d.registry.deps.flowsHost.get(d.kernel.id.space).calendar, "and the calendar sync is started for the Space");
 });
