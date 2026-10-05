@@ -56,3 +56,11 @@ test("forget needs the receipt, refuses when the lines changed since, and drops 
   assert.equal(a.prepare("SELECT count(*) AS n FROM memory_engine_index").get().n, 0);
   assert.equal(a.prepare("SELECT count(*) AS n FROM memory_engine_suggestions").get().n, 0);
 });
+
+test("forget is idempotent: after the lines are gone a repeat is a no-op, so a resumed move completes", () => {
+  const a = mk(); seed(a);
+  const out = exportKnow(a, { records: [P, CH] });
+  assert.deepEqual(forgetKnow(a, { records: [P, CH], receipt: out }), { forgotten: 3 });
+  assert.deepEqual(forgetKnow(a, { records: [P, CH], receipt: out }), { forgotten: 0 }, "a second forget finds nothing and succeeds");
+  assert.throws(() => forgetKnow(a, { records: [P, CH], receipt: null }), /changed since/ , "but never without a receipt, while lines remain");
+});

@@ -15,7 +15,7 @@ import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REAC
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { migrate } from "../store/index.js";
+import { migrate, open as openStore } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
@@ -433,7 +433,9 @@ export const withOrigin = (origin, f) => (origin ? runInTurn({ ...(currentCall()
 const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f) => {
   // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
   const outer = callStore.getStore();
-  const inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  let inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  // a module a cross-space call reaches (ctx.call) is still in that Space: the registry sets these only from callInSpace, so inheriting them from the running turn is as trusted as the turn
+  if (outer && outer.live && typeof outer.meta.in_space === "string" && typeof inherited.in_space !== "string") inherited = { ...inherited, in_space: outer.meta.in_space, in_space_chain: outer.meta.in_space_chain };
   const box = { meta: inherited, live: true };
   try { return await callStore.run(box, f); } finally { box.live = false; }
 };
@@ -589,7 +591,7 @@ export class Registry {
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
    *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
-   *           presence?: import("../presence/index.js").Presence, coreKeys?: any }} deps
+   *           presence?: import("../presence/index.js").Presence, coreKeys?: any, spaceDir?: (space: string) => string }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -803,6 +805,86 @@ export class Registry {
     return Object.freeze(Object.create(h, { for: { value: forSpace, enumerable: true } }));
   }
 
+  /**
+   * The Space the running call is for: `meta.in_space` (set only by callInSpace, or inherited from the turn that was), or null for the home's own Space. A Space that is not hosted here is null too,
+   * so a call can never reach a store this home does not keep.
+   * @param {any} home the module's home kernel handle
+   */
+  spaceOfCall(home) {
+    const c = currentCall();
+    const sp = c && typeof c.in_space === "string" ? c.in_space : null;
+    if (!sp || !home || sp === home.space) return null;
+    const base = home.for(sp);
+    return base && base.hosted === true ? sp : null;
+  }
+
+  /**
+   * The module's store (ctx.store): `db` and `dir` follow the Space the running call is for. The home's own Space keeps vyre.db as ever; every other hosted Space gets the module its OWN SQLite file
+   * (`<home>/kernel/spaces/<space>/modules/<module>.db`, the module's own migrations replayed into it) and its own data folder, so two Spaces' rows never touch. A module reaches the right one by
+   * calling `ctx.store.db` inside the call (a statement prepared once at start belongs to the home's Space).
+   * @param {any} m @param {any} db the home database @param {() => any} homeOf the module's home kernel handle (undefined for a module with no kernel)
+   */
+  routedStore(m, db, homeOf) {
+    const reg = this;
+    /** @type {string[][]} */ const lists = [];
+    /** @type {Map<string, any>} */ const opened = reg.spaceDbs || (reg.spaceDbs = new Map());
+    const dbFor = (/** @type {string} */ sp) => {
+      const key = `${sp}/${m.name}`;
+      let d = opened.get(key);
+      if (!d) {
+        if (typeof reg.deps.spaceDir !== "function") throw new Error("this home keeps no per-Space module stores");
+        d = openStore(path.join(reg.deps.spaceDir(sp), "modules", `${m.name}.db`));
+        for (const steps of lists) migrate(d, m.name, steps);
+        opened.set(key, d);
+      }
+      return d;
+    };
+    const current = () => { const sp = reg.spaceOfCall(homeOf()); return sp ? dbFor(sp) : db; };
+    const routed = new Proxy({}, {
+      get: (_t, k) => { const real = current(); const v = real[k]; return typeof v === "function" ? v.bind(real) : v; },
+      has: (_t, k) => k in current(),
+    });
+    return {
+      db: routed,
+      migrate: (/** @type {string[]} */ steps) => { lists.push(steps); migrate(db, m.name, steps); for (const [key, d] of opened) if (key.endsWith(`/${m.name}`)) migrate(d, m.name, steps); },
+      /** The module's own data folder for a Space (the running call's by default), created on first use. @param {string} [space] */
+      dir: (/** @type {string | undefined} */ space) => {
+        const sp = space ?? reg.spaceOfCall(homeOf());
+        const base = sp && typeof reg.deps.spaceDir === "function" ? path.join(reg.deps.spaceDir(sp), "modules", m.name) : path.join(reg.deps.paths && reg.deps.paths.root ? reg.deps.paths.root : ".", "modules", m.name);
+        fs.mkdirSync(base, { recursive: true, mode: 0o700 });
+        return base;
+      },
+    };
+  }
+
+  /**
+   * The module's kernel handle (ctx.kernel), following the Space the running call is for: the home's own handle normally, a hosted Space's own (`kernelFor` of THAT Space's kernel: its own records,
+   * log, grants and service chain for this module) when the call runs there. Everything else about the handle is the home's, as ever.
+   * @param {any} m @param {any} home
+   */
+  routedKernel(m, home) {
+    const reg = this;
+    /** @type {Map<string, any>} */ const hostedHandles = new Map();
+    const current = () => {
+      const sp = reg.spaceOfCall(home);
+      if (!sp) return home;
+      let h = hostedHandles.get(sp);
+      if (!h) {
+        const k = home.for(sp).kernel;
+        if (!k || typeof k.kernelFor !== "function") return home;
+        h = reg.withCrossSpace(m, k.kernelFor(m));
+        hostedHandles.set(sp, h);
+      }
+      return h;
+    };
+    return new Proxy({}, {
+      get: (_t, k) => current()[k],
+      has: (_t, k) => k in current(),
+      ownKeys: () => Reflect.ownKeys(home),
+      getOwnPropertyDescriptor: (_t, k) => (k in home ? { value: current()[k], enumerable: true, configurable: true, writable: false } : undefined),
+    });
+  }
+
   /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain */
   async callInSpace(m, space, base, tool, input, chain) {
     const def = this.tools.get(tool);
@@ -812,14 +894,17 @@ export class Registry {
     let verdict = null;
     try { verdict = await base.gateway.authorize({ chain, action: def.crossSpace, resource: `vyre://${space}/tool/${tool}` }); } catch { verdict = null; }
     if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space" } };
-    return this.call(tool, input, `module:${m.name}`, { [IN_SPACE]: { space, chain } });
+    // judged as the caller class the running call came from, as ctx.call does: a module acting for a person is the person's reach, never more
+    const origin = captureOrigin();
+    return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [IN_SPACE]: { space, chain } });
   }
 
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
     const { db, events, config, log, paths } = this.deps;
     // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
-    const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.withCrossSpace(m, this.deps.kernelFor(m)) : undefined; })();
+    const homeKernel = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.withCrossSpace(m, this.deps.kernelFor(m)) : undefined; })();
+    const kernelHandle = homeKernel ? this.routedKernel(m, homeKernel) : undefined;
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
     const entries = new Map(toolEntries(m).map(e => [e.name, e]));
     const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
@@ -950,7 +1035,7 @@ export class Registry {
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
-      store: { db, migrate: steps => migrate(db, m.name, steps) },
+      store: this.routedStore(m, db, () => homeKernel),
       // A function for built in callers, with the levels module API 1 names (ADR 0047 section 3).
       log: Object.assign((msg, extra) => log(`[${m.name}] ${msg}`, extra), {
         info: (msg, extra) => log(`[${m.name}] ${msg}`, extra),
@@ -1637,6 +1722,8 @@ export class Registry {
   }
 
   async stop() {
+    for (const d of /** @type {Map<string, any>} */ (this.spaceDbs || new Map()).values()) { try { d.close(); } catch { /* closed */ } }
+    this.spaceDbs = null;
     for (const [name, r] of [...this.modules.entries()].reverse()) {
       if (r.state === "running" && r.handle && typeof r.handle.stop === "function") {
         try {

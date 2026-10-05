@@ -236,6 +236,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     const offer = await ports.memory.offer({ target: target.urn });
     const exp = await ports.memory.export({ to_key: offer.to_key });
     state.memory_receipt = await ports.memory.import({ package: exp.package, into: target.urn });
+    await persist();
   }
 
   // 5b. the Work engine's session lines (`ports.know`: export, import, forget), copied the same way and forgotten only against the receipt
@@ -244,6 +245,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     step("know");
     const exp = await ports.know.export({ records: knowRecords });
     state.know_receipt = await ports.know.import({ rows: exp.rows, map: state.map, from_space: from.space });
+    await persist();
   }
 
   // 6. the old Space keeps a marker and nothing else
@@ -258,7 +260,19 @@ export async function runMove({ from, to, plan, ports = {} }) {
     left = remove ? ((await remove(allFiles)) || []) : allFiles;
     if (!left.length) state.cleaned = true;
   }
-  if (ports.know && state.know_receipt && !state.know_forgotten) { step("forget-know"); await ports.know.forget({ records: knowRecords, receipt: state.know_receipt }); state.know_forgotten = true; }
+  if (ports.know && state.know_receipt && !state.know_forgotten) {
+    step("forget-know");
+    try { await ports.know.forget({ records: knowRecords, receipt: state.know_receipt }); }
+    catch (e) {
+      // a line was written to the project between the copy and now: copy again (an import is idempotent, a repeat only fills in what is new) and forget against the new receipt, once
+      if (/** @type {any} */ (e).code !== "conflict") throw e;
+      const exp = await ports.know.export({ records: knowRecords });
+      state.know_receipt = await ports.know.import({ rows: exp.rows, map: state.map, from_space: from.space });
+      await persist();
+      await ports.know.forget({ records: knowRecords, receipt: state.know_receipt });
+    }
+    state.know_forgotten = true;
+  }
   if (ports.memory && state.memory_receipt && !state.memory_forgotten) {
     step("forget");
     /** @type {any} */ let f;

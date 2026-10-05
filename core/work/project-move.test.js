@@ -276,6 +276,28 @@ test("the plan carries every file's content hash from the Drive's own record, an
   await assert.rejects(() => runMove({ from: a, to: b, plan }), /changed since/);
 });
 
+test("the Work lines: a crash between import and forget resumes and completes, and a line written in between is carried again", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[]} */ const order = [];
+  let late = false;
+  const know = {
+    export: async () => { order.push("export"); return { rows: [{ record: proj.urn }] }; },
+    import: async () => { order.push("import"); return { digest: late ? "new" : "old", count: 1 }; },
+    forget: async (/** @type {any} */ i) => { order.push(`forget:${i.receipt.digest}`); if (!late) { late = true; throw Object.assign(new Error("changed since export"), { code: "conflict" }); } return { forgotten: 1 }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  /** @type {any} */ let saved = null;
+  const save = async (/** @type {any} */ st) => { saved = JSON.parse(JSON.stringify(st)); };
+  // crash right after the import, before the forget
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports: { know, save, onStep: (/** @type {string} */ n) => { if (n === "marker") throw new Error("crash"); } } }), /crash/);
+  assert.deepEqual(order, ["export", "import"]);
+  assert.equal(saved.know_receipt.digest, "old", "the receipt was saved");
+  // the resume forgets against it, meets a line written meanwhile, carries again and forgets once more
+  const done = await runMove({ from: a, to: b, plan, ports: { know, save, state: saved } });
+  assert.deepEqual(order, ["export", "import", "forget:old", "export", "import", "forget:new"]);
+  assert.equal(done.moved.know, 1);
+});
+
 test("a chat moves with its project: made again in the target under a NEW id as the mover's act, people who are members and agents that exist stay, the rest are former, and its sealed files land under the new id", async () => {
   const a = space("A", ["project", "chat-record"]), b = space("B", ["project", "chat-record"]);
   const proj = await a.records.create(null, "project", { name: "Rivera", slug: "rivera", status: "active", memory_scope: "project:rivera" });

@@ -31,7 +31,6 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
-    /** @type {any} */ let engine = null;
     /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
@@ -73,11 +72,14 @@ export default {
       });
     }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
+    // One engine per Space: a call that runs in a hosted Space has that Space's own kernel handle and its own database (`ctx.store.db` is a router that picks the running Space's file), and an engine built once
+    // holds the home's. Keyed by the running Space's id, built inside the call.
+    /** @type {Map<string, any>} */ const engines = new Map();
     const engineOf = () => {
-      if (engine) return engine;
       const k = kernelOf();
+      if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
-      return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
+      const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
     };
     const engineerOf = () => {
       if (engineer) return engineer;
@@ -204,9 +206,10 @@ export default {
       // run by the move (this module's own tool, through ctx.call or the Space handle), never by a person's surface or another module: the authority is the move's own event in this Space's log
       if (String((extra && extra.caller) || "") !== "module:work") throw fail("denied", "the Work engine's lines move only inside a project move");
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
-      // a call that crossed into a hosted Space says so (`in_space`, set only by the registry): that Space's own log is the one to read, under the chain the caller holds there
-      const inSpace = extra && typeof extra.in_space === "string" && extra.in_space !== kernelOf().space ? extra.in_space : null;
-      const evs = inSpace ? await (await kernelOf().for(inSpace)).gateway.events.read(extra.in_space_chain, { type }) : await kernelOf().events.read(kernelOf().serviceChain("work"), { type });
+      // Inside a hosted Space this module runs with THAT Space's own kernel handle (windows' per-Space stores), so `kernelOf()` already reads the running Space's log; a call that crossed into it
+      // carries the caller's chain there (`in_space_chain`, set only by the registry), which is the one that may read it.
+      const chain = extra && extra.in_space_chain ? extra.in_space_chain : kernelOf().serviceChain("work");
+      const evs = await kernelOf().events.read(chain, { type });
       const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
       if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
     };
