@@ -39,6 +39,8 @@ export default {
       for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; fields[k] = v; }
       return { op: request.op, fields };
     };
+    // Which device is calling comes from the transport's verified peer (the kernel's own facts: `meta.peer`, set by the daemon from a vouched connection), never from the caller LABEL a string says (person-label-hygiene).
+    const deviceOf = (/** @type {any} */ meta) => { const p = meta && meta.peer; return p && p.kind === "device" ? (String(p.stableId || p.node || "") || null) : null; };
     const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
     /** A device the owner declined cannot ask again for ten minutes. @type {Map<string, number>} */
     const refusedUntil = new Map();
@@ -46,7 +48,7 @@ export default {
       const a = open.get(id);
       if (!a || !a.moment || a.state !== "approved" || !a.verified || now() - a.at > ASK_MS * 2) return "no_proof";
       if (a.used) return "replayed";
-      if (a.moment !== moment || a.request.op !== request.op || canon(a.request.fields) !== canon(request.fields && typeof request.fields === "object" ? request.fields : {}) || (device && device !== a.from.replace(/^device:/, ""))) return "wrong_request";
+      if (a.moment !== moment || a.request.op !== request.op || canon(a.request.fields) !== canon(request.fields && typeof request.fields === "object" ? request.fields : {}) || (device && device !== a.device)) return "wrong_request";
       a.used = true;
       return "ok";
     });
@@ -87,9 +89,10 @@ export default {
           const payload_hash = payloadHash(sg.op, space, sg.fields);
           const id = `ap_${randomBytes(9).toString("base64url")}`;
           let who = "A device";
-          try { const d = from.startsWith("device:") ? await ctx.call("wink.device.record", { id: from.slice(7) }) : null; if (d && d.data && d.data.name) who = String(d.data.name); } catch { /* the generic name */ }
+          const device = deviceOf(meta);
+          try { const d = device ? await ctx.call("wink.device.record", { id: device }) : null; if (d && d.data && d.data.name) who = String(d.data.name); } catch { /* the generic name */ }
           const line = lineOfOp(request.op, request.fields, who);
-          open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment, request, line });
+          open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device, at: now(), state: "waiting", moment, request, line });
           return { id, expires_in_s: ASK_MS / 1000, line };
         }
         const op = String(input.op || "");
@@ -147,8 +150,7 @@ export default {
         if (input.approve !== true) {
           if (a.moment) {
             // a "no" holds the asker for ten minutes, so it counts only from the owner's own surface on the server (the terminal, the Capsule) or from a device with a session of a real key; a software browser's no is ignored
-            const caller = String((meta && meta.caller) || "");
-            let ok = !caller.startsWith("device:");
+            let ok = !deviceOf(meta);
             if (!ok) { const sid = meta && meta.person && meta.person.id; const st = sid ? await ctx.call("presence.person.strength", { id: String(sid) }).catch(() => null) : null; ok = Boolean(st && st.data && st.data.strength === "real"); }
             if (!ok) return { answered: "ignored", why: "a no counts from your phone's own session or this server's own screen" };
             a.state = "refused"; refusedUntil.set(a.from, now() + 10 * 60_000); return { answered: "refused" };
