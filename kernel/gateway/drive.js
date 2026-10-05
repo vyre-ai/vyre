@@ -14,7 +14,10 @@ export function createDriveGateway(cfg) {
   const { gate, check } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const actor = (/** @type {any} */ chain) => { const a = chain.hops[chain.hops.length - 1].actor; return `${a.kind}:${a.id}`; };
   const mustChain = (/** @type {any} */ c) => { if (!isChain(c)) throw new KernelError("bad_input", "a call needs a kernel-built chain"); };
-  const file = (/** @type {string} */ p) => { try { return `vyre://${cfg.space}/file/${safePath(p)}`; } catch { throw new KernelError("bad_input", "bad path"); } };
+  // A Drive that stores a chat's files under ids (kernel/storage/sealed-drive.js) names the stored path: authorization, grants and the log all use it, so no file or folder name is written anywhere
+  // but the sealed index. A chat whose key is locked in this process cannot be named, which looks like it is not there.
+  const shown = (/** @type {string} */ p) => { if (typeof cfg.drive.stored !== "function") return p; try { return cfg.drive.stored(p); } catch { throw new KernelError("unavailable", "this chat's key is not unlocked here"); } };
+  const file = (/** @type {string} */ p) => { const sp = shown(p); try { return `vyre://${cfg.space}/file/${safePath(sp)}`; } catch (e) { if (e instanceof KernelError) throw e; throw new KernelError("bad_input", "bad path"); } };
   const backup = (/** @type {string} */ n) => { try { return `vyre://${cfg.space}/file/backups/${segment(n)}`; } catch { throw new KernelError("bad_input", "bad name"); } };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => { try { cfg.log.append(chain, { type, sv: 1, subject, data, vis: "subject", red: "internal" }, decision ? { decision } : {}); } catch { /* the act stands; the note is best effort */ } };
   const mapErr = (/** @type {any} */ e) => (e instanceof KernelError ? e : new KernelError(typeof e?.code === "string" ? e.code : "unavailable", "the drive could not do that"));
@@ -40,13 +43,13 @@ export function createDriveGateway(cfg) {
         async read(/** @type {string} */ p, /** @type {number | null} */ version = null) {
           const d = await gate(chain, "drive.read", file(p));
           const st = await run(async () => cfg.drive.stat(p, { version }));
-          note(chain, "file.accessed", file(p), { path: p, version: st.version, what: "forward" }, d.decision);
+          note(chain, "file.accessed", file(p), { path: shown(p), version: st.version, what: "forward" }, d.decision);
           return { ...st, stream: () => cfg.drive.stream(p, { version: st.version }) };
         },
         async write(/** @type {string} */ p, /** @type {AsyncIterable<Buffer>} */ source, /** @type {{ maxBytes: number, by?: string }} */ o) {
           const d = await gate(chain, "drive.write", file(p));
           const r = await run(() => cfg.drive.putStream(p, source, { by: actor(chain), maxBytes: o.maxBytes }));
-          note(chain, "file.written", file(p), { path: p, version: r.version, bytes: r.size, what: "forward" }, d.decision);
+          note(chain, "file.written", file(p), { path: shown(p), version: r.version, bytes: r.size, what: "forward" }, d.decision);
           return { path: p, version: r.version, size: r.size, sha256: r.sha256 };
         },
       });
@@ -57,8 +60,8 @@ export function createDriveGateway(cfg) {
       return read(chain, "drive.read", file(p), async () => {
         if (o.maxBytes != null && typeof cfg.drive.stat === "function") { const st = cfg.drive.stat(p, { version: o.version ?? null }); if (st.size > o.maxBytes) throw new KernelError("too_large", "that file is larger than this call returns"); }
         return cfg.drive.get(p, { version: o.version ?? null });
-      }, "file.accessed", { path: p, version: o.version ?? null }); },
-    async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
+      }, "file.accessed", { path: shown(p), version: o.version ?? null }); },
+    async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: shown(p), what: "history" }); },
     /** The listing shows only what the chain may read: the folder is authorized once, then each entry is asked about until a page is full. A page is at most 1,000 entries and a call looks at most 5,000, so the cost of one call is bounded whatever the folder holds. `after` is the last path the previous page covered. */
     async listPage(chain, /** @type {string} */ prefix = "", /** @type {{ limit?: number, after?: string | null }} */ o = {}) {
       mustChain(chain);
@@ -85,7 +88,7 @@ export function createDriveGateway(cfg) {
       if (!(bytes instanceof Uint8Array) || bytes.length > (cfg.maxBytes ?? 256 * 1024 * 1024)) throw new KernelError("bad_input", "a file is bytes, within the size limit");
       const d = await gate(chain, "drive.write", file(p));
       const r = await run(() => cfg.drive.put(p, bytes, { by: actor(chain), base: o.base ?? null }));
-      note(chain, "file.written", file(p), { path: p, version: r.version, conflict: Boolean(r.conflict), bytes: bytes.length }, d.decision);
+      note(chain, "file.written", file(p), { path: shown(p), version: r.version, conflict: Boolean(r.conflict), bytes: bytes.length }, d.decision);
       return r;
     },
     /** One folder to another: `moveFolders` with a single pair. @returns {Promise<{ moved: number }>} */
@@ -113,7 +116,7 @@ export function createDriveGateway(cfg) {
         if (!(await check(chain, "drive.read", file(f.path))) || !(await check(chain, "drive.write", file(f.path))) || !(await check(chain, "drive.write", file(f.dest)))) throw new KernelError("not_found", "that folder is not yours to move");
       }
       for (const f of plan) await run(async () => { const bytes = await cfg.drive.get(f.path, {}); await cfg.drive.put(f.dest, bytes, { by: actor(chain) }); await cfg.drive.delete(f.path, { by: actor(chain) }); });
-      for (const f of folders) note(chain, "file.moved", file(f.b), { from: f.a, to: f.b, files: plan.filter(p => p.path.startsWith(f.a + "/")).length }, f.d.decision);
+      for (const f of folders) note(chain, "file.moved", file(f.b), { from: shown(f.a), to: shown(f.b), files: plan.filter(p => p.path.startsWith(f.a + "/")).length }, f.d.decision);
       return { moved: plan.length };
     },
     /**
@@ -143,7 +146,7 @@ export function createDriveGateway(cfg) {
       if (!Number.isInteger(version) || version < 1) throw new KernelError("bad_input", "name a version number");
       const d = await gate(chain, "drive.restore", file(p), opt.presence ? { presence: opt.presence } : {});
       const r = await run(() => cfg.drive.restore(p, version, { by: actor(chain) }));
-      note(chain, "file.restored", file(p), { path: p, from: version, version: r.version }, d.decision);
+      note(chain, "file.restored", file(p), { path: shown(p), from: version, version: r.version }, d.decision);
       return r;
     },
     /** Removing a file for good is an outward act (`drive.delete`): it asks. */
@@ -151,7 +154,7 @@ export function createDriveGateway(cfg) {
       mustChain(chain);
       const d = await gate(chain, "drive.delete", file(p));
       const r = await run(() => cfg.drive.delete(p, { by: actor(chain) }));
-      note(chain, "file.deleted", file(p), { path: p }, d.decision);
+      note(chain, "file.deleted", file(p), { path: shown(p) }, d.decision);
       return r;
     },
     async prune(chain, /** @type {any} */ o = {}) {
