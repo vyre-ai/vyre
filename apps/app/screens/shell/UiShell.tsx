@@ -54,8 +54,8 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   }, [router]);
   // On a Basic personal space (no server) the places that need a server say so, and offer the team spaces and a server of the person's own.
   const showing = DATA.spaces.find((x) => x.id === space);
-  const needsServer = Boolean(showing?.basic) && gatedPath(path);
   const teams = DATA.spaces.filter((x) => x.id !== "all" && !x.basic);
+  const needsServer = Boolean(showing?.basic) && gatedPath(path, teams.length > 0);
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;

@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isBasicRow, gatedPath, backupLine, NEEDS_SERVER } from "./basic.js";
+import { isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
 
 test("a space is Basic only when the box says tier basic; cloud and team spaces are not", () => {
   assert.equal(isBasicRow({ tier: "basic" }), true);
@@ -12,9 +12,20 @@ test("a space is Basic only when the box says tier basic; cloud and team spaces 
   assert.equal(NEEDS_SERVER, "This needs a Cloud space");
 });
 
-test("records, flows, the planner and the calendar are gated; chats and projects are not", () => {
-  for (const p of ["/u/records/contact", "/u/record/abc", "/u/flows", "/u/flows/x", "/u/kits", "/u/planner", "/u/calendar", "/u/task/t1", "/u/settings/customize"]) assert.equal(gatedPath(p), true, p);
+test("with no Cloud space the planner, records, flows and calendar are gated; chats and projects are not", () => {
+  for (const p of ["/u/records/contact", "/u/records/reminder", "/u/record/abc", "/u/flows", "/u/flows/x", "/u/kits", "/u/planner", "/u/calendar", "/u/task/t1", "/u/settings/customize"]) assert.equal(gatedPath(p), true, p);
   for (const p of ["/u/now", "/u/chats", "/u/chats/c1", "/u/projects", "/u/project/p1", "/u/settings", "/u/memory", "/u/vault", "/u/drive"]) assert.equal(gatedPath(p), false, p);
+});
+
+test("a person in any Cloud space has the planner, reminders, notes, to-dos and calendar in Personal; custom Records, Customize and flows stay gated", () => {
+  for (const p of ["/u/planner", "/u/calendar", "/u/task/t1", "/u/records/reminder", "/u/records/note"]) assert.equal(gatedPath(p, true), false, p);
+  for (const p of ["/u/records/contact", "/u/records/matter", "/u/record/abc", "/u/flows", "/u/kits", "/u/settings/customize"]) assert.equal(gatedPath(p, true), true, p);
+});
+
+test("where a Personal space keeps its planner items: encrypted on a team's server, or nothing said", () => {
+  assert.equal(storedLine({ basic: true, teams: [{ name: "Harlow" }] }), "Reminders, notes and to-dos: encrypted on Harlow's server");
+  assert.equal(storedLine({ basic: true, teams: [] }), null);
+  assert.equal(storedLine({ basic: false, teams: [{ name: "Harlow" }] }), null);
 });
 
 test("the backup line: not backed up with no team, the destination when the box says, nothing when it is unknown", () => {

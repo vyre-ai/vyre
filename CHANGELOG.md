@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a Personal space (no server) of a person who is in any Cloud space has the planner, reminders, notes, to-dos and the calendar; custom Records (Contacts and the person's own types), Customize, flows and Kits still say "This needs a Cloud space", and with no Cloud space the whole old gate applies. Settings says where those items are kept: "Reminders, notes and to-dos: encrypted on <team>'s server".
+
 - fix(app): one-Chat tool names follow the engine: add a teammate is work.chat.change, switching a slot's model is threads.chat-switch. The Chats list reads project_name and last_line from work.chat.list (providers already).
 
 - fix(app): the calendar has no fallback for a box without planner.agenda: it shows the refusal plainly in a banner. A url field is drawn as a link that opens its http or https address (anything else reads as text), so an Event's url shows as a link on the record page.
