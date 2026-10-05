@@ -78,7 +78,7 @@ export const TICKET_TTL = 5 * 60_000;
  * (GHSA-25xh-w9j7-7v28). `msg` is the most a PAKE message may be (base64url characters), `waitMs`
  * how long the relay holds a typist's request for the box's answer.
  */
-export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20 });
+export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20, graceMs: 90_000 });
 /** The rendezvous alphabet: Crockford base32 without U, two symbols (1024 values). */
 export const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export const CODE_RV_RE = /^[0-9A-HJKMNP-TV-Z]{2}$/;

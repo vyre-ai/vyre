@@ -57,6 +57,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/daemon -> core/wink` | node/peer-wire.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |
+| `core/files -> core/link` | transport.js | the legacy folder-as-a-disk path looks up a program the Mac may have (drive.js); it goes with that path | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |

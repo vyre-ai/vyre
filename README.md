@@ -18,11 +18,11 @@ Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model fo
 
 ## Set up
 
-Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI, connecting Tailscale and adding your phone.
+Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI and adding your phone.
 
 - **The server** is a Linux machine with Docker, or a Mac that stays on.
-- **Tailscale** is required. The free plan is enough.
-- **Your Mac** (Node 22.5 or newer, Tailscale signed in) pairs with your server and gets Vyre Lumen:
+- **The network** is built in. There is nothing to install and nothing to sign in to.
+- **Your Mac** (Node 22.5 or newer) pairs with your server and gets Vyre Lumen:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
@@ -43,7 +43,7 @@ Press Option-Space in any app. Ask a question, send work to one of your agents, 
 
 ## On your phone
 
-Vyre on your phone is the web app, added to your Home Screen from your server's address. Your phone needs Tailscale signed in. The setup page shows a ring to scan with your phone to pair it, shows your server's name and fingerprint, and pairs only after you tap Pair.
+Vyre on your phone is the Vyre app. Scan the code your server or a signed-in computer shows (or paste the long code). Both screens show the same three words, and the phone pairs only after you confirm them.
 
 <picture>
   <img src="docs/images/readme/wink-confirm.png" alt="The phone's pairing success screen, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
@@ -79,7 +79,7 @@ Releases are signed (an Ed25519 signature on the release files, and cosign on th
 
 - Your keys, memory and sessions stay on your server.
 - Your prompts go to the provider you choose (Anthropic, OpenAI, xAI or OpenRouter), the same as when you use that provider on its own.
-- Your server publishes no port to the internet. You reach it over Tailscale.
+- Your server publishes no port to the internet. You reach it through Vyre's own built-in network, or through the relay.
 - Vyre's relay at relay.vyre.run carries setup progress and phone pairing. That traffic is end-to-end encrypted, so the relay can see that a server and a device talk, and when, but never what they say.
 
 ## Not in 0.2.0
@@ -90,7 +90,7 @@ Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safa
 
 **What is Vyre?** A daemon and a set of apps that give your AI agents a permanent home on a server you own: Vyre Lumen for your Mac, an app for your phone and one for Windows. It runs your Claude, Codex and Grok agents with your own accounts.
 
-**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), Tailscale, and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
+**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
 
 **What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
 

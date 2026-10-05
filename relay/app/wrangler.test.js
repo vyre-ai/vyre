@@ -27,7 +27,7 @@ for (const [file, domain] of [["relay/worker/wrangler.toml", "relay.vyre.run"], 
   });
 }
 
-for (const file of ["relay/worker/wrangler.toml", "names/worker/wrangler.toml"]) {
+for (const file of ["relay/worker/wrangler.toml", "names/worker/wrangler.toml", "relay/app/wrangler.toml"]) {
   test(`${file}: Cloudflare request logs are off (they keep addresses Vyre does not need, #70)`, () => {
     const text = fs.readFileSync(path.join(ROOT, file), "utf8").split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
     assert.match(text, /^\[observability\]\s*\nenabled\s*=\s*false\s*$/m);

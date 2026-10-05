@@ -1,7 +1,7 @@
 {
   "name": "hooks",
   "version": "0.1.0",
-  "description": "Inbound webhooks from the public internet through Tailscale Funnel: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
+  "description": "Inbound webhooks from the public internet: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
   "roles": [
     "box"
   ],
@@ -101,7 +101,7 @@
       },
       {
         "id": "status-address",
-        "text": "`vyre hooks status` gives the public address to hand the sender, and flags anything Funnel publishes that does not line up.",
+        "text": "`vyre hooks status` shows your routes and says whether the internet can reach them yet.",
         "surfaces": [
           "cli"
         ],
@@ -113,7 +113,7 @@
       },
       {
         "id": "port-8443",
-        "text": "Publish a route with Funnel on port 8443, never 443: vyred binds 443 on the tailnet addresses itself.",
+        "text": "A route is stored and verified on the server now; it is reachable from the internet once public links are available.",
         "surfaces": [
           "cli"
         ],
@@ -124,7 +124,7 @@
       },
       {
         "id": "close-funnel",
-        "text": "`vyre hooks close <name>` answers 404 at once, but Funnel keeps forwarding until you run the `tailscale funnel` line it prints.",
+        "text": "`vyre hooks close <name>` answers 404 at once, so nothing gets in.",
         "surfaces": [
           "cli"
         ],

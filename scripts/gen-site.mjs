@@ -177,9 +177,9 @@ const HOME_FAQ = [
   ['Is Vyre free?', 'Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.'],
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
-  ['Does it work on my phone?', 'Yes, on iPhone and Android. Open Vyre at your own address, add it to your Home Screen, and pair it by scanning a code. The phone needs Tailscale signed in, because your address only opens from your own devices.'],
+  ['Does it work on my phone?', 'Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.'],
   ['Where does my data live?', 'Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
-  ['What is Tailscale for?', 'Tailscale joins your server, your computers and your phone into one private network. Your address only opens from devices on it, and it is required. The free plan is enough.'],
+  ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.'],
   ['What stops an agent from doing something I did not ask for?', 'Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.'],
   ['Is it ready?', `It is ${VERSION}, and what this page shows works today. Some things come next, and the <a href="/direction/">direction page</a> lists them. The <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> list what ${VERSION} does not do yet.`],
@@ -197,7 +197,7 @@ const homeBody = `
         <a class="btn btn-fill" href="/setup/">Set up Vyre</a>
         <a class="btn" href="/direction/">See the direction</a>
       </div>
-      <p class="hero-note">Free. Needs one AI account and Tailscale’s free plan.</p>
+      <p class="hero-note">Free. Needs one AI account.</p>
     </div>
     <div class="stage">
       <canvas class="field" aria-hidden="true"></canvas>
@@ -392,9 +392,9 @@ const homeBody = `
     <div class="feat-copy rv">
       <span class="num">06 &middot; Phone</span>
       <h2 id="ph-h" class="h2">Your pocket, <b>paired with Face ID.</b></h2>
-      <p class="lead">Open Vyre on your phone at your own address and pair it by scanning a code.</p>
+      <p class="lead">Open Vyre on your phone and pair it by scanning a code.</p>
       ${list([['Needs rows', 'Approve, deny or answer by swipe. Push tells you when an agent is waiting.'], ['Chats, agents, Find and Drive', 'Browse your shared folders and ask your memory from the same app.'], ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept.']])}
-      <p class="sm" style="margin-top:18px">The phone needs Tailscale signed in. <a href="/phone/">More on the phone app</a></p>
+      <p class="sm" style="margin-top:18px">Nothing else to install. <a href="/phone/">More on the phone app</a></p>
     </div>
     <div class="mock rv" style="display:flex;justify-content:center"><div class="phone" style="width:min(100%,300px)" role="img" aria-label="The Vyre phone app on the Needs screen, with two items waiting. Sample data.">
       <div class="notch"></div>
@@ -419,7 +419,7 @@ const homeBody = `
     <div class="cost rv">
       <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. There is no Vyre cloud to sign up for.</p></div>
       <div><p class="lbl">Your AI</p><p class="big">Your plans</p><p>Claude, Codex, Grok or OpenRouter, on the subscriptions or keys you already have.</p></div>
-      <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on. Tailscale’s free plan is enough.</p></div>
+      <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on.</p></div>
     </div>
   </div>
 </section>
@@ -437,7 +437,7 @@ const homeBody = `
         <li><b>Open vyre.run/setup.</b> Choose a Linux server or a Mac that stays on.</li>
         <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
           ${term('curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh', 'curl -fsSL https://vyre.run/i | VYRE_CODE=<your code> sh')}</li>
-        <li><b>Finish in your browser.</b> Name your server, sign in to your AI, connect Tailscale and add your phone.</li>
+        <li><b>Finish in your browser.</b> Name your server, sign in to your AI and add your phone.</li>
         <li><b>Add your computers.</b> Vyre Lumen for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
       </ol>
     </div>
@@ -550,11 +550,11 @@ devicePage({
   ] },
   steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, at <a href="/setup/">vyre.run/setup</a>. Then, on your Mac:', items: [
     `<b>Install the command line.</b> Vyre is not on npm yet, so it installs from a tarball on vyre.run.${term('npm i -g https://vyre.run/box/vyre.tgz')}`,
-    `<b>Pair this Mac with your server.</b> It looks for your server on your tailnet and prints a code. Approve it in your Deck.${term('vyre up')}`,
+    `<b>Pair this Mac with your server.</b> It asks for your server’s pairing code, shows three words, and pairs once you confirm they match on both screens.${term('vyre up')}`,
     `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
     `<b>Press Option-Space.</b> No extra permission is needed. Control twice needs Input Monitoring.`,
   ] },
-  needs: [['Mac', 'macOS, with Node 22.5 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['Network', 'Tailscale signed in, free plan'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
+  needs: [['Mac', 'macOS, with Node 22.5 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
   extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too. The same setup line works there.</p>`,
   gapList: ['Lumen is built on your Mac, not downloaded. There is no signed Mac download yet.', 'Lumen is self-signed, not notarized, so macOS may ask for your permissions again after an update. Notarization comes next.', 'Some Lumen features come later: text expansion, script commands, AI presets and browser tabs.'],
   faq: [
@@ -585,7 +585,7 @@ devicePage({
     `<b>Pair your PC.</b> In Settings on your other device, add a Windows PC, then type the 13 words or scan the QR code on the PC.`,
     `<b>Press Alt+Space.</b> Ask from anywhere, or open the tray icon.`,
   ] },
-  needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['Network', 'Tailscale signed in, free plan'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
+  needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
   gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'The server does not run on Windows yet. Your PC is a client of a Linux server or a Mac.'],
   faq: [
     ['Can my Windows PC be the server?', 'Not yet. The server runs on Linux, or on a Mac that stays on. Your Windows PC connects to it as a client. Running your own work on spare PC compute is part of the direction.'],
@@ -613,10 +613,10 @@ devicePage({
     `<b>Open <a href="/setup/">vyre.run/setup</a>.</b> Choose “A Linux server”. The page shows one line with a one-time code. The code works for an hour and one server.`,
     `<b>Paste it on your server</b>, as yourself, not as root.${term('curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh', 'curl -fsSL https://vyre.run/i | VYRE_CODE=<your code> sh')}`,
     `<b>Check four words.</b> Your server’s terminal prints four words. Press the match button on the page only if they are the same.`,
-    `<b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI, connect Tailscale and add your phone.`,
+    `<b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI and add your phone.`,
   ] },
-  needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Network', 'A Tailscale account, free plan'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
-  gapList: ['Tailscale is required: your address only opens from devices on your tailnet.', 'The first Windows install is not signature-checked; the server install is.', 'Sleeping idle sessions by memory pressure, and many sessions on one server, come in later releases.'],
+  needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
+  gapList: ['The first Windows install is not signature-checked; the server install is.', 'Sleeping idle sessions by memory pressure, and many sessions on one server, come in later releases.'],
   faq: [
     ['What server do I need?', 'A Linux machine you can ssh into with sudo. A small cloud machine or a spare computer both work. Docker Compose 2.24 or newer is required, and the installer offers to add Docker.'],
     ['Can I use a Mac as the server?', 'Yes, a Mac that stays on. Choose “A Mac that stays on” on the setup page and run the same line.'],
@@ -640,19 +640,19 @@ devicePage({
     ['Face ID only when it matters', 'It is asked for the vault and for sends you did not ask for.'],
     ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept. The release signs the app’s files, so a changed file is refused.'],
   ] },
-  steps: { h: 'Install Tailscale, <b>then scan.</b>', items: [
-    `<b>Install Tailscale</b> on your phone from <a href="https://tailscale.com/download">tailscale.com/download</a> and sign in with the same account as your server.`,
-    `<b>Scan the ring.</b> The setup page, or your Deck, shows a ring around your avatar. Scan it with your phone.`,
+  steps: { h: 'Nothing to install, <b>then scan.</b>', items: [
+    `<b>Open the Vyre app</b> on your phone. Vyre’s own network is built in: there is no VPN to install and nothing to sign in to.`,
+    `<b>Scan the code.</b> Your server, or a computer you are already signed in on, shows a code. Scan it with your phone, or paste the long code.`,
     `<b>Add it to your Home Screen.</b> Open your server’s address in the phone’s browser and add Vyre to your Home Screen. Then turn on notifications.`,
-    `<b>Confirm the server.</b> The phone shows your server’s name and fingerprint. Pair only after you check them.`,
+    `<b>Confirm the three words.</b> The phone and the other screen show the same three words. Say yes only if they match.`,
   ] },
-  needs: [['Phone', 'iPhone or Android, with a current browser'], ['Network', 'Tailscale signed in on the phone, free plan'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
+  needs: [['Phone', 'iPhone or Android, with a current browser'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
   gapList: ['The Face ID pairing and the removed-phone wipe still need a pass on real phones. They are tested in parts.', 'Push with the app closed, and the iPhone keyboard, get a pass on real devices next.', 'The model picker and provider marks come to the phone next.'],
   faq: [
     ['Is there an App Store app?', 'No. The phone app is the Deck installed to your Home Screen from your own address, on iPhone and Android.'],
-    ['Why does the phone need Tailscale?', 'Your address only opens from your own devices on your tailnet. Tailscale already knows it is you, so there is no separate login to the server.'],
+    ['Does the phone need a VPN?', 'No. The phone reaches your server through Vyre’s own network, and where a direct path is not possible, through the relay. Your identity on the phone is a key that Face ID unlocks, so there is no separate login to the server.'],
     ['What happens if I lose my phone?', 'Remove it from another device. It is cut off from your server, and it wipes what it kept when it next opens.'],
-    ['Can I use Vyre from a phone browser without installing it?', 'Yes. The Deck opens in any browser on your tailnet. Installing it adds notifications and pairing with Face ID.'],
+    ['Can I use Vyre from a phone browser without installing it?', 'Yes. A browser can open the Vyre web app and reach your server through the relay. Installing the app adds notifications and pairing with Face ID.'],
   ],
 });
 
@@ -712,7 +712,6 @@ const START = `
 <section class="sec" style="padding-top:48px"><div class="wrap">
 ${part('00', 'need', 'What you need', `<ul>
 <li>A server: a Linux machine you can <code>ssh</code> into with sudo (Docker is installed for you if it is missing, after you say yes), or a Mac that stays on.</li>
-<li>A Tailscale account. The free plan is enough. Tailscale is required.</li>
 <li>An account with at least one of Claude, Codex, Grok or OpenRouter.</li>
 <li>For Vyre Lumen on your Mac: Node 22.5 or newer (<code>node --version</code>).</li></ul>`)}
 ${part('01', 'server', 'Open the setup page', `<p>Go to <a href="/setup/">vyre.run/setup</a> and choose <strong>A Linux server</strong> or <strong>A Mac that stays on</strong>. The page gives you one line with a one-time code in it. The code works for an hour and for one server.</p>
@@ -724,16 +723,16 @@ ${part('02', 'onboarding', 'Finish in your browser', `<ol>
 <li><strong>Name your server.</strong> Pick the address you will reach it at, <code>you.vyre.run</code>, or use your own domain.</li>
 <li><strong>Save your recovery code.</strong> It is shown once. If you ever reinstall, it takes this address back.</li>
 <li><strong>Sign in to your AI.</strong> Claude, Codex and Grok each sign in on the provider’s own page; Vyre never sees your password. One is enough to go on, and you can add more later.</li>
-<li><strong>Connect Tailscale.</strong> Press Connect, sign in on Tailscale’s page, and the setup page notices when your server joins. If your Tailscale is a work network, the page warns that your company’s admins can reach the server.</li>
+<li><strong>See your network.</strong> Vyre’s private network is built in, so there is nothing to connect. The page shows whether your server is reachable directly or through the relay.</li>
 <li><strong>Add your phone</strong> (you can skip this). The page shows a ring to scan with your phone.</li>
 <li><strong>Open your server.</strong> Your server has its own address. Open it once from the setup page: it asks for your fingerprint, face or a security key, and that makes you its owner.</li></ol>
-<p>Your address only opens from your own devices on your tailnet. Put Tailscale on your Mac and your phone (<a href="https://tailscale.com/download">tailscale.com/download</a>) and sign in with the same account.</p>`)}
+<p>Your server, your computers and your phone find each other through Vyre’s own network. There is nothing to install and nothing to sign in to.</p>`)}
 ${part('03', 'mac', 'Your Mac', `<p>Install the command line from the tarball, pair it with your server, then build Vyre Lumen:</p>
 ${term('npm i -g https://vyre.run/box/vyre.tgz')}${term('vyre up')}${term('vyre capsule install')}
-<p><code>vyre up</code> starts Vyre on this Mac and looks for your server on your tailnet (the Mac must be signed in to Tailscale). It asks the server to pair this Mac and prints a code; approve it in your Deck on your phone, or on another computer on your tailnet, with your passkey. <code>vyre link</code> on the Mac says when it is paired.</p>
+<p><code>vyre up</code> starts Vyre on this Mac and asks for your server’s pairing code. It shows three words; confirm they match the server’s screen, and approve with your passkey. <code>vyre link</code> on the Mac says when it is paired.</p>
 <p><code>vyre capsule install</code> builds Vyre Lumen on this Mac from the package; nothing is downloaded for it. If it says the Command Line Tools are not installed, run <code>xcode-select --install</code>, then run it again. Then open it with <code>vyre capsule</code>.</p>
 <p>Option-Space opens Vyre Lumen from any app by default, with no extra permission. If you turn on Control twice instead from the menu-bar mark, grant Input Monitoring when it asks: macOS needs that permission to see the key. Contacts is optional, for contact results. More on the <a href="/mac/">Mac page</a>.</p>`)}
-${part('04', 'phone', 'Your phone', `<p>Install Tailscale on your phone and sign in with the same account. Then scan the ring the setup page shows, or open your server’s address in the phone’s browser and add Vyre to your Home Screen. The phone shows your server’s name and fingerprint and pairs only after you tap <em>Pair</em>. Open Vyre from your Home Screen from then on. More on the <a href="/phone/">phone page</a>.</p>`)}
+${part('04', 'phone', 'Your phone', `<p>Open the Vyre app and scan the code the setup page or your Deck shows, or paste its long code. Both screens show the same three words, and the phone pairs only after you confirm them. Open Vyre from your Home Screen from then on. More on the <a href="/phone/">phone page</a>.</p>`)}
 ${part('05', 'windows', 'Windows', `<p>There is a Windows app for your Windows PC: a tray icon and an Alt+Space panel, and it updates itself. Its installer, <code>VyreSetup.exe</code>, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The app is not signed yet, so Windows may warn that the publisher is unknown: choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Interactive artifacts in Safari.</strong> On a Mac or an iPhone, a page that navigates itself can be sent your sign-in cookie. A fix comes next. Until then, open interactive pages only from agents you trust.</li>
@@ -820,12 +819,12 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Deck installed to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
-- Network: Tailscale is required (free plan is enough). Your address (you.vyre.run, or your own domain) opens only from devices on your tailnet.
+- Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
 1. Open ${SITE}/setup/ and choose a Linux server or a Mac that stays on.
 2. On the server, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh\`
-3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, connect Tailscale, add your phone.
+3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
 4. Mac: \`npm i -g https://vyre.run/box/vyre.tgz\`, then \`vyre up\`, then \`vyre capsule install\`.
 5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
 
@@ -874,7 +873,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
-- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Tailscale is required (free plan).
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on.
 - Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: a web app on the Home Screen.
 - Current release: ${VERSION}.
 

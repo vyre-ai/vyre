@@ -921,33 +921,9 @@
    "module": "names",
    "reason": "the steward check in the tool: a callers list of the person's surfaces plus module, narrowed by name to module:onboard and module:launch; refuses an agent claim, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
   },
-  "names.connect": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
-  "names.fallback": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
-  "names.owner": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:network for the owner adoption during a live setup; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
   "names.status": {
    "module": "names",
    "reason": "read-only; no secret, no side effect"
-  },
-  "network.tailscale.login": {
-   "module": "network",
-   "reason": "the positive callers check allowed() in the tool: the person's surfaces, their devices, module:onboard and their own session; refuses a guest, another agent, an added module and anonymous"
-  },
-  "network.tailscale.peers": {
-   "module": "network",
-   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
-  },
-  "network.tailscale.status": {
-   "module": "network",
-   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
   },
   "network.wink.status": {
    "module": "network",
@@ -1230,10 +1206,6 @@
    "reason": "the setup channel's own allowlist and the owner() style check in the tool; read-only, answers state and the words, no secret"
   },
   "relay.status": {
-   "module": "relay",
-   "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
-  },
-  "relay.tailnet.status": {
    "module": "relay",
    "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
   },

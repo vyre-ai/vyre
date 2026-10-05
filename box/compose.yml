@@ -19,6 +19,11 @@ services:
   vyre:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
     restart: unless-stopped
+    # The public gate (core/wink/control/publicgate.js): TLS for the box's own name, in front of the network's control server, an exact allow-list and nothing else.
+    # Nothing listens on it until the box has a name and a certificate, so publishing the port opens nothing before then. Change the number with VYRE_PUBLIC_GATE_PORT
+    # in vyre.env AND wink.publicPort in the config, together; the node program's own UDP is outbound-initiated and needs no published port.
+    ports:
+      - "${VYRE_PUBLIC_GATE_PORT:-7443}:${VYRE_PUBLIC_GATE_PORT:-7443}"
     networks:
       vyre:
         aliases:

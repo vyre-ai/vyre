@@ -71,15 +71,15 @@
 <section class="sec" aria-labelledby="steps-h">
   <div class="wrap feat flip">
     <div class="feat-copy rv"><span class="num">Install</span><h2 id="steps-h" class="h2">Open the setup page, <b>paste one line.</b></h2></div>
-    <div class="rv"><ol class="steps" style="margin-top:0"><li><b>Open <a href="/setup/">vyre.run/setup</a>.</b> Choose “A Linux server”. The page shows one line with a one-time code. The code works for an hour and one server.</li><li><b>Paste it on your server</b>, as yourself, not as root.<div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh</code><button type="button" data-copy="curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh" aria-label="Copy the command">Copy</button></div></li><li><b>Check four words.</b> Your server’s terminal prints four words. Press the match button on the page only if they are the same.</li><li><b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI, connect Tailscale and add your phone.</li></ol></div>
+    <div class="rv"><ol class="steps" style="margin-top:0"><li><b>Open <a href="/setup/">vyre.run/setup</a>.</b> Choose “A Linux server”. The page shows one line with a one-time code. The code works for an hour and one server.</li><li><b>Paste it on your server</b>, as yourself, not as root.<div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh</code><button type="button" data-copy="curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh" aria-label="Copy the command">Copy</button></div></li><li><b>Check four words.</b> Your server’s terminal prints four words. Press the match button on the page only if they are the same.</li><li><b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI and add your phone.</li></ol></div>
   </div>
 </section>
 <section class="sec" aria-labelledby="need-h">
   <div class="wrap">
     <div class="sec-head rv"><span class="lbl" id="need-h">What it needs</span></div>
-    <div class="need-list rv"><div><b>Server</b>A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.</div><div><b>Network</b>A Tailscale account, free plan</div><div><b>AI</b>One of Claude, Codex, Grok or OpenRouter</div><div><b>Where</b>Installs in /srv/vyre</div></div>
+    <div class="need-list rv"><div><b>Server</b>A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.</div><div><b>AI</b>One of Claude, Codex, Grok or OpenRouter</div><div><b>Where</b>Installs in /srv/vyre</div></div>
     
-    <div class="rv" style="margin-top:36px"><div class="note"><p class="lbl" style="margin-bottom:8px">Known gaps in 0.2.2</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0">Tailscale is required: your address only opens from devices on your tailnet.</li><li style="margin:.3em 0">The first Windows install is not signature-checked; the server install is.</li><li style="margin:.3em 0">Sleeping idle sessions by memory pressure, and many sessions on one server, come in later releases.</li></ul></div></div>
+    <div class="rv" style="margin-top:36px"><div class="note"><p class="lbl" style="margin-bottom:8px">Known gaps in 0.2.2</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0">The first Windows install is not signature-checked; the server install is.</li><li style="margin:.3em 0">Sleeping idle sessions by memory pressure, and many sessions on one server, come in later releases.</li></ul></div></div>
   </div>
 </section>
 <section class="sec" aria-labelledby="faq-h">

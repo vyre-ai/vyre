@@ -194,6 +194,19 @@ export function createRelay(o = {}) {
     routeCode.delete(route);
     for (const [q, p] of codePending) if (p.route === route) { clearTimeout(p.timer); codePending.delete(q); p.done(null); }
   };
+  /** Refuses what is waiting on a route's code but keeps the code itself (the box's control socket changed; the code did not). @param {string} route */
+  const refusePending = route => { for (const [q, p] of codePending) if (p.route === route) { clearTimeout(p.timer); codePending.delete(q); p.done(null); } };
+  /** A box whose control socket drops keeps its code for a short grace so a reconnect (a flapping link, a relay behind a proxy that cuts idle sockets) does not silently kill the code
+   * its screen still shows; the code's own expiry still applies. A different box never gets the slot: only the same route key can authenticate as the route. @type {Map<string, any>} */
+  const codeGrace = new Map();
+  const keepCode = route => {
+    if (!routeCode.has(route)) return;
+    clearTimeout(codeGrace.get(route));
+    const t = setTimeout(() => { codeGrace.delete(route); if (!routes.get(route)?.control) releaseCode(route); }, codeCfg.graceMs);
+    t.unref?.();
+    codeGrace.set(route, t);
+  };
+  const resumeCode = route => { clearTimeout(codeGrace.get(route)); codeGrace.delete(route); };
   /** A free rendezvous, random among the free ones, or null. @param {string} route */
   const allocCode = route => {
     sweepCodes();
@@ -436,6 +449,7 @@ export function createRelay(o = {}) {
   function onBoxControl(route, peer) {
     const challenge = crypto.randomBytes(32);
     peer.json({ t: "challenge", n: challenge.toString("base64url") });
+    let upSince = 0;
     let authed = false;
     peer.onmessage = (data, binary) => {
       if (authed || binary) { if (!authed) peer.close(CLOSE.refused, "expected auth"); return; }
@@ -450,11 +464,13 @@ export function createRelay(o = {}) {
       authed = true;
       const r = routeOf(route);
       if (r.control) r.control.close(CLOSE.replaced, "replaced by a newer box connection");
-      // A code belongs to the control socket that asked for it: a new one starts with none.
-      releaseCode(route);
+      // The same box reconnecting keeps the code its screen shows (until it expires); only what was in flight on the old socket is refused.
+      resumeCode(route);
+      refusePending(route);
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
       peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box && !x.tunnel).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: o.tunnel ? [...FEATURES, "tunnel"] : FEATURES }) });
+      upSince = Date.now();
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
       // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
@@ -486,7 +502,7 @@ export function createRelay(o = {}) {
     };
     peer.onclose = () => {
       const r = routes.get(route);
-      if (r && r.control === peer) { r.control = null; r.ticket = null; releaseCode(route); log("box.disconnected", { route }); }
+      if (r && r.control === peer) { r.control = null; r.ticket = null; refusePending(route); keepCode(route); log("box.disconnected", { route, upMs: Date.now() - upSince }); }
       tidy(route);
     };
   }

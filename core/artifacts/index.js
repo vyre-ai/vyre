@@ -1140,7 +1140,7 @@ export default {
     ctx.tool("artifacts.public.base", {
       description: "Vyre's network setup only: the public https address links use, or null.",
       input: { type: "object", required: ["base"], properties: { base: { type: ["string", "null"] } } },
-      examples: [{ base: "https://studio.tail1234.ts.net:8443" }],
+      examples: [{ base: "https://studio.vyre.run" }],
       run: async (i, meta) => {
         if (!(meta && meta.firstParty === true)) throw refuse("the public address is set by Vyre's network setup", "denied");
         if (i.base !== null && !/^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/.test(i.base)) throw refuse("base must be an https origin", "bad_input");

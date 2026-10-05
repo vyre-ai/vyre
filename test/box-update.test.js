@@ -176,7 +176,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   fs.writeFileSync(path.join(DIR, "compose.build.yml"), "# old\n");
   fs.writeFileSync(path.join(DIR, "vyre.env.example"), "# old\n");
   const env = build
-    ? `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${DIR}/src\nTS_AUTHKEY=tskey-northwind\n`
+    ? `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${DIR}/src\n`
     : "COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml\n";
   fs.writeFileSync(path.join(DIR, ".env"), env, { mode: 0o600 });
   const U = path.join(root, "uroot");
@@ -660,7 +660,7 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   // The person (or a model running as them) edits compose.yml and plants an override and a vyre.env with a hostile line.
   fs.appendFileSync(path.join(b.DIR, "compose.yml"), "    privileged: true\n");
   fs.writeFileSync(path.join(b.DIR, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nEVIL=$(touch /tmp/pwned)\nBAD=`id`\nNODE_OPTIONS=--require /work/x.js\nLD_PRELOAD=/work/x.so\nVYRE_SETUP_CODE=abc\n");
-  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\n");
+  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\nTS_AUTHKEY=tskey-northwind\n");
   fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0, r.out);
@@ -676,8 +676,7 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   // The env file root wrote: only what the compose file reads, each in its shape, plus root's own paths.
   const env = fs.readFileSync(path.join(RUNDIR, "compose.env"), "utf8");
   assert.match(env, /^VYRE_UPDATE_ROOT=.*\/uroot$/m, "the update root is root's own, not the .env's");
-  assert.match(env, /^VYRE_DRIVE_ACCESS=rw$/m);
-  assert.match(env, /^VYRE_TS_HOSTNAME=box-1$/m);
+  for (const gone of ["VYRE_DRIVE_ACCESS", "VYRE_TS_HOSTNAME", "TS_AUTHKEY"]) assert.ok(!env.includes(gone), `${gone} is no longer a setting an update passes on`);
   for (const bad of ["SYS_ADMIN", "evil/image", "DOCKER_GID", "VYRE_COMPUTERS", "VYRE_IMAGE", "VYRE_UPDATE_ROOT=/\n"]) assert.ok(!env.includes(bad), `${bad} was not passed on`);
   const venv = fs.readFileSync(path.join(RUNDIR, "vyre.env"), "utf8");
   assert.match(venv, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);

@@ -38,7 +38,7 @@ export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame:
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
 /** The typed Wink code's limits and alphabet; these repeat core/relay/wire.js (worker.test.js checks they match). */
-export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20 });
+export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20, graceMs: 90_000 });
 export const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export const CODE_RV_RE = /^[0-9A-HJKMNP-TV-Z]{2}$/;
 const CODE_REFUSED = { error: "that code did not work" };
@@ -638,8 +638,11 @@ export class RouteRelay {
     }
     const old = this.control();
     if (old) this.end(old, CLOSE.replaced, "replaced by a newer box connection");
-    // A code belongs to the control socket that asked for it: a new one starts with none.
-    await this.releaseCode();
+    // The same box reconnecting keeps the code its screen shows (until its own expiry); only what was in flight on the old socket is refused.
+    await this.ctx.storage.delete("codeGrace");
+    await this.refusePending();
+    const kept = await this.ctx.storage.get("code");
+    if (kept && kept.exp <= Date.now()) await this.releaseCode();
     const ticket = b64url(random(18));
     ws.serializeAttachment({ k: "control", ticket, route: r.route });
     const waiting = this.live("device", x => !(/** @type {any} */ (x).piped)).map(d => /** @type {any} */ (this.role(d)).c);
@@ -732,11 +735,27 @@ export class RouteRelay {
     }
   }
 
+  /** Forgets what was waiting on this route's code but keeps the code (the control socket changed; the code did not). */
+  async refusePending() {
+    const stale = [...(await this.ctx.storage.list({ prefix: "code/" })).keys()];
+    for (let k = 0; k < stale.length; k += 128) await this.ctx.storage.delete(stale.slice(k, k + 128));
+  }
+
+  /** The grace is over: a code whose box never came back is freed. A box that reconnected cleared the mark in onAuth. */
+  async alarm() {
+    const g = await this.ctx.storage.get("codeGrace");
+    if (g === undefined) return;
+    if (this.control()) { await this.ctx.storage.delete("codeGrace"); return; }
+    if (Date.now() < g) { await this.ctx.storage.setAlarm(g); return; }
+    await this.ctx.storage.delete("codeGrace");
+    await this.releaseCode();
+  }
+
   /** Frees this route's code, if it has one, and forgets what was waiting on it. */
   async releaseCode() {
     const cur = await this.ctx.storage.get("code");
     if (!cur) return;
-    await this.ctx.storage.delete("code");
+    await this.ctx.storage.delete(["code", "codeGrace"]);
     const stale = [...(await this.ctx.storage.list({ prefix: "code/" })).keys()];
     for (let k = 0; k < stale.length; k += 128) await this.ctx.storage.delete(stale.slice(k, k + 128));
     if (this.env.CODES) { try { await this.env.CODES.get(this.env.CODES.idFromName(`rv:${cur.rv}`)).fetch("https://code/release", { method: "POST", body: JSON.stringify({ route: cur.route }) }); } catch {} }
@@ -801,9 +820,15 @@ export class RouteRelay {
   /** What a socket leaving means for the others. @param {Role} r */
   async after(r, told = null) {
     if (r.k === "control") {
-      // The box's control socket is gone with its code: nobody can answer for it, so nothing stays live.
+      // The box's control socket is gone: nobody can answer for its code now, so what waited on it is refused, but the code itself keeps for a short grace so a
+      // reconnect (a flapping link, a proxy that cuts idle sockets) does not silently kill the code its screen still shows. Its own expiry still applies.
       const cur = await this.ctx.storage.get("code");
-      if (cur) await this.releaseCode();
+      if (cur) {
+        await this.refusePending();
+        const at = Date.now() + CODE.graceMs;
+        await this.ctx.storage.put("codeGrace", at);
+        await this.ctx.storage.setAlarm(at);
+      }
     } else if (r.k === "data") {
       const device = this.live(`dev:${r.c}`)[0];
       if (device) this.end(device, told ? told.code : CLOSE.boxGone, told ? told.reason : "box closed the connection");

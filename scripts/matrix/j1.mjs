@@ -180,10 +180,10 @@ try {
   await click("Continue");
 
 
-  // 1.10 devices: the ring is scanned by a person's phone. By hand; here the page is walked past it.
-  await sees(/Add my phone|Skip for now/i, 30000);
-  r.step("1.10a-phone-ring-offered", /Add my phone/i.test(await page.waitText(/Add my phone/i, 10000)), { shot: await shot("setup-devices") });
-  r.step("1.10b-phone-pairs", "by-hand", { why: "scan the ring with the Vyre app: batch U1" });
+  // 1.10 devices: the page pairs nothing; the first device pairs at the server's terminal (QR or long code, three words). By hand; here the page is walked past it.
+  await sees(/Skip for now/i, 30000);
+  r.step("1.10a-no-pairing-here", !/Add my phone/i.test(await page.waitText(/Skip for now/i, 10000)), { shot: await shot("setup-devices") });
+  r.step("1.10b-phone-pairs", "by-hand", { why: "pair at the server terminal, then add the phone from the Vyre app: batch U1" });
   await click("Skip for now");
 
   // 1.11 claim: the page mints the passkey link for the server's own address

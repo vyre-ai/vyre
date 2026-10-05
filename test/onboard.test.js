@@ -2,7 +2,7 @@
 // 0.3 order (ruling, 4 Oct): a server takes only pairing before it has an owner; sign-ins and names are set up from the owner's signed-in app session. The cases that reached the old loopback
 // first-run page with its cookie were removed (the page is gone from the server install); the guard that replaces them is core/onboard/owner-write.test.js.
 // The onboarding as a browser meets it: a real vyred in a temp home, the one-time link from the
-// socket, the loopback listener, the cookie, and only the onboarding tools behind it. Tailscale
+// socket, the loopback listener, the cookie, and only the onboarding tools behind it.
 // and claude are fake binaries; nothing here reaches the real ones.
 
 import "../scripts/mac-test-guard.mjs";
@@ -30,12 +30,9 @@ function fakeBin(dir, name, out) {
 async function box(t, extra = {}, presence = undefined) {
   const root = tempHome(t);
   const bins = fs.mkdtempSync(path.join(root, "bin-"));
-  const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN, VYRE_NAMES_DEV_CLOUDFLARE: process.env.VYRE_NAMES_DEV_CLOUDFLARE };
+  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN, VYRE_NAMES_DEV_CLOUDFLARE: process.env.VYRE_NAMES_DEV_CLOUDFLARE };
   // These tests serve a vyre.run name through a fake Cloudflare zone: the development path (core/names), not the hosted directory.
   process.env.VYRE_NAMES_DEV_CLOUDFLARE = "1";
-  process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/fake", TUN: true,
-    // Also the answer to `debug prefs`, which Linux asks for the operator.
-    OperatorUser: os.userInfo().username }));
   process.env.VYRE_CLAUDE_BIN = fakeBin(bins, "claude", "2.1.0 (Claude Code)");
   delete process.env.CLOUDFLARE_VYRE_TOKEN;
   // Port 0: the first free port, so parallel test files never collide on 7300.
@@ -180,7 +177,7 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   for (const [tool, input] of [["onboard.you", { name: "alex" }], ["onboard.name", { name: "alex" }], ["onboard.claude", {}],
-    ["onboard.tailscale", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
+    ["onboard.pair", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
     ["onboard.finish", {}], ["onboard.link", {}]]) {
     const r = await d.registry.call(tool, input, "cli");
     assert.equal(r.error?.code, "not_a_server", `${tool} should refuse on solo`);
@@ -190,22 +187,13 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
 });
 
-test("onboard: join status merges Tailscale's own state with whether the relay is ready to pair", async t => {
+test("onboard: join status says where the pair step stands and whether the relay is ready to pair", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } });
   const s = await call("onboard.join", { action: "status" }, { root });
   assert.equal(s.error, undefined, JSON.stringify(s.error));
-  assert.equal(s.data.tailscale.state, "needs-login");
-  assert.equal(s.data.tailscale.loginUrl, "https://login.tailscale.com/a/fake");
+  assert.ok(s.data.pair && ["todo", "done", "blocked"].includes(s.data.pair.state));
+  assert.ok(!("tailscale" in s.data));
   assert.deepEqual(s.data.relay, { available: true, enabled: false, connected: false, pairing: null });
-});
-
-test("onboard: join tailscale is onboard.tailscale's own logic, callable any time", async t => {
-  const { root } = await box(t, {}, present);
-  const status = await call("onboard.join", { action: "tailscale", step: "status" }, { root });
-  assert.equal(status.data.state, "needs-login");
-  const connect = await call("onboard.join", { action: "tailscale", step: "connect" }, { root });
-  assert.equal(connect.error, undefined, JSON.stringify(connect.error));
-  assert.ok(connect.data.loginUrl, "the sign-in link is still handed back");
 });
 
 test("onboard: join verify forwards to link.health, unknown without a node to name, and never flips machine unless asked", async t => {
@@ -236,14 +224,12 @@ test("onboard: join is the owner's alone — an agent with a valid presence proo
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
     const relay = await call("onboard.join", { action: "relay" }, { root, caller });
     assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
-    const connect = await call("onboard.join", { action: "tailscale", step: "connect" }, { root, caller });
-    assert.equal(connect.error?.code, "denied", `tailscale connect via ${caller}`);
   }
   // The owner's own surfaces still work.
   assert.equal((await call("onboard.join", { action: "relay" }, { root, caller: "deck" })).error, undefined);
 });
 
-test("onboard: join status and verify never need presence; tailscale connect and relay always do", async t => {
+test("onboard: join status and verify never need presence; relay always does", async t => {
   // The registry's own decision (core/presence's `required(tool, def, input)`), pure — no daemon,
   // dialog or fake tailscale needed.
   const { Presence } = await import("../core/presence/index.js");
@@ -252,12 +238,9 @@ test("onboard: join status and verify never need presence; tailscale connect and
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [], statTty: () => null, writeTty: () => {} });
-  const def = { presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")) } };
+  const def = { presence: { when: i => i && i.action === "relay" } };
   assert.equal(p.required("onboard.join", def, { action: "status" }), false);
   assert.equal(p.required("onboard.join", def, { action: "verify" }), false);
-  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "status" }), false, "reading Tailscale's state needs no proof");
-  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "policy" }), false, "the paste-only policy snippet needs no proof either");
-  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "connect" }), true, "starting tailscale up does");
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
 });
 

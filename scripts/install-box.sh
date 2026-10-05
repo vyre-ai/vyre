@@ -5,10 +5,13 @@
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
 #   --from DIR         use the box files in a local checkout DIR and build the image from it
-#   --print-link       end with only VYRE_LINK=<url> (and VYRE_SSH=<line>) on stdout, for a
+#   --print-link       end with only VYRE_PAIRED=<space> or VYRE_PAIR=<command> on stdout, for a
 #                      program to read; everything else goes to stderr (or VYRE_LINK_ONLY=1)
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
+#
+#   --version V        install release V (the app that runs `vyre box add` passes its own); latest takes whatever
+#                      the release site serves. A site serving another version stops the install, saying which.
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
@@ -39,6 +42,7 @@ set -eu
 DRY=0
 YES=0
 FROM=""
+WANT=${VYRE_VERSION:-}
 DEVSIGNED=0
 UNINSTALL=0
 PURGE=0
@@ -171,14 +175,14 @@ finish() {
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
-      say "  The setup link went to stdout for the program that asked."
+      say "  Whether it is paired went to stdout for the program that asked."
     else
       if [ "$PAIRED" = 1 ]; then
         say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
       elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
-        say "  Next: finish pairing from your device (the long code above), or open the link above."
+        say "  Next: finish pairing from your device (the long code above)."
       fi
     fi
   fi
@@ -313,6 +317,17 @@ get_sums() {
   fi
 }
 
+# check_version: the version this install was asked for (--version, or VYRE_VERSION) against the one the release site serves. The release
+# site holds one release, so a different version is refused with both named, never installed quietly. "latest" and no version take what is served.
+check_version() {
+  case "$WANT" in ""|latest) return 0 ;; esac
+  case "$WANT" in *[!0-9A-Za-z.-]*) die "--version $WANT is not a version like 0.2.9" ;; esac
+  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves, or install a build that is not published from a checkout with --from <folder>.)"
+  get VERSION
+  have=$(tr -d '[:space:]' <"$TMP/VERSION")
+  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), point VYRE_BOX_URL at a site that serves $WANT, or, for a build that is not published yet, install from a checkout of it with --from <folder>."
+}
+
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
 get() {
   mkdir -p "$TMP/$(dirname "$1")"
@@ -429,6 +444,7 @@ write_stack() {
       done_step "nothing downloaded (dry run)"
     else
       get_sums
+      check_version
       if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
         get release.json
       fi
@@ -467,7 +483,7 @@ docker_gid() {
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs. The one
+# it is where the person adds COMPOSE_PROFILES and anything else of theirs. The one
 # exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
   gid=$(docker_gid)
@@ -998,19 +1014,37 @@ mac_server() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   get_sums
+  [ "${MAC_FROM:-0}" = 1 ] || check_version
   get install-mac-server.sh
   sh "$TMP/install-mac-server.sh" "$@"
   return $?
 }
 
 main() {
-  if [ "$(uname -s)" = Darwin ]; then mac_server "$@"; exit $?; fi
+  if [ "$(uname -s)" = Darwin ]; then
+    # The Mac server script takes no version, so it is taken out here and checked against the site before that script runs (the check is on every
+    # path). The other arguments are passed on as they came: rotated through "$@", never word-split, so an argument with a space stays one.
+    MAC_FROM=0
+    n=$#
+    while [ "$n" -gt 0 ]; do
+      x=$1; shift; n=$((n - 1))
+      case "$x" in
+        --version) [ "$#" -ge 1 ] || die "--version needs a version (or latest)"; WANT=$1; shift; n=$((n - 1)) ;;
+        --version=*) WANT=${x#--version=} ;;
+        --from|--from=*) MAC_FROM=1; set -- "$@" "$x" ;;
+        *) set -- "$@" "$x" ;;
+      esac
+    done
+    mac_server "$@"; exit $?
+  fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) DRY=1 ;;
       --yes|-y) YES=1 ;;
       --from) [ $# -ge 2 ] || die "--from needs a folder"; FROM=$2; shift ;;
       --from=*) FROM=${1#--from=} ;;
+      --version) [ $# -ge 2 ] || die "--version needs a version (or latest)"; WANT=$2; shift ;;
+      --version=*) WANT=${1#--version=} ;;
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;

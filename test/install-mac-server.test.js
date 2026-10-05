@@ -58,7 +58,7 @@ exit 0`,
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
      // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
   const env = {
-    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "",
+    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "", VYRE_HEADSCALE_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
   };
@@ -684,4 +684,40 @@ after(() => {
     for (const b of BASES) reap(b);
     assert.fail(`${left.length} process(es) from these tests were still running: ${left.map(p => p.pid).join(", ")}`);
   }
+});
+
+test("install-mac-server.sh: the built-in network's programs are pinned downloads and your own build, put in Vyre's bin and handed to vyred by env; a bad sum installs nothing", t => {
+  const m = mac(t);
+  const hs = path.join(m.base, "headscale-dl");
+  fs.writeFileSync(hs, "#!/bin/sh\necho headscale\n", { mode: 0o755 });
+  const sum = crypto.createHash("sha256").update(fs.readFileSync(hs)).digest("hex");
+  const fwd = path.join(m.base, "my-forwarder");
+  fs.writeFileSync(fwd, "#!/bin/sh\necho forwarder\n", { mode: 0o755 });
+  const r = run({ ...m.env, VYRE_HEADSCALE_URL: `file://${hs}`, VYRE_HEADSCALE_SHA256: sum, VYRE_FORWARDER_FILE: fwd }, ["--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const bin = path.join(m.env.VYRE_SERVER_DIR, "bin");
+  assert.ok(fs.existsSync(path.join(bin, "headscale")));
+  assert.ok(fs.existsSync(path.join(bin, "wink-forwarder")));
+  assert.match(r.stdout, /Headscale 0\.29\.4 is/);
+  assert.match(r.stdout, /the node program is .* \(your own build\)/);
+  const wrapper = fs.readFileSync(path.join(bin, "vyre-serve"), "utf8");
+  assert.match(wrapper, new RegExp(`export VYRE_HEADSCALE_BIN="${path.join(bin, "headscale")}"`));
+  assert.match(wrapper, new RegExp(`export VYRE_WINK_FORWARDER_BIN="${path.join(bin, "wink-forwarder")}"`));
+
+  const bad = mac(t);
+  const r2 = run({ ...bad.env, VYRE_HEADSCALE_URL: `file://${hs}`, VYRE_HEADSCALE_SHA256: "0".repeat(64) }, ["--from", bad.src]);
+  assert.equal(r2.status, 0, "a missing network never stops the install");
+  assert.match(r2.stdout, /Headscale download does not match its pinned checksum; nothing was installed/);
+  assert.ok(!fs.existsSync(path.join(bad.env.VYRE_SERVER_DIR, "bin", "headscale")));
+  assert.match(r2.stdout, /this release has no node program for this Mac/);
+  const w2 = fs.readFileSync(path.join(bad.env.VYRE_SERVER_DIR, "bin", "vyre-serve"), "utf8");
+  assert.ok(!/VYRE_HEADSCALE_BIN|VYRE_WINK_FORWARDER_BIN/.test(w2), "no program, no env: netd says no-binary and the relay carries everything");
+});
+
+test("install-mac-server.sh: the node program comes from the signed release's own SHA256SUMS line, not from anywhere else", () => {
+  const src = fs.readFileSync(SCRIPT, "utf8");
+  assert.match(src, /get "\$fname"/, "fetched through get, which checks the line in SHA256SUMS");
+  assert.match(src, /fname=wink-forwarder-darwin-\$fa/);
+  assert.match(src, /HEADSCALE_SHA256_ARM64=b5cfd0f81caaa1e8f71f830fd89fdf86a8719bb6e9f9a2ec5b47d9426c96986e/);
+  assert.match(src, /HEADSCALE_SHA256_AMD64=06e4c94a8b9397ed8c2714a4cd484c998604dc884e9b5d4a186aef05f14047b1/);
 });
