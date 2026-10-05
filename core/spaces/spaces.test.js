@@ -1435,7 +1435,7 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
   let clock = 1_800_000_000_000; const tick = () => ++clock;
   const pk = await createKernel({ space: PERSONAL, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 1), clock: tick, presence: presence(), store: createSqliteStore({ db: new DatabaseSync(":memory:") }) });
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "upt-"));
+  const dir = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "upt-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 }) });
   const chainOf = (k) => k.chains.fromFacts({ kind: "device", device_key_id: "d1", person: ME, path: "direct" });
