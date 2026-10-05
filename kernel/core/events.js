@@ -108,7 +108,9 @@ export function createEventLog(cfg) {
     const e = {
       v: 1, id: mintUuid(now, rand), seq, space: cfg.space, type: ev.type, sv: ev.sv,
       time: opts.time ?? now, received_at: now,
-      actor: actorString(last.actor), chain: chain.hops,
+      // an act of the person's assistant is the PERSON's act, marked: the actor stays the person and `acted_via` says it was the assistant (the apps show "(Sent by Vyre Assistant)")
+      actor: actorString(chain.via === "assistant" ? chain.hops[0].actor : last.actor), chain: chain.hops,
+      ...(chain.via === "assistant" ? { acted_via: "assistant" } : {}),
       ...(last.via ? { via: last.via } : {}),
       subject: ev.subject,
       ...(ev.cause ? { cause: ev.cause } : opts.decision ? { cause: opts.decision } : {}),

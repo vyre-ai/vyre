@@ -8,6 +8,9 @@ import { memoryRepo, SUBJECTS, type Fact } from "./data";
 import { editReal, forgetReal, loadReal } from "./real";
 import { uncorrectReal } from "./extras";
 import { RealAsk, RealExtras } from "./RealExtras";
+import RealLessons from "./RealLessons";
+import RealChromeSites from "./RealChromeSites";
+import WhySheet from "./WhySheet";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
@@ -42,6 +45,9 @@ export default function MemoryScreen() {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [undo, setUndo] = useState<{ fact: Fact; index: number; cid?: number | null } | null>(null);
   const [cite, setCite] = useState<Fact | null>(null);
+  const [why, setWhy] = useState<Fact | null>(null);
+  const [tab, setTab] = useState<"facts" | "lessons" | "sites">("facts");
+  const [proposed, setProposed] = useState(0);
 
   const shown = useMemo(() => visible(facts, scope), [facts, scope]);
   const sections = useMemo(() => group(shown, mode), [shown, mode]);
@@ -79,7 +85,7 @@ export default function MemoryScreen() {
             </View>
           </View>
         }
-        end={<Menu trigger={<IconButton icon="more" label="More about this fact" />} items={[{ label: "Edit", onPress: () => setEditing({ id: f.id, text: f.text }) }, { label: "Forget", danger: true, onPress: () => { const r = forget(facts, f.id); (real ? forgetReal(f.id) : Promise.resolve(null)).then((cid) => { setFacts(r.facts); setUndo(r.undo ? { ...r.undo, cid } : null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); } }]} />} />
+        end={<Menu trigger={<IconButton icon="more" label="More about this fact" />} items={[...(real ? [{ label: "Where this came from", onPress: () => setWhy(f) }] : []), { label: "Edit", onPress: () => setEditing({ id: f.id, text: f.text }) }, { label: "Forget", danger: true, onPress: () => { const r = forget(facts, f.id); (real ? forgetReal(f.id) : Promise.resolve(null)).then((cid) => { setFacts(r.facts); setUndo(r.undo ? { ...r.undo, cid } : null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); } }]} />} />
     );
   };
 
@@ -88,6 +94,10 @@ export default function MemoryScreen() {
       {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Harlow Legal never show here, and your assistants do not carry them into Mine.</Footnote> : null}
       {!real && scope === "harlow" ? <Footnote icon="shield">This is the Harlow Legal boundary. Facts here stay in Harlow Legal. Your own Mine facts are not shown.</Footnote> : null}
 
+      {real ? <View className="pt-s2"><Segmented label="Memory" value={tab} onChange={setTab} options={[["facts", "Facts"], ["lessons", proposed ? `Lessons (${proposed})` : "Lessons"], ["sites", "Sites"]]} /></View> : null}
+      {real && tab === "lessons" ? <RealLessons onCount={setProposed} /> : null}
+      {real && tab === "sites" ? <RealChromeSites /> : null}
+      {real && tab !== "facts" ? null : <>
       {real ? <RealAsk /> : (
       <View className="gap-s3 pt-s2">
         <Composer label="Ask Memory" placeholder="Ask about a person or project" value={q} onChangeText={setQ} onSend={() => setAsked(q)} />
@@ -135,6 +145,9 @@ export default function MemoryScreen() {
       {sealed.length ? (
         <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Assistants see "SSN on file, sealed" and nothing more.`}</Footnote>
       ) : null}
+
+      </>}
+      <WhySheet fact={why} onClose={() => setWhy(null)} />
 
       <Sheet open={!!cite} onClose={() => setCite(null)} title={cite?.src.label}>
         {cite ? (

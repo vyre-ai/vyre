@@ -11,7 +11,9 @@ The business-records store behind the gateway. It implements the kernel's Store 
 
 | Language | Twenty |
 |---|---|
-| text, rich_text, link, ref (as the urn) | TEXT |
+| text, rich_text, a link to any record (no `to`; the urn) | TEXT |
+| link to a type (`to`) | RELATION (many-to-one) with the named inverse on the target; the `<field>Id` column holds the target's row id |
+| link with `many: true` | a hidden junction object `vyreLink<Type><Field>` (Twenty has no many-to-many), kept by the store |
 | number | NUMBER (float) |
 | money | CURRENCY (amountMicros, currencyCode) |
 | boolean, date, datetime | BOOLEAN, DATE, DATE_TIME |

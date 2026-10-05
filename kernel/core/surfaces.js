@@ -29,6 +29,7 @@ export function createSurfaces(cfg) {
         if (typeof o.chat !== "string" || !cfg.chatMember || !cfg.chatMember(chain.hops[0].actor.id, o.chat)) throw new KernelError("not_found", "no such chat");
         chat = o.chat;
       }
+      if (o.agent !== undefined && o.agent !== null && (typeof o.agent === "string" && o.agent.startsWith("model:"))) throw new KernelError("bad_input", "a session's agent is not a model slot: slots come only from the Switchboard's own model_slot");
       const session = o.session || mintId("ses", clock());
       const exp = clock() + Math.min(o.ttl_ms ?? 3600_000, MAX_TTL);
       openers.set(session, chain.hops[0].actor.id);

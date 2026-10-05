@@ -6,7 +6,7 @@ import { pluralOf } from "./logic.js";
 /** @typedef {import("./logic.js").TypeDef} TypeDef */
 
 /** The kernel's own types (flow state, goals) are not the person's to customize. @param {any} t */
-export const isOwn = (t) => !/^(def-|flow-|goal$)/.test(String(t.name)) && !t.internal;
+export const isOwn = (t) => !/^(def-|flow-|kit-proposal$|kit-install$|goal$)/.test(String(t.name)) && !t.internal;
 
 /** One kernel type as the screen's. @param {any} t @param {string} space @returns {TypeDef} */
 export function toTypeDef(t, space) {
@@ -15,7 +15,7 @@ export function toTypeDef(t, space) {
   const rules = Object.fromEntries((t.rules || []).filter((/** @type {any} */ r) => r.name).map((/** @type {any} */ r) => [r.name, r.require]));
   return {
     id: t.name, label: t.label, plural: pluralOf(t.label), spaces: [space], work: Boolean(stageField || stages.length), icon: t.icon,
-    fields: (t.fields || []).map((/** @type {any} */ f) => ({ key: f.name, label: f.label, kind: f.kind, required: f.required || undefined, sealed: f.kind === "sealed" || Boolean(f.seal) || undefined })),
+    fields: (t.fields || []).map((/** @type {any} */ f) => ({ key: f.name, label: f.label, kind: f.kind, required: f.required || undefined, ...(f.visible_if || f.required_if ? { rule: [f.visible_if ? `shown when ${f.visible_if}` : null, f.required_if ? `required when ${f.required_if}` : null].filter(Boolean).join(", ") } : {}), sealed: f.kind === "sealed" || Boolean(f.seal) || undefined })),
     stages: stages.length ? stages : (stageField?.options ?? []).slice(),
     ...(Object.keys(rules).length ? { rules } : {}),
   };
