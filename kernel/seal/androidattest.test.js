@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { GOOGLE_ROOTS_PEM, GOOGLE_ROOT_SHA256, ANDROID_ATTEST_VERIFIED, ANDROID_APP_IDS, androidAttestVerifier, verifyAttestation } from "./androidattest.js";
 import { appAttestVerifier, APPATTEST_VERIFIED } from "./appattest.js";
-import { entryProof, entryClientData, entryToken, spkiB64 } from "./entry-proof.js";
+import { entryProof, entryClientData, androidChallenge, entryToken, spkiB64 } from "./entry-proof.js";
 
 const sha = (/** @type {any} */ b) => crypto.createHash("sha256").update(b).digest();
 const len = (/** @type {number} */ n) => n < 128 ? Buffer.from([n]) : n < 256 ? Buffer.from([0x81, n]) : Buffer.from([0x82, n >> 8, n & 255]);
@@ -140,7 +140,7 @@ const offered = (/** @type {any} */ w, /** @type {string} */ publicKey, /** @typ
   void point;
   const key = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const p = spkiOf(key.publicKey).subarray(-65);
-  const a = w.attest(entryClientData(o.boundTo || publicKey, p), { key });
+  const a = w.attest(androidChallenge(o.boundTo || publicKey), { key });
   return { publicKey, enclave: p.toString("base64url"), agree: "A", attest: Buffer.from(JSON.stringify({ format: "android-key", chain: a.chain })).toString("base64url") };
 };
 
@@ -197,4 +197,7 @@ test("entry proof: the hash is the sealing enrol's own (vyre-enrol, a token that
   assert.equal(entryToken(pub), `entry:${pub}`);
   assert.equal(entryClientData(pub, point).toString("hex"), sha(`vyre-enrol\nentry:${pub}\n${spkiB64(point)}`).toString("hex"));
   assert.equal(Buffer.from(spkiB64(point), "base64").length, 26 + 65);
+  // Android's challenge carries no chip key (Keystore takes it before the key exists): SHA256("vyre-enrol\nentry:" + key + "\n"), and differs per entry
+  assert.equal(androidChallenge(pub).toString("hex"), sha(`vyre-enrol\nentry:${pub}\n`).toString("hex"));
+  assert.notEqual(androidChallenge(pub).toString("hex"), androidChallenge(Buffer.alloc(32, 6).toString("base64url")).toString("hex"));
 });
