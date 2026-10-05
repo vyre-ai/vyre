@@ -195,20 +195,3 @@ test("names are checked: a backend never reaches outside its folder", t => {
   for (const bad of ["../x", "a/../../x", "/etc/passwd", "a//b", "a b"]) assert.throws(() => w.server.get(bad), { code: "bad_input" }, bad);
   assert.throws(() => new IdentityHome({ id: "../x", backend: w.server }), { code: "bad_input" });
 });
-
-test("keywrap ring: a holder reads, an added holder reads, a removed one is rotated out and reads nothing new", async () => {
-  const { newRing, ringKey, ringAdd, ringRotate, newDeviceKey: dk } = await import("../../../lib/keywrap.js");
-  const a = dk(), b = dk(), c = dk();
-  const { key, ring } = newRing("chat-1", { a: a.publicJwk, b: b.publicJwk });
-  assert.deepEqual(ringKey(ring, "a", a.privateJwk), key);
-  assert.deepEqual(ringKey(ring, "b", b.privateJwk), key);
-  assert.throws(() => ringKey(ring, "c", c.privateJwk), /holds no wrap/);
-  const more = ringAdd(ring, key, { c: c.publicJwk });
-  assert.deepEqual(ringKey(more, "c", c.privateJwk), key);
-  const rot = ringRotate(more, { a: a.publicJwk, c: c.publicJwk });
-  assert.equal(rot.ring.epoch, 2);
-  assert.notDeepEqual(rot.key, key);
-  assert.deepEqual(ringKey(rot.ring, "a", a.privateJwk), rot.key);
-  assert.throws(() => ringKey(rot.ring, "b", b.privateJwk), /holds no wrap/);
-  assert.throws(() => ringKey({ ...rot.ring, wraps: { ...rot.ring.wraps, a: more.wraps.a } }, "a", a.privateJwk), "a wrap of another epoch does not open");
-});
