@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): a server that belongs to another Vyre name is refused in words the person can use: the page says "This server belongs to <name>.vyre.run. Ask them to add you to a space, or reset the server to start over." (a phone: "This Vyre belongs to <name>..."), instead of "The pairing did not finish". The name is cut out of the server's sentence and checked, never the server's text itself. test: app-walk-claim has `--save-state` and `--use-state` so a second run can pair as the same, existing identity.
+
 - feat(app): a real chat's composer is filled from the box (0.2.9), not the sample world: the models and accounts that can answer (providers.list; a model of the answering account switches with threads.model, another account's with threads.switch), the people and assistants to @mention (this chat's, records.actors, agents.list), and the records to # tag, each with how many sealed fields it holds (src/chat/real-composer.js, useRealComposer.ts). A # tag picked from the list goes to the box beside the words as `{ kind: "record", id: <urn>, name }` (threads.send `mentions`; stream.send in a group chat), and only tags still in the words are sent. The kernel side (a record's sealed parts reaching the assistant as placeholders, a `record` mention provider) is platform's.
 - test(app): render check. apps/app/scripts/render-check.mjs draws 24 main screens at phone and desktop width from a sample-world export in headless Chromium and fails on a page error, an unmatched route or a blank screen; CI runs it in the web job (`npm run render:check` locally after `EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock`).
 

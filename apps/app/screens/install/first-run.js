@@ -167,6 +167,9 @@ export function gapOf({ kind, paired, hasBox, devices }) {
 export function pairSayFor(text, kind) {
   if (kind === "mac") return text;
   const t = String(text);
+  // A server that is someone else's says whose: a phone is told it about "this Vyre", never "server".
+  const owned = /^This server belongs to (\S+?)\.(?: |$)/.exec(t);
+  if (owned) return kind === "web" ? t : `This Vyre belongs to ${owned[1]}. Ask them to add you to a space, or reset it to start over.`;
   if (/words were not the same|did not match/i.test(t)) return PHONE_SAY.rejected;
   if (/cannot reach|unreachable/i.test(t)) return PHONE_SAY.unreachable;
   if (/ran out of time|expired/i.test(t)) return PHONE_SAY.expired;
