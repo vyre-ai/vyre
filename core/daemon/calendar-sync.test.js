@@ -187,3 +187,28 @@ test("a connected Google account (the google module's, not a vault connector) is
   assert.deepEqual(checked, [task.id], "the approval was checked for this act before the write");
   assert.ok((await rows()).some(r => r.data.title === "Closing call" && r.data.external_id));
 });
+
+test("an event only on the person's own calendar (nobody invited) is written to a Google account without asking; one that invites people is held", async t => {
+  const google = fakeGoogle({ mailbox: "alex@harlow.test" });
+  const w = await world();
+  t.after(() => w.stopListening());
+  w.kernel.rules.push({ match: i => i.action === "service.call" && !i.approval, effect: "ask", reason: "outward" });
+  const sent = [];
+  const api = async (account, req) => {
+    const url = new URL(`https://www.googleapis.com${req.path}${req.query ? "?" + new URLSearchParams(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : ""}`);
+    if (req.method !== "GET") sent.push({ path: req.path, body: req.body });
+    const out = google.handle({ method: req.method, url, headers: { ...(req.headers || {}), authorization: `Bearer ${TOKEN}` }, body: req.body === undefined ? undefined : JSON.stringify(req.body) });
+    return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
+  };
+  const sync = createCalendarSyncHost({ root: tempHome(t), log: () => {}, connectors: async () => ({}), everyMs: 3_600_000, firstMs: 3_600_000 });
+  t.after(() => sync.stop());
+  const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
+  const h = sync.attach({ space: SPACE, gw: w.kernel, chains: { forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id,
+    service: async () => { throw new Error("no"); }, subscribe: cb => w.kernel.onEvent(cb, "calendar-sync"), google: { accounts: async () => [{ name: "work" }], api } });
+  await w.kernel.records.create(owner(), "event", { title: "Focus time", starts_at: "2026-10-07T09:00:00.000Z", source: "vyre" });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
+  const out = await h.runNow();
+  assert.deepEqual([out["google-work"].pushed.inserted, out["google-work"].pushed.held], [1, 1], JSON.stringify(out));
+  assert.equal(sent.length, 1); assert.equal(sent[0].body.summary, "Focus time");
+  assert.equal(sent[0].body.attendees, undefined, "nobody was invited");
+});

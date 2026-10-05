@@ -78,6 +78,10 @@ export function createCalendarSyncHost(o) {
         const d = await s.gw.authorize({ chain, action: "service.call", resource });
         if (d.effect === "deny") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
         if (d.effect === "allow") return { done: true, value: await perform({ idem: change.key }) };
+        // An event only on the person's own calendar (nobody invited) reaches no one else, so it is not outward and is written without asking; one that invites people is. Only for a Google
+        // account (written here with sendUpdates left at none): a vault connector's call is held by the vault's own forward whatever it carries.
+        const invites = Array.isArray(change.detail && change.detail.people) && change.detail.people.length > 0;
+        if (googleAccount && !invites) return { done: true, value: await perform({ idem: change.key }) };
         // ask: one task per change, then wait for the person. A change whose request is no longer the one asked about (the event was edited) is asked again.
         if (!note || !note.task || note.bind !== bind) {
           const owner = actor(s.ownerId());
