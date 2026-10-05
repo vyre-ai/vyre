@@ -62,3 +62,20 @@ test("the Windows app says the plain line where lending would be, and approvals 
   const pa = readFileSync(new URL("../../screens/shell/PhoneApprovals.tsx", import.meta.url), "utf8");
   assert.match(pa, /\(await phoneSigner\(\)\) \?\? \(await shellSigner\(\)\)/);
 });
+
+test("THE GAP: on a release build a Windows computer has no yes-moment signer, because no prompt per signature has been shown on a TPM computer; the phone says the yes", async (t) => {
+  const prod = process.env.NODE_ENV; t.after(() => { delete globalThis.window; if (prod === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prod; });
+  installTpmShell();
+  process.env.NODE_ENV = "production";
+  const mod = await import("./shell-signer.ts?release=" + Date.now());
+  assert.equal(mod.WINDOWS_YES_ALLOWED, false);
+  assert.equal(await mod.shellSigner(), null, "release: Windows has no yes-moment signer");
+  // a Mac's Secure Enclave key is not affected
+  globalThis.window = { __vyreShell: { kind: "mac", identity: globalThis.window.__vyreShell.identity } };
+  assert.ok(await mod.shellSigner(), "a Mac keeps its yes-moment signer");
+  // a development build keeps Windows, for walks
+  process.env.NODE_ENV = "development";
+  const dev = await import("./shell-signer.ts?dev=" + Date.now());
+  globalThis.window = { __vyreShell: { kind: "windows", identity: globalThis.window.__vyreShell.identity } };
+  assert.ok(await dev.shellSigner(), "development: Windows signs for a walk");
+});

@@ -44,3 +44,22 @@ test("without a shell or a key: no public point, and agree rejects in plain word
   await assert.rejects(agree("AAAA"), (e) => e.code === "bad_epk");
   assert.deepEqual(calls, [], "the key was never asked");
 });
+
+import { readFileSync } from "node:fs";
+
+test("memory's fixed vector: a key loaded with the vector's private key agrees on the wrap's epk to the vector's shared secret, through the page adapter", async (t) => {
+  const v = JSON.parse(readFileSync(new URL("../../../../lib/vectors/keywrap.json", import.meta.url), "utf8"));
+  const key = createECDH("prime256v1");
+  key.setPrivateKey(Buffer.from(v.agree_private_jwk.d, "base64url"));
+  globalThis.window = { __vyreShell: { kind: "mac", identity: {
+    agreePublic: async () => b64u(key.getPublicKey()),
+    agree: async (epk) => b64u(key.computeSecret(Buffer.from(epk, "base64url"))),
+  } } };
+  t.after(() => delete globalThis.window);
+  const pt = await agreePublic(true);
+  const pub = Buffer.from(pt, "base64url");
+  assert.equal(b64u(pub.subarray(1, 33)), v.agree_public_jwk.x);
+  assert.equal(b64u(pub.subarray(33, 65)), v.agree_public_jwk.y);
+  const secret = await agree(v.wrap.epk);
+  assert.equal(b64u(secret), v.shared);
+});

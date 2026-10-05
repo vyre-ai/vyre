@@ -7,9 +7,15 @@ import { macEnclavePublic, macEnclaveSign } from "../identity/mac-key.ts";
 import { fromB64url, keyIdOf, proofBody, proofBytes, spkiFromXY, b64url } from "../../modules/vyre-signer/presence-proof.js";
 import type { Signer } from "./phone-approve.js";
 
+/** Windows signs yes moments only in a development build, until a prompt per signature is proven on a TPM computer (the gap this constant names). */
+export const WINDOWS_YES_ALLOWED = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
 /** The signer for this computer's hardware key, or null where there is none (a browser, a Mac without a Secure Enclave, a computer without a TPM or Windows Hello). */
 export async function shellSigner(): Promise<Signer | null> {
   if (!shellIdentity()?.enclaveSign) return null;
+  // The Windows TPM key is no yes-moment key on a release build until someone shows a prompt on EVERY signature on a real TPM computer (reviewer-3, 5 Oct): without it, page JavaScript could mint yes
+  // proofs with no person present. The verifier agrees (platform-3: a release build refuses a "tpm" key). A development build keeps it, for walks. The phone says the yes until then.
+  if (shellKind() === "windows" && !WINDOWS_YES_ALLOWED) return null;
   const point = await macEnclavePublic(false);
   if (!point) return null;
   const pt = fromB64url(point);

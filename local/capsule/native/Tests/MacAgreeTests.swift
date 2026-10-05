@@ -55,4 +55,17 @@ let macAgreeSuite = Suite("mac agree") { t in
     t.test("the page's bridge carries the two agreement calls") {
         MainActor.assumeIsolated { for piece in ["agree.public", "agree.agree", "agreePublic", "agree: function"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) } }
     }
+
+    // memory's fixed vector (lib/vectors/keywrap.json): a known agreement key, the epk of a wrap to it, and the shared secret `agree(epk)` must return. A software key is the one a test can load.
+    t.test("the software key loaded with memory's vector private key returns memory's shared secret for the wrap's epk") {
+        let d = MacIdentity.unb64url("omRjolnGVTsj6dYX0MHpQUrGZj6-DlKyHLhC6UoPEQw")!
+        let epk = MacIdentity.unb64url("BJdsuuWA7N6Agohl8uxZ-iBaI9vJSPzFqYX0ERDUYVCENieD9Ybm9JGu63bMuKjwtI-QlqNNaCuRINg_8tc4NQU")!
+        let want = MacIdentity.unb64url("FIT5eB2BC8fVaNtVAT7heX8c0UuqeLeTcu7_Mpjq2OY")!
+        let a = MacAgree(store: MemoryEnclaveStore())
+        _ = a.store.save(MacAgree.softwareTag + d)
+        let point = a.publicPoint(create: false)
+        t.eq(point, Data([0x04]) + MacIdentity.unb64url("AM6jGd5vbYaA9YV0UqdH3CsrDfQxloI9C9PBDOnUbyY")! + MacIdentity.unb64url("2TSCSUfx3scX00FAymnyKabEBu04vA0gjqQcCz6VyW8")!, "the vector's public point")
+        t.eq(a.agree(epk: epk), want)
+        t.eq(want.count, 32)
+    }
 }
