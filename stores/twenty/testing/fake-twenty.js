@@ -92,6 +92,8 @@ export class FakeTwenty {
         throw new GqlError("Field not found", "NOT_FOUND");
       }
       // views (stores/twenty/views.js): kept as one row each with the parts that were made for it
+      case "IdxV": return { getViews: [{ id: `idx-${v.o}`, key: "INDEX" }, ...[...this.views.values()].filter((w) => w.objectMetadataId === v.o).map((w) => ({ id: w.id, key: null }))] };
+      case "VFs": return { getViewFields: [] };
       case "V": return { getViews: [...this.views.values()].filter((w) => w.objectMetadataId === v.o).map((w) => ({ id: w.id })) };
       case "Gone": case "Re": { this.views.delete(v.id); return { destroyView: true }; }
       case "MkView": { this.views.set(v.i.id, { ...v.i, viewFields: [], viewSorts: [], viewFilterGroups: [], viewFilters: [] }); return { createView: { id: v.i.id } }; }

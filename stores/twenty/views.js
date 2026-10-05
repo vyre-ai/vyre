@@ -124,3 +124,34 @@ export async function readView(client, id) {
   const r = await client.gql("metadata", "query RV($id: String!) { getView(id: $id) { id name type icon position mainGroupByFieldMetadataId calendarFieldMetadataId viewFields { fieldMetadataId position isVisible } viewGroups { fieldValue position } viewSorts { fieldMetadataId direction } viewFilterGroups { id logicalOperator } viewFilters { fieldMetadataId operand value viewFilterGroupId } } }", { id });
   return r.getView;
 }
+
+/**
+ * The order the Records' own table shows a type's fields in is the order of its definition, and a field the definition has hidden is not shown: written to the fields of the
+ * object's default view (the one the Records make for every object, key INDEX).
+ * @param {{ gql: (api: "metadata", q: string, vars?: any) => Promise<any> }} client @param {{ id: string, fields: Map<string, string> }} obj @param {any} p the type plan
+ * @returns {Promise<number>} how many view fields were changed
+ */
+export async function syncFieldOrder(client, obj, p) {
+  const gql = (/** @type {string} */ q, /** @type {any} */ vars) => client.gql("metadata", q, vars);
+  const views = (await gql("query IdxV($o: String) { getViews(objectMetadataId: $o) { id key } }", { o: obj.id })).getViews;
+  const idx = views.find((/** @type {any} */ v) => v.key === "INDEX");
+  if (!idx) return 0;
+  const have = (await gql("query VFs($v: String!) { getViewFields(viewId: $v) { id fieldMetadataId position isVisible } }", { v: idx.id })).getViewFields;
+  let n = 0;
+  for (const [i, f] of p.fields.entries()) {
+    const fid = obj.fields.get(f.twenty); const vf = have.find((/** @type {any} */ x) => x.fieldMetadataId === fid);
+    if (!vf) continue;
+    const visible = f.def.hidden !== true;
+    if (vf.position === i && vf.isVisible === visible) continue;
+    await gql("mutation UpVF($i: UpdateViewFieldInput!) { updateViewField(input: $i) { id } }", { i: { id: vf.id, update: { position: i, isVisible: visible } } });
+    n++;
+  }
+  return n;
+}
+
+/** The icon the Records show for each kind of field. */
+export const FIELD_ICON = Object.freeze({
+  text: "IconAbc", rich_text: "IconNotes", number: "IconHash", money: "IconCurrencyDollar", boolean: "IconToggleLeft", date: "IconCalendar", datetime: "IconCalendarTime",
+  choice: "IconTag", multi_choice: "IconTags", stage: "IconProgress", rating: "IconStar", url: "IconLink", link: "IconLink", actor: "IconUser", file: "IconPaperclip",
+  address: "IconMap", phones: "IconPhone", emails: "IconMail", urls: "IconLink", sealed: "IconLock",
+});
