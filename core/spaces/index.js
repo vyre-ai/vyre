@@ -1472,6 +1472,9 @@ export default {
       const signed = await signMove(String(i.space), MOVE_EVIDENCE_TAG, evidence);
       // this home may now serve a pull for this move to the target space whose key it just resolved, for as long as a pull may live
       await kv.put(`move-pull/${evidence.move_id}`, { from: String(i.space), to: evidence.to, to_pub: toKey, person: evidence.person, plan_hash: evidence.plan_hash, project: evidence.project, expires: evidence.at + SESSION_CAP_MS });
+      // the home's door admits the target home for this move, and only while this is open (network's home-to-home channel); with no such tool (a build without it) the pull simply cannot arrive
+      try { const r = await ctx.call("wink.home-move.open", { space: String(i.space), move_id: evidence.move_id, to: evidence.to, expires: evidence.at + SESSION_CAP_MS }); if (r && r.error && r.error.code !== "no_such_tool") throw refuse("This server could not open its door for the move. Nothing was started.", "unavailable"); }
+      catch (e) { if (e && /** @type {any} */ (e).code === "unavailable") throw e; /* the channel is not part of this build */ }
       return { evidence, ...signed };
     });
     tool("spaces.moves.receive", "In the TARGET home: receive a project moved from a space on another home. `bundle` is the signed evidence; `fromName` and `pin` say which published space it names, the way an invite does.", obj({ space: str, from: str, project: str, plan_hash: str, move_id: str, bundle: { type: "object" }, fromName: str, pin: str }, ["space", "from", "project", "plan_hash", "move_id", "bundle", "fromName", "pin"]), async (i, meta) => {
@@ -1496,7 +1499,12 @@ export default {
       const b = i.receipt && i.receipt.body;
       const key = `${i.space}/${b && b.to}/${i.move_id}`;
       moveContext.set(key, { name: String(i.toName), pin });
-      try { return await moves.finishSource(chain, { move_id: i.move_id, receipt: i.receipt }); }
+      try {
+        const done = await moves.finishSource(chain, { move_id: i.move_id, receipt: i.receipt });
+        // the move is over: its door closes at once (best effort; it also closes by itself when the right expires)
+        try { await ctx.call("wink.home-move.close", { move_id: i.move_id }); } catch { /* not part of this build, or already closed */ }
+        return done;
+      }
       catch (e) { throw asRefusal(e); }
       finally { moveContext.delete(key); }
     });
@@ -1538,6 +1546,15 @@ export default {
       if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
       const key = await publishedKeyOf(String(i.from), { name: String(i.fromName), pin });
       return { ok: Boolean(key) && await C.verifyWith(key, Buffer.from(srcMessage(i.from, i.to, i.move_id, i.nonce)), String(i.src_sig)).catch(() => false) };
+    }, { internal: true });
+    tool("spaces.moves.source-channel", "In the TARGET home: where the SOURCE space's home can be reached, from its published directory record (`fromName`, `pin`): { relay, route, box }. The driver passes it to the home-to-home channel (`wink.home.call`). Refused unless the record names this very space id.", obj({ from: str, fromName: str, pin: str }, ["from", "fromName", "pin"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      let r; try { r = await dir.resolve(String(i.fromName).replace(/\.vyre\.run$/, ""), { pin, resolve: ownerLookup }); } catch { throw refuse("The source space could not be looked up.", "not_found"); }
+      const rt = r && r.ok && r.kind === "space" && r.payload && r.payload.id === i.from ? r.payload.route : null;
+      if (!rt || typeof rt.route !== "string" || typeof rt.box !== "string" || !rt.box) throw refuse("The source space publishes no address for its home, so it cannot be pulled from.", "not_found");
+      return { relay: String(rt.relay || ""), route: rt.route, box: rt.box };
     }, { internal: true });
     tool("spaces.moves.pull-sign", "In the TARGET home: sign the pull proof for a move this space received, bound to both spaces, the move and the source's nonce, with this space's key. Only for a move this space has received (`project.move_in` in its log).", obj({ space: str, from: str, move_id: str, nonce: str }, ["space", "from", "move_id", "nonce"]), async (i, meta) => {
       onlyModules(meta, ["work", "vyred"]);

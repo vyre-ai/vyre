@@ -118,6 +118,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.moves.source-channel", "effect": "read",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.moves.evidence", "effect": "read",
     "reach": "person"
    },
