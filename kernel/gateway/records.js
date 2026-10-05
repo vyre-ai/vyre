@@ -601,7 +601,8 @@ export function createRecords(cfg) {
         const base = { name, label: m.label || name, kind: m.kind || "text" };
         const token = `{{field:${u}#${name}}}`;
         if (isSealedShape(v)) fields.push({ ...base, placeholder: true, reason: "sealed", present: Boolean(/** @type {any} */ (v).present), token });
-        else if (typeof v === "string" && /^\{\{field:[^#}\s]+#[A-Za-z0-9_-]{1,64}\}\}$/.test(v)) fields.push({ ...base, placeholder: true, reason: "room", present: true, token: v });
+        // Only the exact token a room view makes for THIS field of THIS record is a placeholder; any other text of that shape is an author's words (a forged token would steer an action to another record), and its braces are broken below.
+        else if (v === token) fields.push({ ...base, placeholder: true, reason: "room", present: true, token });
         else if (v !== null && v !== undefined && v !== "") fields.push({ ...base, value: v });
       }
       const titleField = fields.find(f => !f.placeholder && /^(name|title|subject)$/.test(f.name) && typeof f.value === "string");
