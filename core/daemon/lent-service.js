@@ -28,7 +28,7 @@ const defaultSpec = account => ({
 
 /**
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
- * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
+ * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, keyOf?: (kernel: any, space: string) => Buffer | null, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {
@@ -40,7 +40,13 @@ export function lentServiceFor(o) {
       if (subs.has(space)) { try { subs.get(space)?.(); } catch { /* gone */ } }
       subs.set(space, g.grants.offers.onRevoke((/** @type {any} */ info) => { if (info && info.device) o.onRevoke?.(space, info); }));
     }
-    return createLentHome({ space, root: path.join(o.root, "lent", space), ...(derivedKey(k, `lent-store/${space}`) ? { key: derivedKey(k, `lent-store/${space}`) } : {}), offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
+    // A lent computer's work is kept on this home sealed under the Space's own key; a home with no key of its own for the Space (no Drive, no pool) refuses to hold it rather than keep it in the clear.
+    const key = (o.keyOf || ((/** @type {any} */ kk, /** @type {string} */ sp) => derivedKey(kk, `lent-store/${sp}`)))(k, space);
+    if (!key) {
+      const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work"), { code: "unavailable" }); };
+      return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"].map(n => [n, refuse])));
+    }
+    return createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
   };
 }
