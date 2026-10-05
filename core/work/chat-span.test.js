@@ -18,10 +18,10 @@ async function world(t) {
   const db = open(path.join(tempHome(t), "work.db"));
   t.after(() => db.close());
   let asker = rig.person("per_alex");
-  const kernel = Object.assign(Object.create(handle), {
-    chainFor: () => asker,
-    chats: rig.k.gateway.grants.chats,
-    records: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${rig.space}/x/rec_x`, data: {} })) }),
+  const kernel = Object.create(handle, {
+    chainFor: { value: () => asker },
+    chats: { value: rig.k.gateway.grants.chats },
+    records: { value: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${rig.space}/x/rec_x`, data: {} })) }) },
   });
   const tools = new Map();
   const runs = [];
@@ -37,8 +37,7 @@ test("a span of a chat is read word for word by a person in it and by an assista
   const chat = await w.rig.k.gateway.grants.chats.create(alex, { people: ["per_bob"], assistants: ["juno"] });
   w.runs.push({ chat: chat.id, thread: "thr_one", agent: "juno", slot: "agent:juno", provider: "claude", model: "x", status: "idle" });
   // the lines the Space's memory keeps for the run (scrubbed on the way in): the sealed value is already a placeholder
-  const engine = (await w.tools.get("work.know.search").run({ query: "x" }, { caller: "deck" }).catch(() => null), null);
-  void engine;
+  await w.tools.get("work.know.search").run({ query: "x" }, { caller: "deck" }).catch(() => null);   // starts the Space's memory engine, which makes the lines table
   w.db.exec("CREATE TABLE IF NOT EXISTS memory_engine_lines (session TEXT NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, trust TEXT NOT NULL, red TEXT NOT NULL, spaces TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY (session, seq))");
   const put = (seq, role, text) => w.db.prepare("INSERT OR REPLACE INTO memory_engine_lines VALUES (?,?,?,?,?,?,?,?,?)").run("thr_one", seq, role, text, 1000 + seq, "trusted", "none", "[]", `vyre://${w.rig.space}/session/thr_one`);
   put(1, "user", "Please send the settlement figure to Dana Reyes.");
