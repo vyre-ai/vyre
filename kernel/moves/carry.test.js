@@ -116,3 +116,26 @@ test("without a destination the files land under the target project, and a chat'
   await assert.rejects(() => b.D.get(b.ada, `Projects/p9/chat/${newChat}/note.txt`), { code: "not_found" }, "the mover still reads nothing in the chat");
   await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "../x", chat_map: { [oldChat]: newChat } }), { code: "bad_input" });
 });
+
+test("a Personal to My Cloud upgrade carries files too: space.upgrade_started for this target by the same person, within a day; nothing else is accepted", async t => {
+  const { a, b, moves } = await world(t);
+  const text = "upgrade file ".repeat(10); const UP = "22222222-2222-4222-8222-222222222222";
+  await a.D.put(a.bob, `${a.folder}/n.txt`, enc(text));
+  const dest = `${b.folder}/n.txt`;
+  const entries = [{ path: `${a.folder}/n.txt`, dest, sha256: sha(text), size: Buffer.byteLength(text) }];
+  const up = (who, id, to = B, subject = `vyre://${A}/space/upgrade`) => a.k.log.append(who, { type: "space.upgrade_started", sv: 1, subject, data: { upgrade_id: id, to, plan_hash: "h".repeat(43) } });
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP }), e => e.code === "not_found", "no event, no carry");
+  up(a.ada, UP, "spc_cccccccccccc"); await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP }), e => e.code === "not_found", "an upgrade into another Space is not this target's");
+  up(a.ada, "33333333-3333-4333-8333-333333333333", B, `vyre://${A}/project/p1`);
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: "33333333-3333-4333-8333-333333333333" }), e => e.code === "not_found", "the subject must be the space's upgrade");
+  up(a.dan, UP);
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP }), e => e.code === "not_found", "another person's upgrade is not mine to carry");
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP, move_id: MOVE }), e => e.code === "bad_input", "an upgrade and a move are not mixed");
+  const UP2 = "44444444-4444-4444-8444-444444444444"; up(a.ada, UP2);
+  const out = await moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP2 });
+  assert.deepEqual(out, [{ dest, sha256: sha(text) }]);
+  assert.equal(new TextDecoder().decode(await b.D.get(b.bob, dest)), text);
+  // a changed file is still refused, and a path outside Projects is not a project's
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [{ ...entries[0], sha256: sha("other") }], upgrade_id: UP2 }), e => e.code === "conflict" || e.code === "not_found");
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [{ path: "General/x.txt", dest, sha256: sha(text), size: 1 }], upgrade_id: UP2 }), e => e.code === "bad_input");
+});
