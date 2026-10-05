@@ -12,7 +12,6 @@
     "allow-set-autostart",
     "allow-device-key-pub",
     "allow-device-key-dh",
-    "allow-finish-typed-pair",
-    "allow-cancel-pair"
+    "allow-finish-typed-pair"
   ]
 }
