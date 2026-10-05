@@ -106,10 +106,12 @@ test("moving a Project between two real Spaces: the engine over both gateways, a
   const side = (/** @type {any} */ space, /** @type {any} */ gw, /** @type {any} */ chain) => ({ space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) });
   const from = side(d.kernel.id.space, d.kernel.gateway, admin);
   const to = side(firm.space, firm.gateway, firmAdmin);
-  // the work module's types exist in the home Space only; the firm Space has none, so the plan says so
+  // a hosted Space has its own Drive and the core types from its start, so nothing blocks the plan
   const plan = await planMove({ from, to, project: urn });
   assert.equal(plan.counts.files, 2);
-  assert.ok(plan.blockers.some((/** @type {string} */ b) => /no record type/.test(b) || /no Drive/.test(b)), JSON.stringify(plan.blockers));
-  await assert.rejects(() => runMove({ from, to, plan }), /cannot run/);
-  void d;
+  assert.deepEqual(plan.blockers, []);
+  const done = await runMove({ from, to, plan });
+  const target = await firm.gateway.records.get(firmAdmin, "project", done.target.split("/").pop());
+  assert.equal(target.data.name, "Rivera");
+  assert.equal((await d.kernel.gateway.records.get(admin, "project", urn.split("/").pop())).data.status, "moved", "the old Space keeps the marker");
 });
