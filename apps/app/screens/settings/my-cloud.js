@@ -11,6 +11,18 @@ export const setupInput = (server, slug = "my-cloud") => ({ name: slug, displayN
 /** The input of spaces.upgrade.run: My Cloud's space id and the hash of the plan that was shown. @param {{ hash: string }} plan @param {string} to */
 export const runInput = (plan, to) => ({ to, plan_hash: plan.hash });
 
+/**
+ * What spaces.upgrade.run asks the person's key to sign, from its `{ needs_proof: true, request?, approve_request? }` answer: the move itself (`request`, sent again as the call's kernel proof) and, when the plan has private
+ * fields, the exact list of them (`approve_request`, sent again as `approve_proof`). Both are signed together, in one prompt. @param {any} r @returns {{ move: any | null, approve: any | null }}
+ */
+export function proofsAsked(r) {
+  const ok = (/** @type {any} */ q) => (q && typeof q === "object" && typeof q.op === "string" && typeof q.space === "string" && typeof q.payload_hash === "string" ? q : null);
+  return { move: ok(r?.request), approve: ok(r?.approve_request) };
+}
+
+/** The input of the second call: the plan's hash again, with the list's proof when one was signed. @param {{ hash: string }} plan @param {string} to @param {any} approveProof */
+export const runInputWith = (plan, to, approveProof) => ({ ...runInput(plan, to), ...(approveProof ? { approve_proof: approveProof } : {}) });
+
 /** @param {number} n @param {string} one @param {string} many */
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 /** The plural of a record type's name: a consonant then y is "ies", s, x, ch and sh take "es", the rest "s". @param {string} w */

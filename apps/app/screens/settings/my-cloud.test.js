@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
+import { proofsAsked, runInputWith, plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
 
 const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title", "other_emails"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
 
@@ -51,4 +51,16 @@ test("my cloud: only the paired servers spaces.servers lists can host it", () =>
   assert.deepEqual(serversOf({ servers: [] }), []);
   assert.deepEqual(serversOf(null), []);
   assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "server" }] }), [], "relay.devices.list rows are not paired servers");
+});
+
+test("my cloud: a move with private fields asks for two signatures, and the second call carries both", () => {
+  const req = (op) => ({ op, space: "spc_home", fields: { x: 1 }, payload_hash: "h" });
+  const both = proofsAsked({ needs_proof: true, request: req("grant.upgrade"), approve_request: req("task.seal_export") });
+  assert.equal(both.move.op, "grant.upgrade");
+  assert.equal(both.approve.op, "task.seal_export");
+  const onlyApprove = proofsAsked({ needs_proof: true, approve_request: req("task.seal_export") });
+  assert.equal(onlyApprove.move, null, "the move's proof was already given");
+  assert.deepEqual(proofsAsked({ needs_proof: true, request: { op: "x" } }), { move: null, approve: null }, "a request that is not whole is not signed");
+  assert.deepEqual(runInputWith({ hash: "h1" }, "spc_c", { signed: true }), { to: "spc_c", plan_hash: "h1", approve_proof: { signed: true } });
+  assert.deepEqual(runInputWith({ hash: "h1" }, "spc_c", null), { to: "spc_c", plan_hash: "h1" });
 });

@@ -8,7 +8,7 @@ import { proofHeader } from "../../src/real/approvals.js";
 import { hashMatches } from "../../src/real/payload-hash.js";
 import { yesSigner } from "../../src/personal/signer";
 import { createSpace } from "../../src/real/install";
-import { MOVE, SET_UP, blockersOf, canMove, cloudState, offerFor, planLines, refusalLine, reportLines, runInput, serversOf, setupInput } from "./my-cloud.js";
+import { MOVE, SET_UP, blockersOf, canMove, cloudState, offerFor, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
 
 type Step = { kind: "idle" } | { kind: "plan"; plan: any } | { kind: "report"; report: ReturnType<typeof reportLines> };
 
@@ -41,17 +41,24 @@ export function MyCloudCard() {
   const move = (plan: any) => guard(async () => {
     const to = String(state.cloud?.id);
     let r: any = await tool("spaces.upgrade.run", runInput(plan, to));
-    if (r?.needs_proof && r.request) {
-      // One approval, bound to the plan: check the hash is for what was shown, sign it with this device's key, and send the same call again with the proof.
-      if (!hashMatches(r.request)) throw new Error("This request does not match what it says. Nothing was approved.");
+    // One approval: the move and, when the plan has private fields, the exact list of them. Both are checked against their own hash, signed one after the other with this device's key, and sent in the same call again.
+    for (let round = 0; r?.needs_proof && round < 2; round++) {
+      const asked = proofsAsked(r);
+      if (!asked.move && !asked.approve) throw new Error("This request does not match what it says. Nothing was approved.");
       const signer = await yesSigner();
       if (!signer) throw Object.assign(new Error("This phone cannot give the yes yet. Update Vyre."), { code: "no_signer" });
       const person = (await loadIdentity())?.id ?? "";
-      const proof = await signer.signPresence({ op: r.request.op, space: r.request.space, fields: r.request.fields, payload_hash: r.request.payload_hash, prompt: MOVE.title, person });
-      const again = await call<any>("spaces.upgrade.run", runInput(plan, to), { kernelProof: proofHeader(proof) });
+      const sign = async (q: any) => {
+        if (!hashMatches(q)) throw new Error("This request does not match what it says. Nothing was approved.");
+        return signer.signPresence({ op: q.op, space: q.space, fields: q.fields, payload_hash: q.payload_hash, prompt: MOVE.title, person });
+      };
+      const moveProof = asked.move ? await sign(asked.move) : null;
+      const approveProof = asked.approve ? await sign(asked.approve) : null;
+      const again = await call<any>("spaces.upgrade.run", runInputWith(plan, to, approveProof), moveProof ? { kernelProof: proofHeader(moveProof) } : {});
       if (again.error) throw Object.assign(new Error(again.error.message), { code: again.error.code });
       r = again.data;
     }
+    if (r?.needs_proof) throw new Error("The move needs your approval and did not get it. Nothing was moved.");
     setStep({ kind: "report", report: reportLines(r) }); load();
   });
 
