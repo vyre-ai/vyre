@@ -301,14 +301,6 @@
       {
         "name": "wink.device.call",
         "reach": "modules"
-      },
-      {
-        "name": "wink.identity.sign",
-        "reach": "modules"
-      },
-      {
-        "name": "wink.identity.check",
-        "reach": "modules"
       }
     ]
   },

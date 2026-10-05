@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(files,wink): VyreDrop seals to the receiving computer's key-agreement key on the person's identity list (the ruling to replace the interim drop key). The sender reads the receiver's `agree` point from the list (`spaces.identity.devices.read`), wraps a fresh file key to it with lib/keywrap.js (`wrapForDevice`, ECDH-ES), and seals the chunks under a key derived from it; the receiver opens it with its own key through `spaces.identity.ecdh` (the private key never leaves the identity module). A computer registers only its entry id (`files.drop.register { eid }`); the server can no longer name a key, and a drop sealed to another entry does not open on the real receiver. Deleted: the X25519 drop key and its file, `wink.identity.sign`, `wink.identity.check` and core/wink/drop-identity.js (the signing oracle reviewer-4 flagged). Takes lib/keywrap.js, lib/databox.js and the @noble dependencies from work/memory-noble 5d7eb572f, on work/entry-fields3 2deef60cd.
+
 - feat(wink): pairing passes the phone's key-agreement point (`agree`) into `spaces.identity.enrol` beside its key and label (platform-3's daemon-agree), so a newly paired device can open private chats at once. The phone's wait call and the phone client (relay/client/phonepair.js) carry `entry.agree`; only a 65-byte uncompressed P-256 point is passed on, anything else is dropped and the pairing still completes.
 
 - fix(runner): the home keeps a lent session's chat id only when the lender's person is in that chat (the kernel's chat read decision), and otherwise drops it, so a lender can no longer make someone else's chat show as running on their computer (reviewer-4's LOW on runner.places).
