@@ -103,8 +103,9 @@ export function createTasks(cfg) {
   const approverStands = (/** @type {any} */ by) => {
     const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length >= 1 ? by.approver_chain.hops[0].actor : null;
     if (!h || h.kind !== "person") return false;
-    if (cfg.members && typeof cfg.members.has === "function" && !cfg.members.has(h)) return false;
-    const role = cfg.members && typeof cfg.members.roleOf === "function" ? cfg.members.roleOf(h) : null;
+    // a members port with no `has` cannot say the approver still stands: fail closed (the real grants store always has one)
+    if (!cfg.members || typeof cfg.members.has !== "function" || !cfg.members.has(h)) return false;
+    const role = typeof cfg.members.roleOf === "function" ? cfg.members.roleOf(h) : null;
     return role !== "temp";
   };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
