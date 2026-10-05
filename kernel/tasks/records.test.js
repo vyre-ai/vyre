@@ -132,3 +132,22 @@ test("task records: the stage and the record a task concerns are kernel-owned fi
   assert.equal((await R.get(owner, "task", u.id)).data.title, "(the text of this task was removed)");
   void k;
 });
+
+test("task records: parent and project are { urn } on the record whether the caller sent { urn } or plain text, and a read returns one shape", async () => {
+  const { owner, R, T } = await boot();
+  await R.define(owner, { add_types: [{ name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  const proj = await R.create(owner, "project", { name: "Harlow" });
+  const purn = `vyre://${SPACE}/project/${proj.id}`;
+  const top = await R.create(owner, "task", { title: "Top" });
+  const asUrn = await R.create(owner, "task", { title: "Sent as urn", parent: { urn: `vyre://${SPACE}/task/${top.id}` }, project: { urn: purn } });
+  const asText = await R.create(owner, "task", { title: "Sent as text", parent: top.id, project: purn });
+  for (const t of [asUrn, asText]) {
+    const d = (await R.get(owner, "task", t.id)).data;
+    assert.deepEqual([d.parent, d.project], [{ urn: `vyre://${SPACE}/task/${top.id}` }, { urn: purn }]);
+  }
+  const later = await R.create(owner, "task", { title: "Edited" });
+  await R.update(owner, "task", later.id, { parent: top.id, project: { urn: purn } }, later.version);
+  const d = (await R.get(owner, "task", later.id)).data;
+  assert.deepEqual([d.parent, d.project], [{ urn: `vyre://${SPACE}/task/${top.id}` }, { urn: purn }]);
+  assert.equal((await T.get(owner, later.id)).parent, top.id, "the kernel's own view keeps the id");
+});
