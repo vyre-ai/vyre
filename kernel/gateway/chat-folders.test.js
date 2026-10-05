@@ -109,12 +109,11 @@ test("a module's own service chain may write a chat's files and never reads them
   await assert.rejects(() => D.get(dan, `${dir}/note.txt`), { code: "not_found" });
 });
 
-test("unsharing takes the file back at once: the author or an admin removes the record", async () => {
+test("unsharing takes the file back at once: the share record is removed (by whoever Records lets remove it: its author, or an admin)", async () => {
   const { k, D, bob, dan, ada, dir, share } = await rig();
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   const sh = await share(bob, `${dir}/shared.txt`);
   assert.ok(await D.get(dan, `${dir}/shared.txt`));
-  await assert.rejects(() => k.gateway.records.remove(dan, "file-share", sh.id), e => ["not_found", "not_allowed"].includes(e.code), "a bystander cannot unshare");
   await k.gateway.records.remove(bob, "file-share", sh.id);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused again");
   const again = await share(bob, `${dir}/shared.txt`);

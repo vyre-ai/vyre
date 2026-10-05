@@ -9,6 +9,7 @@ import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { roomedAuthorizer } from "../core/room.js";
 import { folderGuard } from "../core/folders.js";
+import { sharedRead } from "./shares.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
@@ -44,16 +45,7 @@ export function createGateway(cfg) {
   const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
-    // a participant's share of one file is a `file-share` record they made (the work module's type): read by anyone allowed, never the folder or another file
-    sharedRead: async (/** @type {string} */ resource, /** @type {string} */ person) => {
-      const path = resource.slice(`vyre://${cfg.space}/file/`.length), m = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(path);
-      const role = gs.roleOf({ kind: "person", id: person, space: cfg.space });
-      if (!m || !records || !role || role === "temp") return false;
-      try {
-        const rows = (await records.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 20 } })).rows;
-        return rows.some((/** @type {any} */ x) => { const by = String((records.attrsOf(x.urn) || {}).created_by || ""); return by.startsWith("person:") && gs.chatHas(by.slice(7), m[1]); });
-      } catch { return false; }
-    },
+    sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records }),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
   records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush , ...(cfg.basic ? { basic: cfg.basic } : {}) });
