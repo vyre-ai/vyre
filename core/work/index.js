@@ -10,12 +10,9 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
-<<<<<<< HEAD
 import { createFiles, KINDS as FILE_KINDS, MAX_FILE } from "./files.js";
-=======
 import { planUpgrade, runUpgrade, manifestPath } from "./chat-upgrade.js";
 import crypto from "node:crypto";
->>>>>>> origin/work/one-chat
 import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";

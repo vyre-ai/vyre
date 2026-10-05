@@ -2009,7 +2009,6 @@
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
   },
-<<<<<<< HEAD
   "work.files.share": {
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's shareFile decides (only a participant of the chat, as the person's own act; anyone else, an owner included, gets not_found)"
@@ -2017,7 +2016,7 @@
   "work.files.unshare": {
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's unshareFile decides (a participant of the chat or an admin)"
-=======
+  },
   "work.chat.upgrade-move": {
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain in both Spaces (records, chats and Drive under it); only the chats the kernel's chat read says the caller is in move"
@@ -2025,7 +2024,6 @@
   "work.chat.upgrade-plan": {
    "module": "work",
    "reason": "read-only: counts of the caller's own chats, from the chats the kernel says the caller is in, under the caller's own chain; the kernel: every call is authorized with the chain the kernel builds for the caller"
->>>>>>> origin/work/one-chat
   },
   "work.know.answer": {
    "module": "work",

@@ -12592,250 +12592,360 @@ Is each storage device there? Looks again if the last look is over a minute old.
 
 Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `tool` string, required
+  - `input` object
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `work.chat.change`
 
 Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `chat` string, required
+  - `add_agents` list of string
+  - `add_people` list of string
+  - `remove_agents` list of string
+  - `remove_people` list of string
 - Callers: any caller
 
 ### `work.chat.create`
 
 Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `agents` list of string
+  - `models` list of object
+  - `people` list of string
+  - `project` string
+  - `title` string
 - Callers: any caller
 
 ### `work.chat.get`
 
 One chat you are in: its record plus its slots (the assistants and models running in it, with thread, provider, model, account and status) and its transcript address. A chat you are not in does not exist for you.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `chat` string, required
 - Callers: any caller
 
 ### `work.chat.history-import`
 
 Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read in order from the numbered chunks the move carried in the chat's own folder, each checked against its hash. You must be in the chat. It resumes where it stopped; a chat that already had its own frames here is left as it is.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `chat` string, required
 - Callers: any caller
 
 ### `work.chat.list`
 
 The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `limit` integer
+  - `mine` boolean
+  - `project` string
+  - `q` string
 - Callers: any caller
 
 ### `work.chat.move`
 
 Move to project: file a chat under another Project (a short name or a record address). Its record and Drive folders follow; its id, times and who is in it stay.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `chat` string, required
+  - `project` string, required
 - Callers: any caller
 
 ### `work.chat.rename`
 
 Rename a chat: the record's title and every run's name agree; its id does not change.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `chat` string, required
+  - `title` string, required
 - Callers: any caller
 
 ### `work.chat.upgrade-move`
 
 Move your chats from this Space to your other Space (Personal to My Cloud): each keeps its id, title and people, is filed under General there, and its files go sealed. A chat that cannot move is named in `left` and the others still do.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `to` string, required
+  - `move_id` string
+  - `upgrade_id` string
 - Callers: any caller
 
 ### `work.chat.upgrade-plan`
 
 What moving your chats from this Space to your other Space (Personal to My Cloud) would carry: how many chats, files and bytes, and anything that blocks it (a chat that is working). Reads only; the counts are what you approve.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `to` string, required
 - Callers: any caller
 
 ### `work.engineer.approve`
 
 Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
+  - `proof` object, required
+  - `outcome` "approved" or "rejected"
+  - `reason` string
 - Callers: any caller
 
 ### `work.engineer.revise`
 
 Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
+  - `source` string, required
 - Callers: any caller
 
 ### `work.engineer.talk`
 
 Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `text` string, required
 - Callers: any caller
 
 ### `work.files.save`
 
 Save one file of a session into its project's Drive folder (Projects/<slug>/chat|made/<session>/<name>) and record it, linked from the session and the Project. { thread, kind: chat|made, name, base64, mime?, source?, artifact?, key? } -> { path, created } or { path: null } when the session has no project. Vyre's own modules only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `kind` "chat" or "made", required
+  - `name` string, required
+  - `thread` string, required
+  - `artifact` string
+  - `base64` string
+  - `from_artifact` string
+  - `key` string
+  - `mime` string
+  - `source` string
+- Callers: `module`
 
 ### `work.files.share`
 
 Share one file of a chat you are in with its project: every member of the Space can read that file, and nothing else of the chat. { path: Projects/<project id>/chat|made/<chat id>/<name> } -> the grant. Sharing twice changes nothing.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `path` string, required
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `work.files.unshare`
 
 Take back the sharing of one file of a chat: the project's members can no longer read it. A person in the chat, or an admin, does it. { path } -> { unshared: n }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `path` string, required
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `work.know.accept`
 
 Accept a proposed fact: it is written onto the record under the person's own chain, with its sources.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` integer, required
 - Callers: any caller
 
 ### `work.know.answer`
 
 Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `question` string, required
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `work.know.capture`
 
 Keep a session's lines so the Space's memory can answer from what was said. Called by the session capture, once per indexed batch: { session, lines: [{ seq, role, text, at }] }. Lines are scrubbed on the way in and readable only by a chain that may read the session. Returns how many were kept and indexed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `lines` list of object, required
+  - `session` string, required
+  - `project` string
+  - `record` string
 - Callers: any caller
 
 ### `work.know.forget`
 
 Erase a session's lines and every index row made from them (the session was deleted or the person asked). Called by the session capture.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `session` string, required
 - Callers: any caller
 
 ### `work.know.move-export`
 
-No description.
+Source side of a project's Work-engine lines move: the lines of the project's records, read for the move. Refused unless this Space's log holds project.move_started for it. Returns { rows, digest, count }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `move_id` string, required
+  - `plan_hash` string, required
+  - `project` string, required: the project's record urn in the Space the move starts from
+  - `records` list of string
+- Callers: `module`
 
 ### `work.know.move-forget`
 
-No description.
+Source side, after the target imported: needs the receipt; refuses if the lines changed since the export; drops them and what was derived from them. Returns { forgotten }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `move_id` string, required
+  - `plan_hash` string, required
+  - `project` string, required: the project's record urn in the Space the move starts from
+  - `receipt` object
+  - `records` list of string
+- Callers: `module`
 
 ### `work.know.move-import`
 
-No description.
+Target side: writes the exported lines under the target project's records (one transaction, a repeat is a no-op) and indexes them. Refused unless this Space's log holds project.move_in for the move. Returns the receipt { digest, count }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `move_id` string, required
+  - `plan_hash` string, required
+  - `project` string, required: the project's record urn in the Space the move starts from
+  - `from_space` string
+  - `map` object
+  - `rows` list of object
+- Callers: `module`
 
 ### `work.know.search`
 
 Search the Space's records, events and session lines by meaning. Only sources the caller may read come back, each with its address.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `query` string, required
+  - `k` integer
 - Callers: any caller
 
 ### `work.know.suggestions`
 
 Facts memory proposes for a record, each with the lines they came from. Nothing is written until a person accepts one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `record` string, required
 - Callers: any caller
 
 ### `work.move.serve`
 
 Serve a move to another server from this Space: { space, person, op: plan | record | file | sealed, move_id, plan_hash, project, to_space, ... }. The spaces module's own; reads under the person's chain here.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `move_id` string, required
+  - `op` string, required
+  - `person` string, required
+  - `plan_hash` string, required
+  - `project` string, required
+  - `space` string, required
+  - `client` string
+  - `length` number
+  - `offset` number
+  - `path` string
+  - `ref` string
+  - `to_space` string
+  - `urn` string
+- Callers: `module`
 
 ### `work.project.create`
 
 Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `name` string, required
+  - `client` string
+  - `repo` string
+  - `slug` string
 - Callers: any caller
 
 ### `work.project.ensure`
 
 The Project record for a short name (made if there is none): { urn, slug, name }. For the projects module's own use.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `slug` string, required
+  - `name` string
+- Callers: `module`
 
 ### `work.project.move`
 
 Move a Project to another Space: the target makes a NEW project (new id, new Drive folder) and the linked records and files are copied across as you, verified, and the old Space keeps a 'moved to' marker. Needs an owner or admin in both Spaces and one phone yes for the plan you were shown (plan_hash).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `plan_hash` string, required
+  - `project` string, required
+  - `to_space` string, required
+  - `client` string
 - Callers: any caller
 
 ### `work.project.move-plan`
 
 What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+  - `to_space` string, required
+  - `client` string
 - Callers: any caller
 
 ### `work.project.rename`
 
 Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `name` string, required
+  - `project` string, required
 - Callers: any caller
 
 ### `work.situation`
 
 Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why. With `context: true`, or a `task`, also the record's world: the records it links to and that link to it, recent communications with the people on it, and what happened to it lately.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `context` boolean
+  - `context_tokens` number
+  - `project` string
+  - `record` string
+  - `task` string
 - Callers: any caller
 
 ### `work.team.add`
 
 Add an assistant teammate to a project from a Kit role. Its grants are narrowings of the adder's and never wider. Without { approved: true } this returns the card to show, and nothing is created.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+  - `role` object, required
+  - `approved` boolean
+  - `count` integer
 - Callers: any caller
 
 ### `work.team.context`
 
 What a teammate starts with on a project: its role instructions, the project and its linked records without sealed fields, and the Kit's templates.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
+  - `role` object
+  - `templates` list
 - Callers: any caller
 
 ### `work.team.doing`
 
 What each teammate on a project is doing right now, one plain line each, from the project's own events. Updates at most once a minute.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `project` string, required
 - Callers: any caller
 
 ### `work.tools`
 
 The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller

@@ -142,15 +142,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/work/index.js": {
-<<<<<<< HEAD
-   "count": 1,
-   "owner": "flows",
-   "note": "callTool: the hub and the project files call threads.get, threads.list, projects.of/list and artifacts.media.read as module:work; each callee's reach allows modules or anyone (reviewed by connectors, 6 Oct)"
-=======
    "count": 2,
    "owner": "chat",
    "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
->>>>>>> origin/work/one-chat
   },
   "local/apps/index.js": {
    "count": 1,
