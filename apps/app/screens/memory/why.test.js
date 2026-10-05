@@ -19,7 +19,7 @@ test("why: asks memory.why for the fact, groups turns by thread, names who said 
     taught: [{ module: "flows", kind: "rule", text: "Kit owns intake" }], gone: 2 } }; }).whyReal("fact:1");
   assert.deepEqual(seen, [["memory.why", { fact: "fact:1", limit: 10 }]]);
   const o = whyOf(w);
-  assert.deepEqual(o.threads.map((t) => [t.session, t.name, t.turns.length]), [["s1", "Intake call", 2], ["s2", "Untitled thread", 1]]);
+  assert.deepEqual(o.threads.map((t) => [t.session, t.name, t.turns.length]), [["s1", "Intake call", 2], ["s2", "Untitled chat", 1]]);
   assert.deepEqual(o.threads[0].turns[0], { seq: 3, text: "Kit takes the intake", who: "You", age: "2 days ago" });
   assert.equal(o.threads[1].turns[0].who, "The agent");
   assert.deepEqual(o.taught, [{ module: "flows", kind: "rule", text: "Kit owns intake" }]);

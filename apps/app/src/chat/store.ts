@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
+import { isKind } from "./frame-type.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type GroupActions, type SessionActions } from "./box-stream";
@@ -133,8 +134,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         if (!wasReplay) pending.push({ key: r.appended.key, end: r.appended.length, t: f.t ?? nowMs(), first: !seenFirst.has(r.appended.key) });
         seenFirst.add(r.appended.key);
       }
-      if (f.type === "session.text-done") finished.add("a:" + f.data.message);
-      if (f.type === "session.status" || f.type === "session.user-message") meta = true;
+      if (isKind(f, "text-done")) finished.add("a:" + f.data.message);
+      if (isKind(f, "status") || isKind(f, "user-message")) meta = true;
       for (const k of r.touched) touched.add(k);
     }
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }
@@ -238,7 +239,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
 }
 
 /** The source for a session id: the mock for `demo`, the real client against the box for every other id. */
-export const sourceFor = (sessionId: string): StreamSource => (sessionId === "demo" ? createMockStream({ session: "demo" }) : boxStream(sessionId));
+/** The sample world's three chats (CONTRACT-one-chat.md section 4) run on mock streams; every other id is a chat on the box. */
+const SAMPLE_SCENARIO: Record<string, "models" | "people" | "assistant" | undefined> = { demo: undefined, "demo-three": "models", "demo-people": "people", "demo-assistant": "assistant" };
+export const sourceFor = (sessionId: string): StreamSource => (sessionId in SAMPLE_SCENARIO ? createMockStream({ session: sessionId, scenario: SAMPLE_SCENARIO[sessionId] }) : boxStream(sessionId));
 
 /**
  * The one door for a session's frames. `source` is a StreamSource (the mock, or core/stream's

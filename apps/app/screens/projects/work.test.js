@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { viewDefOf } from "../../../../deck/ui/view-defs.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 
 const f = (name, kind, extra = {}) => ({ name, kind, label: name, ...extra });
 const ENGAGEMENT = { name: "engagement", label: "Engagement", kind: "project", fields: [f("title", "text"), f("stage", "stage", { options: ["Intake", "Active"] }), f("fee", "money")] };

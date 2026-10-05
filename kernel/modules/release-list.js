@@ -21,7 +21,7 @@ const sha256 = (/** @type {Buffer | string} */ b) => crypto.createHash("sha256")
  * @returns {{ ok: true, counter: number, modules: Record<string, { version: string, tree: string }>, trees?: Record<string, string>, raw: { list: string, sums: string, sig: string } } | { ok: false, why: string }}
  */
 export function readReleaseList(root, releaseKey) {
-  // Each signed file from the package root, else from what the host published beside it (deck/release), else (the list) from the verified shell.json that carries it: a server an old updater
+  // Each signed file from the package root, else from what the host published beside it (web/release), else (the list) from the verified shell.json that carries it: a server an old updater
   // updated has only the published files, never a modules.json of its own (lib/release-shell.js).
   /** @param {"SHA256SUMS" | "SHA256SUMS.sig" | "modules.json"} f */
   const read = f => { const b = releaseFile(root, f, der(releaseKey)); if (!b) throw new Error(`no ${f}`); return b; };

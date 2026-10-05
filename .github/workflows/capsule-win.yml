@@ -60,7 +60,6 @@ jobs:
             case "$f" in *.test.js|*/nodecrypto.js|*/testing.js) ;; *) cp "$f" app/ui/relay/ ;; esac
           done
           ls app/ui/relay
-          mkdir -p app/ui/vendor && cp ../../../deck/vendor/qrcode.js app/ui/vendor/qrcode.js
       - name: build the installer (NSIS, unsigned for 0.2)
         shell: bash
         working-directory: local/capsule/native-win/app

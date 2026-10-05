@@ -156,7 +156,7 @@ test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no
     if (e.isDirectory()) walk(f);
     else if (/\.(m?js|json)$/.test(e.name) && !/test\.m?js$/.test(e.name) && /(from|import\()\s*["'][^"']*(vault-wipe|seal\/wipe)|\bwipeHome\(|\bwipeSealDir\(/.test(fs.readFileSync(f, "utf8"))) hits.push(path.relative(ROOT, f));
   } };
-  for (const d of ["core", "kernel", "modules", "local", "deck", "relay", "lib"]) if (fs.existsSync(path.join(ROOT, d))) walk(path.join(ROOT, d));
+  for (const d of ["core", "kernel", "modules", "local", "web", "relay", "lib"]) if (fs.existsSync(path.join(ROOT, d))) walk(path.join(ROOT, d));
   assert.deepEqual(hits.sort(), ["kernel/seal/wipe.js", "lib/vault-wipe.js"]);
   assert.ok(fs.readFileSync(path.join(ROOT, "scripts", "admin-wipe.mjs"), "utf8").includes("wipeHome"), "the host CLI script is the one importer outside");
   const tools = JSON.parse(fs.readFileSync(path.join(ROOT, "core/vault/module.json"), "utf8")).does.tools.map(t => (typeof t === "string" ? t : t.name));

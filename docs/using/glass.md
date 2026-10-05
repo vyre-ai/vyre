@@ -126,8 +126,6 @@ date. On `/glass/box` it shows the box's folders you chose for Glass.
 Every change says what happened. Downloads and uploads use a one-time ticket, so a link cannot be
 reused. Trash goes to a `.vyre-trash` folder, not away, so you can take a file back out.
 
-![Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
-
 Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
 `.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,
 `*.pem`, `*.key`, `*.kdbx`, `id_*`, `credentials.json`, and browser cookie and login stores. Glass

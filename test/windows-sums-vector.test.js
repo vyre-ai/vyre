@@ -33,7 +33,7 @@ test("windows pairing page: every relay-client name it imports exists there", as
   for (const file of ["pair.js", "seed.js"]) {
     const src = fs.readFileSync(new URL(`../local/capsule/native-win/app/ui/${file}`, import.meta.url), "utf8");
     for (const m of src.matchAll(/import \{([^}]+)\} from "\.\/(relay|vendor)\/([\w-]+)\.js"/g)) {
-      const at = m[2] === "relay" ? `../relay/client/${m[3]}.js` : `../deck/vendor/${m[3]}.js`;
+      const at = m[2] === "relay" ? `../relay/client/${m[3]}.js` : `../web/vendor/${m[3]}.js`;
       const mod = await import(new URL(at, import.meta.url).href);
       for (const name of m[1].split(",").map((s) => s.trim()).filter(Boolean)) assert.ok(name in mod, `${at} exports ${name}`);
     }

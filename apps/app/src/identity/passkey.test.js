@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as C from "../../../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../../../lib/identity/directory.js";
-import { createPasskeyKey, readAttestation, cbor, lowSDer, restorePasskeyKey } from "./passkey.js";
+import { createPasskeyKey, readAttestation, cbor, lowSDer, restorePasskeyKey, passkeyRp, PASSKEY_ORIGIN, WRONG_ORIGIN_SAY } from "./passkey.js";
 import { claimIdentityWithPasskey } from "./claim.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -142,4 +142,40 @@ test("a name is claimed from a browser with a passkey: the directory takes the p
   assert.equal(device.rp, "app.vyre.run");
   assert.equal(device.held, undefined, "a passkey is not a web-held key");
   assert.ok(!JSON.stringify(r).includes("label"), "and no device name rides the list");
+});
+
+import { restoreDeviceKey } from "./keys.js";
+test("a kept passkey comes back as a passkey device key, not a seed key", async () => {
+  const kept = { kind: "passkey", rp: "app.vyre.run", credentialId: "AQID", publicKey: "BAUG" };
+  const key = await restoreDeviceKey(kept);
+  assert.deepEqual(key.keep(), kept);
+});
+
+test("a passkey is made only on app.vyre.run in a release build, and also on http://localhost in a development one", () => {
+  assert.equal(passkeyRp(PASSKEY_ORIGIN), "app.vyre.run");
+  assert.equal(passkeyRp("http://localhost:19006"), null, "a release build refuses localhost");
+  assert.equal(passkeyRp("http://localhost:19006", { dev: true }), "localhost");
+  assert.equal(passkeyRp("http://localhost", { dev: true }), "localhost");
+  for (const o of ["https://harlow.vyre.run", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://app.vyre.run:8443", "https://example.com", "http://localhost.evil.example", "http://127.0.0.1:3000", undefined, ""]) {
+    assert.equal(passkeyRp(o, { dev: true }), null, String(o));
+    assert.equal(passkeyRp(o), null, String(o));
+  }
+});
+
+test("on another origin the claim says where to go, before the browser is asked or any key is made", async (t) => {
+  const auth = authenticator();
+  const prior = Object.getOwnPropertyDescriptor(globalThis, "location");
+  t.after(() => { if (prior) Object.defineProperty(globalThis, "location", prior); else delete globalThis.location; });
+  for (const origin of ["https://harlow.vyre.run", "https://firm.example.com", "http://localhost:3000"]) {
+    Object.defineProperty(globalThis, "location", { value: { origin }, configurable: true, writable: true });
+    const prod = process.env.NODE_ENV; process.env.NODE_ENV = "production"; t.after(() => { if (prod === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prod; });
+    await assert.rejects(claimIdentityWithPasskey({ name: "wrongorigin", base: "http://127.0.0.1:1", params: FAST, webauthn: auth }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === "Open app.vyre.run to create your name.", origin);
+  }
+  assert.equal(auth.seen.creates, 0, "the browser was never asked");
+  assert.equal(WRONG_ORIGIN_SAY, "Open app.vyre.run to create your name.");
+});
+
+test("a browser that refuses the passkey for this origin (SecurityError) gets the same words, not 'could not make a passkey'", async () => {
+  const wa = { create: async () => { throw Object.assign(new Error("The relying party ID is not a registrable domain suffix"), { name: "SecurityError" }); }, get: async () => { throw new Error("no"); } };
+  await assert.rejects(createPasskeyKey({ rp: "app.vyre.run", webauthn: wa }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === WRONG_ORIGIN_SAY);
 });

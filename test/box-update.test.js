@@ -898,7 +898,7 @@ test("update-from-request: the update's backup and its passphrase live in root's
   assert.ok(fs.existsSync(path.join(h.DIR, "backups", "pre-0.2.0.key")));
 });
 
-test("box update: the release's SHA256SUMS, signature and shell.json are put in root's status/release, mounted at the install's deck/release, for the phone's shell check (pwa)", async t => {
+test("box update: the release's SHA256SUMS, signature and shell.json are put in root's status/release, mounted at the install's web/release, for the phone's shell check (pwa)", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
   // shell.json is one more file of the release; it is listed in SHA256SUMS like the rest.
   const dl = path.join(b.DL, "dl", "v0.2.0");

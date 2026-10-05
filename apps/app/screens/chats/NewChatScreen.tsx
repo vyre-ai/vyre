@@ -39,7 +39,7 @@ export default function NewChatScreen() {
     try {
       const id = threadIdOf(await tool("threads.start", r.input));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
-      router.replace({ pathname: "/session/[id]", params: { id } });
+      router.replace({ pathname: "/u/chats/[id]", params: { id } });
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };
   return (

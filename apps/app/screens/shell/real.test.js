@@ -64,3 +64,32 @@ test("a box that cannot list spaces is an error with its code, not an empty shel
   const { shellSource } = await import("./real-source.ts");
   await assert.rejects(shellSource(/** @type {any} */ (box({ error: { code: "offline", message: "the box did not answer" } }, { data: ID }))).load(), (/** @type {any} */ e) => e.code === "offline");
 });
+
+import { spaceName as spaceNameOf } from "./real-model.ts";
+test("a space is never called by its id: its name, label or address; Personal for the personal space; else Space; Personal and My Cloud by tier", () => {
+  const warn = console.warn; let warned = 0; console.warn = () => { warned++; };
+  try {
+    assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1" }), "Space");
+    assert.equal(warned, 1, "the gap is logged");
+    assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "SPC_9ZK4", name: "spc_9zk4" }), "Space");
+  } finally { console.warn = warn; }
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", setup: { who: "personal" } }), "Personal");
+  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "Personal");
+  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "cloud", setup: { who: "personal" } }), "My Cloud");
+  assert.equal(spaceNameOf({ id: "s2", name: "harlow.vyre.run", tier: "cloud", setup: { who: "team" } }), "harlow");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "example.vyre.run" }), "example");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "harlow" }), "harlow");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Harlow Legal" }), "Harlow Legal");
+  assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "Harlow Legal" }), "Harlow Legal");
+});
+
+test("the switcher: Personal, then a team space with its Cloud tag; nobody sees Basic, Pro or an id", async () => {
+  const { spacesFrom } = await import("./real-model.ts");
+  const rows = spacesFrom([
+    { id: "spc_1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" }, role: "owner", status: "done" },
+    { id: "spc_2", name: "harlow.vyre.run", tier: "cloud", setup: { who: "team" }, role: "member", status: "done" },
+  ]);
+  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["All spaces", "One list, everything"], ["Personal", "Owner"], ["harlow", "Cloud · Member"]]);
+  assert.equal(rows[1].basic, true);
+  assert.ok(!rows.map((r) => `${r.name} ${r.sub}`).join(" ").match(/Basic|Pro\b|spc_/));
+});

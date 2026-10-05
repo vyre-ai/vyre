@@ -53,8 +53,6 @@ the top right opens the Places sheet: Projects, Planner, Memory, Vault, Devices 
 Hold a tile for a moment to keep that place as a fourth page after Agents. A Lumen bar floats at
 the bottom of the three pages; tap it, or pull down from the top of a screen, to open Find.
 
-![Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.](shots/phone-find.png)
-
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
   then Send or Discard. Swiping a draft right opens it; swiping left discards it.
@@ -78,8 +76,6 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
 
 Memory, Vault, Planner and Settings open from the Places sheet or their paths (`/memory`,
 `/vault`, `/planner`, `/settings`), laid out for a narrow screen.
-
-![Now on a phone: two drafts held at the Gate, what is running and recent sessions, with the tab bar at the bottom](shots/phone-now.png)
 
 ## Turn on notifications
 
@@ -121,8 +117,6 @@ Send, Discard, Allow, Deny and taking over an agent's screen need proof that a p
 device. On the phone that is a passkey, with Face ID or Touch ID. If you made your first passkey
 in Safari on your Mac, iCloud Keychain brings it to your iPhone, and the phone offers it when you
 approve. To make one on the phone itself, see [Deck](deck.md#add-a-passkey).
-
-![A held email on a phone, full screen, with Send and Discard in reach of your thumb](shots/phone-held.png)
 
 ## Offline
 

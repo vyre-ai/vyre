@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, Field, Menu, Row, Sheet, Switch, Text, showToast, Banner, LoadingState } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, Field, Row, Sheet, Switch, Text, showToast, Banner, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useTypes } from "./state";
-import { KINDS, addField, addStage, callThemCases, fieldLine, kindLabel, moveStage, rename, renameStage, sealField } from "./logic.js";
+import { KINDS, addField, addStage, callThemCases, fieldLine, moveStage, rename, renameStage, sealField } from "./logic.js";
 import type { TypeDef } from "./logic.js";
 
 /** One type: its names, fields, stages and whether it holds work. Edits apply at once, on every view of the type. */
@@ -17,12 +17,14 @@ export function TypeScreen() {
   const [one, setOne] = useState(t?.label ?? "");
   const [many, setMany] = useState(t?.plural ?? "");
   const [stages, setStages] = useState<string[]>(t?.stages ?? []);
-  const [field, setField] = useState<null | { label: string; kind: string }>(null);
+  const [field, setField] = useState<null | { label: string; kind: string; to?: string }>(null);
   const [edit, setEdit] = useState<string | null>(null);
   useEffect(() => { if (t) { setOne(t.label); setMany(t.plural); setStages(t.stages); } }, [t?.id]);
   if (!t && loading) return <Page title="Customize" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
   if (!t) return <Page title="Customize" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
   const put = (n: TypeDef) => update(n);
+  // A Link points at a record type of this space: any of the person's own, the type itself included.
+  const linkTargets = types.filter((x) => !/^(def-|flow-|kit-)/.test(x.id));
   const editing = t.fields.find((f) => f.key === edit);
   return (
     <Page title={t.plural} sub="Customize" back="/u/settings/customize">
@@ -70,12 +72,24 @@ export function TypeScreen() {
           <>
             <Text tone="muted">{`It shows on every view of ${t.plural} at once.`}</Text>
             <Field label="Name" value={field.label} onChangeText={(label) => setField({ ...field, label })} placeholder="Field name" />
+            {/* The kinds are chips in the sheet itself: a menu opens in its own layer, which a sheet on the web keeps from taking a press. */}
             <View className="gap-s1">
               <Text size="caption" strong tone="label">Kind</Text>
-              <View className="flex-row"><Menu trigger={<Button label={kindLabel(field.kind)} />} items={KINDS.map(([k, l]) => ({ label: l, onPress: () => setField({ ...field, kind: k }) }))} /></View>
+              <View className="flex-row flex-wrap gap-s2">
+                {KINDS.map(([k, l]) => <Chip key={k} tone={field.kind === k ? "accent" : "plain"} icon={field.kind === k ? "check" : undefined} onPress={() => setField({ ...field, kind: k, to: k === "link" ? field.to ?? linkTargets[0]?.id : undefined })}>{l}</Chip>)}
+              </View>
             </View>
+            {field.kind === "link" ? (
+              <View className="gap-s1">
+                <Text size="caption" strong tone="label">Links to</Text>
+                <View className="flex-row flex-wrap gap-s2">
+                  {linkTargets.map((x) => <Chip key={x.id} tone={field.to === x.id ? "accent" : "plain"} icon={field.to === x.id ? "check" : undefined} onPress={() => setField({ ...field, to: x.id })}>{x.label}</Chip>)}
+                </View>
+                <Text size="caption" tone="label">The records this field points at: one of these types.</Text>
+              </View>
+            ) : null}
             <View className="flex-row gap-s2">
-              <Button kind="primary" label="Add field" disabled={!field.label.trim()} onPress={() => { put(addField(t, field.label, field.kind)); setField(null); showToast(`${field.label.trim()} added to ${t.plural}.`); }} />
+              <Button kind="primary" label="Add field" disabled={!field.label.trim() || (field.kind === "link" && !field.to)} onPress={() => { put(addField(t, field.label, field.kind, field.to)); setField(null); showToast(`${field.label.trim()} added to ${t.plural}.`); }} />
               <Button kind="ghost" label="Cancel" onPress={() => setField(null)} />
             </View>
           </>

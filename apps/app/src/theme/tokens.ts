@@ -774,7 +774,7 @@ export const tokens = {
       "joins": "round"
     },
     "emblem": {
-      "note": "The project emblem (ux-research.md section 5.3): a rounded tile of four cells. Eight bytes of the project's seed (lib/avatar-seed projectBytes) choose everything, so every surface that draws a project draws the same tile. The Deck's renderer is deck/vendor/vyrecode/emblem.js; a test renders this spec and checks it draws the same SVG. Coordinates are in a 120 unit canvas; a cell is 60 units and its shapes are drawn in the cell's own 0 to 60 space.",
+      "note": "The project emblem (ux-research.md section 5.3): a rounded tile of four cells. Eight bytes of the project's seed (lib/avatar-seed projectBytes) choose everything, so every surface that draws a project draws the same tile. The Deck's renderer is web/vendor/vyrecode/emblem.js; a test renders this spec and checks it draws the same SVG. Coordinates are in a 120 unit canvas; a cell is 60 units and its shapes are drawn in the cell's own 0 to 60 space.",
       "canvas": 120,
       "cell": 60,
       "corner": 30,

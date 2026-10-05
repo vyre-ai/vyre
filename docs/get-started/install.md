@@ -237,8 +237,6 @@ Your address only opens on your own devices on your tailnet, so the phone needs 
 3. On an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On Android, use Chrome's
    **Install app**. Open Vyre from the Home Screen: it runs full screen, like an app.
 
-![Now in the Deck on a phone: what needs you, with the tab bar at the bottom](../using/shots/phone-now.png)
-
 Now shows a **Set up this phone** card for notifications and a passkey. More in
 [On your phone](../using/mobile.md).
 

@@ -1,5 +1,5 @@
 // @ts-check
-// The Vyre mark in a terminal: the "v" stroke and its bone dot from the icon (deck/favicon.svg),
+// The Vyre mark in a terminal: the "v" stroke and its bone dot from the icon (web/favicon.svg),
 // as two characters, "v•". Plain "v·" without colour, so a pipe or NO_COLOR still reads it.
 
 import { painters } from "./style.js";

@@ -91,7 +91,7 @@ test("a failed status that says it could not resume shows \"Couldn't resume. Ask
   f.apply(fr("status", { state: "failed", note: "couldn't resume, ask again" }));
   assert.equal(f.item(f.rows[0].key)?.text, "Couldn't resume. Ask again.");
   f.apply(fr("status", { state: "failed", note: "something else" }));
-  assert.equal(f.item(f.rows[1].key)?.text, "The session failed.");
+  assert.equal(f.item(f.rows[1].key)?.text, "This chat failed.");
 });
 
 test("a reset clears the rows and takes its cursor", () => {
@@ -328,4 +328,13 @@ test("a person who joined late sees the chat from their join: placeholders hold 
   f.apply({ v: 1, id: "u", cur: 11, session: "s", turn: null, type: "session.user-message", time: 0, corr: null, author: "person:alex", data: { message: "u2", text: "and now?", state: "sent" } });
   assert.deepEqual(f.rows.map((r) => f.item(r.key)?.text), ["chris joined", "and now?"]);
   assert.equal(f.last, 11);
+});
+
+test("a message the person's assistant sent for them keeps via, so it can be marked", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply({ ...fr("user-message", { message: "s1", text: "run the tests", state: "sent" }), author: "person:alex", via: "assistant" });
+  assert.equal(f.item(f.rows[0].key)?.via, "assistant");
+  f.apply({ ...fr("user-message", { message: "s2", text: "thanks", state: "sent" }), author: "person:alex" });
+  assert.equal(f.item(f.rows[1].key)?.via, undefined);
 });

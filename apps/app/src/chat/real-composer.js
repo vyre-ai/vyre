@@ -1,7 +1,7 @@
 // @ts-check
 // What a real chat's composer offers, from the box: the models and accounts that can answer (providers.list), the people and assistants to @mention (records.actors, agents.list), and the records to # tag (the person's own
 // records, with how many of their fields are sealed). Pure, so Node tests it; src/chat/useRealComposer.ts reads the box and calls these.
-import { answerRows } from "../../../../deck/chat/core/answer-with.js";
+import { answerRows } from "./core/answer-with.js";
 
 /** @typedef {{ id: string, label: string, fit: number | null }} ModelChoice */
 
@@ -28,21 +28,23 @@ export function modelChoices(providerRows, current = {}) {
   return { models, model: now };
 }
 
-/** What switching to a choice asks the box: the same account's model is threads.model, another account's is threads.switch (the same thread, a brief of what was said). @param {string} thread @param {string} id @param {any} providerRows @param {{ provider?: string | null, account?: string | null }} current */
-export function switchCall(thread, id, providerRows, current = {}) {
+/**
+ * What switching one slot's model asks the box (CONTRACT-one-chat.md): chats.switch { chat, slot, provider, model, account? }.
+ * @param {string} chat @param {string} id @param {any} providerRows @param {{ provider?: string | null, account?: string | null }} [current] @param {string} [slot]
+ * @returns {{ tool: string, input: Record<string, unknown> } | null}
+ */
+export function switchCall(chat, id, providerRows, current = {}, slot) {
   const [provider, account, model] = String(id).split("|");
-  const row = answerRows(providerRows, { provider: current.provider ?? null, account: current.account ?? null }).find((r) => r.provider === provider && (r.account ?? "") === account);
   if (!provider || !model) return null;
-  if (row && row.now) return { tool: "threads.model", input: { thread, model } };
-  return { tool: "threads.switch", input: { thread, provider, ...(account ? { account } : {}), model } };
+  return { tool: "chats.switch", input: { chat, ...(slot ? { slot } : {}), provider, model, ...(account ? { account } : {}) } };
 }
 
 /** The people and assistants to @mention: this chat's own first, then the space's actors and the person's agents, each once, never the viewer. @param {{ actors?: any, agents?: any, viewer?: string | null, here?: { name: string, family: string }[] }} o */
 export function peopleFor({ actors, agents, viewer, here = [] }) {
-  /** @type {Map<string, { name: string, family: "person" | "assistant" }>} */ const out = new Map();
-  const add = (/** @type {string} */ name, /** @type {string} */ family) => { const n = String(name || "").trim(); if (n && !out.has(n.toLowerCase())) out.set(n.toLowerCase(), { name: n, family: family === "assistant" || family === "agent" ? "assistant" : "person" }); };
+  /** @type {Map<string, { name: string, id: string, family: "person" | "assistant" }>} */ const out = new Map();
+  const add = (/** @type {string} */ name, /** @type {string} */ family, /** @type {string} */ id = "") => { const n = String(name || "").trim(); if (n && !out.has(n.toLowerCase())) out.set(n.toLowerCase(), { name: n, id: String(id || n), family: family === "assistant" || family === "agent" ? "assistant" : "person" }); };
   for (const p of here) add(p.name, p.family);
-  for (const a of Array.isArray(actors?.actors) ? actors.actors : Array.isArray(actors) ? actors : []) if (a && a.id !== viewer && a.name !== viewer) add(a.name || a.id, a.family);
+  for (const a of Array.isArray(actors?.actors) ? actors.actors : Array.isArray(actors) ? actors : []) if (a && a.id !== viewer && a.name !== viewer) add(a.name || a.id, a.family, a.id);
   for (const a of Array.isArray(agents) ? agents : []) add(a?.name, "assistant");
   return [...out.values()];
 }

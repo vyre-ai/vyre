@@ -52,12 +52,12 @@ export default function NeedDetail() {
         </View>
         {!approve.ok ? (
           <Text style={[type.meta, { color: color.text2 }]}>
-            {approve.why}. {n.source === "gate" ? "Approve it from the Deck or Lumen for now." : "Answer it in the session."}
+            {approve.why}. {n.source === "gate" ? "Approve it from the Deck or Lumen for now." : "Answer it in the chat."}
           </Text>
         ) : null}
         {n.thread ? (
-          <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: "/session/[id]", params: { id: n.thread as string } })} style={styles.link}>
-            <Text style={[type.readStrong, { color: color.focus }]}>Open session</Text>
+          <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: "/u/chats/[id]", params: { id: n.thread as string } })} style={styles.link}>
+            <Text style={[type.readStrong, { color: color.focus }]}>Open chat</Text>
           </Pressable>
         ) : null}
       </ScrollView>

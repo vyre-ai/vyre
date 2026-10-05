@@ -1,5 +1,5 @@
 import { kindOf, type AvatarRef } from "../components/Avatar";
-import { aid } from "../../../../deck/ui/kernel-view.js";
+import { aid } from "../../src/store-core/kernel-view.js";
 import { recordTitle, spaceName, who, type World } from "./model";
 
 /** An actor as a mark reference. */

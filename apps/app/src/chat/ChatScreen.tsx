@@ -28,6 +28,12 @@ import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
+import { ChatToolsSheet } from "../../screens/chat-tools";
+import { readDraft, writeDraft } from "./drafts";
+import { addTeammateInput, addable } from "./group.js";
+import { ChatExtras } from "./ChatExtras";
+import { queueFrom } from "./extras.js";
+import { tool } from "../real/box";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -81,6 +87,17 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   const [note, setNote] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
+  const [draftN, setDraftN] = useState(0);
+  // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
+  const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
+  useEffect(() => {
+    if (!toolsOpen || allowsMock()) return;
+    let live = true;
+    tool("threads.queue", { thread: p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
+    return () => { live = false; };
+  }, [toolsOpen, p.sessionId]);
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
@@ -145,17 +162,23 @@ export function ChatScreen(p: ChatScreenProps) {
   const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   const realComposer = useRealComposer(p.sessionId, found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined, viewer, setNote);
+  // A chat with several assistants or models: one chip each, to switch that slot's model.
+  const slots = found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
+      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={queued} onForked={p.onBranched}
+        onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
-        title={p.title ?? "Session"}
+        title={p.title ?? "Chat"}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
         viewer={viewer}
         info={info}
+        addable={realComposer ? addable(realComposer.people, found) : undefined}
+        onAdd={realComposer ? async (who) => { try { await tool("chats.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         muted={muted}
         pinned={pinned}
         onMute={setMuted}
@@ -215,9 +238,9 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {replyTo ? (
-        <View accessibilityLabel="Replying in a thread" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying in a thread to ${replyTo.name}`}</Text>
+          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
         </View>
       ) : null}
@@ -234,8 +257,10 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
           phone={phone}
@@ -249,6 +274,7 @@ export function ChatScreen(p: ChatScreenProps) {
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
+          slots={slots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}

@@ -29,7 +29,8 @@ export function cbor(b) {
     if (n === 26) { const v = ((b[i] << 24) >>> 0) + (b[i + 1] << 16) + (b[i + 2] << 8) + b[i + 3]; i += 4; return v; }
     throw refuse("That passkey answer is not in a shape Vyre reads.", "bad_attestation");
   };
-  const item = (/** @type {number} */ depth) => {
+  /** @type {(depth: number) => any} */
+  const item = (depth) => {
     if (depth > 8 || i >= b.length) throw refuse("That passkey answer is not in a shape Vyre reads.", "bad_attestation");
     const head = b[i++], major = head >> 5, n = u(head & 31);
     if (major === 0) return n;
@@ -89,6 +90,21 @@ const assertionSigner = (wa, rp, credentialId, timeout) => async (/** @type {Uin
   return enc.encode(JSON.stringify({ ad: b64u(bytes(r.authenticatorData)), cd: b64u(bytes(r.clientDataJSON)), s: b64u(lowSDer(bytes(r.signature))) }));
 };
 
+/** The one origin a release build makes passkeys on: a passkey belongs to its relying party, so it works only here. */
+export const PASSKEY_ORIGIN = "https://app.vyre.run";
+/** What the person reads on any other origin. A space's own web app at name.vyre.run, or a custom domain, does not reuse the passkey: it enrols as its own device with the typed code. */
+export const WRONG_ORIGIN_SAY = "Open app.vyre.run to create your name.";
+
+/**
+ * The relying-party id a passkey may be made for on this page, or null. A release build accepts only https://app.vyre.run; a development build also accepts http://localhost (any port), for walks and tests.
+ * @param {string | undefined} origin the page's origin @param {{ dev?: boolean }} [o] @returns {string | null}
+ */
+export function passkeyRp(origin, { dev = false } = {}) {
+  if (origin === PASSKEY_ORIGIN) return "app.vyre.run";
+  if (dev && typeof origin === "string" && /^http:\/\/localhost(:\d{1,5})?$/.test(origin)) return "localhost";
+  return null;
+}
+
 /**
  * Make a passkey and return it as a device key `claim.js` can use. Asks the person once now (making it) and once for each thing it signs.
  * @param {{ rp: string, name?: string, webauthn?: { create(o: any): Promise<any>, get(o: any): Promise<any> }, random?: (n: number) => Uint8Array, timeout?: number }} o
@@ -107,7 +123,10 @@ export async function createPasskeyKey(o) {
       rp: { id: rp, name: "Vyre" }, user: { id: random(16), name: o.name || "Vyre", displayName: o.name || "Vyre" }, challenge: random(32),
       pubKeyCredParams: [{ type: "public-key", alg: -7 }], authenticatorSelection: { userVerification: "required", residentKey: "preferred" }, attestation: "none", timeout,
     } });
-  } catch (e) { throw refuse(/** @type {any} */ (e) && /** @type {any} */ (e).name === "NotAllowedError" ? "The passkey was not made (cancelled, or it timed out)." : "This device could not make a passkey.", "passkey_refused"); }
+  } catch (e) {
+    // The browser itself refuses a passkey for a relying party this origin does not own (SecurityError): the same answer as an origin passkeyRp turns away.
+    if (e && /** @type {any} */ (e).name === "SecurityError") throw refuse(WRONG_ORIGIN_SAY, "wrong_origin");
+    throw refuse(/** @type {any} */ (e) && /** @type {any} */ (e).name === "NotAllowedError" ? "The passkey was not made (cancelled, or it timed out)." : "This device could not make a passkey.", "passkey_refused"); }
   if (!cred || !cred.response) throw refuse("The passkey was not made.", "passkey_refused");
   const { credentialId, pub } = await readAttestation(bytes(cred.response.attestationObject), rp);
   const eid = await eidOf(pub);
