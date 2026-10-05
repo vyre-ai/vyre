@@ -237,7 +237,7 @@ async function startLocked(opts, root, p, release) {
   // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
+  registry = new Registry({ db, events, config: cfg, paths: p, spaceDir: (/** @type {string} */ id) => path.join(root, "kernel", "spaces", id), log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
   // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
@@ -251,9 +251,11 @@ async function startLocked(opts, root, p, release) {
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
     // profile and gateway container are options of that factory with defaults, not settings.
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+    const { storeMode } = await import("../../stores/twenty/space-store.js");
+    const isServerInstall = config.isServer(cfg.machine);
+    if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -1123,7 +1125,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
       // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
-      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
   // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
   if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });

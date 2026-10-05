@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { conformance, CONTACT } from "../../../kernel/conformance/suite.js";
+import { conformance, CONTACT, SUITE_SPACE } from "../../../kernel/conformance/suite.js";
 import { createTwentyStore } from "../store.js";
 import { TwentyClient } from "../client.js";
 import { specific } from "../specific-suite.js";
@@ -55,7 +55,7 @@ if (!URL_ || !KEY_FILE) {
       await client.gql("graphql", "mutation PurgeA($f: AccountFilterInput) { destroyAccounts(filter: $f) { id } }", { f: { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] } });
     }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-live-"));
-    const store = createTwentyStore({ client, space: "live", dir, webhookSecret: SECRET, graceMs: 250 });
+    const store = createTwentyStore({ client, space: SUITE_SPACE, dir, webhookSecret: SECRET, graceMs: 250 });
     await store.define({ add_types: [CONTACT] });
     await store.registerWebhook(`http://${HOOK_HOST}:${HOOK_PORT}/hook`);
     current = store;
