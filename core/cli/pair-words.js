@@ -11,6 +11,7 @@ export const PAIR_WORDS = Object.freeze({
   typedFound: "  Your app typed the code and now shows a code of its own.",
   prompt: "Type the code your app shows: ",
   matched: "  The codes match. Your app finishes the pairing.",
+  unfinished: "  The app did not finish the pairing, so nothing was paired.",
   wrong: "  That is not the code your app shows, so this typed code is closed.",
   newCode: "  A new typed code is showing: {code}  (good for {minutes} minutes)",
   closed: "  The typed code closed: its time ran out, or it had {tries} wrong tries.",

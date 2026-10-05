@@ -171,6 +171,9 @@ export function createPairing(o) {
   let abandonHook = () => {};
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
   const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
+  /** The typed-back acks of this server's person, by the tag of the ticket the typed code's key made: the ack IS the owner's yes for the device that redeems that ticket (DESIGN-wink, the typed code: no three words). Single use. @type {Map<string, number>} */
+  const typedAcks = new Map();
+  const takeTypedAck = (/** @type {string} */ tag) => { for (const [k, until] of typedAcks) if (until <= now()) typedAcks.delete(k); const until = typedAcks.get(tag); if (until === undefined) return false; typedAcks.delete(tag); return true; };
 
   const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", ...(r.key_storage === "software" ? { software: true } : {}) } : null;
   /** Ends a device's paired person session and grant (presence.person.end-paired, module:wink only). Late-bound: set once the context can call. A failure is logged, never a reason to keep the device. @type {(device?: string) => void} */
@@ -557,7 +560,7 @@ export function createPairing(o) {
           let ok = false, why = null;
           // A release that could not be delivered when the person removed this server goes now, over the channel this pairing just made.
           if (meta.get(`release:${sid}`)) { if ((await callRelease(channelOf(pd) || meta.get(`release:${sid}`))) !== "unreachable") meta.del(`release:${sid}`); }
-          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed, onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
+          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed || (i.code ? t.seed : undefined), onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
@@ -1066,26 +1069,28 @@ export function createPairing(o) {
             try { proven = await proveIdentity(claimed, input, caller, true); } catch (e) { dropLater(caller); throw e; }
           }
           const fresh = !to && !o.pairWordsFor;
+          // The owner typed back the ack of the typed code this device came in by: that is the yes, so no three words are asked (single use; the QR and long-code paths ask them)
+          const typedYes = Boolean(pr.tag) && takeTypedAck(String(pr.tag));
           // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
           const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
           if (pr.tag) liveTickets.delete(String(pr.tag));
           if (pr.cancel === true) throw fail("denied", words("pairCancelled"));
           if (fresh && !/^[0-9a-f]{64}$/.test(String(pr.commit || ""))) throw fail("bad_input", words("pairNeedsFresh"));
           let ticket = "";
-          if (fresh && pr.tag) {
+          if (fresh && pr.tag && !typedYes) {
             const t = liveTicket;
             if (!t || t.until <= now()) throw fail("denied", words("ticketTaken"));
             ticket = t.seed;
           }
           const nb = newNonce();
-          const w = fresh || to ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
+          const w = fresh || to || typedYes ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
           const until = now() + ASK_MS;
-          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
+          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to || typedYes ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
           if (w) setWords(mine, w);
           // no answer, no yes: the ask ends by itself and lets the app's relay device go, even when the app never calls again
           const timer = setTimeout(() => { if (ask === mine) askLive(); }, ASK_MS + 5);
           if (timer.unref) timer.unref();
-          if (!to && !fresh) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, choices: mine.choices, until: mine.until });
+          if (!to && !fresh && !typedYes) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, choices: mine.choices, until: mine.until });
         }
         if (a.state === "waiting" && !a.words) {
           // not revealed yet: answer with the server's nonce; the words appear when the app reveals its own
@@ -1583,7 +1588,7 @@ export function createPairing(o) {
       return best;
     } catch { return null; }
   };
-  return { autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { typedAck: (/** @type {string} */ tag) => { typedAcks.set(String(tag), now() + 5 * 60_000); }, forgetTypedAck: (/** @type {string} */ tag) => { typedAcks.delete(String(tag)); }, autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

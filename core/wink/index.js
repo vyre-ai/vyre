@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { createWinkCode, CODE_TTL_MS, MAX_ATTEMPTS } from "./code.js";
+import { ticketTag } from "../../relay/client/pairwords.js";
 import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
@@ -213,8 +214,11 @@ export function createWink(inject = {}) {
       const carry = carried.get(o.id);
       // A phone (W1) is gated like the QR's: the redemption is a waiting pairing, and the code's own confirmation is its yes (pairing.phone.codeSeed). Computers, servers and invitations are as before.
       const phoneFlow = o.flow === "W1" && !carry;
+      // A server (W3): the ack is the owner's yes, so the device that redeems this ticket is adopted with no three words (core/wink/pairing.js typedAck). Set before the ticket exists, so the redeemer cannot arrive first.
+      const serverTag = o.flow === "W3" && !carry ? await ticketTag(seed) : "";
+      if (serverTag) pairing.typedAck(serverTag);
       const t = /** @type {any} */ (await ctx.call("relay.ticket.mint", { seed, ...(carry ? { offer: carry } : {}), ...(phoneFlow ? { gate: "phone" } : {}) }));
-      if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
+      if (!t || t.error) { if (serverTag) pairing.forgetTypedAck(serverTag); writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
       carried.delete(o.id);
       writeOffer(o.id, "joining", { pick: null });
       if (phoneFlow) pairing.phone.codeSeed(seed, { ...(presence || {}), keyId: (presence && presence.keyId) || `ack:${o.id}` }); // the owner's typed-back ack is the confirmation the paired session is granted on

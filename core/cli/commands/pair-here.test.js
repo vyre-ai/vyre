@@ -7,7 +7,7 @@ import { pairHere } from "./pair-here.js";
 import { PAIR_WORDS as W, say as fill } from "../pair-words.js";
 
 /** A scripted server: `status` answers in order, `confirm` is what the ack answers. */
-function rig({ tty = true, code = "WINK-AB12-CD34", statuses = [], confirm = { ok: true }, asking = [{ asking: false }], answer = { yes: true } } = {}) {
+function rig({ tty = true, code = "WINK-AB12-CD34", statuses = [], confirm = { ok: true }, asking = [{ asking: false }], answer = { yes: true }, owned = true } = {}) {
   /** @type {string[]} */ const lines = []; /** @type {string[]} */ const asked = []; /** @type {any[]} */ const calls = [];
   let t = 1_000_000; const answers = [...asking];
   const tool = async (name, input = {}) => {
@@ -17,6 +17,7 @@ function rig({ tty = true, code = "WINK-AB12-CD34", statuses = [], confirm = { o
     if (name === "wink.server.confirm") return { data: confirm };
     if (name === "wink.server.pairing") return { data: answers.length > 1 ? answers.shift() : answers[0] };
     if (name === "wink.server.pair.answer") return { data: answer };
+    if (name === "wink.server.status") return { data: owned ? { owned: true, space: "Personal", device: "Alex's laptop" } : { owned: false } };
     return { error: { code: "no_such_tool", message: name } };
   };
   const io = { tty, ask: async (/** @type {string} */ q) => { asked.push(q); return io.replies.shift() ?? ""; }, replies: /** @type {string[]} */ ([]) };
@@ -36,16 +37,26 @@ test("no typed code when the kill switch is set: only the QR and the long code",
   assert.ok(!r.lines.join("\n").includes("type this code"));
 });
 
-test("when the app has typed the code the prompt is \"Type the code your app shows:\", the typed answer goes to wink.server.confirm, and a match is said", async () => {
+test("when the app has typed the code the prompt is \"Type the code your app shows:\", the typed answer goes to wink.server.confirm, a match ends the pairing with NO three-word question, and a QR pairing still asks the words", async () => {
   const r = rig({ statuses: [{ code: "WINK-AB12-CD34", state: "found", offer: "o1", expires: 1_600_000 }], asking: [{ asking: true, name: "Alex", choices: ["a b c", "d e f", "g h i"] }] });
-  r.io.replies.push("zebra horse 123", "2");
+  r.io.replies.push("zebra horse 123");
   const res = await pairHere({ tool: r.tool, io: r.io, say: r.say, sleep: r.sleep, now: r.now });
   assert.equal(r.asked[0], W.prompt);
   assert.deepEqual(r.calls.find(c => c[0] === "wink.server.confirm")[1], { offer: "o1", typed: "zebra horse 123" });
   const text = r.lines.join("\n");
   assert.ok(text.includes(W.typedFound) && text.includes(W.matched));
-  assert.equal(r.asked[1], W.pickPrompt, "then the three-words pick");
+  assert.deepEqual(r.asked, [W.prompt], "the typed path never asks the three words");
+  assert.ok(!r.calls.some(c => c[0] === "wink.server.pairing"), "and never looks for the words question");
   assert.equal(res.paired, true);
+  // a QR or long-code pairing (no typed code in play) still asks the words
+  const q = rig({ code: "", asking: [{ asking: true, name: "Alex", choices: ["a b c", "d e f", "g h i"] }] });
+  q.io.replies.push("2");
+  const qr = await pairHere({ tool: q.tool, io: q.io, say: q.say, sleep: q.sleep, now: q.now });
+  assert.equal(q.asked[0], W.pickPrompt); assert.equal(qr.paired, true);
+  // an app that never finishes after the ack says so
+  const n = rig({ owned: false, statuses: [{ code: "WINK-AB12-CD34", state: "found", offer: "o1", expires: 1_600_000 }] }); n.io.replies.push("x");
+  const nr = await pairHere({ tool: n.tool, io: n.io, say: n.say, sleep: n.sleep, now: n.now });
+  assert.equal(nr.paired, false); assert.ok(n.lines.includes(W.unfinished));
 });
 
 test("a wrong ack says the code is closed and shows the new one; a code that closed by itself says why and shows the new one", async () => {

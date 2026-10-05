@@ -36,8 +36,13 @@ export async function pairHere(d) {
         say(W.typedFound);
         const typed = await io.ask(W.prompt);
         const r = await tool("wink.server.confirm", { offer: c.offer, typed });
-        if (r.data && r.data.ok) say(W.matched);
-        else {
+        if (r.data && r.data.ok) {
+          say(W.matched);
+          // The typed ack is the owner's yes: no three words follow. Wait for the app to finish.
+          for (let i = 0; i < 60; i++) { const st = await tool("wink.server.status", {}); if (st.data && st.data.owned) return { paired: true, ...(st.data.space ? { name: String(st.data.space) } : {}) }; await sleep(1000); }
+          say(W.unfinished);
+          return { paired: false, why: "unfinished" };
+        } else {
           say(W.wrong);
           // a wrong ack closes the code and a fresh one replaces it with no tap: show it
           for (let i = 0; i < 6; i++) { await sleep(500); const n = await tool("wink.code.status", {}); if (n.data && n.data.code && n.data.code !== shown) { say(fill(W.newCode, { code: n.data.code, minutes: minutes(n.data.expires) })); shown = n.data.code; break; } }

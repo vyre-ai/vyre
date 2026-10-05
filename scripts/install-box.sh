@@ -799,7 +799,15 @@ pair_server() {
           typed=$(printf '%s' "$typed" | tr -cd 'A-Za-z0-9 -')
           r=$(tool wink.server.confirm "{\"offer\":\"$cof\",\"typed\":\"$typed\"}" || true)
           case "$r" in
-            *'"ok": true'*|*'"ok":true'*) say "  The codes match. Your app finishes the pairing." ;;
+            *'"ok": true'*|*'"ok":true'*)
+               say "  The codes match. Your app finishes the pairing."
+               # The typed ack is the owner's yes: no three words follow. Wait for the app to finish, then the closing line says whose server this is.
+               w=0; while [ "$w" -lt 60 ]; do
+                 st=$(tool wink.server.status '{}' || true)
+                 case "$st" in *'"owned": true'*|*'"owned":true'*) PAIRED=1; PAIRED_NAME=$(json_str "$st" space); PAIRED_DEVICE=$(json_str "$st" device); return 0 ;; esac
+                 w=$((w + 1)); sleep 1
+               done
+               say "  The app did not finish the pairing, so nothing was paired."; return 0 ;;
             *) say "  That is not the code your app shows, so this typed code is closed."
                # a wrong ack closes the code and a fresh one replaces it with no tap
                w=0; while [ "$w" -lt 6 ]; do
