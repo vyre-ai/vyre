@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle } from "./testing/world.js";
 import { FlowRunner } from "./runner.js";
-import { opFor, retryAfterMs, compareReadback, readbackPath, providerKey, keyPlacement, ConnectorRate } from "./safe-write.js";
+import { opFor, retryAfterMs, compareReadback, readbackRequest, takesKey } from "./safe-write.js";
+import { serviceActionOf } from "./compile.js";
 
 const svcFlow = (/** @type {any[]} */ steps) => ({ format: 1, name: "svc", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps });
 const b64 = (/** @type {any} */ o) => Buffer.from(JSON.stringify(o)).toString("base64");
@@ -17,38 +18,41 @@ const declare = (/** @type {any} */ w, /** @type {any} */ extra = {}) => {
   w.cat.connectors.practice = { ...w.cat.connectors.practice, allow: [{ method: "GET", path: "/matters/*" }, { method: "POST", path: "/matters" }], ...extra };
   w.kernel.rules.push({ match: (/** @type {any} */ i) => i.action === "service.call", effect: "allow", reason: "a standing yes" });
 };
-const IDEM_OP = { name: "create_matter", ...WRITE, outward: true, idem: { header: "Idempotency-Key" }, readback: { path: "/matters/{id}", id: "id", match: { client: "client" } } };
+const RB = { method: "GET", path: "/matters/{id}", vars: { id: "response.json.id" }, compare: { client: "request.body.client" } };
+const IDEM_OP = { name: "create_matter", ...WRITE, read: false, outward: true, readback: RB };
+const KEY = { idempotency: { header: "Idempotency-Key" } };
 const lastRun = async (/** @type {any} */ w, /** @type {string} */ id) => (await w.runner.listRuns({ flow: id }))[0];
 const matter = [{ id: "w", kind: "service", connector: "practice", method: "POST", path: "/matters", body: { client: { expr: "trigger.n" } } }];
 
-test("safe-write helpers: operations match by method and path, the key is opaque and placed as declared, Retry-After reads seconds and dates, read-back compares only paired fields", () => {
-  const conn = { ops: [{ name: "get", method: "GET", path: "/matters/{id}", read: true }, { name: "new", method: "POST", path: "/matters", idem: { header: "Idempotency-Key" } }] };
+test("safe-write helpers: operations match by method and path, a key is taken only where the connector and the operation say, Retry-After reads seconds and dates, read-back fills its path and compares only what the write sent", () => {
+  const rb = { method: "GET", path: "/matters/{id}", vars: { id: "response.json.data.id" }, compare: { "d.client": "request.body.client", "d.skip": "request.body.absent" } };
+  const conn = { idempotency: { header: "Idempotency-Key" }, ops: [{ name: "get", method: "GET", path: "/matters/{id}", read: true }, { name: "new", method: "POST", path: "/matters", outward: true, readback: rb }, { name: "free", method: "POST", path: "/notes", idempotent: false }] };
   assert.equal(opFor(conn, "GET", "/matters/42").name, "get");
   assert.equal(opFor(conn, "POST", "/matters").name, "new");
   assert.equal(opFor(conn, "DELETE", "/matters/42"), null);
   assert.equal(opFor({ allow: [] }, "GET", "/x"), null, "no declaration, no operation");
-  const k = providerKey("run_abc:w");
-  assert.match(k, /^vyre-[0-9a-f]{32}$/);
-  assert.equal(providerKey("run_abc:w"), k);
-  assert.ok(!k.includes("run_abc"));
-  assert.deepEqual(keyPlacement({ idem: { header: "Idempotency-Key" } }, k), { headers: { "Idempotency-Key": k } });
-  assert.deepEqual(keyPlacement({ idem: { param: "request_id" } }, k), { query: { request_id: k } });
-  assert.deepEqual(keyPlacement({}, k), {});
+  assert.equal(takesKey(conn, opFor(conn, "POST", "/matters")), true);
+  assert.equal(takesKey(conn, opFor(conn, "POST", "/notes")), false, "an operation may opt out");
+  assert.equal(takesKey({ ops: conn.ops }, opFor(conn, "POST", "/matters")), false, "a connector that declares no key support takes none");
   assert.equal(retryAfterMs({ "retry-after": "30" }, 0), 30_000);
   assert.equal(retryAfterMs({ "retry-after": new Date(10_000).toUTCString() }, 4_000), 6_000);
   assert.equal(retryAfterMs({}, 0), null);
-  assert.equal(readbackPath({ path: "/matters/{id}", id: "data.id" }, { data: { id: 7 } }), "/matters/7");
-  assert.equal(readbackPath({ path: "/matters/{id}", id: "data.id" }, { nope: 1 }), null);
-  assert.deepEqual(compareReadback({ match: { "d.client": "client" } }, { client: "Rivera", extra: 1 }, { d: { client: "Rivera", other: 2 } }), { ok: true, diffs: [] });
-  assert.deepEqual(compareReadback({ match: { client: "client" } }, { client: "Rivera" }, { client: "Rivero" }), { ok: false, diffs: ["client"] });
-  const r = new ConnectorRate();
-  assert.equal(r.wait("c", { per_min: 2 }, 1000), 0); r.note("c", 1000); r.note("c", 2000);
-  assert.equal(r.wait("c", { per_min: 2 }, 3000), 58_000, "the third waits until the first is a minute old");
-  assert.equal(r.wait("c", { per_min: 2 }, 61_001), 0);
-  assert.equal(r.wait("c", undefined, 3000), 0, "no declared rate, no wait");
+  const op = opFor(conn, "POST", "/matters");
+  assert.deepEqual(readbackRequest(op, { path: "/matters", body: { client: "R" } }, { data: { id: 7 } }), { method: "GET", path: "/matters/7" });
+  assert.equal(readbackRequest(op, { path: "/matters", body: {} }, { nope: 1 }), null);
+  assert.deepEqual(compareReadback(op, { path: "/matters", body: { client: "R" } }, { d: { client: "R" } }, { data: { id: 7 } }), { ok: true, mismatches: [] }, "d.skip was not sent, so it is not compared");
+  assert.deepEqual(compareReadback(op, { path: "/matters", body: { client: "R" } }, { d: { client: "S" } }, { data: { id: 7 } }), { ok: false, mismatches: [{ field: "d.client", wrote: "R", read: "S" }] });
 });
 
-test("a write carries the provider's idempotency key as declared, and the ledger holds the key and the attempt BEFORE the call is made", async () => {
+test("outward comes from the declared operation: an outward op is held, a read and a draft op (a write that is not outward) are not; an undeclared connector keeps the method rule", () => {
+  const cat = { connectors: { g: { ops: [{ method: "POST", path: "/drafts", outward: false }, { method: "POST", path: "/send", outward: true }, { method: "GET", path: "/m/*", read: true }] }, plain: { allow: [] } } };
+  assert.equal(serviceActionOf(cat, { connector: "g", method: "POST", path: "/drafts" }), "service.read");
+  assert.equal(serviceActionOf(cat, { connector: "g", method: "POST", path: "/send" }), "service.call");
+  assert.equal(serviceActionOf(cat, { connector: "g", method: "GET", path: "/m/1" }), "service.read");
+  assert.equal(serviceActionOf(cat, { connector: "plain", method: "POST", path: "/x" }), "service.call");
+});
+
+test("a write's key and attempt are in the ledger BEFORE the call is made, the runner passes the key on (the vault adds the provider's header), and the read-back runs", async () => {
   /** @type {any[]} */ const seen = [];
   /** @type {any} */ let w; /** @type {any} */ let flowId;
   const port = async (/** @type {any} */ q) => {
@@ -57,40 +61,35 @@ test("a write carries the provider's idempotency key as declared, and the ledger
     return json({ id: "m-9", client: "Rivera" });
   };
   w = await world({ ports: { service: port } });
-  declare(w, { ops: [IDEM_OP] });
+  declare(w, { ...KEY, ops: [IDEM_OP] });
   flowId = (await install(w, svcFlow(matter))).id;
   w.kernel.inbound("payment.received", { n: "Rivera" });
   await settle(w);
   const post = seen.find(s => s.request.method === "POST");
-  assert.match(post.request.headers["Idempotency-Key"], /^vyre-[0-9a-f]{32}$/);
+  assert.equal(post.request.headers, undefined, "the vault, not the runner, adds the provider's header");
+  assert.equal(post.idem, post.ledger.idem);
   assert.ok(post.ledger.sent_at && post.ledger.attempts === 1 && post.ledger.idem, "recorded before the call");
   const run = await lastRun(w, flowId);
   assert.equal(run.state, "done", JSON.stringify(run.error));
   assert.deepEqual(run.steps.w.output.readback, { ok: true, path: "/matters/m-9", checked: 1 });
 });
 
-test("a connector that declares no idempotency support gets no key header, and one that declares nothing at all keeps the old behaviour", async () => {
+test("a connector that declares nothing at all keeps the old behaviour: no safe-write bookkeeping in the ledger", async () => {
   /** @type {any[]} */ const seen = [];
-  const w = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); return json({ id: "m-1" }); } } });
-  declare(w, { ops: [{ name: "create_matter", ...WRITE }] });
-  await install(w, svcFlow(matter));
-  w.kernel.inbound("payment.received", { n: "A" });
-  await settle(w);
-  assert.equal(seen[0].request.headers, undefined);
   const w2 = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); return json({ id: "m-2" }); } } });
   w2.cat.connectors.practice = { ...w2.cat.connectors.practice, allow: [{ method: "POST", path: "/matters" }] };
   w2.kernel.rules.push({ match: (/** @type {any} */ i) => i.action === "service.call", effect: "allow", reason: "yes" });
   await install(w2, svcFlow(matter));
   w2.kernel.inbound("payment.received", { n: "B" });
   await settle(w2);
-  assert.equal(seen.length, 2);
-  assert.equal((await lastRun(w2, (await w2.runner.listRuns({}))[0].flow)).steps.w.sent_at, undefined, "an undeclared connector has no safe-write bookkeeping");
+  assert.equal(seen.length, 1);
+  assert.equal((await lastRun(w2, (await w2.runner.listRuns({}))[0].flow)).steps.w.sent_at, undefined);
 });
 
 test("read-back: a record the provider kept differently stops the Flow, pauses it, writes nothing after, and puts a card in front of the owner", async () => {
   /** @type {any[]} */ const seen = [];
   const w = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); return q.request.method === "POST" ? json({ id: "m-5" }) : json({ id: "m-5", client: "Rivero" }); } } });
-  declare(w, { ops: [IDEM_OP] });
+  declare(w, { ...KEY, ops: [IDEM_OP] });
   const { id } = await install(w, svcFlow([...matter, { id: "after", kind: "create", type: "payment", set: { client: "should not exist" } }]));
   w.kernel.inbound("payment.received", { n: "Rivera" });
   await settle(w);
@@ -108,7 +107,7 @@ test("read-back: a record the provider kept differently stops the Flow, pauses i
 test("read-back: a write whose answer does not name the record, or a read that fails, is a mismatch too; a match passes", async () => {
   for (const [answer, readStatus, code] of [[{ nothing: 1 }, 200, "readback_mismatch"], [{ id: "m-6" }, 404, "readback_mismatch"], [{ id: "m-6" }, 200, null]]) {
     const w = await world({ ports: { service: async (/** @type {any} */ q) => (q.request.method === "POST" ? json(answer) : readStatus === 200 ? json({ id: "m-6", client: "Rivera" }) : json({}, 404)) } });
-    declare(w, { ops: [IDEM_OP] });
+    declare(w, { ...KEY, ops: [IDEM_OP] });
     const { id } = await install(w, svcFlow(matter));
     w.kernel.inbound("payment.received", { n: "Rivera" });
     await settle(w);
@@ -117,32 +116,29 @@ test("read-back: a write whose answer does not name the record, or a read that f
   }
 });
 
-test("a connector's per-minute rate makes the run sleep until the next call is allowed, and the clock wakes it", async () => {
-  /** @type {number[]} */ const at = [];
-  /** @type {any} */ let w;
-  w = await world({ ports: { service: async () => { at.push(w.clock.t); return json({ id: "x" }); } } });
-  declare(w, { rate: { per_min: 2 }, ops: [{ name: "get", method: "GET", path: "/matters/{id}", read: true }] });
-  const { id } = await install(w, svcFlow([1, 2, 3].map(n => ({ id: `g${n}`, kind: "service", connector: "practice", method: "GET", path: `/matters/${n}` }))));
-  w.kernel.inbound("payment.received", {});
+test("the vault gave up on a provider's rate limit (rate_limited, retryAfter): the run sleeps that long, the clock wakes it, and the same write is sent again with the same key", async () => {
+  /** @type {any[]} */ const seen = [];
+  const w = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); if (seen.length === 1) throw Object.assign(new Error("rate limited"), { code: "rate_limited", retryAfter: 45 }); return q.request.method === "POST" ? json({ id: "m-1" }) : json({ id: "m-1", client: "Rivera" }); } } });
+  declare(w, { ...KEY, rate: { per_minute: 60, retry_after: true }, ops: [IDEM_OP] });
+  const { id } = await install(w, svcFlow(matter));
+  w.kernel.inbound("payment.received", { n: "Rivera" });
   await settle(w);
-  assert.equal(at.length, 2, "two calls went, the third is held back");
   let run = await lastRun(w, id);
   assert.equal(run.state, "waiting");
-  assert.equal(run.waiting.kind, "time");
-  const start = at[0];
-  assert.ok(run.waiting.wake_at >= start + 59_000, "it sleeps for about the rest of the minute");
-  w.advance(61_000);
+  assert.ok(run.waiting.wake_at - w.clock.t >= 44_000 && run.waiting.wake_at - w.clock.t <= 46_000);
+  w.advance(46_000);
   await w.runner.tick(); await settle(w);
-  assert.equal(at.length, 3);
   run = await lastRun(w, id);
   assert.equal(run.state, "done", JSON.stringify(run.error));
-  assert.ok(at[2] - at[0] >= 60_000, "never more than two calls in a minute");
+  const posts = seen.filter(q => q.request.method === "POST");
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0].idem, posts[1].idem, "the same key");
 });
 
 test("Retry-After: a 429 is waited out and the same write is sent again with the same key, once it is allowed", async () => {
   /** @type {any[]} */ const seen = [];
   const w = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); return seen.length === 1 ? json({ error: "slow down" }, 429, { "retry-after": "30" }) : q.request.method === "POST" ? json({ id: "m-8" }) : json({ id: "m-8", client: "Rivera" }); } } });
-  declare(w, { ops: [IDEM_OP] });
+  declare(w, { ...KEY, ops: [IDEM_OP] });
   const { id } = await install(w, svcFlow(matter));
   w.kernel.inbound("payment.received", { n: "Rivera" });
   await settle(w);
@@ -156,7 +152,6 @@ test("Retry-After: a 429 is waited out and the same write is sent again with the
   assert.equal(run.state, "done", JSON.stringify(run.error));
   const posts = seen.filter(s => s.request.method === "POST");
   assert.equal(posts.length, 2);
-  assert.equal(posts[0].request.headers["Idempotency-Key"], posts[1].request.headers["Idempotency-Key"], "the same key");
   assert.equal(posts[0].idem, posts[1].idem);
 });
 
@@ -171,7 +166,7 @@ const until = async (/** @type {() => Promise<any>} */ f) => { for (let i = 0; i
 test("resume after a crash, provider takes a key: the write is sent again with the SAME key and finishes; the ledger said it might have gone out", async () => {
   /** @type {any[]} */ const first = [], second = [];
   const w = await world({ ports: { service: (/** @type {any} */ q) => { first.push(q); return hang(); } } });
-  declare(w, { ops: [IDEM_OP] });
+  declare(w, { ...KEY, ops: [IDEM_OP] });
   const { id } = await install(w, svcFlow(matter));
   w.kernel.inbound("payment.received", { n: "Rivera" });
   const run0 = await until(async () => { const r = await lastRun(w, id); return r && r.steps.w && r.steps.w.sent_at ? r : null; });
@@ -181,13 +176,13 @@ test("resume after a crash, provider takes a key: the write is sent again with t
   const run = await lastRun(w, id);
   assert.equal(run.state, "done", JSON.stringify(run.error));
   assert.equal(second.filter(q => q.request.method === "POST").length, 1);
-  assert.equal(first[0].request.headers["Idempotency-Key"], second[0].request.headers["Idempotency-Key"]);
+  assert.equal(first[0].idem, second[0].idem, "the same key");
 });
 
 test("resume after a crash, provider takes no key: the write is NOT sent again, the owner is told, and a person's retry sends it", async () => {
   /** @type {any[]} */ const second = [];
   const w = await world({ ports: { service: () => hang() } });
-  declare(w, { ops: [{ name: "create_matter", ...WRITE }] });
+  declare(w, { ops: [{ name: "create_matter", ...WRITE, read: false }] });
   const { id } = await install(w, svcFlow(matter));
   w.kernel.inbound("payment.received", { n: "Rivera" });
   await until(async () => { const r = await lastRun(w, id); return r && r.steps.w && r.steps.w.sent_at ? r : null; });
@@ -208,7 +203,7 @@ test("resume after a crash, provider takes no key: the write is NOT sent again, 
 test("resume after a crash between the write and its read-back: only the read-back is made; the write is not repeated", async () => {
   /** @type {any[]} */ const first = [], second = [];
   const w = await world({ ports: { service: (/** @type {any} */ q) => { first.push(q); return q.request.method === "POST" ? Promise.resolve(json({ id: "m-7" })) : hang(); } } });
-  declare(w, { ops: [{ name: "create_matter", ...WRITE, readback: IDEM_OP.readback }] });
+  declare(w, { ops: [{ name: "create_matter", ...WRITE, read: false, readback: RB }] });
   const { id } = await install(w, svcFlow(matter));
   w.kernel.inbound("payment.received", { n: "Rivera" });
   await until(async () => first.some(q => q.request.method === "GET") ? true : null);

@@ -3,10 +3,10 @@
 // READS it) says per operation which is a read, which is outward, whether the provider takes an idempotency key and where, and how to read a write back; and per connector how fast it may
 // be called. Nothing here calls anything: the runner does, and keeps the ledger.
 //
-//   connector.ops   [{ name?, method, path, read?, outward?, idem?: { header } | { param }, readback?: { path, id, match } }]   path: `*` or `{x}` is one segment, a trailing `/*` the rest
-//   connector.rate  { per_min }
-//   readback        path: the read to make, `{id}` filled from the write's JSON answer at `id` (a dotted path); match: { <dotted path in the read's JSON>: <dotted path in the request body> }
-import crypto from "node:crypto";
+//   connector.ops          [{ name, method, path, read, outward, idempotent?: false, readback?: { method, path: "/v1/customers/{id}", vars: { id: "response.json.id" }, compare: { email: "request.body.email" } } }]
+//   connector.idempotency  { header }: the provider dedupes by key; the VAULT adds the header from the run's key, so the runner only keeps passing `idem`
+//   connector.rate         { per_minute, retry_after }: the vault throttles per credential and waits out Retry-After; past its retries it answers `rate_limited` with `retryAfter` seconds
+//   path: `*` or `{x}` is one segment, a trailing `/*` the rest. vars and compare read `response.json.<path>` and `request.body|params|query.<name>`.
 
 /** @param {string} pattern @param {string} pathname */
 function pathMatch(pattern, pathname) {
@@ -24,18 +24,17 @@ export function opFor(conn, method, path) {
 }
 
 /** True when the connector says anything about how to call it safely. @param {any} conn */
-export const isDeclared = conn => Boolean(conn && (conn.ops || conn.rate));
+export const isDeclared = conn => Boolean(conn && (conn.ops || conn.idempotency || conn.rate));
 
-/** The provider's idempotency key for one write: opaque, stable for the run and step, never the run id. @param {string} idem */
-export const providerKey = idem => `vyre-${crypto.createHash("sha256").update(idem).digest("hex").slice(0, 32)}`;
+/** Does the provider dedupe this operation's write by key (the connector declares it, the operation does not opt out)? @param {any} conn @param {any} op */
+export const takesKey = (conn, op) => Boolean(conn && conn.idempotency && op && op.idempotent !== false);
 
-/** Where the key goes in the request, as the declaration says. @param {any} op @param {string} key @returns {{ headers?: Record<string, string>, query?: Record<string, string> }} */
-export function keyPlacement(op, key) {
-  const i = op && op.idem;
-  if (!i || typeof i !== "object") return {};
-  if (typeof i.header === "string" && i.header) return { headers: { [i.header]: key } };
-  if (typeof i.param === "string" && i.param) return { query: { [i.param]: key } };
-  return {};
+/** @param {string} pattern @param {string} pathname @returns {Record<string, string>} */
+function paramsOf(pattern, pathname) {
+  /** @type {Record<string, string>} */ const out = {};
+  const pat = pattern.split("/"), got = pathname.split("/");
+  pat.forEach((seg, i) => { const m = /^\{([A-Za-z0-9_]+)\}$/.exec(seg); if (m && got[i] !== undefined) out[m[1]] = got[i]; });
+  return out;
 }
 
 /** @param {any} v @param {string} path */
@@ -45,21 +44,35 @@ export function getPath(v, path) {
   return cur;
 }
 
-/** The path to read a write back from, filled from the write's JSON answer; null when the answer does not carry the id. @param {any} rb @param {any} json */
-export function readbackPath(rb, json) {
-  const id = getPath(json, String(rb.id));
-  if (typeof id !== "string" && typeof id !== "number") return null;
-  return String(rb.path).replace(/\{id\}/g, encodeURIComponent(String(id)));
+/**
+ * The read that pairs with a write: its method and path with `{name}` filled from `vars`, or null when a variable is missing from what the write answered.
+ * @param {any} op @param {{ path: string, query?: any, body?: any }} request @param {any} responseJson
+ * @returns {{ method: string, path: string } | null}
+ */
+export function readbackRequest(op, request, responseJson) {
+  const rb = op && op.readback;
+  if (!rb || typeof rb.path !== "string") return null;
+  const world = { response: { json: responseJson }, request: { body: request.body, query: request.query, params: paramsOf(String(op.path), request.path || "") } };
+  let missing = false;
+  const path = rb.path.replace(/\{([A-Za-z0-9_]+)\}/g, (/** @type {string} */ _m, /** @type {string} */ name) => {
+    const v = rb.vars && rb.vars[name] !== undefined ? getPath(world, String(rb.vars[name])) : undefined;
+    if (typeof v !== "string" && typeof v !== "number") { missing = true; return ""; }
+    return encodeURIComponent(String(v));
+  });
+  return missing ? null : { method: String(rb.method || "GET").toUpperCase(), path };
 }
 
-/** Compare the fields the declaration pairs. @param {any} rb @param {any} written the request body @param {any} read the read's JSON @returns {{ ok: boolean, diffs: string[] }} */
-export function compareReadback(rb, written, read) {
-  /** @type {string[]} */ const diffs = [];
-  for (const [readAt, wroteAt] of Object.entries(rb.match || {})) {
-    const want = getPath(written, String(wroteAt)), got = getPath(read, readAt);
-    if (JSON.stringify(want) !== JSON.stringify(got) && String(want) !== String(got)) diffs.push(readAt);
+/** Compare what the read returned with what the write sent. A field the write did not send is not compared. @param {any} op @param {{ path: string, query?: any, body?: any }} request @param {any} readJson @param {any} responseJson */
+export function compareReadback(op, request, readJson, responseJson) {
+  const world = { response: { json: responseJson }, request: { body: request.body, query: request.query, params: paramsOf(String(op.path), request.path || "") } };
+  /** @type {{ field: string, wrote: any, read: any }[]} */ const mismatches = [];
+  for (const [field, from] of Object.entries((op.readback && op.readback.compare) || {})) {
+    const wrote = getPath(world, String(from));
+    if (wrote === undefined) continue;
+    const read = getPath(readJson, field);
+    if (JSON.stringify(wrote) !== JSON.stringify(read) && String(wrote) !== String(read)) mismatches.push({ field, wrote, read });
   }
-  return { ok: diffs.length === 0, diffs };
+  return { ok: mismatches.length === 0, mismatches };
 }
 
 /** Milliseconds a provider's Retry-After asks for (seconds or an HTTP date), or null. @param {Record<string, string> | undefined} headers @param {number} now */
@@ -70,19 +83,4 @@ export function retryAfterMs(headers, now) {
   if (Number.isFinite(n) && n >= 0) return Math.min(Math.round(n * 1000), 3_600_000);
   const t = Date.parse(String(raw));
   return Number.isFinite(t) ? Math.min(Math.max(0, t - now), 3_600_000) : null;
-}
-
-/** A per-connector limiter from the declared `rate.per_min`: how long to wait before the next call, and a call noted. In memory (a restart forgets it; the provider's Retry-After backs it up). */
-export class ConnectorRate {
-  constructor() { /** @type {Map<string, number[]>} */ this.calls = new Map(); }
-  /** @param {string} connector @param {any} rate @param {number} now @returns {number} ms to wait, 0 when a call may go now */
-  wait(connector, rate, now) {
-    const max = rate && Number.isInteger(rate.per_min) && rate.per_min > 0 ? rate.per_min : 0;
-    if (!max) return 0;
-    const stamps = (this.calls.get(connector) || []).filter(t => now - t < 60_000);
-    this.calls.set(connector, stamps);
-    return stamps.length < max ? 0 : stamps[stamps.length - max] + 60_000 - now;
-  }
-  /** @param {string} connector @param {number} now */
-  note(connector, now) { const s = this.calls.get(connector) || []; s.push(now); this.calls.set(connector, s); }
 }

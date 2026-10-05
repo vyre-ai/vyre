@@ -100,6 +100,16 @@ test("a classify step goes through the model door in a real daemon: sealed value
   void host;
 });
 
+test("fn.run and model.call are a Flow run's alone: a person calling them directly is refused, even an owner", { timeout: 60_000 }, async t => {
+  const { d, admin } = await boot(t);
+  const sp = d.kernel.id.space;
+  for (const [action, resource] of [["fn.run", `vyre://${sp}/fn/*`], ["model.call", `vyre://${sp}/model/*`]]) {
+    const r = await d.kernel.gateway.authorize({ chain: admin, action, resource });
+    assert.deepEqual([r.effect, r.reason], ["deny", "runner_only"], action);
+  }
+  assert.equal((await d.kernel.gateway.authorize({ chain: admin, action: "flows.run", resource: `vyre://${sp}/flow/x` })).effect, "allow", "starting a Flow is a person's");
+});
+
 test("a classify step in a home with no model door fails plainly instead of hanging, and the Flow records why", { timeout: 120_000 }, async t => {
   const { d, host, admin, install } = await boot(t);
   await d.kernel.gateway.records.define(admin, { add_types: [MESSAGE] });

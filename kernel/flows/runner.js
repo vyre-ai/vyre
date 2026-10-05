@@ -18,9 +18,9 @@ import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
-import { opFor, isDeclared, providerKey, keyPlacement, readbackPath, compareReadback, retryAfterMs, getPath, ConnectorRate } from "./safe-write.js";
+import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -71,7 +71,6 @@ export class FlowRunner {
     this.limits = { ...LIMITS, ...(o.limits || {}) };
     /** @type {Map<string, Promise<any>>} */ this.locks = new Map();
     /** @type {Map<string, number[]>} */ this.rate = new Map();
-    /** Per-connector call limits from the connectors' declarations (kernel/flows/safe-write.js). */ this.connectorRate = new ConnectorRate();
     /** @type {Map<string, number>} */ this.lastFire = new Map();
     /** @type {{ at: number, flows: any[] } | null} */ this.cache = null;
     /** @type {Set<Promise<any>>} */ this.inflight = new Set();
@@ -606,14 +605,14 @@ export class FlowRunner {
       if (rules && rules.draftOnly) {
         const dr = ctx.cat.connectors && ctx.cat.connectors[s.connector] && /** @type {any} */ (ctx.cat.connectors[s.connector]).draft;
         if (!dr || typeof dr.path !== "string") throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${s.connector} has no way to prepare a draft, so nothing was sent`);
-        req = { ...request, method: dr.method || "POST", path: dr.path }; asDraft = true;
+        req = { ...request, method: dr.method || "POST", path: dr.path, ...(typeof dr.wrap === "string" && request.body !== undefined ? { body: { [dr.wrap]: request.body } } : {}) }; asDraft = true;
       }
       // Safe outside writes (the connector's declaration, kernel/flows/safe-write.js). A connector that declares nothing keeps the old behaviour: the route rules decide and the vault dedupes by key.
       const conn = /** @type {any} */ (ctx.cat.connectors && ctx.cat.connectors[s.connector]);
       const declared = !asDraft && isDeclared(conn);
       const method = String(req.method || "GET").toUpperCase();
-      const write = method !== "GET" && method !== "HEAD";
       const op = declared ? opFor(conn, method, req.path) : null;
+      const write = op ? !op.read : method !== "GET" && method !== "HEAD";
       const run = ctx.run;
       const led = this.#led(ctx, key) || {};
       /** @type {any} */ let r;
@@ -623,26 +622,27 @@ export class FlowRunner {
       } else {
         // A 429 or 503 the provider asked us to wait out: the run sleeps until then (it survives a restart), then the same step sends again with the same key.
         if (declared && led.backoff) await this.#sleepOnce(ctx, led.backoff, 0);
-        // The connector's own rate: when the next call would pass the declared per-minute limit, the run sleeps until it would not.
-        if (declared) {
-          const wait = this.connectorRate.wait(s.connector, conn.rate, this.now());
-          if (wait > 0) { const gates = (led.gates || 0) + 1; await this.#mark(ctx, key, { gates }); await this.#sleepOnce(ctx, `${key}?gate${gates}`, wait); }
-        }
         // A write whose outcome the ledger cannot tell (sent, never recorded) is repeated only where the provider takes an idempotency key. Otherwise it is not sent again: a duplicate matter or payment
         // is worse than a Flow that stopped and told the owner.
-        if (declared && write && led.sent_at && !(op && op.idem)) {
+        if (declared && write && led.sent_at && !takesKey(conn, op)) {
           await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name}: check ${s.connector} before this goes again`, { kind: "outcome_unknown", flow: run.flow, run: run.id, step: s.id, connector: s.connector, method, path: req.path }, `${run.id}:${key}:unknown`);
           throw new StepFail("outcome_unknown", `the call ${method} ${req.path} to ${s.connector} may or may not have gone through before the server stopped, and ${s.connector} takes no idempotency key, so it was not sent again; check it, then retry the run`);
         }
-        let sendReq = req, sendIdem = idem;
-        if (op && write && op.idem) {
-          const place = keyPlacement(op, providerKey(idem));
-          sendReq = { ...req, ...(place.headers ? { headers: { ...(req.headers || {}), ...place.headers } } : {}), ...(place.query ? { query: { ...(req.query || {}), ...place.query } } : {}) };
-        }
+        // The provider's own idempotency header is added by the vault from this key (connector.idempotency); the runner keeps passing `idem` and records it.
+        const sendReq = req, sendIdem = idem;
         // The key and the attempt are in the ledger BEFORE the call, so a crash after the send leaves a record that it may have gone out.
         if (declared && write) await this.#mark(ctx, key, { idem: sendIdem, attempts: (led.attempts || 0) + 1, sent_at: this.now() });
-        if (declared) this.connectorRate.note(s.connector, this.now());
-        r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: sendReq, idem: asDraft ? `${sendIdem}:draft` : sendIdem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
+        try {
+          r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: sendReq, idem: asDraft ? `${sendIdem}:draft` : sendIdem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
+        } catch (e) {
+          // The vault waited out the provider's Retry-After as far as it would and gave up (`rate_limited`, `retryAfter` seconds): nothing was done, so the run sleeps that long and sends again.
+          const x = /** @type {any} */ (e);
+          if (!(declared && x && x.code === "rate_limited" && (led.attempts || 0) + 1 < 6)) throw e;
+          const rkey = `${key}?retry${(led.attempts || 0) + 1}`;
+          await this.#mark(ctx, key, { sent_at: null, backoff: rkey });
+          await this.#sleepOnce(ctx, rkey, Math.max(1, Number(x.retryAfter) || 5) * 1000);
+          throw e;
+        }
         if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
         if (declared && r && (r.status === 429 || r.status === 503) && (led.attempts || 0) + 1 < 6) {
           const lower = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
@@ -669,21 +669,21 @@ export class FlowRunner {
       // Read-back: the connector pairs this write with a read; the record is read again and the fields it names compared with what was sent. A difference stops the Flow and tells the owner.
       /** @type {any} */ let readback;
       if (op && write && op.readback && r && r.status >= 200 && r.status < 300) {
-        const at = readbackPath(op.readback, json);
+        const pair = readbackRequest(op, req, json);
         const mismatch = async (/** @type {string} */ why) => {
           const reason = `${s.connector} did not keep what step ${s.id} wrote (${why})`;
           await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name} was stopped: ${s.connector} does not match what was sent`, { kind: "readback_mismatch", flow: run.flow, run: run.id, step: s.id, connector: s.connector, why }, `${run.id}:${key}:readback`);
           await this.pauseFlow(run.flow, reason);
           throw new StepFail("readback_mismatch", `${reason}; the Flow is paused`);
         };
-        if (at === null) await mismatch("the answer to the write did not name the record, so it could not be read back");
-        const rr = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: { method: "GET", path: at }, idem: `${idem}:readback` }));
+        if (pair === null) await mismatch("the answer to the write did not carry what the read-back needs, so it could not be read back");
+        const rr = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: { method: pair.method, path: pair.path }, idem: `${idem}:readback` }));
         const rraw = rr && typeof rr.body === "string" ? Buffer.from(rr.body, "base64").toString("utf8") : "";
         let rjson = null; try { rjson = JSON.parse(rraw); } catch { rjson = null; }
         if (!rr || !(rr.status >= 200 && rr.status < 300)) await mismatch(`reading it back answered ${rr ? rr.status : "nothing"}`);
-        const cmp = compareReadback(op.readback, request.body === undefined ? null : request.body, rjson);
-        if (!cmp.ok) await mismatch(`these fields differ: ${cmp.diffs.join(", ")}`);
-        readback = { ok: true, path: at, checked: Object.keys(op.readback.match || {}).length };
+        const cmp = compareReadback(op, req, rjson, json);
+        if (!cmp.ok) await mismatch(`these fields differ: ${cmp.mismatches.map(m => m.field).join(", ")}`);
+        readback = { ok: true, path: pair.path, checked: Object.keys((op.readback && op.readback.compare) || {}).length };
       }
       return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(readback ? { readback } : {}), ...(files.length ? { files } : {}) };
     }, { input: request.body === undefined ? null : request.body });
@@ -873,12 +873,45 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
       const m = this.ports.model || { provider: "default", model: "default" };
+      // AI is metered: a step may spend little, a run a bit more, a Space a day's worth (an admin sets it; kernel/flows `flows.budget`). Refused plainly before anything is sent.
+      await this.#aiGuard(ctx);
+      const text = String(val(s.input) ?? "").slice(0, 16_000);
       // The door's refusal (a budget, a residency rule, a value it would not let through) is the step's failure with its own code, so the owner reads the rule and not "error".
-      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model,
-        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: String(val(s.input) ?? "") }] }).catch(portFail);
+      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model, max_tokens: 64,
+        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: text }] }).catch(portFail);
+      const u = r && r.usage || {};
+      const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
+      await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
       const label = String(r.content || "").trim();
       return { label: s.labels.includes(label) ? label : null, raw_ok: s.labels.includes(label) };
     }, { input_class: "text" });
+  }
+
+  /** @param {number} now */
+  #day(now) { return new Date(now).toISOString().slice(0, 10); }
+  /** The Space's daily AI allowance in tokens: what an admin set, else the default. */
+  async aiBudget() {
+    const day = this.#day(this.now());
+    const set = this.store.getSchedule ? await this.store.getSchedule("ai:budget") : null;
+    const used = this.store.getSchedule ? (await this.store.getSchedule(`ai:use:${day}`)) || 0 : 0;
+    return { tokens_per_day: set ?? this.limits.ai_tokens_per_day, used_today: used, day };
+  }
+  /** An admin sets the daily allowance (a number of tokens; 0 turns AI steps off). @param {number} tokens */
+  async setAiBudget(tokens) {
+    if (!Number.isInteger(tokens) || tokens < 0 || tokens > 1_000_000_000) throw Object.assign(new Error("the budget is a whole number of tokens, 0 or more"), { code: "bad_input" });
+    if (this.store.putSchedule) await this.store.putSchedule("ai:budget", tokens);
+    return this.aiBudget();
+  }
+  /** @param {any} ctx */
+  async #aiGuard(ctx) {
+    const b = await this.aiBudget();
+    if (b.used_today >= b.tokens_per_day) throw new StepFail("ai_budget", "This space's AI budget for today is used up");
+    if ((ctx.run.ai_tokens || 0) >= this.limits.ai_tokens_per_run) throw new StepFail("ai_budget", "This run has used its AI allowance, so it did not ask the model again");
+  }
+  /** @param {any} ctx @param {number} tokens */
+  async #aiSpend(ctx, tokens) {
+    ctx.run.ai_tokens = (ctx.run.ai_tokens || 0) + tokens;
+    if (this.store.putSchedule) { const k = `ai:use:${this.#day(this.now())}`; await this.store.putSchedule(k, ((await this.store.getSchedule(k)) || 0) + tokens); }
   }
 
   /** @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val */

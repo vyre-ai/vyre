@@ -34,6 +34,9 @@ test("code sandbox: a loop that never ends is killed at the time limit, and memo
   await assert.rejects(run(req("while (true) {}")), (/** @type {any} */ e) => e.code === "timeout");
   assert.ok(Date.now() - t0 < 6000);
   await assert.rejects(run(req("const a = []; for (;;) a.push(new Array(1e6).fill(1));")), (/** @type {any} */ e) => e.code === "failed" || e.code === "timeout");
+  // FS-1: a Buffer is outside the V8 heap; the address-space cap stops 1 GB of them (and the host is untouched: the next call still runs)
+  await assert.rejects(createCodeSandbox({ timeoutMs: 8000 })(req("const b = []; for (let i = 0; i < 4; i++) b.push(Buffer.alloc(256 * 1024 * 1024, 1)); return { v: b.length };")), (/** @type {any} */ e) => e.code === "failed");
+  assert.deepEqual((await run(req("return { v: 1 };"))).outputs, { v: 1 });
 });
 
 test("code sandbox: a declared power is refused, not granted; another language is refused; no proof means no run", async () => {

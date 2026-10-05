@@ -13,6 +13,8 @@ import { createSupervisor } from "../modules/supervisor.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAX_OUT = 256 * 1024;
+/** Address-space cap of a Code step on Linux: 1.5 GB (Node starts in about 1 GB of address space). */
+const MEM_KB = 1536 * 1024;
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
@@ -42,8 +44,11 @@ export function createCodeSandbox(o = {}) {
       const inside = probe.mechanism === "bwrap" ? "/module" : fs.realpathSync(dir);
       const cmd = sandboxCommand({ platform: o.platform, execPath: o.execPath, dir, entry: "source.txt", script: path.join(HERE, "code-child.js"), args: [inside] });
       if (!cmd) throw fail("unavailable", "no OS sandbox on this platform");
+      // The heap flag caps only V8's heap; a Buffer lives outside it. On Linux the whole address space is capped as well (ulimit -v, inherited by the sandboxed Node), well under the box's memory
+      // and above what Node needs to start. macOS has no such limit; its profile is the OS layer there.
+      const run = o.platform === undefined && process.platform === "linux" || o.platform === "linux" ? { cmd: "/bin/sh", args: ["-c", `ulimit -v ${MEM_KB} 2>/dev/null; exec "$0" "$@"`, cmd.cmd, ...cmd.args] } : cmd;
       const line = await new Promise((resolve, reject) => {
-        const c = spawn(cmd.cmd, cmd.args, { stdio: ["ignore", "pipe", "ignore"], env: {} });
+        const c = spawn(run.cmd, run.args, { stdio: ["ignore", "pipe", "ignore"], env: {} });
         let buf = "", over = false, done = false;
         const end = (/** @type {() => void} */ f) => { if (done) return; done = true; clearTimeout(t); f(); };
         const t = setTimeout(() => { c.kill("SIGKILL"); end(() => reject(fail("timeout", `the code ran longer than ${timeoutMs} ms and was stopped`))); }, timeoutMs);
