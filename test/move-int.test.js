@@ -29,7 +29,7 @@ test("a project moves to another hosted Space: records, files, a chat folder, me
   await G.drive.put(admin, `${root_}/retainer.txt`, enc("signed"));
   const chat = await G.grants.chats.create(admin, {});
   await G.drive.put(admin, `${root_}/chat/${chat.id}/note.txt`, enc("from the chat"));
-  const cap = await call("work.know.capture", { session: "t-1", lines: [{ seq: 1, role: "user", text: "the retainer is signed", at: 1 }], record: urn });
+  const cap = await d.registry.call("work.know.capture", { session: "t-1", lines: [{ seq: 1, role: "user", text: "the retainer is signed", at: 1 }], record: urn }, "module:sessions");
   console.log("capture:", JSON.stringify(cap).slice(0, 200));
   const plan = await call("work.project.move-plan", { project: urn, to_space: firm.space });
   console.log("plan:", JSON.stringify(plan).slice(0, 600));
@@ -38,6 +38,7 @@ test("a project moves to another hosted Space: records, files, a chat folder, me
   const moved = await call("work.project.move", { project: urn, to_space: firm.space, plan_hash: plan.data.plan_hash });
   console.log("move:", JSON.stringify(moved).slice(0, 800));
   assert.ok(moved.data, JSON.stringify(moved));
+  assert.equal(moved.data.moved.know, 1, "the Work-engine line moved");
   const tgt = moved.data.project;
   const firmAdmin = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-h", person: owner, path: "direct", session: "s" });
   const rec = await firm.gateway.records.get(firmAdmin, "project", tgt.split("/").pop());
