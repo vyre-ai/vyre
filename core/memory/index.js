@@ -1299,7 +1299,10 @@ export default {
         const backend = upgradeBackend();
         if (!backend) return { objects: 0, bytes: 0, skipped: 0, failed: [] };
         if (identity && identity.unlocked) { try { identity.save(); } catch { /* the autosave seals it too */ } }
-        return carry(backend, spacesTransport((tool, i) => ctx.call(tool, i), String(input.to)), String(idCfg.id));
+        // literal tool names (the reach scan reads a computed one as an unreviewed call)
+        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i),
+          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i) };
+        return carry(backend, spacesTransport((tool, i) => /** @type {any} */ (storage)[tool](i), String(input.to)), String(idCfg.id));
       },
     });
     // ---- the encrypted personal records (kernel/store/sealed.js, team/0.3/DESIGN-personal-records.md): a Personal person's Planner, reminders, notes and to-dos, ciphertext on this team server beside the identity
