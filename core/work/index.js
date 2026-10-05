@@ -128,7 +128,7 @@ export default {
             note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
           });
           dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
-        } catch { /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
+        } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
       const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
       // every Space has a General project, made with it
