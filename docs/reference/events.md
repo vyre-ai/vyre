@@ -201,7 +201,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `goal.accepted` | `goal` |
 | `goal.created` | `goal` |
 | `goal.done` | `goal` |
-| `goal.milestone` | `goal`, `index`, `text` (the push for it carries none of the text) |
+| `goal.milestone` | `goal`, `index`, `text` |
 | `goal.proposed` | `goal` |
 
 ## google

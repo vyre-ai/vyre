@@ -1119,7 +1119,7 @@ async function drawNotifications(el, ctx) {
         const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.kinds?.[k] !== false,
           onchange: () => attempt("push.settings", { kinds: { [k]: box.checked } }) }));
         return row(label, box);
-      }), row("Show a reminder's own words on the lock screen", words)),
+      }), row("Show a reminder's own words on the lock screen (they pass through the phone maker's push service)", words)),
       sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
         put(st, "Sending."); const t = await attempt("push.test");
         put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");

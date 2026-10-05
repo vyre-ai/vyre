@@ -18,6 +18,8 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "pluginagent.pending": "lists what Claude Code on a computer is waiting to be let do: a read, nothing is granted",
+  "presence.person.locked": "lists the paired devices locked after wrong sign-in answers and when each lock ends: a read for the Devices list",
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",

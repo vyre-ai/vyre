@@ -488,8 +488,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; pluginagent.ask opened to a model or a module in 2bbe50159 (4 Oct 2026); the body decides: callers list in code (the person's surfaces, mcp and harness); it only files one pending request for the person to approve with presence (pluginagent.grant), one at a time, and changes nothing else"
  },
  {
+  "tool": "pluginagent.pending",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists what Claude Code on a computer is waiting to be let do: a read, nothing is granted"
+ },
+ {
   "tool": "pluginagent.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; pluginagent.status opened to a model or a module in 2bbe50159 (4 Oct 2026); the body decides: read-only: whether Claude Code on this computer has been granted, and one plain sentence"
+ },
+ {
+  "tool": "presence.person.locked",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the paired devices locked after wrong sign-in answers and when each lock ends: a read for the Devices list"
  },
  {
   "tool": "presence.person.status",
