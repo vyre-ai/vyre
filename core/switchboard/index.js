@@ -28,7 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
-import { sessionTempDir, sessionsRoot, artifactsDirFor } from "../../lib/session-temp.js";
+import { sessionTempDir, sessionsRoot, artifactsDirFor, artifactsPathFor } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -873,7 +873,9 @@ export class Switchboard {
       }
     }
     at("system prompt");
-    o = { ...o, system: await this.systemPrompt(rec, o) };
+    // where the session will save what it makes, for the environment brief every provider is given (the folder itself is made when it starts)
+    const artAs = o.accountRun && o.accountRun.uid != null ? { uid: o.accountRun.uid } : {};
+    o = { ...o, system: await this.systemPrompt(rec, { ...o, artifacts_dir: this.deps.root ? artifactsPathFor(String(this.deps.root), id, artAs) : null }) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     at("session socket and kernel session");
@@ -943,7 +945,7 @@ export class Switchboard {
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
     try {
-      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append }).filter(([, v]) => v));
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, artifacts_dir: o.artifacts_dir }).filter(([, v]) => v));
       const r = await this.deps.call("sessions.prompt.compose", input);
       if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };

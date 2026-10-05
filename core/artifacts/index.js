@@ -828,7 +828,11 @@ export default {
           if (sig && mediaSig.get(key) === sig) return;
           await ingestMedia({ thread, name, source: "file" });
           mediaSig.set(key, sig);
-        } catch (err) { ctx.log(`artifacts: media ${name}: ${/** @type {Error} */ (err).message}`); }
+        } catch (err) {
+          ctx.log(`artifacts: media ${name}: ${/** @type {Error} */ (err).message}`);
+          // a file Vyre refused (over a limit, not what its name says) is not tried again until it changes, so the folder watcher does not repeat a refusal each time it is told of the folder
+          try { const refused = await sigOf(thread, name); if (refused) mediaSig.set(key, refused); } catch { /* the next change tries again */ }
+        }
         finally { mediaBusy.delete(key); }
       }, _test.mediaDebounce);
       timer.unref();
@@ -1350,7 +1354,12 @@ export default {
       examples: [{ thread: "t1", name: "sunset.png", provider: "grok", model: "grok-imagine", prompt: "a sunset over a harbour", source: "content-block" }],
       run: async (i, meta) => {
         if (!trustedCaller(meta) || !MEDIA_REGISTRARS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's own session modules register media", "denied");
-        return ingestMedia(i);
+        try { return await ingestMedia(i); }
+        catch (e) {
+          // a file refused here is not retried by the folder watcher until it changes
+          if (typeof i.name === "string" && !i.data_b64) { try { const refused = await sigOf(String(i.thread), path.basename(i.name)); if (refused) mediaSig.set(`${i.thread}/${path.basename(i.name)}`, refused); } catch { /* the next change tries again */ } }
+          throw e;
+        }
       },
     });
 

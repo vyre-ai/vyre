@@ -83,9 +83,7 @@ async function main() {
     // resume of the same id) may be a second writer, which harness.brief warns about.
     const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
     const r = await call("harness.brief", { ...base, ...scope, source: h.source, headless, ...(project ? { project } : {}) }, opts);
-    // The session's own folder for files it makes for the person (an image, a document, a page, data): Vyre keeps whatever is saved there in the project's Drive folder.
-    const folder = process.env.VYRE_ARTIFACTS_DIR ? `Files you make for the person (images, documents, pages, spreadsheets, code output) belong in ${process.env.VYRE_ARTIFACTS_DIR}. Save them there at the top level and Vyre keeps them in the project's Drive folder.` : "";
-    const context = [about(), folder, r.data && r.data.text].filter(Boolean).join("\n\n");
+    const context = [about(), r.data && r.data.text].filter(Boolean).join("\n\n");
     if (context) answer(EVENT.brief, { additionalContext: context });
     // Bind this session to its claude process (this hook's parent, as the MCP server's is), so the
     // MCP server can say which session its calls come from. Every SessionStart: /clear changes the id.

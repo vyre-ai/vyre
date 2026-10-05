@@ -23,8 +23,6 @@ const THREADS = `
   } };`;
 
 async function boot(t) {
-  // these tests make folder events by hand and count exactly what they made: the folder watcher (core/sessions/project-files.test.js) is held off
-  const watchWas = _test.captureDebounce; _test.captureDebounce = 1e9; t.after(() => { _test.captureDebounce = watchWas; });
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "threads", { does: { tools: [{ name: "threads.get", reach: "modules" }] } }, THREADS);
