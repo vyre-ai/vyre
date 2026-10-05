@@ -9,12 +9,12 @@ import { buildSituation } from "./situation.js";
 
 const SSN = { sealed: "us-ssn", ref: "seal_1", present: true, valid_format: true, set_at: 1 };
 const CONTACT = { ...CORE_TYPES.find(t => t.name === "contact"), fields: [...CORE_TYPES.find(t => t.name === "contact").fields, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
-const [COMM, PART] = ["communication", "participant"].map(n => CORE_TYPES.find(t => t.name === n));
+const [COMM, PART, ORG] = ["communication", "participant", "organization"].map(n => CORE_TYPES.find(t => t.name === n));
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement"] }, { name: "client", kind: "link", label: "Client", to: "contact" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "matter", kind: "link", label: "Matter", to: "matter" }] };
 
 async function world() {
-  const rig = await createRig({ agents: ["juno"], defs: [CONTACT, COMM, PART, MATTER, NOTE] });
+  const rig = await createRig({ agents: ["juno"], defs: [ORG, CONTACT, COMM, PART, MATTER, NOTE] });
   const juno = rig.actor("agent", "juno");
   await rig.grantTo(juno, ["records.read", "records.update", "tasks.work", "tasks.read", "events.read"]);
   const jane = await rig.create("contact", { name: "Jane Rivera", ssn: SSN });
@@ -68,7 +68,7 @@ test("the context budget is asked for by number: more room shows more, and the d
 });
 
 test("the project's memory is quoted data under 'Project memory:' when the record is a Project (or links to one), read for the agent only", async () => {
-  const rig = await createRig({ agents: ["juno"], defs: [CONTACT, COMM, PART, MATTER, NOTE, CORE_TYPES.find(t => t.name === "project")] });
+  const rig = await createRig({ agents: ["juno"], defs: [ORG, CONTACT, COMM, PART, MATTER, NOTE, CORE_TYPES.find(t => t.name === "project")] });
   const juno = rig.actor("agent", "juno");
   await rig.grantTo(juno, ["records.read", "tasks.read", "events.read"]);
   const proj = await rig.create("project", { name: "Rivera", slug: "rivera", memory_scope: "project:rivera" });

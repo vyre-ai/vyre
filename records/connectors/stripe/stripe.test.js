@@ -19,6 +19,7 @@ const charge = (o = {}) => ({ id: "evt_3", type: "charge.succeeded", livemode: f
 const SPACE = "spc_harlow000001";
 async function setup(store = createMemoryStore()) {
   const host = createRecordsHost({ space: SPACE, owner: "per_owner", store });
+  await host.defineCore(); // every Space has the core types (the kit links to Contact and Organization)
   await host.installKit(kit);
   const handle = createStripeHandler({ secret: SECRET, host, now: () => 1791000100_000 });
   const send = (ev, o = {}) => { const raw = JSON.stringify(ev); return handle({ "stripe-signature": o.header ?? signForTest(raw, SECRET, 1791000100_000) }, o.raw ?? raw); };
