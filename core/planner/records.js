@@ -47,7 +47,7 @@ export function fromRecord(/** @type {any} */ rec, /** @type {"reminder"|"note"}
 }
 
 /** A to-do's extras (what a Task has no field for) ride in the Task's `form`, which is plain data. */
-const TODO_FORM = ["list", "priority", "pinned", "tags", "project", "thread", "tz", "floating", "wall", "date", "source", "source_name", "created"];
+const TODO_FORM = ["list", "priority", "pinned", "tags", "project", "thread", "tz", "floating", "wall", "date", "repeat", "deleted_at", "source", "source_name", "created"];
 
 /** A Task made by the planner as a planner row, or null for any other Task. */
 export function fromTask(/** @type {any} */ t) {
@@ -55,16 +55,29 @@ export function fromTask(/** @type {any} */ t) {
   if (!p) return null;
   const state = t.state === "done" ? "done" : t.state === "skipped" ? "cancelled" : "open";
   const timed = Boolean(p.wall);
-  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: null, project: p.project ?? null, thread: p.thread ?? null,
+  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: p.project ?? null, thread: p.thread ?? null,
     tags: typeof p.tags === "string" ? p.tags : "[]", pinned: p.pinned ? 1 : 0, state, at: timed && t.due != null ? t.due : null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
-    date: p.date ?? null, repeat: null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
-    deleted_at: null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
+    date: p.date ?? null, repeat: typeof p.repeat === "string" ? p.repeat : null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
+    deleted_at: p.deleted_at ?? null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
 }
 
 /** A to-do row as the Task it is made as. */
 export function toTaskSpec(/** @type {any} */ r, /** @type {{ kind: string, id: string, space: string }} */ doer) {
-  const planner = Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
-  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), form: { planner } };
+  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), ...(r.parent ? { parent: r.parent } : {}), form: { planner: formOf(r) } };
+}
+
+/** What a Task has no field for, as the Task's form carries it. */
+export const formOf = (/** @type {any} */ r) => Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
+
+/** The Task's `edit` for a to-do row's changed fields: words, note, due and the whole form (it is small and replaced whole). @param {any} r @param {string[]} keys */
+export function taskEdit(r, keys) {
+  /** @type {any} */ const p = {};
+  if (keys.includes("title")) p.title = r.title;
+  if (keys.includes("body")) p.note = r.body ? String(r.body).slice(0, 400) : null;
+  if (keys.includes("at") || keys.includes("wall")) p.due = r.at ?? null;
+  if (keys.includes("parent")) p.parent = r.parent ?? null;
+  if (keys.some(k => TODO_FORM.includes(k) && k !== "created")) p.form = { planner: formOf(r) };
+  return p;
 }
 
 /** An Event record as a calendar row. */
@@ -206,7 +219,10 @@ export async function openRecords(o) {
     async create(row0, w = {}) {
       const row = norm(row0);
       if (row.kind === "todo") {
-        const t = await K.tasks.request(chain(), toTaskSpec(row, { kind: "person", id: owner(), space }));
+        // A to-do for the person is the planner's own request (the service made it); one given to an assistant is the person's, so the assistant is its doer under them.
+        const given = row.assignee ? { kind: "agent", id: String(row.assignee), space } : null;
+        if (given && !w.chain) throw Object.assign(new Error("only the person gives a to-do to an assistant"), { code: "denied" });
+        const t = await K.tasks.request(given ? w.chain : chain(), toTaskSpec(row, given || { kind: "person", id: owner(), space }));
         const made = { ...row, id: t.id, _task: true };
         items.set(t.id, made);
         return made;
@@ -224,17 +240,24 @@ export async function openRecords(o) {
       const r = items.get(String(id));
       if (!r) return;
       const was = r.state;
+      const before = { deleted_at: r.deleted_at };
       fields = norm(fields);
       Object.assign(r, fields);
       if (r._task) {
-        if (fields.state && fields.state !== was) {
-          const c = w.chain;
-          const undo = { state: was, done_at: r.done_at ?? null };
+        const keys = Object.keys(fields);
+        const c = w.chain;
+        const undo = { state: was, done_at: r.done_at ?? null, deleted_at: before.deleted_at ?? null };
+        const edit = taskEdit(r, keys);
+        const stateChange = fields.state && fields.state !== was ? fields.state : null;
+        // In order: the words and form first, then the state, each under the chain that may do it. A refusal puts the working set back.
+        if (Object.keys(edit).length || stateChange) {
           void enqueue(async () => {
             try {
-              if (!c) throw Object.assign(new Error("a to-do is finished by the person, not by an assistant"), { code: "denied" });
-              if (fields.state === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
-              else if (fields.state === "cancelled") await K.tasks.skip(c, r.id, "cancelled in the planner");
+              const mine = r.assignee ? c : chain();
+              if (Object.keys(edit).length) await K.tasks.edit(mine || chain(), r.id, edit);
+              if (stateChange === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
+              else if (stateChange === "cancelled") { if (!c) throw Object.assign(new Error("a to-do is cancelled by the person"), { code: "denied" }); await K.tasks.skip(c, r.id, "cancelled in the planner"); }
+              else if (stateChange === "open") { await K.tasks.reopen(c || chain(), r.id); }
             } catch (e) { Object.assign(r, undo); throw e; }
           });
         }

@@ -91,12 +91,11 @@ test("records: a to-do is a Task assigned to the person; finishing it in the pla
   const c = await w.ok("planner.add", { kind: "todo", title: "Call the printer" });
   await w.ok("planner.delete", { item: c.id });
   assert.equal((await w.k.tasks.get(w.owner, c.id)).state, "skipped");
-  assert.equal((await w.call("planner.delete", { item: c.id, restore: true })).error.code, "bad_input", "a cancelled to-do does not come back");
+  assert.equal((await w.ok("planner.delete", { item: c.id, restore: true })).state, "open", "a deleted to-do comes back");
+  assert.equal((await w.k.tasks.get(w.owner, c.id)).state, "ready");
 
-  // A to-do repeats nowhere and has no sub-items: those are what a Task is not.
-  assert.equal((await w.call("planner.add", { kind: "todo", title: "Weekly report", wall: "09:00", repeat: { every: "week" } })).error.code, "bad_input");
-  assert.equal((await w.call("planner.add", { kind: "todo", title: "Part", parent: todo.id })).error.code, "bad_input");
 });
+
 
 test("records: a to-do with an hour rings from the working set, and again after a restart", async t => {
   const w = await world(t);
@@ -138,10 +137,10 @@ test("records: the rings and the settings are records too, and a restart keeps w
   assert.equal(w2.fired.length, 1, "the snoozed reminder rang after the restart");
 });
 
-test("records: module.json declares exactly the planner's types and the Event type the connectors write, so a change to either is seen here", async () => {
+test("records: module.json declares exactly the planner's own types; the Event type is the Space's shared one, defined once for every Space", async () => {
   const fs = await import("node:fs");
   const { PLANNER_TYPES } = await import("./types.js");
-  const { CORE_TYPES } = await import("../../records/core-types.js");
   const declared = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs.kernel.types;
-  assert.deepEqual(declared, JSON.parse(JSON.stringify([...PLANNER_TYPES, CORE_TYPES.find(t => t.name === "event")])), "regenerate the needs.kernel.types block from types.js and records/core-types.js");
+  assert.deepEqual(declared, JSON.parse(JSON.stringify(PLANNER_TYPES)), "regenerate the needs.kernel.types block from types.js");
+  assert.ok(!declared.some(/** @type {any} */ t => t.name === "event"), "the planner reads the shared Event type, it does not define one");
 });

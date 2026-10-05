@@ -67,6 +67,8 @@ export interface Task {
   readonly payload?: { readonly payload_hash: string; readonly decision: string; readonly draft_hash?: string };
   /** Who assigned it: part of the chain a teammate works under, so an assigner cannot borrow a broader teammate. */
   readonly assigned_by: Actor;
+  /** The task this one is a part of (a sub-item). Set when it is made or by `edit`. */
+  readonly parent?: Uuid;
   readonly labels: Labels;
   readonly created_at: Ms;
   readonly updated_at: Ms;
@@ -94,6 +96,10 @@ export interface TransitionRule {
 }
 
 export interface TaskApi {
+  /** Change a task's title, note, due time, form or parent: its doer, a person, or the chain that assigned it. Not one waiting for its check. */
+  edit(chain: import('./chain.js').Chain, id: Uuid, patch: { readonly title?: string; readonly note?: string | null; readonly due?: Ms | null; readonly form?: unknown; readonly parent?: Uuid | null }): Promise<Task>;
+  /** Open a done or skipped task again (no checker, no outward act): its doer, a person, or the chain that assigned it. */
+  reopen(chain: import('./chain.js').Chain, id: Uuid): Promise<Task>;
   /** `ask.request`: a task assigned to an actor, with an optional checker. */
   request(chain: import('./chain.js').Chain, task: Omit<Task, 'id' | 'state' | 'created_at' | 'updated_at' | 'labels' | 'assigned_by' | 'space'> & { readonly state?: TaskState }): Promise<Task>;
   /** `ask.decide` is HUMAN-ONLY: the chain must be exactly one person and the proof must sign this payload. */

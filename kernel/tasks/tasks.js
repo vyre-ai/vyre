@@ -8,7 +8,7 @@ import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
-import { TASK_TRANSITIONS, ACTOR_KINDS } from "../contracts/index.js";
+import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
 import { createIdem } from "../core/idem.js";
 
@@ -20,7 +20,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
+const REQUEST_KEYS = new Set(["parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -238,6 +238,7 @@ export function createTasks(cfg) {
       const persons = checkersOf(/** @type {any} */ probe);
       if (checker && !persons.length) throw new KernelError(checker.role ? "no_checker" : "same_actor", checker.role ? "no person holds that role" : "the checker must be a person other than the doer");
       for (const d of spec.depends_on || []) if (!tasks.has(d)) throw new KernelError("bad_input", "a dependency does not exist");
+      if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
       const t = freeze({
@@ -246,7 +247,7 @@ export function createTasks(cfg) {
         ...(checker ? { checker: freeze({ ...checker }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
-        ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
+        ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
         ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
         state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
@@ -272,6 +273,7 @@ export function createTasks(cfg) {
       const out = [];
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
+        if (q.parent !== undefined && (t.parent || null) !== q.parent) continue;
         if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
@@ -474,6 +476,51 @@ export function createTasks(cfg) {
     },
 
     /** Skip: the doer's or a person's act for an unguarded task; for a guarded one it raises a proposal a person with presence decides. */
+    /**
+     * Change a task's words, note, due time, form or parent. Whoever may do the same to their own work: the doer (an assistant doer only as the assistant its assigner gave it to), a person, or the
+     * chain whose first hop assigned it (a service that made it for someone). Not a task another actor was given, not a kernel proposal, not one waiting for its checker (its draft is bound). The
+     * log carries the change and the text's hash, like any other.
+     * @param {any} chain @param {string} id @param {{ title?: string, note?: string | null, due?: number | null, form?: any, parent?: string | null }} patch
+     */
+    async edit(chain, id, patch) {
+      await gate(chain, "tasks.work", urnOf(cfg.space, id));
+      const t = get_(id);
+      if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not edited");
+      if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task edits it");
+      if (t.state === "needs_check") throw new KernelError("bad_state", "a task waiting for its check is not edited");
+      for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
+      const next = { ...t };
+      if (patch.title !== undefined) { if (typeof patch.title !== "string" || !patch.title.trim()) throw new KernelError("bad_input", "a task needs a title"); next.title = patch.title.trim().slice(0, 200); }
+      if (patch.note !== undefined) { if (patch.note === null || patch.note === "") delete next.note; else next.note = String(patch.note).slice(0, FIX_CAP); }
+      if (patch.due !== undefined) { if (patch.due === null) delete next.due; else if (Number.isFinite(patch.due)) next.due = patch.due; else throw new KernelError("bad_input", "due is a time in ms"); }
+      if (patch.form !== undefined) { if (patch.form === null) delete next.form; else next.form = opaque(patch.form); }
+      if (patch.parent !== undefined) {
+        if (patch.parent === null) delete next.parent;
+        else {
+          if (typeof patch.parent !== "string" || !tasks.has(patch.parent) || patch.parent === id) throw new KernelError("bad_input", "a parent task does not exist");
+          for (let a = tasks.get(patch.parent); a; a = a.parent ? tasks.get(a.parent) : undefined) if (a.id === id) throw new KernelError("bad_input", "a task cannot sit under its own sub-task");
+          next.parent = patch.parent;
+        }
+      }
+      const n = stage(id, freeze({ ...next, updated_at: clock() }));
+      note(chain, "task.edited", n, { fields: Object.keys(patch) });
+      return n;
+    },
+
+    /** Open a finished or skipped task again (a to-do ticked by mistake). Its doer, a person, or whoever assigned it; never a task with a checker or an outward act, which is made again. @param {any} chain @param {string} id */
+    async reopen(chain, id) {
+      await gate(chain, "tasks.work", urnOf(cfg.space, id));
+      const t = get_(id);
+      if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not reopened");
+      if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task reopens it");
+      if (needsCheck(t)) throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
+      if (!TASK_REOPENS.some(x => x.from === t.state && x.to === "ready")) throw new KernelError("bad_state", `a task that is ${t.state} is not reopened`);
+      const { answer: _a, ...rest } = t;
+      const n = stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
+      note(chain, "task.reopened", n, {});
+      return n;
+    },
+
     async skip(/** @type {any} */ chain, /** @type {string} */ id, /** @type {string} */ reason) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);

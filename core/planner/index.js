@@ -350,6 +350,8 @@ export default {
     /** An agent may change, finish, snooze or delete only what it added. */
     const owns = (item, w) => {
       if (w.person || (item && item.source === w.source)) return;
+      // A to-do the person gave to this assistant is the assistant's to finish.
+      if (item && item._task && item.assignee && w.source === `agent:${item.assignee}`) return;
       throw fail("an agent may change only the items it added", "denied");
     };
 
@@ -405,14 +407,20 @@ export default {
       let title = String(input.title ?? "").trim().slice(0, 500);
       if (!title) title = kind === "alarm" ? "Alarm" : kind === "timer" ? "Timer" : "";
       if (!title) throw fail(`a ${kind} needs a title`);
-      if (input.parent) throw fail("a to-do has no sub-items: make each one a to-do of its own");
+      if (input.parent && !(st.item(input.parent) && st.item(input.parent)._task && kind === "todo")) throw fail("a to-do's parent is another to-do", "not_found");
       if (input.waits_on && !st.item(input.waits_on)) throw fail("no such item to wait on", "not_found");
-      if (kind === "todo" && time.repeat) throw fail("a to-do does not repeat: set a reminder that repeats");
+      // Only the person gives a to-do to an assistant; the assistant then finishes it as its doer.
+      const assignee = input.assignee ? String(input.assignee).slice(0, 80) : null;
+      if (assignee) {
+        if (kind !== "todo") throw fail("only a to-do is given to an assistant");
+        if (!w.person) throw fail("only the person gives a to-do to an assistant", "denied");
+        if (await agentProjects(assignee) === null) throw fail(`no assistant or agent named ${assignee}`, "not_found");
+      }
       if (kind === "event") return addEvent({ ...input, title, at: time.at, tz: time.tz || undefined }, w, t);
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
         tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name,
-        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused) };
+        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused), assignee };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
       const made = await st.create({ ...row, next_fire: n.next_fire }, w);
@@ -503,11 +511,6 @@ export default {
         };
         if (item.kind === "timer" && ti.in_ms === undefined) throw fail("give a timer a new in_ms");
         Object.assign(patch, resolveTime(item.kind, ti, settings(), t), { snooze_until: null });
-      }
-      if (item._task) {
-        const fixed = Object.keys(patch).filter(k => k !== "state" && k !== "done_at");
-        if (fixed.length || timeChanged) throw fail("a to-do is a Task: its words, list and time are fixed once made. Finish or cancel it, or make a new one", "bad_input");
-        if (patch.state === "open") throw fail("a finished to-do does not reopen: make a new one", "bad_input");
       }
       patch.updated = t;
       const next = { ...item, ...patch, tags: JSON.stringify(patch.tags ?? JSON.parse(item.tags)), repeat: patch.repeat !== undefined ? (patch.repeat ? JSON.stringify(patch.repeat) : null) : item.repeat };
@@ -615,7 +618,14 @@ export default {
       const t = now();
       if (f && f.state === "ringing") ack(f, "done", w);
       const unrung = !f && due != null ? answerUnrung(item.id, item.kind, due, "done", w) : null;
-      if (item.repeat) {
+      if (item._task && item.repeat) {
+        // A repeating to-do is a series of Tasks: this one is finished and the next is made for the next time its rule names.
+        if (item.state === "open") {
+          st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t }, w);
+          emit("planner.changed", { item: item.id, kind: item.kind, fields: ["state", "done_at"] }, item);
+          spawning.push(nextOccurrence_(item, t, w));
+        }
+      } else if (item.repeat) {
         // A repeating item keeps going. Done with nothing ringing is done for this time round; by
         // key, only when that time is the one it waits for.
         const patch = /** @type {any} */ ({ snooze_until: null, updated: t });
@@ -629,6 +639,22 @@ export default {
       scheduler.arm();
       const g = f || unrung;
       return { item: shape(st.item(item.id)), firing: g ? shapeFiring(st.firing(g.id)) : null };
+    };
+
+    /** @type {Promise<any>[]} the next occurrences a done repeating to-do is making (the tool waits for them) */
+    const spawning = [];
+    const nextOccurrence_ = async (item, t, w) => {
+      const zone = zoneOf(item, settings());
+      const at = nextOccurrence({ wall: item.wall, tz: zone, after: Math.max(item.at ?? t, t), repeat: JSON.parse(item.repeat) });
+      if (at == null) return null;
+      const date = dateString(localDate(at, zone));
+      const row = { ...item, id: undefined, _task: undefined, at, date, due: date, next_fire: null, state: "open", done_at: null, deleted_at: null, snooze_until: null, created: t, updated: t, assignee: w.person ? item.assignee : null };
+      const made = await st.create(row, w);
+      const n = schedule(made, t);
+      made.next_fire = n.next_fire;
+      emit("planner.added", { item: made.id, kind: "todo", title: made.title, at }, made);
+      scheduler.arm();
+      return made;
     };
 
     const snooze = (i, w) => {
@@ -675,9 +701,9 @@ export default {
       const t = now();
       if (i.restore) {
         if (!item.deleted_at) return shape(item);
-        if (item._task) throw fail("a cancelled to-do does not come back: make a new one");
         const back = { ...item, deleted_at: null };
-        st.patch(item.id, { deleted_at: null, updated: t, next_fire: schedule(back, t).next_fire });
+        // A deleted to-do was skipped; restoring it opens the Task again.
+        st.patch(item.id, { deleted_at: null, updated: t, next_fire: schedule(back, t).next_fire, ...(item._task && item.state === "cancelled" ? { state: "open" } : {}) }, w);
         emit("planner.added", { item: item.id, kind: item.kind, title: item.title, ...(item.at != null ? { at: item.at } : {}) }, item);
         scheduler.arm();
         return shape(st.item(item.id));
@@ -915,7 +941,7 @@ export default {
     const repeatSchema = { type: "object", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
       days: { type: "array", items: int }, interval: int, until: str } };
     const itemFields = { title: str, body: str, list: str, priority: int, parent: str, project: str, thread: str, tags: { type: "array", items: str },
-      pinned: bool, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
+      pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
       // /later: waits_on chains a task after another item's own done, instead of a time; paused
       // stops just this one item (rule 2) without deleting it or losing its run history.
       waits_on: str, paused: bool };
@@ -988,7 +1014,7 @@ export default {
       async (i, w) => await update(i, w), { agents: true });
 
     tool("planner.done", "Done: acknowledge a firing (an alarm stops ringing; a repeating one keeps its schedule) or finish a todo or reminder. Give firing, item, or the ring's key (a device answering a ring it rang itself).",
-      ref, async (i, w) => done(i, w), { agents: true });
+      ref, async (i, w) => { const out = done(i, w); await Promise.all(spawning.splice(0)); return out; }, { agents: true });
 
     tool("planner.snooze", "Snooze a firing or an item: it rings again after minutes (9 by default).",
       { type: "object", properties: { ...ref.properties, minutes: { type: "number" } } }, async (i, w) => snooze(i, w), { agents: true });
@@ -1033,7 +1059,7 @@ export default {
     for (const [type, consumer] of [["reminder.*", "planner-reminders"], ["note.*", "planner-notes"], ["task.*", "planner-tasks"]]) {
       const off = K.events.subscribe(K.serviceChain(), consumer, { type }, e => {
         // What the planner itself wrote is already in its working set.
-        if (String(e.actor || "").startsWith("service:planner")) return;
+        if (String(e.actor || "").split("@")[0] === "service:planner") return;
         const parts = String(e.subject || "").split("/");
         const id = parts.pop(), kind = parts.pop();
         if (id && kind) return st.external({ type: kind, id }).catch(err => ctx.log(`planner: a change to ${kind} ${id} was not read (${err.message})`));
