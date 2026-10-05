@@ -47,6 +47,8 @@ export const ALLOW = {
     why: "the router asks whether a tailnet caller is a guest before it reaches the registry" },
   "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js"], next: "lib",
     why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session; and the home's checkpoint store for an own-server session's per-turn seal (core/daemon/ownserver-host.js; moves to lib with the store)" },
+  "core/daemon -> core/sessions": { files: ["core/sessions/drivers/openrouter.js"], next: "lib",
+    why: "the daemon hands the kernel's inference door its providers: the API-key chat drivers' door side (the door scans first, this only makes the call with the key the session passes); one-way, the drivers import nothing from the daemon" },
   "core/daemon -> core/spawner": { files: ["core/spawner/client.js", "core/spawner/confine.js"], next: "lib",
     why: "a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start (ruling 4 Oct, b); it asks the root spawner, which is not a module" },
   "core/daemon -> core/switchboard": { files: ["core/switchboard/sessions.js"], next: "ctx.call",
