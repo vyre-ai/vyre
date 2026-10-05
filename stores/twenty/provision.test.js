@@ -47,8 +47,8 @@ function fakeRunner(fake, calls) {
 test("provisioning brings Twenty up, creates the service key headlessly, and keeps secrets private", async () => {
   const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];
   const p = await provisionSpace({ home, space: "harlow", runner: fakeRunner(fake, calls), gatewayContainer: "vyre-vyre-1" });
-  assert.deepEqual(fake.boot.calls, ["Boot_signUp", "Boot_workspace", "Boot_login", "Boot_activate", "Boot_roles", "Boot_key", "Boot_token", "Boot_close"]);
-  assert.equal(fake.boot.closed, true, "password login is closed on the workspace");
+  assert.deepEqual(fake.boot.calls, ["Boot_signUp", "Boot_workspace", "Boot_login", "Boot_activate", "Boot_roles", "Boot_key", "Boot_token"]);
+  assert.notEqual(fake.boot.closed, true, "password sign-in stays on: key rotation signs in with it");
   assert.ok(calls.some((c) => /compose .* up -d --wait/.test(c)));
   assert.ok(calls.some((c) => c.includes("network connect --alias vyre-harlow vyre-harlow-twenty_store vyre-vyre-1")));
   assert.equal(fs.readFileSync(p.keyFile, "utf8"), fake.key);

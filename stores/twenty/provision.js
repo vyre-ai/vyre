@@ -327,7 +327,7 @@ export async function adoptGolden(o) {
   const exp = new Date(Date.now() + 365 * 864e5).toISOString();
   const ak = await gq(`mutation Adopt_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
   const tok = await gq(`mutation Adopt_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
-  await gq(`mutation Adopt_name { updateWorkspace(data: { displayName: ${q(o.displayName)}, isPasswordAuthEnabled: false }) { id } }`, access).catch(() => {});
+  await gq(`mutation Adopt_name { updateWorkspace(data: { displayName: ${q(o.displayName)} }) { id } }`, access).catch(() => {});
   return { workspaceId: me.currentWorkspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
 }
 
@@ -396,7 +396,7 @@ export async function bootstrap(o) {
   const exp = new Date(Date.now() + 365 * 864e5).toISOString();
   const ak = await gq(`mutation Boot_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
   const tok = await gq(`mutation Boot_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
-  await gq("mutation Boot_close { updateWorkspace(data: { isPasswordAuthEnabled: false }) { id } }", access).catch(() => {});
+  // Password sign-in stays on: key rotation signs in as this user (an API key cannot make a key or change the workspace, measured on a real Twenty), and Twenty is reachable only from the Space's own network.
   return { workspaceId: nw.workspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
 }
 
