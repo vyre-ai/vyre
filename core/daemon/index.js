@@ -261,7 +261,7 @@ async function startLocked(opts, root, p, release) {
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
     const { moduleActionPort } = await import("./module-actions.js");
-    const flowsHost = createFlowsHost({ log, callAction: moduleActionPort({ registry, owner: () => kernel.owner }), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, callAction: moduleActionPort({ registry, owner: () => kernel.id.owner }), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The Space's calendar, in step with an outside one, by default.
