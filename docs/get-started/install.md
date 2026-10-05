@@ -252,6 +252,38 @@ Now shows a **Set up this phone** card for notifications and a passkey. More in
 > Check the phone has a connection, then reload the page. If it still fails, run `vyre status` on
 > the server.
 
+## What the Vyre app shows the first time
+
+Open the Vyre app on your phone and it walks you through five screens. The pictures use the
+sample world (a team called Juniper Studio).
+
+First you choose a name. It is yours to take, and the app tells you as you type whether it is free.
+
+![Choose your Vyre name, with alex-rivera typed and "is yours to take" under it](shots/first-run-claim.png "Your name")
+
+Then you create a space: its name, its address, and who it is for.
+
+![Create a space: the name Juniper Studio, the address juniper-studio.vyre.run, and "A team" chosen](shots/first-run-space.png "Create a space")
+
+To connect your server, the app asks for the code your server shows. Paste the long code into the
+field on your phone.
+
+![Pair your server: the server's terminal shows a long code, and the phone has a field to paste it](shots/first-run-pair-code.png "Pair your server")
+
+Your server's terminal then shows three words, and the app shows three choices. Pick the three
+words your terminal shows.
+
+![Pair your server, second step: the terminal says the words are maple copper island, and the phone shows three choices](shots/first-run-pair-words.png "Check the three words")
+
+Your first chat opens next, with your assistant ready to work.
+
+![The first chat, "Fix the intake date check", with the assistant editing and the composer below](shots/first-run-chat.png "First chat")
+
+After that, Now is where you land each day: today's calls, the spaces you are in, and the things
+that need you.
+
+![Now, "Good morning, Alex", with the spaces All spaces, Mine and Juniper Studio, the next call and the things that need you](shots/first-run-now.png "Now")
+
 ## 10. Put the Lumen on your Mac
 
 The Lumen is Vyre's command bar on the Mac: press Control twice, anywhere. It lives on the Mac
