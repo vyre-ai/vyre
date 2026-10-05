@@ -21,6 +21,8 @@ const MAX_ENTRIES = 5000;
 const SAFE = /^Projects\/[^/]+\/.+/;
 
 /**
+ * `entries[i].dest` may be left out when the caller gives `project_to` (the target project's folder id) and, for a chat's files, `chat_map` (old chat id -> the id of the chat the move made in the target, work.chat.carry's answer):
+ * the file then lands at `Projects/<project_to>/<rest>` and a chat's own folders at `Projects/<project_to>/chat|made/<new chat id>/<rest>`; a chat's file whose chat is not in the map is refused (it would be orphaned).
  * @param {{ spaceOf: (space: string) => any }} o `spaceOf(id)` is the home's hosted handle for a Space (`spaces.for`): `{ kernel }`, whose log and `gateway.authorize` the carry uses, and whose Drive it holds through `holdDrive`
  */
 export function createMoves(o) {
@@ -53,7 +55,21 @@ export function createMoves(o) {
       const may = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ folder) => (await k.gateway.authorize({ chain, action: "drive.restore", resource: `vyre://${chain.space}/file/${folder}` })).effect === "allow";
       if (!(await may(src, fromChain, `Projects/${id}`))) throw new KernelError("not_found", "no such move");
       /** @type {{ dest: string, sha256: string }[]} */ const out = [];
-      for (const e of q.entries) {
+      const ID = /^[A-Za-z0-9_-]{1,64}$/;
+      const map = q.chat_map && typeof q.chat_map === "object" ? q.chat_map : null;
+      if (map && !Object.entries(map).every(([a, b]) => ID.test(a) && typeof b === "string" && ID.test(b))) throw new KernelError("bad_input", "the chat map names chats by id");
+      if (q.project_to !== undefined && !(typeof q.project_to === "string" && ID.test(q.project_to))) throw new KernelError("bad_input", "name the target project");
+      /** Where a file lands in the target, when the caller did not say: under the target project, a chat's folders under the chat the move made there. */
+      const destOf = (/** @type {string} */ p) => {
+        const rest = p.slice(`Projects/${id}/`.length);
+        const m = /^(chat|made)\/([^/]+)\/(.+)$/.exec(rest);
+        if (!m) return `Projects/${q.project_to}/${rest}`;
+        const to = map && Object.hasOwn(map, m[2]) ? map[m[2]] : null;
+        if (!to) throw new KernelError("bad_input", "a chat's files need the chat the move made in the target");
+        return `Projects/${q.project_to}/${m[1]}/${to}/${m[3]}`;
+      };
+      for (const raw of q.entries) {
+        const e = raw && typeof raw === "object" && raw.dest === undefined && typeof raw.path === "string" && q.project_to !== undefined && raw.path.startsWith(`Projects/${id}/`) ? { ...raw, dest: destOf(raw.path) } : raw;
         if (!e || typeof e.path !== "string" || typeof e.dest !== "string" || typeof e.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(e.sha256) || !Number.isInteger(e.size)) throw new KernelError("bad_input", "a file to carry names its path, its destination, its hash and its size");
         if (!e.path.startsWith(`Projects/${id}/`) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
         const destFolder = e.dest.split("/").slice(0, 2).join("/");
