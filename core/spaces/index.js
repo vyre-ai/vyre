@@ -1457,7 +1457,7 @@ export default {
     const moveSide = async (space, meta) => {
       if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(String(space)) !== true) throw refuse("This home does not host that space.", "not_found");
       let chain; try { chain = await K.chainIn(String(space), meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
-      const h = K.spaces.hosted(String(space));
+      const h = kernelHandle(String(space));
       if (!h || !h.gateway || !h.gateway.moves) throw refuse("That space cannot move projects.", "unavailable");
       return { chain, moves: h.gateway.moves };
     };
@@ -1543,7 +1543,7 @@ export default {
       onlyModules(meta, ["work", "vyred"]);
       const space = String(i.space);
       if (!K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
-      const h = K.spaces.hosted(space);
+      const h = kernelHandle(space);
       const got = h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_in" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id && e.data.from === i.from) : null;
       if (!got) throw refuse("This space received no such move.", "not_found");
       if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(i.nonce))) throw refuse("That is not a challenge.", "bad_input");
@@ -1587,7 +1587,7 @@ export default {
       if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
       if (!Array.isArray(i.objects) || i.objects.length > 5000) throw refuse("An upgrade receipt covers at most 5000 objects.", "bad_input");
       let chain; try { chain = await K.chainIn(space, meta); } catch (e) { ctx.log.warn(`upgrade receipt: no chain in ${space}: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message} (facts ${JSON.stringify(meta && meta.kernelFacts ? Object.keys(meta.kernelFacts) : null)})`); throw refuse("You are not a member of that space.", "forbidden"); }
-      const h = K.spaces.hosted(space);
+      const h = kernelHandle(space);
       const objects = i.objects.map((/** @type {any} */ o) => ({ type: String(o.type), id: String(o.id), keys: Array.isArray(o.keys) ? o.keys.map(String) : [] }));
       const fp = await fingerprint({ space, records: h.gateway.records, chain }, objects);
       const body = { v: 1, upgrade_id: String(i.upgrade_id), from: String(i.from), to: space, count: fp.count, objects_root: fp.root, at: now() };
