@@ -71,7 +71,7 @@ export const CONCEPTS = [
   { name: "memory", page: "using/memory.md", match: /\bmemory\b/i, code: "core/memory/index.js" },
   { name: "module", page: "concepts/modules.md", match: /\bmodules?\b/i, code: "core/modules/index.js" },
   { name: "owner", page: "concepts/network.md#the-owner", match: /\bowner\b/i },
-  { name: "pairing", page: "get-started/install.md#10-put-the-lumen-on-your-mac", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
+  { name: "pairing", page: "get-started/install.md#4-pair-your-server", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
   { name: "pass", page: "using/vault.md#share-with-another-person", match: /\b(?:a|the|by|each|every|one|your|sealed|relayed|shared)\s+pass(?:es)?\b|\bpasses\b/i, code: "core/vault/index.js" },
   { name: "passkey", page: "concepts/presence.md#enroll-your-keys", match: /\bpasskeys?\b/i, code: "core/presence/index.js" },
   { name: "presence", page: "concepts/presence.md", match: /\bpresence\b/i, code: "core/presence/index.js" },
