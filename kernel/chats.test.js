@@ -37,6 +37,17 @@ test("chat read: participants only; an owner or admin outside the chat is refuse
   assert.throws(() => C.read(bob, "chat_nonesuch0"), { code: "not_found" });
 });
 
+test("the person's default assistant is never listed in a chat and acts as its person: a member's assistant reads, a non-member's is refused, and a named assistant must still be listed", async () => {
+  const make = (k, person) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session: `s-${person}` });
+  const r = await rig();
+  const c2 = await r.C.create(r.bob, { people: [CAROL] });
+  assert.deepEqual([...c2.assistants], [], "no assistant is listed");
+  assert.equal(r.C.read(make(r.k, BOB), c2.id).id, c2.id, "bob's assistant reads bob's chat");
+  assert.equal(r.C.read(make(r.k, CAROL), c2.id).id, c2.id, "carol's assistant reads a chat carol is in");
+  assert.throws(() => r.C.read(make(r.k, OWNER), c2.id), { code: "not_found" }, "an assistant of someone outside the chat");
+  assert.throws(() => r.C.read(r.asst(BOB, "s9"), c2.id), { code: "not_found" }, "a named assistant that is not listed is still refused");
+});
+
 test("CH-2: only a person in the chat changes it: never a viewer chain, an assistant, or someone outside; each change is an event", async () => {
   const { k, owner, bob, carol, ada, asst, C } = await rig();
   const c = await C.create(bob, {});
