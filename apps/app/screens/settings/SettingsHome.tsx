@@ -8,6 +8,7 @@ import { useShell } from "../shell/shared";
 import { showingName } from "../shell/real-model";
 import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
+import { backupLine } from "../shell/basic.js";
 import { VERSION } from "./data";
 import { MOCK } from "../../src/real/box";
 import { useMembers } from "../spaces/state";
@@ -24,6 +25,9 @@ export function SettingsHome() {
   const loadMembers = useMembers((s) => s.load);
   const role = useMembers((s) => s.spaces.find((x) => x.id === space)?.role);
   useEffect(() => { void loadMembers(); }, [loadMembers]);
+  // On a Basic personal space (no server) say where it is backed up, or that it is not.
+  const showing = shell.spaces.find((x) => x.id === space);
+  const backup = backupLine({ basic: Boolean(showing?.basic), teams: shell.spaces.filter((x) => x.id !== "all" && !x.basic) });
   const state = (href: string) => (href === "/u/settings/devices" ? `${devices} ${devices === 1 ? "device" : "devices"}` : undefined);
   return (
     <Frame title="Settings" top>
@@ -36,6 +40,7 @@ export function SettingsHome() {
           </Card>
         </Sec>
       ))}
+      {backup ? <Sec title="Backup"><Card flush><Row dense lead={<IconTile name="shield" />} title={backup} /></Card></Sec> : null}
       <View className="items-center pt-s6"><Text size="secondary" tone="faint">{`Vyre ${VERSION}`}</Text></View>
     </Frame>
   );

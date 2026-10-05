@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a Basic personal space (a personal space with no server) says "This needs a space on a server" where Records, Contacts, flows, Kits, the planner, tasks and the calendar would be, lists the team spaces the person is in (each opens that space) and offers "Add your own server"; chats and projects work as normal. Settings shows the backup line: "Not backed up: join a team or add a server" with no team, the destination when the box says, nothing when it is unknown.
+
 - fix(app): the Chats list reads work.chat.list's real answer ({ chats }, flat rows, chat is the id, people and agents comma-joined, open only for chats you are in) and shows people by name (records.actors), never by id.
 
 - feat(app): Reminders and Notes in Records open /u/records/reminder and /u/records/note (they are Records types, per the app map), not the planner page. An artifact's activity log marks what the person's assistant did (acted_via), and a task record's acted_via is read from its data.
