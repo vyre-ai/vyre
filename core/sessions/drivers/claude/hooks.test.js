@@ -40,3 +40,32 @@ test("terminal: a transcript is a session's own by its name, and a fresh session
   assert.equal(startCommand("s9", "/r/s9.md"), 'claude --session-id s9 "$(cat /r/s9.md)"');
   assert.deepEqual(startArgs("s9", "go"), ["--session-id", "s9", "go"]);
 });
+
+import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
+import { transcriptOf, readTranscript, nativeIdOf, usageOf } from "./memory-parts.js";
+
+test("the reading side: a transcript is found by its native id, read as neutral turns, and its usage counted", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-parts-"));
+  try {
+    const folder = path.join(tmp, "proj");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.copyFileSync(path.join(dir, "rich.jsonl"), path.join(folder, "abc123.jsonl"));
+    const found = transcriptOf("abc123", [tmp]);
+    assert.equal(found && found.format, "claude-jsonl");
+    assert.equal(transcriptOf("nope", [tmp]), null);
+    const turns = readTranscript(found.file);
+    assert.ok(turns.length > 0);
+    assert.deepEqual(Object.keys(turns[0]).filter(k => ["turn", "who", "text", "tools", "at"].includes(k)).sort(), ["at", "text", "tools", "turn", "who"]);
+    assert.ok(turns.every((t, i) => t.turn === i && (t.who === "user" || t.who === "assistant") && Array.isArray(t.tools)));
+    assert.deepEqual(readTranscript(path.join(tmp, "missing.jsonl")), []);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  assert.equal(nativeIdOf({ id: "t1" }), "t1");
+  assert.equal(nativeIdOf({ id: "t1", native: "n2" }), "n2");
+  assert.deepEqual(usageOf({ usage: { input_tokens: 10, cache_read_input_tokens: 5, output_tokens: 2 }, total_cost_usd: 0.01, model: "claude-sonnet-4-5" }), { tokens: 17, cost_usd: 0.01, limit: 200000 });
+  assert.equal(usageOf({}), null);
+  assert.equal(usageOf("/no/such/file.jsonl"), null);
+});
