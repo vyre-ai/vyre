@@ -16,7 +16,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { newKey, seal, open, newDeviceKey, wrapForDevice, unwrapWithDevice, wrapWithCode, unwrapWithCode, fingerprint, sha256 } from "../../../lib/keywrap.js";
+import { newKey, seal, open, newDeviceKey, wrapForDevice, unwrapWithDevice, fingerprint, sha256 } from "../../../lib/keywrap.js";
+import { argon2id } from "../../../kernel/identity/stretch.js";
+import { toB64u, fromB64u, utf8 } from "../../../lib/databox.js";
+
+// The recovery code wrap stays in the identity home (it is the only way back into the memory and the backup when every device is lost): the code stretched with Argon2id seals the key, the same JSON box.
+export const wrapWithCode = (/** @type {Uint8Array} */ key, /** @type {string} */ code, /** @type {string} */ aad) => { const salt = crypto.randomBytes(16); const b = seal(key, argon2id(utf8(code), salt), aad); return { v: 1, salt: toB64u(salt), iv: b.iv, ct: b.ct, tag: b.tag }; };
+export const unwrapWithCode = (/** @type {any} */ w, /** @type {string} */ code, /** @type {string} */ aad) => open({ v: 1, iv: w.iv, ct: w.ct, tag: w.tag }, argon2id(utf8(code), fromB64u(w.salt)), aad);
 
 /** An unlocked key lives in the assistant's process until it is locked, revoked or the process ends: there is no timer that asks the person again (the no-nagging rule). */
 export const LEASE_MS = Infinity;
@@ -77,10 +83,10 @@ const dir = (/** @type {string} */ id) => `identity/${id}`;
  * @param {{ privateJwk: import("node:crypto").JsonWebKey, publicJwk: import("node:crypto").JsonWebKey }} device
  * @param {{ id: string, home: string, request: string, sessionPub: import("node:crypto").JsonWebKey, wraps: any[] }} ask
  */
-export function approveUnlock(device, ask) {
+export async function approveUnlock(device, ask) {
   const mine = ask.wraps.find(w => w.kind === "device" && w.fp === fingerprint(device.publicJwk));
   if (!mine) throw Object.assign(new Error("this device holds no key for that identity memory"), { code: "unknown_key" });
-  const key = unwrapWithDevice(mine.wrapped, device.privateJwk, aadOf(ask.home, `wrap:${mine.fp}`));
+  const key = await unwrapWithDevice(mine.wrapped, device.privateJwk, aadOf(ask.home, `wrap:${mine.fp}`));
   try { return wrapForDevice(key, ask.sessionPub, aadOf(ask.home, `unlock:${ask.request}`)); } finally { key.fill(0); }
 }
 
@@ -105,7 +111,7 @@ export class Phone {
   /** Revoked from the phone: no request from that server is answered again. @param {string} fp */
   revoke(fp) { return this.grants.delete(fp); }
   /** @param {any} ask */
-  answer(ask) {
+  async answer(ask) {
     const server = ask.server && this.grants.get(ask.server.fp);
     if (!server) throw Object.assign(new Error("this server has not been given your memory: say yes on the phone first"), { code: "needs_yes" });
     if (!askSignedBy(ask, server)) throw Object.assign(new Error("that request is not signed by the server you granted"), { code: "bad_signature" });
@@ -182,19 +188,19 @@ export class IdentityHome {
     return { ask, secret: k.privateJwk };
   }
 
-  /** @param {{ request: string }} ask @param {import("node:crypto").JsonWebKey} secret @param {any} rewrapped what the phone returned @returns {Lease} */
-  finishUnlock(ask, secret, rewrapped) {
-    const key = unwrapWithDevice(rewrapped, secret, aadOf(this.id, `unlock:${ask.request}`));
+  /** @param {{ request: string }} ask @param {import("node:crypto").JsonWebKey} secret @param {any} rewrapped what the phone returned @returns {Promise<Lease>} */
+  async finishUnlock(ask, secret, rewrapped) {
+    const key = await unwrapWithDevice(rewrapped, secret, aadOf(this.id, `unlock:${ask.request}`));
     this.load(new Lease(key, this.id, this.now() + LEASE_MS, this.now));   // the key must open the newest snapshot, or it is not this memory's key
     return new Lease(key, this.id, this.now() + LEASE_MS, this.now);
   }
 
   /** The person's own device: its key unwraps with no prompt. @param {{ privateJwk: import("node:crypto").JsonWebKey, publicJwk: import("node:crypto").JsonWebKey }} device @returns {Lease} */
-  unlockWithDevice(device) {
+  async unlockWithDevice(device) {
     const m = this.manifest();
     const w = m && m.wraps.find((/** @type {any} */ x) => x.kind === "device" && x.fp === fingerprint(device.publicJwk));
     if (!m || !w) throw Object.assign(new Error("this device holds no key for that identity memory"), { code: "unknown_key" });
-    const lease = new Lease(unwrapWithDevice(w.wrapped, device.privateJwk, aadOf(this.id, `wrap:${w.fp}`)), this.id, this.now() + LEASE_MS, this.now);
+    const lease = new Lease(await unwrapWithDevice(w.wrapped, device.privateJwk, aadOf(this.id, `wrap:${w.fp}`)), this.id, this.now() + LEASE_MS, this.now);
     this.load(lease);
     return lease;
   }

@@ -86,7 +86,7 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno")).error?.code, "denied", "a yes nobody was shown this for");
   const early = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
   assert.equal(early.error, undefined);
-  assert.throws(() => phone.answer(early.data.ask), { code: "needs_yes" }, "the phone does not answer a server it was not granted");
+  await assert.rejects(() => phone.answer(early.data.ask), { code: "needs_yes" }, "the phone does not answer a server it was not granted");
   assert.equal((await ask("memory.identity.unlock.finish", { request: early.data.ask.request, answer: {} }, "mcp:agent:juno")).error?.code, "denied", "and the server takes no answer without the grant");
   w.shown.push({ server: fp, identity: "ident_alex" });
   const granted = await ask("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno");
@@ -95,15 +95,15 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   phone.grant(w.serverKey().publicJwk);
 
   // From here the assistant unlocks with no prompt: ask, the phone answers by itself, finish.
-  const unlock = async () => { const b = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno"); assert.equal(b.error, undefined, JSON.stringify(b)); return ask("memory.identity.unlock.finish", { request: b.data.ask.request, answer: phone.answer(b.data.ask) }, "mcp:agent:juno"); };
+  const unlock = async () => { const b = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno"); assert.equal(b.error, undefined, JSON.stringify(b)); return ask("memory.identity.unlock.finish", { request: b.data.ask.request, answer: await phone.answer(b.data.ask) }, "mcp:agent:juno"); };
   const done = await unlock();
   assert.equal(done.error, undefined, JSON.stringify(done));
   assert.equal(done.data.unlocked, true);
   assert.match(JSON.stringify((await ask("memory.profile", {}, "mcp:agent:juno")).data), /Lisbon/, "the assistant reads it");
   assert.equal((await ask("memory.profile", {}, "mcp:agent:kit")).error?.code, "denied", "an agent that is not the assistant still does not");
   const used = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
-  assert.equal((await ask("memory.identity.unlock.finish", { request: used.data.ask.request, answer: phone.answer(used.data.ask) }, "mcp:agent:juno")).error, undefined);
-  assert.equal((await ask("memory.identity.unlock.finish", { request: used.data.ask.request, answer: phone.answer(used.data.ask) }, "mcp:agent:juno")).error?.code, "not_found", "a request is one use");
+  assert.equal((await ask("memory.identity.unlock.finish", { request: used.data.ask.request, answer: await phone.answer(used.data.ask) }, "mcp:agent:juno")).error, undefined);
+  assert.equal((await ask("memory.identity.unlock.finish", { request: used.data.ask.request, answer: await phone.answer(used.data.ask) }, "mcp:agent:juno")).error?.code, "not_found", "a request is one use");
 
   // While it is unlocked the facts are in the process only: a new one reaches the disk as ciphertext, and root still finds nothing.
   assert.equal((await ask("memory.remember", { text: "I prefer short emails." })).error, undefined);
@@ -118,7 +118,7 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   assert.deepEqual([revoked.data.unlocked, revoked.data.granted], [false, []]);
   assert.equal((await ask("memory.profile", {}, "mcp:agent:juno")).error?.code, "denied");
   const after = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
-  assert.equal((await ask("memory.identity.unlock.finish", { request: after.data.ask.request, answer: phone.answer(after.data.ask) }, "mcp:agent:juno")).error?.code, "denied", "no grant, no unlock, even if a phone still answered");
+  assert.equal((await ask("memory.identity.unlock.finish", { request: after.data.ask.request, answer: await phone.answer(after.data.ask) }, "mcp:agent:juno")).error?.code, "denied", "no grant, no unlock, even if a phone still answered");
   assert.equal((await ask("memory.identity.revoke", {}, "mcp:agent:juno")).error?.code, "denied", "revoking is the person's own act");
 
   // Grant again, then the person gets their own server (even a tiny one): the home moves there, nothing decrypted, and the same phone opens it.
@@ -152,7 +152,7 @@ test("a restart is answered from the phone without asking again, while the grant
   assert.ok(asked.length >= 1, "the phone was told");
   assert.equal((await as(d2, "memory.identity.status", {}, "mcp:agent:juno")).data.unlocked, false);
   const b = await as(d2, "memory.identity.unlock.begin", {}, "mcp:agent:juno");
-  const f = await as(d2, "memory.identity.unlock.finish", { request: b.data.ask.request, answer: phone.answer(b.data.ask) }, "mcp:agent:juno");
+  const f = await as(d2, "memory.identity.unlock.finish", { request: b.data.ask.request, answer: await phone.answer(b.data.ask) }, "mcp:agent:juno");
   assert.equal(f.error, undefined, JSON.stringify(f));
   assert.match(JSON.stringify((await as(d2, "memory.profile", {}, "mcp:agent:juno")).data), /Lisbon/);
 });
@@ -174,7 +174,7 @@ test("killed while unlocked, the disk holds ciphertext only, and nothing sealed 
   const phone = new Phone(device);
   phone.grant(w.serverKey().publicJwk);
   const b = await w.ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
-  assert.equal((await w.ask("memory.identity.unlock.finish", { request: b.data.ask.request, answer: phone.answer(b.data.ask) }, "mcp:agent:juno")).error, undefined);
+  assert.equal((await w.ask("memory.identity.unlock.finish", { request: b.data.ask.request, answer: await phone.answer(b.data.ask) }, "mcp:agent:juno")).error, undefined);
   const profile = JSON.stringify((await w.ask("memory.profile", {}, "mcp:agent:juno")).data);
   assert.match(profile, /Lisbon/);
   assert.match(profile, /short emails/);

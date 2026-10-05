@@ -172,18 +172,18 @@ export class IdentityLive {
   }
 
   /** The phone's answer arrives: the rows come into the process, and stay there until lock, revoke or the process ends. A request is one use. @param {string} request @param {any} answer */
-  finish(request, answer) {
+  async finish(request, answer) {
     const open = this.asks.get(request);
     if (!open) throw Object.assign(new Error("no unlock is waiting for that request"), { code: "not_found" });
     this.asks.delete(request);
     if (!this.home.grants().length) throw Object.assign(new Error("this server was not given the person's memory (or it was revoked)"), { code: "denied" });
-    this.#open(this.home.finishUnlock(open.ask, open.secret, answer));
+    this.#open(await this.home.finishUnlock(open.ask, open.secret, answer));
     return this.status();
   }
 
   /** On the person's own device: its key unwraps with no prompt. @param {{ privateJwk: any, publicJwk: any }} device */
-  unlockLocal(device) {
-    this.#open(this.home.unlockWithDevice(device));
+  async unlockLocal(device) {
+    this.#open(await this.home.unlockWithDevice(device));
     return this.status();
   }
 

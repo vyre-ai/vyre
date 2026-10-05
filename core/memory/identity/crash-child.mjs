@@ -21,7 +21,7 @@ const phone = new Phone(device);
 phone.grant(server.publicJwk);
 await must("memory.identity.grant", { proof: { signed: true } }, "mcp:agent:juno");
 const { ask: a } = await must("memory.identity.unlock.begin", {}, "mcp:agent:juno");
-await must("memory.identity.unlock.finish", { request: a.request, answer: phone.answer(a) }, "mcp:agent:juno");
+await must("memory.identity.unlock.finish", { request: a.request, answer: await phone.answer(a) }, "mcp:agent:juno");
 await must("memory.remember", { text: "I prefer short emails." });
 // wait for the facts to reach the disk as ciphertext (the autosave)
 for (let i = 0; i < 100; i++) { const st = await must("memory.identity.status", {}, "mcp:agent:juno"); if (st.rev >= 2) break; await new Promise(r => setTimeout(r, 100)); }

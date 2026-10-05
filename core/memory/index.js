@@ -1222,7 +1222,7 @@ export default {
       if (!identity || !identity.home.exists()) throw Object.assign(new Error("the encrypted home is not set up yet"), { code: "not_found" });
       const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
       const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8"));
-      const lease = identity.home.unlockWithDevice(dev);
+      const lease = await identity.home.unlockWithDevice(dev);
       const imk = Buffer.from(lease.key());
       lease.lock();
       try {
@@ -1266,7 +1266,7 @@ export default {
         const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
         let imk;
         if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code)).key());
-        else { const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8")); const l = identity.home.unlockWithDevice(dev); imk = Buffer.from(l.key()); l.lock(); }
+        else { const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8")); const l = await identity.home.unlockWithDevice(dev); imk = Buffer.from(l.key()); l.lock(); }
         try {
           const b = await Backup.open({ backend: be, identity: String(bkCfg.id), imk });
           const to = path.resolve(String(input.to || path.join(String(ctx.paths?.root || "."), "restore", String(Date.now()))));
@@ -1384,7 +1384,7 @@ export default {
     // At start: the person's own device unwraps it with no prompt; otherwise, where they granted this server, the phone is asked and answers by itself (an event carries the request).
     if (identity && identity.sealed) {
       try {
-        if (idCfg.deviceKey) identity.unlockLocal(JSON.parse(fs.readFileSync(String(idCfg.deviceKey), "utf8")));
+        if (idCfg.deviceKey) await identity.unlockLocal(JSON.parse(fs.readFileSync(String(idCfg.deviceKey), "utf8")));
         else identity.askPhone();
       } catch (e) { ctx.log("identity memory: " + /** @type {Error} */ (e).message); }
     }

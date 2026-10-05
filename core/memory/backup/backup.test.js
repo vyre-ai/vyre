@@ -53,14 +53,14 @@ test("backup: every device in the identity's list opens it, a device added later
   const home = new IdentityHome({ id: "me", backend: server });
   const lease = home.create({ devices: [{ label: "phone", publicJwk: phone.publicJwk }], recoveryCode: "correct horse battery" });
   const imkOf = l => Buffer.from(l.key());
-  const onPhone = await Backup.create({ backend: server, identity: "me", imk: imkOf(home.unlockWithDevice(phone)) });
+  const onPhone = await Backup.create({ backend: server, identity: "me", imk: imkOf(await home.unlockWithDevice(phone)) });
   await onPhone.run([file("a.txt", "from the phone")]);
   // a second device is added to the identity home: it opens the backup and backs up too, with no second ring to keep in step
   home.addDevice(lease, { label: "laptop", publicJwk: laptop.publicJwk });
-  const onLaptop = await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithDevice(laptop)) });
+  const onLaptop = await Backup.open({ backend: server, identity: "me", imk: imkOf(await home.unlockWithDevice(laptop)) });
   assert.equal((await onLaptop.run([file("a.txt", "from the phone"), file("b.txt", "from the laptop")])).rev, 2);
   // a device that was never added is refused by the home itself
-  assert.throws(() => home.unlockWithDevice(fresh), { code: "unknown_key" });
+  await assert.rejects(() => home.unlockWithDevice(fresh), { code: "unknown_key" });
   // everything is lost but the code: a new device restores from it
   const got = new Map();
   const restored = await (await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithCode("correct horse battery")) })).restore((e, bytes) => got.set(e.name, bytes.toString()));

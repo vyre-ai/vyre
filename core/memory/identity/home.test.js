@@ -9,8 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { tempHome } from "../../../test/helpers.js";
-import { newDeviceKey, newKey, seal, open, wrapForDevice, unwrapWithDevice, wrapWithCode, unwrapWithCode } from "../../../lib/keywrap.js";
-import { IdentityHome, FileBackend, Lease, approveUnlock, Phone, newServerKey, signAsk, askSignedBy } from "./home.js";
+import { newDeviceKey, newKey, seal, open, wrapForDevice, unwrapWithDevice } from "../../../lib/keywrap.js";
+import { wrapWithCode, unwrapWithCode, IdentityHome, FileBackend, Lease, approveUnlock, Phone, newServerKey, signAsk, askSignedBy } from "./home.js";
 
 const SNAP = { v: 1, tables: { memory_me_facts: [{ id: "f1", subj: "me", rel: "lives_in", obj: "place:Lisbon" }, { id: "f2", subj: "me", rel: "uses", obj: "tool:Postgres" }] }, state: { assistant: "prefers short emails" } };
 const SECRETS = ["Lisbon", "Postgres", "prefers short emails", "lives_in", "memory_me_facts"];
@@ -29,23 +29,23 @@ function world(t) {
   return { root, server, phone, laptop, home, now, tick: ms => { at += ms; } };
 }
 
-test("crypto: a box opens only under its key and its binding; a wrap opens only for the device or the code it was made for", () => {
+test("crypto: a box opens only under its key and its binding; a wrap opens only for the device or the code it was made for", async () => {
   const key = newKey();
   const box = seal("hello", key, "a/1");
-  assert.equal(open(box, key, "a/1").toString(), "hello");
+  assert.equal(Buffer.from(open(box, key, "a/1")).toString(), "hello");
   assert.throws(() => open(box, newKey(), "a/1"), { code: "cannot_open" });
   assert.throws(() => open(box, key, "a/2"), { code: "cannot_open" }, "moved to another place it does not open");
   const dev = newDeviceKey(), other = newDeviceKey();
   const w = wrapForDevice(key, dev.publicJwk, "wrap");
-  assert.deepEqual(unwrapWithDevice(w, dev.privateJwk, "wrap"), key);
-  assert.throws(() => unwrapWithDevice(w, other.privateJwk, "wrap"), { code: "cannot_open" });
-  assert.throws(() => unwrapWithDevice(w, dev.privateJwk, "other"), { code: "cannot_open" });
+  assert.deepEqual(await unwrapWithDevice(w, dev.privateJwk, "wrap"), key);
+  await assert.rejects(() => unwrapWithDevice(w, other.privateJwk, "wrap"), { code: "cannot_open" });
+  await assert.rejects(() => unwrapWithDevice(w, dev.privateJwk, "other"), { code: "cannot_open" });
   const c = wrapWithCode(key, "four words and more", "code");
   assert.deepEqual(unwrapWithCode(c, "four words and more", "code"), key);
   assert.throws(() => unwrapWithCode(c, "four words", "code"), { code: "cannot_open" });
 });
 
-test("an admin or root on the space server cannot read the identity memory: only ciphertext and wrapped keys are there, and nothing they can do with them opens it", t => {
+test("an admin or root on the space server cannot read the identity memory: only ciphertext and wrapped keys are there, and nothing they can do with them opens it", async t => {
   const w = world(t);
   const lease = w.home.create({ devices: [{ label: "phone", publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP });
   assert.equal(w.home.save(lease, SNAP), 2);
@@ -65,7 +65,7 @@ test("an admin or root on the space server cannot read the identity memory: only
   const theirKey = newKey();
   fs.writeFileSync(path.join(w.server.dir, "identity", "ident_alex", "manifest.json"), JSON.stringify({ ...m, wraps: [{ kind: "device", fp: "x", wrapped: wrapForDevice(theirKey, admin.publicJwk, "x") }] }));
   const ask = w.home.beginUnlock();
-  assert.throws(() => approveUnlock(w.phone, ask.ask), { code: "unknown_key" }, "the person's phone finds no key of theirs and gives nothing");
+  await assert.rejects(() => approveUnlock(w.phone, ask.ask), { code: "unknown_key" }, "the person's phone finds no key of theirs and gives nothing");
   assert.throws(() => w.home.load(new Lease(theirKey, "ident_alex", w.now() + 1000, w.now)), { code: "cannot_open" }, "and a key that is not the memory's own opens nothing");
   // A snapshot they swap in from another place (or an old revision) does not open under this one's binding.
   fs.writeFileSync(path.join(w.server.dir, "identity", "ident_alex", "manifest.json"), JSON.stringify(m));
@@ -73,12 +73,12 @@ test("an admin or root on the space server cannot read the identity memory: only
   assert.throws(() => w.home.load(lease), { code: "corrupt" });
 });
 
-test("the person's own assistant reads it once the phone answers, and nothing times out and asks again; a stranger's phone, another request's answer or the wrong secret open nothing", t => {
+test("the person's own assistant reads it once the phone answers, and nothing times out and asks again; a stranger's phone, another request's answer or the wrong secret open nothing", async t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], snapshot: SNAP }).lock();
   const { ask, secret } = w.home.beginUnlock();
-  const answer = approveUnlock(w.phone, ask);
-  const lease = w.home.finishUnlock(ask, secret, answer);
+  const answer = await approveUnlock(w.phone, ask);
+  const lease = await w.home.finishUnlock(ask, secret, answer);
   assert.deepEqual(w.home.load(lease).tables, SNAP.tables);
   assert.deepEqual(w.home.load(lease).state, SNAP.state);
   assert.equal(w.home.save(lease, { ...SNAP, state: { assistant: "prefers short emails", pm: "async standups" } }), 2);
@@ -92,58 +92,59 @@ test("the person's own assistant reads it once the phone answers, and nothing ti
   lease.lock();
   assert.throws(() => w.home.load(lease), { code: "locked" });
   const stranger = newDeviceKey();
-  assert.throws(() => approveUnlock(stranger, ask), { code: "unknown_key" });
+  await assert.rejects(() => approveUnlock(stranger, ask), { code: "unknown_key" });
   const other = w.home.beginUnlock();
-  assert.throws(() => w.home.finishUnlock(ask, secret, approveUnlock(w.phone, other.ask)), { code: "cannot_open" });
-  assert.throws(() => w.home.finishUnlock(ask, other.secret, answer), { code: "cannot_open" });
+  const otherAnswer = await approveUnlock(w.phone, other.ask);
+  await assert.rejects(() => w.home.finishUnlock(ask, secret, otherAnswer), { code: "cannot_open" });
+  await assert.rejects(() => w.home.finishUnlock(ask, other.secret, answer), { code: "cannot_open" });
   // A second device is added by an unlocked session, and then unlocks on its own.
   const fresh = w.home.beginUnlock();
-  const l1 = w.home.finishUnlock(fresh.ask, fresh.secret, approveUnlock(w.phone, fresh.ask));
+  const l1 = await w.home.finishUnlock(fresh.ask, fresh.secret, await approveUnlock(w.phone, fresh.ask));
   w.home.addDevice(l1, { label: "laptop", publicJwk: w.laptop.publicJwk });
   const again = w.home.beginUnlock();
-  assert.deepEqual(w.home.load(w.home.finishUnlock(again.ask, again.secret, approveUnlock(w.laptop, again.ask))).state.pm, "async standups");
+  assert.deepEqual(w.home.load(await w.home.finishUnlock(again.ask, again.secret, await approveUnlock(w.laptop, again.ask))).state.pm, "async standups");
 });
 
-test("on the person's own device the device key unwraps with no prompt", t => {
+test("on the person's own device the device key unwraps with no prompt", async t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }, { publicJwk: w.laptop.publicJwk }], snapshot: SNAP }).lock();
-  assert.deepEqual(w.home.load(w.home.unlockWithDevice(w.laptop)).tables, SNAP.tables);
-  assert.throws(() => w.home.unlockWithDevice(newDeviceKey()), { code: "unknown_key" });
+  assert.deepEqual(w.home.load(await w.home.unlockWithDevice(w.laptop)).tables, SNAP.tables);
+  await assert.rejects(() => w.home.unlockWithDevice(newDeviceKey()), { code: "unknown_key" });
 });
 
-test("on a shared server the person says yes once: the phone then answers that server's requests by itself, after a restart too, until it is revoked; only that server, only signed", t => {
+test("on a shared server the person says yes once: the phone then answers that server's requests by itself, after a restart too, until it is revoked; only that server, only signed", async t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], snapshot: SNAP }).lock();
   const phone = new Phone(w.phone);
   const server = { name: "the Space's server", ...newServerKey() };
   const other = { name: "another server", ...newServerKey() };
   // Not granted yet: the phone does not answer, and says why.
-  assert.throws(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
+  await assert.rejects(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
   // The one yes.
   const fp = phone.grant(server.publicJwk);
   w.home.addGrant({ server: server.name, fp });
   assert.deepEqual(w.home.grants().map(g => g.server), ["the Space's server"]);
-  w.home.save(w.home.unlockWithDevice(w.phone), SNAP);
+  w.home.save(await w.home.unlockWithDevice(w.phone), SNAP);
   assert.deepEqual(w.home.grants().map(g => g.server), ["the Space's server"], "a new revision keeps the grants");
-  const open = () => { const { ask, secret } = w.home.beginUnlock(server); return w.home.finishUnlock(ask, secret, phone.answer(ask)); };
-  assert.deepEqual(w.home.load(open()).tables, SNAP.tables);
+  const open = async () => { const { ask, secret } = w.home.beginUnlock(server); return w.home.finishUnlock(ask, secret, await phone.answer(ask)); };
+  assert.deepEqual(w.home.load(await open()).tables, SNAP.tables);
   // A restart is the same request again, answered the same way, with no prompt.
-  assert.deepEqual(w.home.load(open()).tables, SNAP.tables);
+  assert.deepEqual(w.home.load(await open()).tables, SNAP.tables);
   // Another server's request, an unsigned one, and a request someone altered are not answered.
-  assert.throws(() => phone.answer(w.home.beginUnlock(other).ask), { code: "needs_yes" });
+  await assert.rejects(() => phone.answer(w.home.beginUnlock(other).ask), { code: "needs_yes" });
   const { ask } = w.home.beginUnlock(server);
-  assert.throws(() => phone.answer({ ...ask, sig: undefined }), { code: "bad_signature" });
-  assert.throws(() => phone.answer({ ...ask, sessionPub: newDeviceKey().publicJwk }), { code: "bad_signature" }, "a request carrying someone else's key is not the one the server signed");
+  await assert.rejects(() => phone.answer({ ...ask, sig: undefined }), { code: "bad_signature" });
+  await assert.rejects(() => phone.answer({ ...ask, sessionPub: newDeviceKey().publicJwk }), { code: "bad_signature" }, "a request carrying someone else's key is not the one the server signed");
   assert.equal(askSignedBy(ask, server.publicJwk), true);
   assert.equal(askSignedBy(ask, other.publicJwk), false);
   // Revoked from the phone: nothing is answered again.
   assert.equal(phone.revoke(fp), true);
   w.home.removeGrant();
   assert.deepEqual(w.home.grants(), []);
-  assert.throws(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
+  await assert.rejects(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
 });
 
-test("the recovery code unlocks it on the person's own device, and only the right code", t => {
+test("the recovery code unlocks it on the person's own device, and only the right code", async t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP }).lock();
   assert.deepEqual(w.home.load(w.home.unlockWithCode("four words and more")).tables, SNAP.tables);
@@ -153,7 +154,7 @@ test("the recovery code unlocks it on the person's own device, and only the righ
   assert.throws(() => none.home.unlockWithCode("anything"), { code: "not_found" });
 });
 
-test("moving the home to the person's own server keeps it: the same ciphertext arrives, still unlocks with the same phone, and the old server keeps only a marker", t => {
+test("moving the home to the person's own server keeps it: the same ciphertext arrives, still unlocks with the same phone, and the old server keeps only a marker", async t => {
   const w = world(t);
   const lease = w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP });
   w.home.save(lease, SNAP);
@@ -171,7 +172,7 @@ test("moving the home to the person's own server keeps it: the same ciphertext a
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(own.dir, "identity", "ident_alex", "snap-2.json"), "utf8")), before);
   for (const s of SECRETS) assert.ok(!everything(own.dir).includes(s), s);
   const { ask, secret } = there.beginUnlock();
-  const l = there.finishUnlock(ask, secret, approveUnlock(w.phone, ask));
+  const l = await there.finishUnlock(ask, secret, await approveUnlock(w.phone, ask));
   assert.deepEqual(there.load(l).tables, SNAP.tables);
   assert.deepEqual(there.load(there.unlockWithCode("four words and more")).state, SNAP.state, "and the recovery code too");
   assert.equal(there.save(l, SNAP), 3, "it carries on there");
@@ -179,7 +180,7 @@ test("moving the home to the person's own server keeps it: the same ciphertext a
   assert.throws(() => there.move(own), { code: "exists" });
 });
 
-test("a move checks every object against the manifest: a damaged one stops it with nothing moved or removed", t => {
+test("a move checks every object against the manifest: a damaged one stops it with nothing moved or removed", async t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], snapshot: SNAP }).lock();
   const file = path.join(w.server.dir, "identity", "ident_alex", "snap-1.json");
@@ -190,7 +191,7 @@ test("a move checks every object against the manifest: a damaged one stops it wi
   assert.deepEqual(to.list("identity/ident_alex"), []);
 });
 
-test("names are checked: a backend never reaches outside its folder", t => {
+test("names are checked: a backend never reaches outside its folder", async t => {
   const w = world(t);
   for (const bad of ["../x", "a/../../x", "/etc/passwd", "a//b", "a b"]) assert.throws(() => w.server.get(bad), { code: "bad_input" }, bad);
   assert.throws(() => new IdentityHome({ id: "../x", backend: w.server }), { code: "bad_input" });
