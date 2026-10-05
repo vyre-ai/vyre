@@ -28,7 +28,7 @@ export type StreamSource = {
   answer(ask: string, decision: "approve" | "deny"): void;
   stop(): void;
   /** Group chats: send to chosen assistants (two or more make a fan-out), keep a fan-out answer, react, pin, mark read. */
-  sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string }): void;
+  sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string }): void;
   /** The log's head when the box last opened the stream: frames up to it are history, shown at once. */
   head?(): number;
   /** Who the box says is looking ("person:owner"), once it has said. */
@@ -375,7 +375,10 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
     },
     sendGroup(text, o) {
       const message = `m${nextMsg++}`;
-      emit("user-message", { message, text, state: "sent" }, { author: VIEWER, message });
+      // A quoted reply (the frame's reply_to and quote): the quote is the message answered, as the log holds it.
+      const quoted = o.replyTo ? log.find((f) => f.message === o.replyTo || f.data?.message === o.replyTo) : null;
+      const qtext = quoted ? String(quoted.data?.text ?? "") : "";
+      emit("user-message", { message, text, state: "sent", ...(o.replyTo ? { reply_to: o.replyTo, quote: { message: o.replyTo, author: quoted?.author ?? VIEWER, text: qtext } } : {}) }, { author: VIEWER, message });
       if (o.parent) emit("thread-reply", { parent: o.parent }, { author: VIEWER, message });
       const c = new Clock();
       const tps = opts.tps ?? 30;

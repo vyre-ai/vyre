@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): quoted replies, WhatsApp style, in every chat. Swipe a message on a phone, or long-press it (or press Reply under it) on desktop and web; the composer shows the message with an x to cancel; the sent message carries a small quote of the original above its text; tapping the quote scrolls to the original and lights it up. The reply stays in the same timeline (frame fields reply_to and quote; the send input reply_to). Built against the shape I proposed to chat; the real field names are not confirmed.
+
 - feat(app): the calendar's times are read by lib/time: the viewer's own zone ("9:30 am"), and, once a space has a zone of its own, "9:00 am PT · 9:00 pm your time". The space zone is not read yet (windows have not named the field).
 
 - feat(app): every call to the box carries x-vyre-zone, the device's IANA zone, so the box reads a person's times in it (lib/time, platform-2; a copy of lib/time is in the tree until platform-2's typed version lands).

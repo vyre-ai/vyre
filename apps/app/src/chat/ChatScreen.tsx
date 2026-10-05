@@ -31,6 +31,7 @@ import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
 import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
+import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
 import { useChatMembers } from "./useChatMembers";
 import { queueFrom } from "./extras.js";
@@ -102,7 +103,13 @@ export function ChatScreen(p: ChatScreenProps) {
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
-  const [replyTo, setReplyTo] = useState<{ message: string; name: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
+  // Tapping a quote goes to the original and lights it up for a moment.
+  const [jump, setJump] = useState<{ key: string; n: number } | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowKeys = useRef<string[]>([]);
+  rowKeys.current = rows.map((r) => r.key);
   // The sealed note shows once per chat, on its first open. Storage can be missing or throw: then it shows again, never hides.
   const [sealedNote, setSealedNote] = useState(() => p.showSealedNote ?? !sealedNoteSeen(storage(), p.sessionId));
   useEffect(() => { if (sealedNote) markSealedNoteSeen(storage(), p.sessionId); }, [sealedNote, p.sessionId]);
@@ -125,7 +132,16 @@ export function ChatScreen(p: ChatScreenProps) {
             },
           }
         : {}),
-      onReplyTo: (message: string, name: string) => setReplyTo({ message, name }),
+      onReplyTo: (message: string, name: string, text?: string) => setReplyTo({ message, name, text: text ?? "" }),
+      flash,
+      onJumpTo: (message: string) => {
+        const at = jumpIndex(rowKeys.current, message);
+        if (at < 0) return;
+        setJump({ key: rowKeys.current[at], n: Date.now() });
+        setFlash(message);
+        if (flashTimer.current) clearTimeout(flashTimer.current);
+        flashTimer.current = setTimeout(() => setFlash(null), 1800);
+      },
       onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
@@ -143,11 +159,12 @@ export function ChatScreen(p: ChatScreenProps) {
       }
       store.social.markRead(store.group.last); // sending says you have read everything above
       const parent = replyTo?.message;
+      const quoted = replyTo;
       setReplyTo(null);
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(body, { to: o.to, fanout: o.fanout, parent, ...(o.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
+      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
       if (why) setNote(why);
     },
     [store, editing, actions, replyTo, highlights],
@@ -208,6 +225,7 @@ export function ChatScreen(p: ChatScreenProps) {
           <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
           <Text size="caption" tone="label" strong>Got it</Text>
         </Pressable> : null}<View style={{ height: 12 }} /></View>}
+            jumpTo={jump}
             jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
         )}
@@ -245,8 +263,8 @@ export function ChatScreen(p: ChatScreenProps) {
       {replyTo ? (
         <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
+          <View style={{ flex: 1, minWidth: 0, borderLeftWidth: 3, borderLeftColor: color.accent, paddingLeft: 8 }}><Text size="caption" strong tone="accent" numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>{replyTo.text ? <Text size="caption" tone="muted" numberOfLines={1}>{excerpt(replyTo.text)}</Text> : null}</View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, minWidth: 44, alignItems: "center", justifyContent: "center" }}><Icon name="x" /></Pressable>
         </View>
       ) : null}
 

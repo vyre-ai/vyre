@@ -65,8 +65,12 @@ export type BlockCtx = {
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
   onBranchFrom?: (uuid: string) => void;
-  /** Group chats: reply in a thread to a message (its id and its author's name). */
-  onReplyTo?: (message: string, name: string) => void;
+  /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
+  onReplyTo?: (message: string, name: string, text?: string) => void;
+  /** Tapping a quote goes to the original message and lights it up. */
+  onJumpTo?: (message: string) => void;
+  /** The message to light up for a moment after a jump. */
+  flash?: string | null;
   /** Highlight to assistant: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */

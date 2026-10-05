@@ -39,7 +39,7 @@ export type ChatStore = {
   readonly group: ReturnType<typeof createGroup>;
   subscribeGroup(f: () => void): () => void;
   /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
-  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
+  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */
   social: { keep(group: string, message: string): void; react(message: string, emoji: string, remove?: boolean): void; pin(message: string, pinned: boolean): void; markRead(upto: number): void };
   /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
@@ -217,11 +217,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     async sendTo(text, o) {
       if (!text.trim()) return null;
       const a = withActions(source);
-      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { to: o.to, ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
+      if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
+        const r = await a.sendGroupText(text, { to: o.to, ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
         return r.ok ? null : r.reason;
       }
-      if (source.sendGroup && (o.to.length || o.fanout || o.parent)) { source.sendGroup(text, o); return null; }
+      if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
       return store.send(text, o.mentions?.length ? { mentions: o.mentions } : undefined);
     },
     social: {
