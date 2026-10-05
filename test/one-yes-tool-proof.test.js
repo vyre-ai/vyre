@@ -15,7 +15,7 @@ import { tempHome } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
-const TOOLS = ["relay.enable", "relay.pair.start", "wink.phone.open"];
+const TOOLS = ["relay.enable", "relay.pair.start", "wink.phone.open", "wink.code.open"];
 
 /** @param {any} t @param {Record<string, string | undefined>} env */
 function withEnv(t, env) {
