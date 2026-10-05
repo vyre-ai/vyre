@@ -1031,6 +1031,15 @@ export function createGrantsStore(cfg) {
     },
     /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
     hasDefaultAssistant() { return memberOk({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space }); },
+    /**
+     * The chats this chain may read, by the same rule as chatRead (a person in it; an assistant or a model slot acting for such a person): their ids, newest first. The one place that answers "which chats am I in",
+     * so nothing else keeps a copy of the rule. @param {any} chain @returns {string[]}
+     */
+    chatMine(chain) {
+      const out = [];
+      for (const c of [...chats.values()].reverse()) { try { api.chatRead(chain, c.id); out.push(c.id); } catch (e) { if (!(e instanceof KernelError) || e.code !== "not_found") throw e; } }
+      return out;
+    },
     /** Is this person in this chat (and still a member)? Sync, for the Surfaces door's check when it opens a session for a chat, and for every later room or append decision. @param {string} person @param {string} id */
     chatHas(person, id) {
       const c = chats.get(String(id));

@@ -286,10 +286,11 @@ export default {
         const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
         // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
+        const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
         const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
-          if (!inChat(chain, r.data.chat)) return base;
+          if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
           return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };

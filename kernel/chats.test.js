@@ -645,3 +645,23 @@ test("the person's own assistant is never listed: it acts as its person, so a ch
   await C.change(carol, group.id, { remove_people: [BOB] });
   await assert.rejects(() => stream.chats.append(t.token, { body: "after bob left" }), { code: "not_found" });
 });
+
+test("chats.mine: the one answer to which chats a chain is in: the person's own, the assistant acting for them, nobody's else; never an owner or admin outside", async () => {
+  const { k, owner, bob, carol, ada, C } = await rig();
+  const a = await C.create(bob, { people: [CAROL] });
+  const b = await C.create(bob, {});
+  const c = await C.create(carol, {});
+  const mineOf = chain => k.gateway.grants.chats.mineIds(chain);
+  assert.deepEqual(mineOf(bob).sort(), [a.id, b.id].sort());
+  assert.deepEqual(mineOf(carol).sort(), [a.id, c.id].sort());
+  assert.deepEqual(mineOf(owner), [], "an owner in none");
+  assert.deepEqual(mineOf(ada), [], "an admin in none");
+  const asst = (person, session) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session });
+  assert.deepEqual(mineOf(asst(BOB, "m1")).sort(), [a.id, b.id].sort(), "the assistant acting for bob");
+  assert.deepEqual(mineOf(asst(OWNER, "m2")), [], "and for someone in none");
+  await C.change(bob, a.id, { remove_people: [CAROL] });
+  assert.deepEqual(mineOf(carol), [c.id], "a person who left is out at once");
+  // through the kernel handle the same list carries what Records knows (here no chat-record type: ids only)
+  const handle = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  assert.deepEqual((await handle.chats.mine(bob)).map(x => x.chat).sort(), [a.id, b.id].sort());
+});
