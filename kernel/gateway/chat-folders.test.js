@@ -92,3 +92,11 @@ test("Share to project is a kernel grant of drive.read on that one file: a membe
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt/../private.txt`), e => ["not_found", "bad_input"].includes(e.code), "not by a path trick");
   assert.ok(k);
 });
+
+test("a module's own service chain may write a chat's files and never reads them: a tool cannot read for a non-participant through it", async () => {
+  const { k, D, bob, dir, dan } = await rig();
+  const svc = k.gateway.serviceChain("work");
+  await D.put(bob, `${dir}/note.txt`, enc("hello"));
+  await assert.rejects(() => D.get(svc, `${dir}/note.txt`), { code: "not_found" });
+  await assert.rejects(() => D.get(dan, `${dir}/note.txt`), { code: "not_found" });
+});

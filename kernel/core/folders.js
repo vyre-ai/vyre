@@ -31,8 +31,9 @@ export function folderGuard(base, space, oracle) {
       if (!where || typeof input.action !== "string" || !input.action.startsWith("drive.")) return d;
       const chain = input.chain;
       const hops = isChain(chain) ? chain.hops : [];
-      // A module acting on its own service chain is governed by its manifest and the base decision (first-party code the Space installed), not by a person's place in a chat.
-      if (hops.length && hops[0].actor.kind === "service") return d;
+      // A module on its own service chain may WRITE a chat's files (the engine saving what a chat made), as the base decides; it never READS them, since a service chain carries no person and a tool that
+      // read for a caller through it would hand a non-participant the file. Reads go through the caller's own chain.
+      if (hops.length && hops[0].actor.kind === "service") return input.action === "drive.write" ? d : Object.freeze({ ...d, effect: "deny", reason: "not_found", obligations: Object.freeze([]) });
       const person = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
       const agents = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent").map((/** @type {any} */ h) => h.actor);
       const shape = Boolean(person) && hops.slice(1).every((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "service") && agents.length <= 1;
