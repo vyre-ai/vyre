@@ -7,7 +7,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { createPublicGate } from "./publicgate.js";
-import * as certsReal from "../../names/certs.js";
+import * as certsReal from "../../../lib/acme/certs.js";
 import { certPin } from "./gate.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "pubgate-"));

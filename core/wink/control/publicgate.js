@@ -4,7 +4,7 @@
 // A second gate on a public port, TLS, for the box's name (<name>.vyre.run), in front of the same Headscale as the loopback gate. A device that is paired to this
 // home joins directly, with no relay, once the name resolves to an address that reaches this port. It adds three things to the gate and reuses everything else:
 //
-//   certificate    core/names/acme.js (DNS-01 through the name directory, which holds the only vyre.run DNS credential) and core/names/certs.js (the store). The certificate
+//   certificate    lib/acme/acme.js (DNS-01 through the name directory, which holds the only vyre.run DNS credential) and lib/acme/certs.js (the store). The certificate
 //                  key is made once and reused at every renewal, so the pin the pairing hands out (the SPKI) stays the same for the life of the box.
 //   renewal        checked at start and then daily; a renewed certificate takes effect for the next handshake (gate.setTls).
 //   the address    the name's A record is published (directory.publish: the public IPv4 the directory sees this box at) only once the port is known to answer from outside
@@ -20,8 +20,8 @@
 // Every outside thing is a dependency (directory, ACME issue, the gate, the clock), so a test runs it all against fakes and a real run uses a test CA.
 
 import path from "node:path";
-import * as certsReal from "../../names/certs.js";
-import * as acmeReal from "../../names/acme.js";
+import * as certsReal from "../../../lib/acme/certs.js";
+import * as acmeReal from "../../../lib/acme/acme.js";
 import { createGate as realGate, certPin } from "./gate.js";
 
 const DAY = 86_400_000;
