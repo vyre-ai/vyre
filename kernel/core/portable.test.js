@@ -53,13 +53,14 @@ test("mintUuid writes the same bytes as before: time, version, variant and the r
 });
 
 test("the page cursor is the same base64url text as before and pages the same", () => {
-  const rows = [{ id: "a", n: 1 }, { id: "b", n: 2 }, { id: "c", n: 2 }, { id: "d", n: 3 }];
+  const rows = [{ id: "a", fields: { n: 1 } }, { id: "b", fields: { n: 2 } }, { id: "c", fields: { n: 2 } }, { id: "d", fields: { n: 3 } }];
   const sort = [{ field: "n", dir: "asc" }];
   const c = encodeCursor(rows[1], sort);
   assert.equal(c, Buffer.from(JSON.stringify([2, "b"])).toString("base64url"));
   const first = /** @type {any} */ (page(rows, { sort, page: { limit: 2 } }));
   assert.equal(first.rows.map((/** @type {any} */ r) => r.id).join(), "a,b");
-  const second = /** @type {any} */ (page(rows, { sort, page: { limit: 2, cursor: first.next ?? c } }));
+  assert.equal(first.next_cursor, Buffer.from(JSON.stringify([2, "b"])).toString("base64url"));
+  const second = /** @type {any} */ (page(rows, { sort, page: { limit: 2, cursor: first.next_cursor } }));
   assert.equal(second.rows.map((/** @type {any} */ r) => r.id).join(), "c,d");
   assert.deepEqual(page(rows, { sort, page: { limit: 2, cursor: "!!not a cursor" } }), { error: "invalid cursor" });
 });
