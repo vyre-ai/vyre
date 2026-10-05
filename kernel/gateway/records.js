@@ -647,7 +647,7 @@ export function createRecords(cfg) {
     const last = chain.hops[chain.hops.length - 1].actor;
     // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
-    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data, { attrs, urn: urn(type, id) }), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
     return rec;
   }
