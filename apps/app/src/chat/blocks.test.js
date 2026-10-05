@@ -99,3 +99,10 @@ test("the room note: a terminal or diff block keeps the server's line, a block w
   assert.ok(!("note" in /** @type {any} */ (normalizeBlock({ block: "terminal", command: "ls", output: "a", note: 5 }))), "only a string is a note");
   assert.equal(/** @type {any} */ (normalizeBlock({ block: "terminal", command: "x", output: "", note: "y".repeat(500) })).note.length, 120);
 });
+
+test("a watcher, a spend cap and a welcome come through as their own blocks; a watcher with no name is plain text", () => {
+  assert.deepEqual(normalizeBlock({ block: "watcher", name: "new-lead" }), { block: "watcher", name: "new-lead" });
+  assert.deepEqual(normalizeBlock({ block: "spend-cap", provider: "openai", cap: 5, line: "Paused at $5" }), { block: "spend-cap", provider: "openai", cap: 5, line: "Paused at $5" });
+  assert.deepEqual(normalizeBlock({ block: "welcome" }), { block: "welcome" });
+  assert.equal(normalizeBlock({ block: "watcher" }).block, "text");
+});

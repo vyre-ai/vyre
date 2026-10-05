@@ -4,6 +4,7 @@
 // is the typed placeholder chip and never a value. Callbacks (open terminal, open in Drive, Face ID,
 // take over) arrive in `ctx`: the screen decides what they do.
 
+import { WatcherCard, SpendCapCard, WelcomeCard } from "../../screens/chat-tools";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -448,6 +449,9 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "field": return <FieldChip block={block} />;
     case "draft": return <DraftBlock block={block} ctx={ctx} />;
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
+    case "watcher": return <WatcherCard name={block.name} />;
+    case "spend-cap": return <SpendCapCard data={{ provider: block.provider, ...(block.cap !== null ? { cap: block.cap } : {}), line: block.line }} />;
+    case "welcome": return <WelcomeCard />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;
     case "screen": return <ScreenFrames block={block} ctx={ctx} />;
     default: return <TextBlock block={block} />;

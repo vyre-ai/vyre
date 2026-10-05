@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the chat tools sheet gets the queued messages (so Send now works when the box names the queued id, frame field queued_id), and the watcher, spend-cap and welcome cards draw in the transcript as blocks. fix(app): with nobody signed in the shell asks the box once (records.me), shows "Sign in to Vyre" and mounts no screen, instead of 50 refused calls on load.
+
 - feat(app): a browser build that may claim a name (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes it with a passkey through claimIdentityWithPasskey, and a kept passkey is restored as a passkey device key. RC1 browsers stay blocked as before.
 
 - feat(app): a chat's header has a Chat tools button that opens the chat tools sheet (fork, effort, mode, mention, context, transcript); a mention picked there is added to the draft. The app's deck imports now read src/vendor/deck (Find's command parser, session titles and answer-with added there; commands.js typed so tsc is clean).

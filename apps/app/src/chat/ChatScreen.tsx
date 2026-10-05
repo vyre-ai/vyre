@@ -154,7 +154,7 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={meta.queue.filter((q) => typeof q.qid === "number").map((q) => ({ queued: q.qid as number, text: q.text }))} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
