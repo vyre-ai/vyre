@@ -10,6 +10,9 @@
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
 #
+#   --version V        install release V (the app that runs `vyre box add` passes its own); latest takes whatever
+#                      the release site serves. A site serving another version stops the install, saying which.
+#
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
 # when the image can be pulled, and VYRE_CODE: the setup code the browser shows, for the
@@ -39,6 +42,7 @@ set -eu
 DRY=0
 YES=0
 FROM=""
+WANT=${VYRE_VERSION:-}
 DEVSIGNED=0
 UNINSTALL=0
 PURGE=0
@@ -313,6 +317,17 @@ get_sums() {
   fi
 }
 
+# check_version: the version this install was asked for (--version, or VYRE_VERSION) against the one the release site serves. The release
+# site holds one release, so a different version is refused with both named, never installed quietly. "latest" and no version take what is served.
+check_version() {
+  case "$WANT" in ""|latest) return 0 ;; esac
+  case "$WANT" in *[!0-9A-Za-z.-]*) die "--version $WANT is not a version like 0.2.9" ;; esac
+  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves.)"
+  get VERSION
+  have=$(tr -d '[:space:]' <"$TMP/VERSION")
+  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), or point VYRE_BOX_URL at a site that serves $WANT."
+}
+
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
 get() {
   mkdir -p "$TMP/$(dirname "$1")"
@@ -429,6 +444,7 @@ write_stack() {
       done_step "nothing downloaded (dry run)"
     else
       get_sums
+      check_version
       if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
         get release.json
       fi
@@ -993,13 +1009,25 @@ mac_server() {
 }
 
 main() {
-  if [ "$(uname -s)" = Darwin ]; then mac_server "$@"; exit $?; fi
+  if [ "$(uname -s)" = Darwin ]; then
+    # the Mac server script takes no version: it installs what the site serves
+    a=""; skip=0
+    for x in "$@"; do
+      if [ "$skip" = 1 ]; then skip=0; continue; fi
+      case "$x" in --version) skip=1 ;; --version=*) ;; *) a="$a $x" ;; esac
+    done
+    # shellcheck disable=SC2086
+    set -- $a
+    mac_server "$@"; exit $?
+  fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) DRY=1 ;;
       --yes|-y) YES=1 ;;
       --from) [ $# -ge 2 ] || die "--from needs a folder"; FROM=$2; shift ;;
       --from=*) FROM=${1#--from=} ;;
+      --version) [ $# -ge 2 ] || die "--version needs a version (or latest)"; WANT=$2; shift ;;
+      --version=*) WANT=${1#--version=} ;;
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;

@@ -222,6 +222,7 @@ async function install(r, args, env, group = false) {
  */
 export async function add(target, opts = {}) {
   const env = opts.env || process.env;
+  const want = opts.version || VERSION;
   if (!validTarget(target)) { out("  vyre box add <user@host>"); return 1; }
   /** @type {import("../ssh.js").Remote|null} */
   let r = null;
@@ -237,7 +238,10 @@ export async function add(target, opts = {}) {
       out(`\n  Vyre will, on ${r.target}:`);
       const no = await agree(plan(p, env), "Go ahead?", opts.yes);
       if (no !== null) return no;
-      const code = await install(r, ["--yes"], env, needsGroup(p));
+      // The server gets this Mac's own version unless the person names another ("latest" takes whatever is published): a server that
+      // quietly ran an older release than the app talking to it would make every walk test the wrong build.
+      out(want === "latest" ? "  Vyre will install the latest published release." : `  Vyre will install ${signal(want)}, the version of this Mac's Vyre${opts.version ? " you asked for" : ""}.`);
+      const code = await install(r, ["--yes", "--version", want], env, needsGroup(p));
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
     }
     // The target that worked is the one saved, so update, backup and move reuse it.
@@ -519,12 +523,20 @@ async function remove(flags) {
 
 async function run(args) {
   AGAIN = ["box", ...args.filter(a => a !== "--json")];
+  // --version <v> (or --version=<v>): which release `box add` puts on the server; the default is this Mac's own version.
+  let version;
+  args = args.filter((a, i, all) => {
+    if (a === "--version") { version = all[i + 1]; return false; }
+    if (a.startsWith("--version=")) { version = a.slice(10); return false; }
+    return !(i > 0 && all[i - 1] === "--version");
+  });
+  if (version !== undefined && !/^(latest|\d+\.\d+\.\d+(-[a-z]+\.\d+)?)$/.test(version)) return usageError(`vyre box --version ${version || ""}: a version like 0.2.9, or latest`, USAGE);
   const flags = Object.fromEntries(args.filter(a => a.startsWith("--")).map(a => [a.slice(2), true]));
   const rest = args.filter(a => !a.startsWith("--"));
   const [sub, arg] = rest;
   switch (sub) {
     case undefined: case "status": return status();
-    case "add": return add(arg, { yes: Boolean(flags.yes) });
+    case "add": return add(arg, { yes: Boolean(flags.yes), ...(version ? { version } : {}) });
     case "update": return update();
     case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
@@ -533,12 +545,12 @@ async function run(args) {
   }
 }
 
-const usage = "vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]";
-const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
+const usage = "vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]";
+const USAGE = "vyre box add <user@host> [--version <v>|latest] | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 const verbs = [
   { verb: "status", summary: "your box's address, and whether it answers from here", usage: "", read: true },
-  { verb: "add", summary: "put Vyre on a server you can SSH to, then pair this Mac with it", usage: "<user@host> [--yes]" },
+  { verb: "add", summary: "put Vyre on a server you can SSH to, then pair this Mac with it", usage: "<user@host> [--yes] [--version <v>|latest]" },
   { verb: "update", summary: "run vyre update on the box, and compare its version with this Mac's", usage: "" },
   { verb: "backup", summary: "copy the box's volumes to a file here (the box stops while it copies)", usage: "[file] [--force]" },
   { verb: "move", summary: "move the box to another server, same name and address", usage: "<user@newhost> [--yes]" },
