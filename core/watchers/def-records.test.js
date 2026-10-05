@@ -84,3 +84,33 @@ test("a person who deletes a watcher's record deletes the watcher: it is not mad
   assert.equal(fs.existsSync(dir), false, "and the folder went with it");
   assert.equal((await cli("watchers.list")).data.watchers.some((/** @type {any} */ w) => w.name === "northgate-inbox"), false, "the watcher is gone from the list");
 });
+
+test("DW-4: a short or failed list of records never deletes a person's watcher: each is asked for by name first", async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createDefs, MIGRATIONS } = await import("./defs.js");
+  const root = tempHome(t), dir = path.join(root, "watchers");
+  const mk = (/** @type {string} */ name) => { fs.mkdirSync(path.join(dir, name), { recursive: true }); fs.writeFileSync(path.join(dir, name, "watcher.json"), SPEC.replace("northgate-inbox", name)); fs.writeFileSync(path.join(dir, name, "watch.js"), CODE); };
+  mk("northgate-inbox");
+  const db = new DatabaseSync(":memory:"); for (const m of MIGRATIONS) db.exec(m);
+  db.prepare("INSERT INTO watchers_defsync (name, hash) VALUES (?, ?)").run("northgate-inbox", hashOf(SPEC, CODE));
+  const row = { id: "r1", version: 1, data: { name: "northgate-inbox", spec: SPEC, code: CODE, hash: hashOf(SPEC, CODE) } };
+  const mode = { list: "short", byName: "found" };
+  const kernel = { serviceChain: () => ({}), records: { query: async (/** @type {any} */ _c, /** @type {string} */ _t, /** @type {any} */ spec) => {
+    if (spec && spec.filter) { if (mode.byName === "fail") throw new Error("the records store is busy"); return { rows: mode.byName === "found" ? [row] : [], next_cursor: null }; }
+    return { rows: mode.list === "short" ? [] : [row], next_cursor: null };
+  }, create: async () => row, update: async () => row, remove: async () => ({}) } };
+  const gone = /** @type {string[]} */ ([]);
+  const defs = createDefs({ kernel, dir, db, log: () => {}, onGone: n => gone.push(n) });
+  // the list comes back short but the record is there: nothing is removed
+  assert.equal((await defs.sync()).removed, 0);
+  assert.ok(fs.existsSync(path.join(dir, "northgate-inbox")) && gone.length === 0, "a truncated list deleted nothing");
+  // the list comes back short and the direct question fails: nothing is removed
+  mode.byName = "fail";
+  assert.equal((await defs.sync()).removed, 0);
+  assert.ok(fs.existsSync(path.join(dir, "northgate-inbox")) && gone.length === 0, "a failed question deleted nothing");
+  // only a clean answer that there is no such record removes the watcher
+  mode.byName = "none";
+  assert.equal((await defs.sync()).removed, 1);
+  assert.deepEqual(gone, ["northgate-inbox"]);
+  assert.equal(fs.existsSync(path.join(dir, "northgate-inbox")), false);
+});

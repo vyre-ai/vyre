@@ -74,6 +74,14 @@ export function createDefs({ kernel, dir, db, log = () => {}, onGone = () => {} 
     return out;
   }
 
+  /** One record by its name, asked for directly: the record, null for a clean "none", undefined when the question itself failed. @param {string} name */
+  async function byName(name) {
+    try {
+      const r = await kernel.records.query(chain(), DEF, { filter: { field: "name", op: "eq", value: name }, page: { limit: 1 } });
+      return r.rows[0] || null;
+    } catch { return undefined; }
+  }
+
   async function run() {
     const recs = await allRecords();
     const names = new Set([...folderMod.names(dir), ...recs.keys()]);
@@ -83,6 +91,12 @@ export function createDefs({ kernel, dir, db, log = () => {}, onGone = () => {} 
       const f = readFolder(name), rec = recs.get(name);
       const was = /** @type {any} */ (last.get(name))?.hash;
       // it had a record once and has none now: the person deleted the record, which deletes the watcher
+      // The list is not trusted for a removal: a short page, a cap or a room rule would delete a person's real watcher. The record is asked for directly by name, and only a clean "none" removes anything.
+      if (f && !rec && was !== undefined) {
+        const direct = await byName(name);
+        if (direct === undefined) { log(`watchers: ${name} is missing from the list of records but could not be asked for directly; nothing was removed`); continue; }
+        if (direct) { recs.set(name, direct); continue; }
+      }
       if (f && !rec && was !== undefined) { try { onGone(name); } catch (e) { log(`watchers: could not remove ${name} after its record was deleted: ${/** @type {Error} */ (e).message}`); } fs.rmSync(path.join(dir, name), { recursive: true, force: true }); dropLast.run(name); done.removed++; continue; }
       if (f && !rec) { await kernel.records.create(chain(), DEF, fieldsOf(name, f.spec, f.code)); setLast.run(name, f.hash); done.created++; continue; }
       if (!f && rec) { writeFolder(name, String(rec.data.spec || ""), String(rec.data.code || "")); setLast.run(name, hashOf(String(rec.data.spec || ""), String(rec.data.code || ""))); done.written++; continue; }
