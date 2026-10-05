@@ -1189,3 +1189,37 @@ test("an owner's paired device with no person session is refused on a tool that 
   assert.ok(!(await reg.call("zzwho.me", {}, "cli", {})).error, "a local surface needs no session");
   assert.ok(!(await reg.call("zzwho.open", {}, device, {})).error, "an open tool is unchanged");
 });
+
+test("modules: ctx.kernel.for(space).call runs a declared tool in that Space after its own authorize; no right there means refused, and a forged in_space is dropped", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  /** @type {any[]} */ const asked = [];
+  // the other Space's gateway: it allows only the chain whose first hop is "per_member"
+  const gateway = { authorize: async (/** @type {any} */ q) => { asked.push([q.action, q.resource]); return { effect: q.chain.hops[0].actor.id === "per_member" ? "allow" : "deny" }; } };
+  const kernelFor = () => ({ for: (/** @type {string} */ id) => ({ space: id, hosted: true, gateway }), space: "spc_home" });
+  const notes = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.mine" }, { name: "notes.there", crossSpace: "records.read" }, { name: "notes.call" }] }, needs: { kernel: { actions: [] } } };
+  writeModule(root, "notes", notes, `export default { async start(ctx) {
+    ctx.tool("notes.mine", { effect: "read", input: { type: "object" }, run: async () => ({ ok: true }) });
+    ctx.tool("notes.there", { effect: "read", input: { type: "object" }, run: async (_i, meta) => ({ in_space: meta.in_space ?? null, chain: meta.in_space_chain ? meta.in_space_chain.hops[0].actor.id : null }) });
+    ctx.tool("notes.call", { effect: "read", input: { type: "object" }, run: async (i) => ctx.kernel.for(i.space).call(i.tool, {}, i.chain) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, kernelFor, firstPartyRoots: [root] });
+  await reg.start(discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  t.after(() => db.close());
+  const chainOf = (/** @type {string} */ id, space = "spc_other") => ({ space, hops: [{ actor: { kind: "person", id, space } }] });
+  const go = (/** @type {string} */ tool, /** @type {any} */ chain, space = "spc_other") => reg.call("notes.call", { space, tool, chain }, "cli");
+  const ok = await go("notes.there", chainOf("per_member"));
+  assert.deepEqual(ok.data && ok.data.data, { in_space: "spc_other", chain: "per_member" }, "the tool ran in that Space under the chain held there");
+  assert.deepEqual(asked.at(-1), ["records.read", "vyre://spc_other/tool/notes.there"]);
+  assert.equal((await go("notes.there", chainOf("per_stranger"))).data.error.code, "denied", "a chain with no right in that Space is refused");
+  assert.equal((await go("notes.there", chainOf("per_member", "spc_home"))).data.error.code, "denied", "a chain built in another Space is refused");
+  assert.equal((await go("notes.mine", chainOf("per_member"))).data.error.code, "not_declared", "a tool that does not declare crossSpace is never run that way");
+  const before = asked.length;
+  assert.equal((await go("notes.there", null)).data.error.code, "denied");
+  assert.equal(asked.length, before, "no chain, no authorize call and no run");
+  // a client cannot claim to run in another Space by its own meta
+  const forged = await reg.call("notes.there", {}, "cli", { in_space: "spc_other", in_space_chain: chainOf("per_member") });
+  assert.deepEqual(forged.data, { in_space: null, chain: null });
+});

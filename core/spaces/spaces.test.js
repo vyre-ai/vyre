@@ -59,7 +59,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false, wink = false, kernelFor = undefined } = {}) {
+async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -86,7 +86,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined 
   const logs = [];
   const seen = [];
   events.on("*", e => seen.push(e));
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
+  const reg = new Registry({ db, events, config: { role: "box", ...(machine ? { machine } : {}), name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
@@ -236,6 +236,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const list = await d.ok("spaces.list");
   assert.equal(list.length, 1);
   assert.deepEqual([list[0].name, list[0].role, list[0].status, list[0].workspaceId], ["harlow.vyre.run", "owner", "done", null]);
+  assert.equal(list[0].tier, "basic", "a space whose home is a device is Basic");
   const got = await d.ok("spaces.get", { space: "harlow" });
   assert.deepEqual([got.owners, got.members], [1, 1]);
   assert.ok(got.warnings.some(x => x.code === "single_owner"));
@@ -984,41 +985,40 @@ test("the transport's ports: a paired device is an entry, the entry port answers
 });
 
 
-test("space creation asks the kernel which store it would use: a server too small for the larger one needs a confirmation in the kernel's words, and only 'create' makes the space, with the flag", async t => {
+test("space creation asks the kernel which store it would use: a machine that cannot run Twenty makes nothing and offers the person's server in the kernel's words", async t => {
   const w = world(t);
-  const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
+  const TEXT = "This machine cannot run the record store for a new space (Twenty), so the space was not made here. Put it on your server instead.";
   const hosts = [];
   let small = true;
   const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
-      storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
-      host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
+      storePlan: async () => (small ? { store: "none", confirm: { text: TEXT, choices: ["server", "cancel"] } } : { store: "twenty" }),
+      host: async o => { hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
   const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
-  // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
+  // cannot run Twenty: nothing is made, and the person is shown exactly the kernel's words and the two choices
   const ask = await d.ok("spaces.create", args);
   assert.equal(ask.status, "needs_confirmation");
-  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["create", "cancel"] });
+  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["server", "cancel"] });
   assert.equal(hosts.length, 0, "the Space is never made first and explained after");
   assert.equal((await d.ok("spaces.list")).length, 0);
   // cancel: still nothing
   assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "cancel" })).status, "cancelled");
   assert.equal(hosts.length, 0);
-  // create: hosted with the flag
-  const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
-  assert.equal(made.status, "done", JSON.stringify(made));
-  assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
-  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
-  const label = await d.ok("spaces.label", {}, "module:vyred");
-  assert.equal(label.name, "harlow.vyre.run");
-  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
-  // a server with room for the larger store: no question, no flag
+  // server: pointed at the person's server, still nothing here
+  assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "server" })).status, "use_server");
+  assert.equal(hosts.length, 0);
+  // a machine that can run Twenty: no question
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
   assert.equal(big.status, "done", JSON.stringify(big));
-  assert.equal(hosts[1].accept_builtin_store, undefined);
+  assert.deepEqual(hosts.map(h => h.name), ["northwind"]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "northwind.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   void w;
 });
 
@@ -1318,5 +1318,32 @@ test("the device reaches the paired server over the Wink peer session when the d
   hooks.sessionFor = async () => { throw new Error("closed"); };
   const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.equal(down.error?.code, "server_unreachable");
+  void w;
+});
+
+test("spaces.list tier: a space on this computer is cloud when this machine is a server, basic on a device", async t => {
+  const w = world(t);
+  const d = await device(t, { machine: "server" });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  await d.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["cloud"]);
+  void w;
+});
+
+test("spaces.tier: the home's tier from the machine role, the Cloud spaces the person is in, and an unknown space refused", async t => {
+  const w = world(t);
+  const dev = await device(t);
+  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [] }, "a device with no space: Basic, no Cloud spaces");
+  await dev.ok("spaces.identity.create", { name: "alex" });
+  const s = await dev.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [] }, "a space on a device is Basic");
+  assert.equal((await dev.call("spaces.tier", { space: "spc_zzzzzzzzzzzz" }, "module:planner")).error?.code, "not_found");
+  const srv = await device(t, { machine: "server" });
+  await srv.ok("spaces.identity.create", { name: "sam" });
+  const c = await srv.ok("spaces.create", { name: "harbor", displayName: "Harbor Bakery", home: { kind: "this-computer", confirmed: true } });
+  const r = await srv.ok("spaces.tier", {}, "module:planner");
+  assert.equal(r.tier, "cloud");
+  assert.deepEqual(r.cloud.map(x => [x.id, x.label]), [[c.space, "harbor"]]);
+  assert.deepEqual(Object.keys(r.cloud[0]).sort(), ["id", "label", "name"], "id, name and label, nothing else");
   void w;
 });

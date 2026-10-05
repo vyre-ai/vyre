@@ -25,12 +25,15 @@
 // module was down is lost (a hard crash may repeat the last 100 ms of one thread; a stop is exact).
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { migrate } from "../store/index.js";
 import { createAdapter } from "./adapter.js";
 import { whoAnswers, mentionedIn } from "./routing.js";
 import { validEnc } from "./protocol.js";
 import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
+import { presenceFor } from "./presence.js";
 
 const MIGRATIONS = [`
   CREATE TABLE stream_groups_members (
@@ -43,7 +46,11 @@ const MIGRATIONS = [`
   );
   CREATE TABLE stream_groups_marks (
     person TEXT NOT NULL, session TEXT NOT NULL, upto INTEGER NOT NULL, PRIMARY KEY (person, session)
-  );`];
+  );`,
+// One Chat: a member that is a run started outside the stream (kind 'run') is kept whatever the kernel's list of assistants says: it is the run's slot, not an agent somebody added.
+`ALTER TABLE stream_groups_members ADD COLUMN kind TEXT;`,
+// A message sent while a turn works is steered into it at its next step by default; `queue` waits for the turn to end (and can be taken back).
+`ALTER TABLE stream_groups_outbox ADD COLUMN mode TEXT;`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -70,7 +77,7 @@ const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
 /**
- * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
+ * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
  *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
@@ -106,10 +113,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const q = {
     members: db.prepare("SELECT * FROM stream_groups_members WHERE grp = ?"),
     allMembers: db.prepare("SELECT * FROM stream_groups_members"),
-    upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event) VALUES (?,?,?,?,?,?,?,?)
-      ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer`),
+    upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
-    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface) VALUES (?,?,?,?,?,?,?)"),
+    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode) VALUES (?,?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
     outOpen: db.prepare("SELECT * FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid"),
     mark: db.prepare("INSERT INTO stream_groups_marks (person, session, upto) VALUES (?,?,?) ON CONFLICT(person, session) DO UPDATE SET upto = excluded.upto"),
@@ -117,8 +124,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** @param {any} r @returns {Member} */
   const memberOf = r => ({ grp: String(r.grp), who: String(r.who), name: String(r.name || shortOf(String(r.who))), thread: r.thread ? String(r.thread) : null, cwd: r.cwd ? String(r.cwd) : null,
-    asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
-  const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last);
+    asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, kind: r.kind ? String(r.kind) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
+  const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last, m.kind || null);
 
   // ---- the kernel's chat (ctx.kernel on): tokens with the chat in them, and chats.append ------------------
 
@@ -176,7 +183,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     for (const p of wantPeople) if (!g.people.has(p)) join(grp, p);
     for (const b of wantBots) if (!g.bots.has(b)) join(grp, b);
     for (const p of [...g.people]) if (!wantPeople.has(p)) { g.people.delete(p); g.names.delete(p); closeSpan(g, p, logs.get(grp).append("participant-left", { who: p }).cur); }
-    for (const [b, m] of [...g.bots]) if (!wantBots.has(b)) { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); closeSpan(g, b, logs.get(grp).append("participant-left", { who: b }).cur); }
+    for (const [b, m] of [...g.bots]) if (!wantBots.has(b) && m.kind !== "run") { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); closeSpan(g, b, logs.get(grp).append("participant-left", { who: b }).cur); }
     if (g.dflt && !g.bots.has(g.dflt)) g.dflt = null;
     return g;
   }
@@ -247,13 +254,13 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     for (const r of q.members.all(grp)) { const m = memberOf(r); g.bots.set(m.who, m); g.names.set(m.who, m.name); if (m.thread) byThread.set(m.thread, m); }
     for (const f of logs.get(grp).read(0)) {
       const d = f.data || {};
-      if (f.type === "session.participant-joined") {
+      if (f.type === "chat.participant-joined") {
         if (d.name) g.names.set(d.who, d.name);
         if (d.who.startsWith("person:")) g.people.add(d.who);
         if (d.role === "default") g.dflt = d.who;
         openSpan(g, d.who, f.cur);
-      } else if (f.type === "session.participant-left") { g.people.delete(d.who); g.bots.delete(d.who); closeSpan(g, d.who, f.cur); }
-      if (f.author && (f.type === "session.user-message" || f.type === "session.text-delta")) g.previous = f.author;
+      } else if (f.type === "chat.participant-left") { g.people.delete(d.who); g.bots.delete(d.who); closeSpan(g, d.who, f.cur); }
+      if (f.author && (f.type === "chat.user-message" || f.type === "chat.text-delta")) g.previous = f.author;
     }
     return g;
   }
@@ -309,6 +316,15 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (g.people.size > 0 && !g.people.has(who)) throw fail("not_found", "no such session");
   };
   const sessionOf = (/** @type {any} */ i) => { const s = String(i.chat || ""); if (!ID.test(s)) throw fail("bad_input", "chat must be a chat id"); return s; };
+
+  // ---- live presence: who is typing, and what an assistant is doing (ephemeral frames, never logged or replayed) ----------------------------------------------------------------------
+
+  /** @type {Map<string, ReturnType<typeof presenceFor>>} */ const presences = new Map();
+  const presenceOf = (/** @type {string} */ grp) => { let p = presences.get(grp); if (!p) { p = presenceFor(logs.get(grp), now, 1000); presences.set(grp, p); } return p; };
+  /** What a member is doing now, in a few words ("Read src/intake.ts"): one line per author, at most once a second. @param {Member} m @param {string} what */
+  function doing(m, what) { try { m.doing = true; presenceOf(m.grp).set(m.who, "doing", String(what || "").replace(/\s+/g, " ").slice(0, 120) || undefined); } catch { /* a notice, never a stop */ } }
+  /** The member is not doing anything now: the line clears at once. @param {Member} m */
+  function idle(m) { if (!m.doing) return; m.doing = false; try { presenceOf(m.grp).clear(m.who); logs.get(m.grp).emit("presence", { who: m.who, state: "idle" }, { author: m.who }); } catch { /* a notice, never a stop */ } }
 
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
@@ -423,6 +439,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @param {Member} m
    */
   async function endTurn(m) {
+    idle(m);
     const buf = m.buf; if (!buf) return;
     for (const [id, b] of [...buf]) {
       if (id === ACT) { buf.delete(ACT); if (m.refused) m.refused.delete(ACT); if (b.h) { try { await b.h.close({ text: "" }); } catch {} } continue; }
@@ -432,6 +449,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** Not a message: tools, asks, files. Written through the handle of the reply that streams, else the turn's own. @param {Member} m @param {any} s */
   async function activity(m, s) {
+    if (s.kind === "tool-started") doing(m, s.data && (s.data.summary || s.data.tool));
     if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     const m0 = m.buf || (m.buf = new Map()); m.refused ||= new Set();
     /** @type {any} */ let b = null; let message = ACT;
@@ -594,6 +612,69 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (m.held) m.held.push(e); else project(m, e);
   }
 
+  /** A chat's own working folder, where a run with no folder of its own works: `<home>/chats/<chat id>/work`. @param {string} grp */
+  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); const d = path.join(String(root), "chats", grp, "work"); fs.mkdirSync(d, { recursive: true }); return d; };
+
+  // ---- runs started outside the stream (One Chat) -----------------------------------------------------
+
+  /**
+   * Read a run's history into the group and then follow it: the person's words and the run's replies, in order, as the chat's own transcript. The replies go through the kernel like any (the reply
+   * handle of the run's own session); the person's words are written as they were said. `asker` is who the replies act for.
+   * @param {Member} m @param {string} asker
+   */
+  async function seedRun(m, asker) {
+    byThread.set(String(m.thread), m);
+    m.held = [];
+    /** @type {any[]} */ let events = [];
+    try { const r = await ctx.call("threads.get", { thread: m.thread, limit: 1000 }); events = r && r.data && Array.isArray(r.data.events) ? r.data.events : []; }
+    catch (err) { log(`seed ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+    m.asker = asker; m.answer = `h.${String(m.thread).slice(0, 8)}`; m.msgs = new Map();
+    for (const ev of events) {
+      if (!EVENTS.test(ev.type)) continue;
+      const id = Number(ev.id);
+      if (!(id > m.last)) continue;
+      m.last = id;
+      /** @type {any[]} */ let specs = [];
+      try { specs = m.ad.event({ ...ev, thread: m.thread }); } catch (err) { log(`${ev.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+      for (const sp of specs) {
+        if (sp.kind === "user-message") {
+          await (m.pq || Promise.resolve());
+          try { logs.get(m.grp).append("user-message", { ...sp.data, state: "sent", history: true }, { author: asker, message: String(sp.data.message) }); } catch { /* a word that cannot be shown is left out */ }
+        } else if (!SKIP.has(sp.kind) || sp.kind === "status") projectKernel(m, [sp]);
+      }
+    }
+    await (m.pq || Promise.resolve());
+    const held = m.held; m.held = null;
+    for (const e of held) project(m, e);
+    m.asker = null; m.answer = null; m.msgs = new Map();
+    dirty.add(m);
+    if (!timer && !stopped) { timer = setTimeout(flush, 100); timer.unref?.(); }
+  }
+
+  /**
+   * One Chat: a chat whose run was started outside the stream (the CLI, a terminal, a Flow, the assistant) continues here. Its runs become the chat's members (an agent's run is that agent's slot, a
+   * run with no agent is a model slot `model:<provider>/<model>#<id>`), answering on their own threads, so a message sent in the chat goes to the run that is already there and the transcript is one.
+   * Done once per run, at a send. @param {string} grp @param {string} asker the person speaking (`person:per_x`)
+   */
+  async function adoptRuns(grp, asker) {
+    if (!kernelOn()) return;
+    const r = await ctx.call("threads.of-chat", { chat: grp }).catch(() => null);
+    const runs = r && r.data && Array.isArray(r.data.runs) ? r.data.runs : [];
+    const g = group(grp);
+    for (const run of runs) {
+      const thread = String(run.thread);
+      if ([...g.bots.values()].some(x => x.thread === thread) || byThread.has(thread)) continue;
+      const who = run.agent ? `assistant:${run.agent}` : String(run.slot || `model:${run.provider || "claude"}/${run.model || "default"}#${parseInt(thread.slice(0, 5), 16) % 1000000}`);
+      let m = g.bots.get(who);
+      if (m && m.thread) continue; // that slot already answers on another thread of its own
+      if (!m) { join(grp, who, { name: run.name ? String(run.name) : undefined }); m = g.bots.get(who); }
+      if (!m) continue;
+      m.thread = thread; m.kind = "run"; save(m);
+      await seedRun(m, asker);
+    }
+    if (!g.dflt) { const only = [...g.bots.keys()]; if (only.length === 1) g.dflt = only[0]; }
+  }
+
   // ---- delivery -----------------------------------------------------------------------------------
 
   /** The kernel's person id from an actor string (`person:per_x` to `per_x`); the Switchboard refuses any other form. @param {string} a */
@@ -611,15 +692,23 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const run = (/** @type {() => Promise<any>} */ f) => (ctx.events && typeof ctx.events.withOrigin === "function" && !ctx.events.origin() ? ctx.events.withOrigin(surface, f) : f());
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
-      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn }));
+      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...(m.who.startsWith("model:") ? { slot: m.who } : {}), ...turn }));
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const r = await run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn }));
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...turn }));
+      let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
+      // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
+      if (r.data && r.data.sent === false && r.data.holder && !r.data.queued && r.data.queued_id == null) {
+        const l = await run(() => ctx.call("threads.lease", { thread: m.thread, surface }));
+        if (l.error) throw fail(l.error.code || "failed", l.error.message);
+        r = await send();
+        if (r.error) throw fail(r.error.code || "failed", r.error.message);
+      }
       return r.data;
     }
     return undefined;
@@ -690,7 +779,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const message = typeof i.message === "string" && ID.test(i.message) ? i.message : crypto.randomUUID();
         const out = logs.get(grp);
         join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
-        const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+        const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
         if (!had && kernelOn()) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
         if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
@@ -702,7 +791,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const out = logs.get(grp);
       const g = group(grp);
       // A repeat of a message this group already holds: nothing is appended again; any delivery not yet taken is retried.
-      const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+      const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
       const cwd = typeof i.cwd === "string" ? i.cwd : undefined;
       join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
       // Kernel on: `default` only chooses among the assistants the kernel lists (routing, not membership).
@@ -717,9 +806,18 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (had) {
         const rows = q.outOpen.all().filter(r => r.grp === grp);
         for (const r of rows) void schedule(r);
-        const fo = out.read(0).find(f => f.type === "session.fanout" && f.data.message === message);
+        const fo = out.read(0).find(f => f.type === "chat.fanout" && f.data.message === message);
         const answers = rows.map(r => ({ who: String(r.who), message: String(r.answer) }));
         return { session: grp, message, duplicate: true, ...(fo ? { group: fo.data.group, answers: fo.data.members } : { answers }) };
+      }
+      await adoptRuns(grp, author);
+      // One Chat: a chat of one person with nobody in it who answers yet (a new chat) gets the default model slot, and this send starts its run in the chat. A chat of several people never does: an assistant
+      // does not jump into a conversation between people.
+      if (kernelOn() && g.bots.size === 0 && g.people.size === 1 && !(Array.isArray(i.to) && i.to.length)) {
+        const who = `model:claude/default#${100000 + (crypto.randomBytes(3).readUIntBE(0, 3) % 899999)}`;
+        join(grp, who, { role: "default", cwd: chatFolder(grp) });
+        const slot = g.bots.get(who);
+        if (slot) { slot.kind = "run"; save(slot); g.dflt = who; }
       }
       const parts = participants(g);
       const mentions = mentionedIn({ participants: parts, text, mentions: i.mentions });
@@ -735,7 +833,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (to.length > 8) throw fail("bad_input", "at most 8 assistants answer one message");
       for (const id of to) {
         const m = g.bots.get(id);
-        if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
+        if (m && !m.thread && !m.cwd && !cwd && kernelOn()) { m.cwd = chatFolder(grp); save(m); } // a run with no folder of its own works in the chat's
+        else if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
       }
 
       // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
@@ -756,10 +855,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       let groupId;
       if (answers.length >= 2) { groupId = typeof i.group === "string" && ID.test(i.group) ? i.group : `g.${message}`; out.append("fanout", { group: groupId, message, members: answers }, { author, message }); }
       const surface = typeof i.surface === "string" ? i.surface : "deck";
+      const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text, asker: author, answer: a.message, surface };
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text, asker: author, answer: a.message, surface, mode };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
-        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface);
+        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode);
         return row;
       });
       for (const r of rows) void schedule(r);
@@ -824,6 +924,17 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       try { return await run; } finally { if (inflight.get(key) === run) inflight.delete(key); }
     },
 
+    /** The caller is typing in the chat (on: false: not any more). Ephemeral: one frame per person every 3 seconds, never logged. @param {any} i @param {any} meta */
+    typing(i, meta) {
+      const grp = sessionOf(i);
+      const author = personOf(meta, i);
+      mustBeIn(grp, author);
+      const p = presenceOf(grp);
+      if (i.on === false) { p.clear(author); logs.get(grp).emit("presence", { who: author, state: "idle" }, { author }); return { session: grp }; }
+      p.set(author, "typing");
+      return { session: grp };
+    },
+
     /** @param {any} i @param {any} meta */
     react(i, meta) {
       const grp = sessionOf(i);
@@ -852,7 +963,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     keep(i, meta) {
       const grp = sessionOf(i);
       const out = logs.get(grp);
-      const fo = out.read(0).find(f => f.type === "session.fanout" && f.data.group === i.group);
+      const fo = out.read(0).find(f => f.type === "chat.fanout" && f.data.group === i.group);
       if (!fo) throw fail("not_found", "no fan-out with that group id");
       if (!fo.data.members.some((/** @type {any} */ x) => x.message === i.keep)) throw fail("bad_input", "keep is one of the group's answers");
       const author = personOf(meta, i);

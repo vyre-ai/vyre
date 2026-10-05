@@ -19,6 +19,7 @@
 // The switchboard is used through ctx.call and its events, never by importing it.
 
 import { grantReach, revokeReach } from "../../lib/project-reach.js";
+import { mintUuid } from "../../kernel/core/ids.js";
 import fs from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
@@ -39,6 +40,8 @@ export const MIGRATIONS = [
   `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
   // The person granted this agent their PERSONAL memory and every project's sessions to read ("Claude Code on <this computer>"): reads only, never writes, never the person. Appended last, like every step.
   `ALTER TABLE agents_agents ADD COLUMN personal INTEGER NOT NULL DEFAULT 0`,
+  // A stable id for the agent, never reused: the kernel's grants and actor name THIS, not the name, so a deleted agent's name given to a new one inherits nothing.
+  `ALTER TABLE agents_agents ADD COLUMN uid TEXT`,
 ];
 
 /**
@@ -99,9 +102,10 @@ export default {
     const ctx = Object.create(ctx0, { tool: { value: (name, def) => ctx0.tool(name, def && typeof def.run === "function" ? { ...def, run: (i, m, ...r) => calls.run(m, () => def.run(i, m, ...r)) } : def) } });
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
 
-    const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
+    const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
       model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
@@ -111,8 +115,8 @@ export default {
     }
     if (!db.prepare("SELECT 1 FROM agents_agents WHERE name = ?").get(ENGINEER.name)) {
       const now = Date.now();
-      db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(ENGINEER.name, "agent", "[]", "{}", ENGINEER.instructions, "[]", 0, null, null, 1, now, now);
+      db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at, uid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(ENGINEER.name, "agent", "[]", "{}", ENGINEER.instructions, "[]", 0, null, null, 1, now, now, `agt_${mintUuid()}`);
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
@@ -308,7 +312,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -333,11 +337,12 @@ export default {
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
         // created, rather than one whose memory access silently does not match what it says.
-        if (kind !== "assistant") await syncAccess(i.name, [], projects, meta);
+        const uid = `agt_${mintUuid()}`;
+        if (kind !== "assistant") await syncAccess(uid, [], projects, meta);
         const now = Date.now();
-        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now);
+        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid);
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         return get(i.name);
       },
@@ -372,7 +377,7 @@ export default {
         // Option (a): before the row changes, so a failed grant or an explicit-revoke refusal
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
-        if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.name, a.projects, next.projects, meta);
+        if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
             next.computer ? 1 : 0, next.model || null, next.effort || null, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
@@ -547,10 +552,28 @@ export default {
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
         if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
         // the agent is gone: its project reach grants are revoked first, so a failed revoke means the delete never happened either
-        if (K && K.grants && (await hasPerson(meta))) await revokeReach(K, meta, { agent: a.name });
+        // Reach is a kernel grant keyed by the agent's stable id, so a delete with no person to revoke it would leave live grants behind. It is refused instead, never half done.
+        if (K && K.grants) {
+          if (!(await hasPerson(meta))) throw Object.assign(new Error("deleting an agent takes back what it was given, which is the person's own act; this call carries no person"), { code: "denied" });
+          await revokeReach(K, meta, { agent: a.uid });
+          const { chain, proof } = await (await import("../../lib/project-reach.js")).asPerson(K, meta);
+          try { await K.grants.removeActor(chain, { kind: "agent", id: a.uid, space: K.space }, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found" && c !== "unknown") throw e; }
+        }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
         return { agent: a.name, deleted: true };
+      },
+    });
+
+    // The stable id of an agent, for the modules that make grants for it (projects, the plugin agent): the module's own call, never a person's or a model's.
+    ctx.tool("agents.uid", {
+      description: "An agent's stable id (the kernel's grants name it, never the name): { uid }. For the projects and plugin-agent modules.",
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      callers: ["module"],
+      run: async ({ name }, meta = {}) => {
+        const c = String((meta && meta.caller) || "");
+        if (c !== "module:projects" && c !== "module:pluginagent") throw Object.assign(new Error("agents.uid is the projects and plugin-agent modules'"), { code: "denied" });
+        return { uid: must(String(name).toLowerCase()).uid };
       },
     });
 

@@ -2,7 +2,7 @@
 // protocol: the one typed frame a session stream carries (ADR 0052, docs/work/chat.md "0.3").
 //
 // A frame is a projection of the kernel EventEnvelope (kernel/contracts/event.d.ts):
-//   { v:1, id, cur, session, turn, type: "session.<kind>", time, corr, data }
+//   { v:1, id, cur, session, turn, type: "chat.<kind>", time, corr, data }
 // `cur` is the per-session cursor, gapless from 1, assigned by the log (log.js). A frame is not
 // hash-chained (deltas are too frequent); toEnvelope() lifts one into a real envelope when it must
 // be logged (a finished tool, an ask, a file change, a typed terminal command).
@@ -80,7 +80,7 @@ const CHECK = {
   "status": d => (STATES.includes(d.state) ? null : `status needs state, one of ${STATES.join(", ")}`),
   "participant-joined": d => (isAuthor(d.who) && (d.role === undefined || isStr(d.role)) ? null : "participant-joined needs who, person:<id>, assistant:<id> or model:<id>"),
   "participant-left": d => (isAuthor(d.who) ? null : "participant-left needs who"),
-  "presence": d => (isAuthor(d.who) && ["typing", "doing"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing or doing, and doing (up to 120 characters) when doing"),
+  "presence": d => (isAuthor(d.who) && ["typing", "doing", "idle"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing, doing or idle, and doing (up to 120 characters) when doing"),
   "reaction": d => (idStr(d.message) && isStr(d.emoji) && d.emoji.length > 0 && d.emoji.length <= 32 && typeof d.on === "boolean" ? null : "reaction needs message, emoji and on (true or false)"),
   "pin": d => (idStr(d.message) && typeof d.on === "boolean" ? null : "pin needs message and on (true or false)"),
   "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),
@@ -122,8 +122,8 @@ export function validate(f) {
   if (!isObj(f)) return { ok: false, error: "a frame is an object" };
   const o = /** @type {any} */ (f);
   if (o.v !== V) return { ok: false, error: `v must be ${V}` };
-  if (!isStr(o.type) || !o.type.startsWith("session.")) return { ok: false, error: "type must be session.<kind>" };
-  const kind = o.type.slice(8);
+  if (!isStr(o.type) || !o.type.startsWith("chat.")) return { ok: false, error: "type must be chat.<kind>" };
+  const kind = o.type.slice(5);
   const control = CONTROL.includes(kind) || EPHEMERAL.includes(kind);
   if (!control && !KINDS.includes(kind) && !STUBS.includes(kind)) return { ok: false, error: `unknown kind ${kind}` };
   if (!idStr(o.id)) return { ok: false, error: "id is required" };
@@ -163,7 +163,7 @@ export function frame(kind, data, ctx) {
     cur: ctx.cur ?? 0,
     session: ctx.session,
     turn,
-    type: `session.${kind}`,
+    type: `chat.${kind}`,
     time: ctx.time ?? Date.now(),
     corr: turn,
     ...(ctx.author ? { author: ctx.author } : {}),

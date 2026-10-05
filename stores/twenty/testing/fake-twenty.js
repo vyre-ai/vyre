@@ -76,8 +76,34 @@ export class FakeTwenty {
         const f = v.i.field; const obj = [...this.objects.values()].find((o) => o.id === f.objectMetadataId);
         if (!obj) throw new GqlError("Object not found", "NOT_FOUND");
         if (obj.fields.has(f.name)) throw new GqlError("Field already exists");
+        if (f.type === "RELATION") {
+          // a many-to-one relation: the field, its join column, and the inverse (one-to-many) on the target, named by the camelCase of its label
+          const p = f.relationCreationPayload; const target = [...this.objects.values()].find((o) => o.id === p.targetObjectMetadataId);
+          if (!target) throw new GqlError("Object not found", "NOT_FOUND");
+          if (obj.fields.has(`${f.name}Id`)) throw new GqlError("Multiple validation errors: the join column is taken", "BAD_USER_INPUT");
+          const inv = String(p.targetFieldLabel).replace(/[^A-Za-z0-9]+(.)?/g, (_m, c) => (c ? c.toUpperCase() : "")).replace(/^./, (c) => c.toLowerCase());
+          if (target.fields.has(inv)) throw new GqlError("The name is not available", "BAD_USER_INPUT", "NOT_AVAILABLE");
+          const rel = { id: crypto.randomUUID(), name: f.name, type: "RELATION", isActive: true, relation: { target: target.nameSingular, column: `${f.name}Id` } };
+          obj.fields.set(f.name, rel);
+          obj.fields.set(`${f.name}Id`, { id: crypto.randomUUID(), name: `${f.name}Id`, type: "UUID", isActive: true, joinFor: f.name, relationTarget: target.nameSingular });
+          target.fields.set(inv, { id: crypto.randomUUID(), name: inv, type: "RELATION", isActive: true, inverseOf: `${obj.nameSingular}.${f.name}` });
+          return { createOneField: { id: rel.id, name: rel.name } };
+        }
         const field = { id: crypto.randomUUID(), name: f.name, type: f.type, options: f.options ?? null, isActive: true, defaultValue: f.defaultValue, isUnique: f.isUnique === true };
         obj.fields.set(f.name, field); return { createOneField: { id: field.id, name: field.name } };
+      }
+      case "RenameField": {
+        for (const o of this.objects.values()) for (const [k, f] of o.fields) if (f.id === v.i.id) {
+          if (o.fields.has(v.i.update.name)) throw new GqlError("The name is not available", "BAD_USER_INPUT", "NOT_AVAILABLE");
+          o.fields.delete(k); f.name = v.i.update.name; o.fields.set(f.name, f);
+          for (const r of this.rows.get(o.nameSingular).values()) if (k in r) { r[f.name] = r[k]; delete r[k]; }
+          return { updateOneField: { id: f.id } };
+        }
+        throw new GqlError("Field not found", "NOT_FOUND");
+      }
+      case "DropField": {
+        for (const o of this.objects.values()) for (const [k, f] of o.fields) if (f.id === v.i.id) { o.fields.delete(k); for (const r of this.rows.get(o.nameSingular).values()) delete r[k]; return { deleteOneField: { id: f.id } }; }
+        throw new GqlError("Field not found", "NOT_FOUND");
       }
       case "UpdField": {
         for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) {
@@ -126,6 +152,24 @@ export class FakeTwenty {
   #objBySingular(name) { const obj = this.objects.get(name); if (!obj) throw new GqlError(`Cannot query field "${name}" on type "Query".`); return { obj, rows: /** @type {Map<string, any>} */ (this.rows.get(name)) }; }
   #objByPlural(name) { for (const o of this.objects.values()) if (o.namePlural === name) return { obj: o, rows: /** @type {Map<string, any>} */ (this.rows.get(o.nameSingular)) }; throw new GqlError(`Cannot query field "${name}" on type "Query".`); }
 
+  /** a relation's join column must name a row of the target (soft-deleted is fine, a missing one is a foreign key error) */
+  #fk(obj, d) {
+    for (const [k, val] of Object.entries(d)) {
+      const f = obj.fields.get(k);
+      if (!f || !f.joinFor || val === null || val === undefined) continue;
+      if (!this.rows.get(f.relationTarget)?.has(val)) throw new GqlError(`insert or update on table "_${obj.nameSingular}" violates foreign key constraint "FK_${f.name}"`, "INTERNAL_SERVER_ERROR");
+    }
+  }
+  /** what Twenty answers for a row: a join column whose target is soft-deleted reads null (the stored value stays) */
+  #out(obj, row) {
+    let copy = null;
+    for (const f of obj.fields.values()) {
+      if (!f.joinFor || row[f.name] == null) continue;
+      const t = this.rows.get(f.relationTarget)?.get(row[f.name]);
+      if (t && t.deletedAt) { copy = copy ?? { ...row }; copy[f.name] = null; }
+    }
+    return copy ?? row;
+  }
   #checkInput(obj, d) {
     for (const [k, val] of Object.entries(d)) {
       if (k === "id") { if (!UUID.test(String(val))) throw new GqlError(`Value "${val}" is not a valid UUID`); continue; }
@@ -145,7 +189,7 @@ export class FakeTwenty {
   async #core(op, v, query = "") {
     if (op === "PurgeTimeline") { this.timelinePurges = (this.timelinePurges ?? 0) + 1; return { destroyTimelineActivities: [] }; }
     const [kind, ...rest] = op.split("_"); const name = rest.join("_");
-    if (kind === "Get") { const { rows } = this.#objBySingular(name); const rowsList = [...rows.values()].filter((r) => this.#match(r, v.f)); this.#visible(v.f, rowsList); return { [name]: rowsList.filter((r) => this.#vis(v.f, r))[0] ?? null }; }
+    if (kind === "Get") { const { obj, rows } = this.#objBySingular(name); const rowsList = [...rows.values()].filter((r) => this.#match(r, v.f)); this.#visible(v.f, rowsList); const hit = rowsList.filter((r) => this.#vis(v.f, r))[0]; return { [name]: hit ? this.#out(obj, hit) : null }; }
     if (kind === "Q") {
       const { obj, rows } = this.#objByPlural(name);
       let list = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
@@ -155,12 +199,14 @@ export class FakeTwenty {
       if (v.after) { const lastId = Buffer.from(v.after, "base64").toString(); const i = list.findIndex((r) => r.id === lastId); if (i < 0) throw new GqlError("Invalid cursor"); start = i + 1; }
       const first = v.first ?? 60;
       const page = list.slice(start, start + first);
-      return { [name]: { edges: page.map((r) => ({ node: r })), pageInfo: { hasNextPage: start + first < list.length, endCursor: page.length ? Buffer.from(page[page.length - 1].id).toString("base64") : null }, totalCount: list.length } };
+      return { [name]: { edges: page.map((r) => ({ node: this.#out(obj, r) })), pageInfo: { hasNextPage: start + first < list.length, endCursor: page.length ? Buffer.from(page[page.length - 1].id).toString("base64") : null }, totalCount: list.length } };
     }
     if (kind === "Destroy") {
       const { obj, rows } = this.#objByPlural(name);
       const gone = [...rows.values()].filter((r) => this.#match(r, v.f));
       for (const r of gone) rows.delete(r.id);
+      // a destroyed row leaves its referrers' join columns null (the relation's ON DELETE SET NULL)
+      for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.joinFor && f.relationTarget === obj.nameSingular) for (const r of this.rows.get(o.nameSingular).values()) if (gone.some((g) => g.id === r[f.name])) r[f.name] = null;
       return { [`destroy${obj.namePlural[0].toUpperCase()}${obj.namePlural.slice(1)}`]: gone.map((r) => ({ id: r.id })) };
     }
     if (kind === "Cnt") { const { rows } = this.#objByPlural(name); return { [name]: { totalCount: rows.size, edges: [] } }; }
@@ -177,20 +223,20 @@ export class FakeTwenty {
     }
     if (kind === "Create") {
       const { obj, rows } = this.#objBySingular(name); const d = v.d;
-      this.#checkInput(obj, d);
+      this.#checkInput(obj, d); this.#fk(obj, d);
       if (rows.has(d.id)) throw new GqlError("duplicate key value violates unique constraint \"PK_pkey\"", "INTERNAL_SERVER_ERROR");
       this.#unique(obj, rows, d, null);
       const at = this.#now();
       const row = { name: null, position: 0, createdBy: { source: "API", name: "vyre-gateway" }, updatedBy: { source: "API", name: "vyre-gateway" }, searchVector: "", ...d, createdAt: at, updatedAt: at, deletedAt: null };
       rows.set(row.id, row); this.#emit(name, "created", row, Object.keys(d));
-      return { [`create${cap(name)}`]: row };
+      return { [`create${cap(name)}`]: this.#out(obj, row) };
     }
     if (kind === "Update") {
-      const { obj, rows } = this.#objByPlural(name); this.#checkInput(obj, v.d);
+      const { obj, rows } = this.#objByPlural(name); this.#checkInput(obj, v.d); this.#fk(obj, v.d);
       const hit = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
       const out = [];
       for (const r of hit) this.#unique(obj, rows, { ...r, ...v.d }, r.id);
-      for (const r of hit) { Object.assign(r, v.d, { updatedAt: this.#now(), updatedBy: { source: "API", name: "vyre-gateway" } }); this.#emit(obj.nameSingular, "updated", r, Object.keys(v.d)); out.push(r); }
+      for (const r of hit) { Object.assign(r, v.d, { updatedAt: this.#now(), updatedBy: { source: "API", name: "vyre-gateway" } }); this.#emit(obj.nameSingular, "updated", r, Object.keys(v.d)); out.push(this.#out(obj, r)); }
       return { [`update${cap(name)}`]: out };
     }
     if (kind === "Delete" || kind === "Restore") {
@@ -199,7 +245,7 @@ export class FakeTwenty {
       if (kind === "Restore") this.#unique(obj, rows, r, r.id);
       r.deletedAt = kind === "Delete" ? this.#now() : null; r.updatedAt = this.#now();
       this.#emit(name, kind === "Delete" ? "deleted" : "restored", r, ["deletedAt"]);
-      return { [`${kind.toLowerCase()}${cap(name)}`]: r };
+      return { [`${kind.toLowerCase()}${cap(name)}`]: this.#out(obj, r) };
     }
     throw new GqlError(`Unknown operation ${op}`);
   }

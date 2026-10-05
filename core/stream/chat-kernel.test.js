@@ -113,22 +113,22 @@ test("every message goes through chats.append under a token that carries the cha
   assert.equal(first[0].data.chat, chat.id);
   assert.deepEqual(first[0].data.by, { person: BOB });
   assert.ok(!JSON.stringify(first).includes("what is the fee"), "the kernel keeps a hash, never the text");
-  const sentFrame = w.frames(chat.id).find((/** @type {any} */ f) => f.type === "session.user-message");
+  const sentFrame = w.frames(chat.id).find((/** @type {any} */ f) => f.type === "chat.user-message");
   assert.ok(sentFrame.data.kid, "the stream stores the text under the kernel's id");
   assert.equal(sentFrame.data.kid, first[0].data.id);
   // kit answers: the reply streams (the first delta opens it, stamped with the room's membership version); the kernel takes the whole text when it closes
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "The fee is " }, { thread });
   await w.idle();
-  const partial = w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.text-delta");
+  const partial = w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "chat.text-delta");
   assert.equal(partial.length, 1, "the first delta is shown at once, not held until the message is whole");
   assert.ok(Number.isInteger(partial[0].data.ver), "and it is stamped with the membership version it was opened at");
   assert.equal(w.kernelMsgs().length, 1, "the kernel writes the reply when it closes");
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "the usual one." }, { thread });
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
   await w.idle();
-  const reply = w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit" && f.type.startsWith("session.text"));
-  assert.equal(reply.at(-1).type, "session.text-done");
-  assert.ok(reply.slice(0, -1).every((/** @type {any} */ f) => f.type === "session.text-delta"));
+  const reply = w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit" && f.type.startsWith("chat.text"));
+  assert.equal(reply.at(-1).type, "chat.text-done");
+  assert.ok(reply.slice(0, -1).every((/** @type {any} */ f) => f.type === "chat.text-delta"));
   assert.equal(reply.map((/** @type {any} */ f) => f.data.text || "").join(""), "The fee is the usual one.");
   assert.equal(reply[0].acts_for, `person:${BOB}`);
   const all = w.kernelMsgs();
@@ -166,9 +166,9 @@ test("a reply the kernel takes back while it streams (the asker left the chat): 
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
   await w.idle();
   const mine = w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit");
-  assert.ok(mine.some((/** @type {any} */ f) => f.type === "session.text-delta"), "what streamed before stays");
-  assert.ok(mine.some((/** @type {any} */ f) => f.type === "session.text-cut"), "and it is cut");
-  assert.ok(!mine.some((/** @type {any} */ f) => f.type === "session.text-done"));
+  assert.ok(mine.some((/** @type {any} */ f) => f.type === "chat.text-delta"), "what streamed before stays");
+  assert.ok(mine.some((/** @type {any} */ f) => f.type === "chat.text-cut"), "and it is cut");
+  assert.ok(!mine.some((/** @type {any} */ f) => f.type === "chat.text-done"));
   assert.equal(w.kernelMsgs().length, 1, "the kernel wrote no reply");
 });
 
@@ -198,13 +198,13 @@ test("on the kernel's own appendOpen and mayReceive: a person who joins while a 
   w.events.emit("threads", "thread.text", { message: "m2", block: 0, done: true }, { thread });
   await w.idle();
   await tick(250);
-  const text = (/** @type {any[]} */ g) => g.filter(f => f.type === "session.text-delta").map(f => f.data.text).join("");
+  const text = (/** @type {any[]} */ g) => g.filter(f => f.type === "chat.text-delta").map(f => f.data.text).join("");
   assert.equal(text(carol), "ONE-SECRET TWO-SECRETThe retainer is two thousand.", "carol was there for both replies, streamed");
   assert.ok(!JSON.stringify(ada).includes("SECRET"), "ada got no frame of the reply she joined during");
   assert.ok(!JSON.stringify(ada).includes("what is the fee"), "nor anything said before she joined");
   assert.equal(text(ada), "The retainer is two thousand.", "and the next reply in full");
-  assert.ok(ada.some(f => f.type === "session.participant-joined" && f.data.who === `person:${ADA}` && !f.data.quiet), "her own join is the marker");
-  const ids = new Set(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.text-delta" && f.author === "assistant:kit").map((/** @type {any} */ f) => f.data.rid));
+  assert.ok(ada.some(f => f.type === "chat.participant-joined" && f.data.who === `person:${ADA}` && !f.data.quiet), "her own join is the marker");
+  const ids = new Set(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "chat.text-delta" && f.author === "assistant:kit").map((/** @type {any} */ f) => f.data.rid));
   assert.equal(ids.size, 2, "each reply carries the kernel's id for it");
 });
 
@@ -218,7 +218,7 @@ test("the token's chat is fixed: a turn in chat A cannot be redirected into chat
   await w.idle();
   assert.equal(w.kernelMsgs().length, 2);
   assert.ok(w.kernelMsgs().every((/** @type {any} */ e) => e.data.chat === a.chat.id), "every message the kernel wrote is in chat A");
-  assert.ok(w.frames(a.chat.id).some((/** @type {any} */ f) => f.type === "session.text-done"), "the reply is in A");
+  assert.ok(w.frames(a.chat.id).some((/** @type {any} */ f) => f.type === "chat.text-done"), "the reply is in A");
   assert.equal(w.frames(b.id).length, 0, "nothing reached B");
   // the kernel itself refuses the same attempt made directly under A's token
   const tok = (await w.k.surfaces.open(w.chains.bob, { chat: a.chat.id })).token;
@@ -252,10 +252,10 @@ test("stream.send with a token cannot add a person or an assistant, listed or no
   await w.C.change(w.chains.bob, chat.id, { add_people: [ADA], add_assistants: ["juno"] });
   ok(await w.as("ada")("stream.send", { chat: chat.id, text: "now me", to: [] }));
   assert.ok(grp.people(chat.id).has(`person:${ADA}`));
-  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.participant-joined" && f.data.who === "assistant:juno"), "a listed assistant is mirrored into the group");
+  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "chat.participant-joined" && f.data.who === "assistant:juno"), "a listed assistant is mirrored into the group");
   await w.C.change(w.chains.bob, chat.id, { remove_assistants: ["juno"] });
   ok(await w.as("bob")("stream.send", { chat: chat.id, text: "bye juno", to: [] }));
-  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.participant-left" && f.data.who === "assistant:juno"));
+  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "chat.participant-left" && f.data.who === "assistant:juno"));
 });
 
 test("an unlisted assistant is refused: it cannot read or speak in a chat that does not list it, and a call with no session is not a chat call", async t => {
@@ -290,7 +290,7 @@ test("a retry of the same message id while the first is still being written is o
   const chat = await w.C.create(w.chains.bob, { people: [CAROL] });
   const [a, b] = await Promise.all([1, 2].map(() => w.as("bob")("stream.send", { chat: chat.id, text: "once", to: [], message: "m_once" })));
   ok(a); ok(b);
-  assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.user-message").length, 1);
+  assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "chat.user-message").length, 1);
   assert.equal(w.kernelMsgs().length, 1, "the kernel was asked once");
 });
 
@@ -309,9 +309,9 @@ test("a room of more than one person: an assistant's field value is dropped (aga
   w.events.emit("threads", "thread.text", { message: "go" }, { thread: room.thread });
   await w.idle();
   const f = w.frames(room.chat.id);
-  assert.ok(f.some((/** @type {any} */ x) => x.type === "session.text-done" && x.author === "assistant:kit"), "the reply itself is shown");
+  assert.ok(f.some((/** @type {any} */ x) => x.type === "chat.text-done" && x.author === "assistant:kit"), "the reply itself is shown");
   assert.ok(!JSON.stringify(f).includes("4200"), "no field value reached the group's log");
-  assert.deepEqual(f.find((/** @type {any} */ x) => x.type === "session.text-done").data.blocks, [{ block: "text", text: "see below" }]);
+  assert.deepEqual(f.find((/** @type {any} */ x) => x.type === "chat.text-done").data.blocks, [{ block: "text", text: "see below" }]);
   // the kernel's room view for the same chat: more than one person, and a sealed field is never a value for the room
   const tok = (await w.k.surfaces.open(w.chains.bob, { chat: room.chat.id })).token;
   w.k.bindCalls(() => ({ token: tok }));
@@ -328,7 +328,7 @@ test("a room of more than one person: an assistant's field value is dropped (aga
   stand(w, solo.id);
   w.events.emit("threads", "thread.text", { message: "go" }, { thread: th2 });
   await w.idle();
-  const solo1 = w.frames(solo.id).find((/** @type {any} */ x) => x.type === "session.text-done");
+  const solo1 = w.frames(solo.id).find((/** @type {any} */ x) => x.type === "chat.text-done");
   assert.deepEqual(solo1.data.blocks.map((/** @type {any} */ b) => b.block), ["text", "field"]);
 });
 
@@ -347,8 +347,8 @@ test("a cited field is the kernel's own records.get for the viewer: a value, the
   const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
   t.after(() => c.close());
   const end = Date.now() + 5000;
-  while (!got.some(f => f.type === "session.text-done" && f.data.message === "m9") && Date.now() < end) await tick(10);
-  const blocks = got.find(f => f.type === "session.text-done" && f.data.message === "m9").data.blocks;
+  while (!got.some(f => f.type === "chat.text-done" && f.data.message === "m9") && Date.now() < end) await tick(10);
+  const blocks = got.find(f => f.type === "chat.text-done" && f.data.message === "m9").data.blocks;
   const wire = JSON.stringify(got);
   assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref never reaches the wire");
   const by = (/** @type {string} */ n) => blocks.find((/** @type {any} */ b) => b.name === n);
@@ -375,6 +375,6 @@ test("after a restart the assistant has no session token: its reply waits, shows
   ok(await w.as("bob")("stream.open", { chat: chat.id }));
   await tick(50);
   await w.idle();
-  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.text-done" && f.author === "assistant:kit"));
+  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "chat.text-done" && f.author === "assistant:kit"));
   assert.equal(w.kernelMsgs().length, 2);
 });

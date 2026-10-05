@@ -28,3 +28,17 @@ test("a device removed from a Space has no person chain in it, and keeps its cha
   assert.equal(await person(await hb.chain({ kernelFacts: facts("dev1") })), false, "an error is a no");
   assert.equal(await person(await hb.chain({ kernelFacts: { kind: "socket", surface: "cli", uid: 501, pid: 1, inside_model_process: false } })), true, "a local surface has no device to remove");
 });
+
+test("a session opened in the home speaks for its person, and its agent, in another Space they belong to; a Space it does not host, and a token it did not sign, give nothing", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7) });
+  const other = await createKernel({ space: OTHER, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8) });
+  k.bindSpaces({ hosted: id => (id === OTHER ? { space: OTHER, kernel: other, gateway: other.gateway, surfaces: other.surfaces } : null), for: () => null });
+  const h = k.kernelFor({ name: "probe", needs: { kernel: { actions: [] } } });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "dev1", person: OWNER, path: "direct" });
+  const s = await k.surfaces.open(owner, { agent: "assistant", ttl_ms: 60_000 });
+  const c = await h.chainIn(OTHER, { token: s.token });
+  assert.equal(c.space, OTHER);
+  assert.deepEqual(c.hops.map(x => [x.actor.kind, x.actor.id]), [["person", OWNER], ["agent", "assistant"]], "the person and the agent the token names, in that Space");
+  await assert.rejects(() => h.chainIn("spc_cccccccccccc", { token: s.token }), { code: "not_found" }, "a Space this home does not host has no chain");
+  await assert.rejects(() => h.chainIn(OTHER, { token: "not-a-token" }), { code: "not_a_member" });
+});

@@ -77,7 +77,7 @@ if (mode === "relay") {
     onFrame: f => {
       const t = now();
       seen.push([startOf(f), f.cur]);
-      if (f.type === "session.text-delta") { text += f.data.text; const e = emitAt.get(f.cur); if (e !== undefined && killedAt === null) lat.push(t - e); }
+      if (f.type === "chat.text-delta") { text += f.data.text; const e = emitAt.get(f.cur); if (e !== undefined && killedAt === null) lat.push(t - e); }
       if (killedAt !== null && f.cur > lastCur) { resume.push(t - killedAt); killedAt = null; }
       lastCur = Math.max(lastCur, f.cur);
     },

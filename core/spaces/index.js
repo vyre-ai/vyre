@@ -17,6 +17,7 @@
 // purpose (the device displays it) and is kept as a hash.
 
 import crypto from "node:crypto";
+import * as config from "../config/index.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -37,9 +38,10 @@ import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers, plainKernelError } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
-import { softwareProof, softwareActProof, softwareKey } from "./presence-signer.js";
+import { softwareProof, softwareActProof, softwareKey, challengeProblem } from "./presence-signer.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
-import { acceptProofRequest } from "../../kernel/remote/proof.js";
+import { acceptProofRequest, proofRequest } from "../../kernel/remote/proof.js";
+import { payloadHash } from "../../kernel/core/presence.js";
 import { joinBytes } from "../../kernel/seal/wire.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
@@ -242,14 +244,17 @@ export default {
     };
     /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
     /** The person's own answer to a home's challenge, or null: the hardware signer a surface set, else this computer's software key, only on a development build behind VYRE_SEAL_SOFTWARE. @param {any} ch @param {string} space */
-    const answerChallenge = async (ch, space) => {
+    const answerChallenge = async (ch, space, expect) => {
       try {
         const st = identity.status();
         if (!st.exists || st.pending || !st.id) return null;
         const full = { ...ch, space: ch.space || space };
-        if (typeof hooks.signer === "function") { const p = await hooks.signer(full, { space, person: st.id }); if (p && typeof p === "object") return p; }
+        // WN-1: whatever signs, signs what THIS device asked for: the challenge must be for the request it made, and its hash the one worked out here
+        const problem = challengeProblem(full, expect);
+        if (problem) { ctx.log.warn(`a space's home asked for a signature this device did not ask for (${problem}): refused`); return null; }
+        if (typeof hooks.signer === "function") { const p = await hooks.signer({ ...full, payload_hash: payloadHash(full.op, full.space, full.fields) }, { space, person: st.id }); if (p && typeof p === "object") return p; }
         if (!devSwitch(process.env.VYRE_SEAL_SOFTWARE, hooks.buildRoot)) return null;
-        return softwareProof(path.join(ctx.paths.root, "wink-keys.json.device"), st.id, full);
+        return softwareProof(path.join(ctx.paths.root, "wink-keys.json.device"), st.id, full, undefined, expect);
       } catch { return null; }
     };
     const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
@@ -320,7 +325,7 @@ export default {
         const r = await dir.resolve(name);
         if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
         const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
-        return Boolean(e) && await C.verifyWith(e.pub, message, proof, e);
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
       } catch { return false; }
     };
     const personRef = async (/** @type {any} */ value) => {
@@ -703,7 +708,7 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async (i, meta) => {
+      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["server", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
@@ -720,7 +725,7 @@ export default {
           const prec = prior ? /** @type {any} */ (await kv.get(`space-create/${prior.id}`)) : null;
           if (prior && prec && prec.status !== "cancelled" && prec.status !== "done") { spaceId = prior.id; resumed = true; } }
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
-        // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
+        // it answers in the kernel's own words and offers the person's server; nothing is made here without Twenty.
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
         // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
         let remoteServer = null;
@@ -733,11 +738,11 @@ export default {
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
           let made;
-          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}), ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
+          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}) }, meta); }
           catch (e) {
-            if (/** @type {any} */ (e).code === "needs_store_confirmation") {
+            if (/** @type {any} */ (e).code === "store_unavailable") {
               if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
-              return { status: "needs_confirmation", confirm: { text: String(/** @type {any} */ (e).message), choices: ["create", "cancel"] } };
+              return { status: "needs_confirmation", confirm: { text: String(/** @type {any} */ (e).message), choices: ["cancel"] } };
             }
             throw e;
           }
@@ -750,9 +755,11 @@ export default {
           const confirm = plan && plan.confirm ? plan.confirm : null;
           if (confirm) {
             if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
-            if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: ["create", "cancel"] } };
+            // the record store cannot run here: nothing is made, and the person's server is offered
+            if (i.storeChoice === "server") return { status: "use_server", reason: "Pair your server and make the space there: choose it as the home." };
+            return { status: "needs_confirmation", confirm: { text: confirm.text, choices: confirm.choices || ["server", "cancel"] } };
           }
-          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          const hosted = await KS.host({ owner: s.id, name: label });
           spaceId = hosted.space || hosted.id;
         }
         if (resumed && !spaces.get(spaceId)) resumed = false;
@@ -1158,12 +1165,12 @@ export default {
         if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
         if (K.spaces.hosts(i.id) === true) { const have = files.keys.load(i.id); return { space: i.id, existed: true, ...(have ? { rootPublic: have.publicKey } : {}) }; }
       }
-      // A server too small for the larger store needs the owner's word first, in the kernel's own words (the same confirmation a local creation shows). The refusal carries that text; asking again with acceptBuiltinStore hosts it.
+      // A server that cannot run the record store (Twenty) hosts nothing: the refusal carries the kernel's own words.
       const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
       const confirm = plan && plan.confirm ? plan.confirm : null;
-      if (confirm && i.acceptBuiltinStore !== true) throw refuse(String(confirm.text || "This server needs your OK to use the built-in store."), "needs_store_confirmation");
+      if (confirm) throw refuse(String(confirm.text || "This server cannot run the record store (Twenty)."), "store_unavailable");
       let h;
-      try { h = await K.spaces.host({ owner: K.owner, name: label, ...(confirm ? { accept_builtin_store: true } : {}), ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
+      try { h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
       const id = h.space || h.id;
       // The space's key as a joiner can check it: made and held HERE (spaces/<id>/root.key, 0600), never returned. Its public half goes into the owner-signed directory record as `rootPublic`,
       // and a joiner's device asks this server to sign a fresh nonce with it (spaces.attest, answered inside grants.invites.get) before it shows the join card.
@@ -1244,7 +1251,10 @@ export default {
         return { enrolled: await isEnrolled(deviceId, id) };
       }, { internal: true });
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
+    /** The tier shown for a space (the user's two-tier ruling): a space whose home is a server (a team space, or a personal one on the person's own server) is "cloud"; a space whose home is this computer is "cloud" only when this machine is a server, and "basic" on a device. The same machine role storeMode reads. @param {any} home */
+    const tierOf = (home) => (home && home.kind && home.kind !== "this-computer") || config.isServer(ctx.config && ctx.config.machine) ? "cloud" : "basic";
+
+    const listSpaces = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
@@ -1253,7 +1263,7 @@ export default {
           let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-          mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
         return mine;
       }
@@ -1266,7 +1276,7 @@ export default {
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
-        out.push({ ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
+        out.push({ tier: tierOf(row.home), ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
       try {
@@ -1274,11 +1284,26 @@ export default {
           const id = String(r.key).slice("member-of/".length), v = JSON.parse(r.value);
           if (out.some(x => x.id === id)) continue;
           const name = typeof v.name === "string" ? v.name : null;
-          out.push({ id, name, label: name ? name.replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: { kind: "server" }, role: v.role || null, member: true });
+          out.push({ tier: "cloud", id, name, label: name ? name.replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: { kind: "server" }, role: v.role || null, member: true });
         }
       } catch { /* no joined spaces */ }
       return out;
-    });
+    };
+
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
+
+    tool("spaces.tier", "Which tier a space is on (basic or cloud), and the Cloud spaces this person is in. For a module that must refuse on a Basic personal space (Planner, tasks). With no space named, the home's own.",
+      obj({ space: str }), async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        /** @type {any[]} */ let rows = [];
+        try { rows = await listSpaces({}, meta); } catch { rows = []; }
+        const cloud = rows.filter(r => r.tier === "cloud").map(r => ({ id: r.id, name: r.name ?? null, label: r.label ?? null }));
+        if (i.space && !(K && i.space === K.space)) {
+          const r = rows.find(x => x.id === i.space);
+          if (!r) throw refuse("No such space here.", "not_found");
+          return { tier: r.tier, cloud };
+        }
+        return { tier: tierOf({ kind: "this-computer" }), cloud };
+      }, { internal: true });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
@@ -1493,7 +1518,7 @@ export default {
             // A space on a server: the home asks for the person's yes on THIS invite with a one-use challenge. This computer answers it with the person's own key (the hardware signer, or a software key on a development build) and the same call goes again with that proof, which carries `home` and `challenge`. With no key to answer, it is handed back as a request to sign.
             const ch = /** @type {any} */ (e) && /** @type {any} */ (e).code === "presence_required" ? /** @type {any} */ (e).challenge : null;
             if (!ch || typeof ch.nonce !== "string") throw e;
-            const proof = await answerChallenge(ch, row.id);
+            const proof = await answerChallenge(ch, row.id, proofRequest(row.id, "inviteCreate", body));
             if (!proof) return { needs_proof: true, request: { space: row.id, op: ch.op, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, expires: ch.expires } };
             rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(await kctxOf({ ...meta, kernel_proof: proof }, row.id), body);
           }
