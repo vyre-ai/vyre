@@ -18,6 +18,7 @@ import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/ro
 import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
+import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -71,11 +72,14 @@ export default {
       });
     }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
+    // One engine per Space: a call that runs in a hosted Space has that Space's own kernel handle and its own database (`ctx.store.db` is a router that picks the running Space's file), and an engine built once
+    // holds the home's. Keyed by the running Space's id, built inside the call.
+    /** @type {Map<string, any>} */ const engines = new Map();
     const engineOf = () => {
-      if (engine) return engine;
       const k = kernelOf();
+      if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
-      return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
+      const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
     };
 
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
@@ -83,8 +87,16 @@ export default {
     const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
+      // a project made through the old project list (the CLI, the app) gets its record
+      hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
       hear("thread.started", p => hubOf().onStarted(p));
       hear("thread.stopped", p => hubOf().onStopped(p));
+      hear("thread.status", p => hubOf().onStatus(p));
+      // a terminal session's chat was made (the switchboard, from the Harness's SessionStart)
+      hear("thread.chat", p => hubOf().onChatLinked(p));
+      // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
+      hear("chat.created", p => hubOf().onChatCreated(p));
+      hear("chat.changed", p => hubOf().onChatChanged(p));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => hubOf().onThreadRenamed(p));
@@ -92,7 +104,7 @@ export default {
       hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "session-summary.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this build: the other directions still work */ }
+        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
       // An upgraded box with agent project access from before reach became a kernel grant: ONE Needs-you item, once, so the person restores it (projects.access.restore, their own call). Nothing is
       // granted by the upgrade itself, so until then every agent is denied.
