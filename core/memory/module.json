@@ -108,6 +108,8 @@
       { "name": "memory.space.file", "reach": "anyone", "effect": "write" },
       { "name": "memory.space.recall", "reach": "anyone", "effect": "read" },
       { "name": "memory.space.retire", "reach": "anyone", "effect": "write" },
+      { "name": "memory.backup.status", "reach": "person", "effect": "read" },
+      { "name": "memory.backup.run", "reach": "person", "effect": "write" },
       { "name": "memory.room.offer", "reach": "person", "effect": "write" },
       { "name": "memory.room.export", "reach": "person", "effect": "write" },
       { "name": "memory.room.import", "reach": "person", "effect": "write" },

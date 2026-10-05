@@ -16,8 +16,9 @@ import { scrubIn, scanRows } from "./sealed.js";
 import memory from "./index.js";
 
 
+const surface = (label, uid = 501) => ({ kernelFacts: { kind: "socket", surface: label, uid, pid: 1, inside_model_process: false, capsule_verified: true } });
 const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
-async function world(t, spaceMem) {
+async function world(t, spaceMem, extraConfig = {}, sources = null) {
   const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit"] });
   const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const db = open(path.join(tempHome(t), "vyre.db"));
@@ -28,9 +29,9 @@ async function world(t, spaceMem) {
   // The work module is not started here: its tools are answered by stand-ins so the test sees what memory asks of it and what it never asks.
   const space = { hits: [], answer: null };
   const ctx = {
-    name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
+    name: "memory", config: { me: { domains: ["riverastudio.com"] }, ...extraConfig }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => { calls.push(tool); return tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : tool === "work.know.search" ? { data: { hits: space.hits } } : tool === "work.know.answer" ? (space.answer || { data: { result: { text: "", citations: [] } } }) : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }); },
+    call: async (tool, input) => { calls.push(tool); if (tool === "projects.backup.sources") return sources ? { data: { items: sources() } } : { error: { code: "no_such_tool" } }; return tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : tool === "work.know.search" ? { data: { hits: space.hits } } : tool === "work.know.answer" ? (space.answer || { data: { result: { text: "", citations: [] } } }) : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }); },
     tool: (name, def) => tools.set(name, def), kernel: Object.assign(Object.create(handle), { memory: spaceMem }), memoryRunner: null,
     iqRunner: async ({ prompt }) => { prompts.push(prompt); return { text: JSON.stringify({ answer: null, cite: [], confidence: 0, abstain: true, known: [] }), usd: 0 }; },
   };
@@ -71,4 +72,29 @@ test("memory.space.*: the tools pass the caller's own chain to the kernel's memo
   // no Space memory on this kernel: said plainly
   const none = await world(t, undefined);
   assert.equal((await none.call("memory.space.recall", {}, "deck", await none.session("per_alex"))).code, "unavailable");
+});
+
+test("memory.backup: no team means none; with one, run backs up, status reads ok, and nothing is readable on the server", async t => {
+  const fs = await import("node:fs"), os = await import("node:os"), { newDeviceKey } = await import("../../lib/keywrap.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-bkt-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dev = newDeviceKey();
+  fs.writeFileSync(path.join(dir, "device.json"), JSON.stringify(dev));
+  const none = await world(t, undefined);
+  const ns = await none.call("memory.backup.status", {}, "deck", await none.session("per_alex"), surface("deck"));
+  assert.deepEqual(ns.data, { to: null, last: null, state: "none" }, JSON.stringify(ns));
+  assert.equal((await none.call("memory.backup.run", {}, "deck", await none.session("per_alex"), surface("deck"))).code, "not_found");
+  const items = [{ kind: "rows", name: "rows/chats.jsonl", size: 40, mtime: Date.now() - 1000, text: '{"chat":"Harlow billing question"}' }];
+  const w = await world(t, undefined, { memory: { backup: { to: "Acme Team", home: path.join(dir, "server"), identity: "alex", holder: "laptop", device: path.join(dir, "device.json") } } }, () => items);
+  const tok = await w.session("per_alex");
+  const run = await w.call("memory.backup.run", {}, "deck", tok, surface("deck"));
+  assert.equal(run.error, undefined, JSON.stringify(run));
+  assert.equal(run.data.uploaded, 1);
+  const st = (await w.call("memory.backup.status", {}, "deck", tok, surface("deck"))).data;
+  assert.equal(st.to, "Acme Team");
+  assert.equal(st.state, "ok");
+  assert.ok(st.last > 0);
+  const walk = d => fs.readdirSync(d).flatMap(n => { const p = path.join(d, n); return fs.statSync(p).isDirectory() ? walk(p) : [fs.readFileSync(p, "latin1")]; });
+  assert.ok(!walk(path.join(dir, "server")).join("").includes("Harlow"), "ciphertext only on the server");
+  assert.equal((await w.call("memory.backup.status", {}, "mcp:agent:kit")).code, "denied", "an agent does not read the backup status");
 });

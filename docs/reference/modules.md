@@ -49,7 +49,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 63 | 16 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 65 | 16 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
@@ -463,7 +463,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [63](tools.md#memory), 2 of them only for other modules
+- Tools: [65](tools.md#memory), 2 of them only for other modules
 - Emits: [16 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"sealDetect":true}`

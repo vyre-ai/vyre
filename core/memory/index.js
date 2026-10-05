@@ -33,6 +33,7 @@ import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.j
 import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
+import { Backup, noBackup } from "./backup/index.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
@@ -1194,6 +1195,43 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       run: async (input, extra = {}) => { const { api, chain } = await spaceMemory(extra); return factOut(await api.retire(chain, String(input.id))); },
     });
+    // ---- the Basic backup (backup/index.js, team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats, ciphertext on a team server they belong to. `memory.backup` in config.json names it:
+    // { to: the team Space's name, home: where its storage is (a folder here; the gateway's storage in life), identity, holder, device: the file holding this device's private key }. With none there is no
+    // backup, and the status says so. What to back up comes from `projects.backup.sources` (the projects' folders and the device's row files, which flows and chat answer): { items: [{ kind: "file"|"rows",
+    // name, size, mtime, path | text }] }. Every hour while there are changes.
+    const bkCfg = ctx.config.memory && ctx.config.memory.backup;
+    /** @type {Promise<Backup>|null} */ let bkOpen = null;
+    const backupOf = () => bkOpen || (bkOpen = (async () => {
+      const be = new FileBackend(String(bkCfg.home), String(bkCfg.to || "the team server"));
+      const dev = JSON.parse(fs.readFileSync(String(bkCfg.device), "utf8"));
+      try { return await Backup.open({ backend: be, identity: String(bkCfg.identity), holder: String(bkCfg.holder), privateJwk: dev.privateJwk }); }
+      catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; return Backup.create({ backend: be, identity: String(bkCfg.identity), devices: { [String(bkCfg.holder)]: dev.publicJwk } }); }
+    })().catch(e => { bkOpen = null; throw e; }));
+    const bkItems = async () => {
+      const r = await ctx.call("projects.backup.sources", {}).catch(() => null);
+      const list = r && !r.error && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+      return list.filter((/** @type {any} */ i) => i && typeof i.name === "string" && (i.kind === "file" || i.kind === "rows")).map((/** @type {any} */ i) => ({ kind: i.kind, name: i.name, size: Number(i.size) || 0, mtime: Number(i.mtime) || 0,
+        read: async () => (typeof i.text === "string" ? Buffer.from(i.text, "utf8") : fs.promises.readFile(String(i.path))) }));
+    };
+    const bkRun = async () => { const b = await backupOf(); return b.run(await bkItems()); };
+    ctx.tool("memory.backup.status", {
+      effect: "read",
+      description: "The encrypted backup of the person's personal projects and chats on their team server: { to: the team Space's name or null, last: when the newest backup finished or null, state: ok | behind | none }. ok: nothing that changed more than an hour ago is missing; behind: such changes are waiting, or the last attempt failed; none: no team server, so no backup.",
+      input: { type: "object", properties: {} },
+      run: async (_i, extra = {}) => {
+        if (!reader(extra.caller)) throw denied("the backup status is the person's own");
+        if (!bkCfg || !bkCfg.home) return noBackup();
+        try { return await (await backupOf()).status(await bkItems(), String(bkCfg.to || "") || null); } catch { return { to: String(bkCfg.to || "") || null, last: null, state: "behind" }; }
+      },
+    });
+    ctx.tool("memory.backup.run", {
+      effect: "write",
+      description: "Back up now: upload what the team server lacks, then write the next manifest. Returns { rev, uploaded, reused, items, bytes }. Runs by itself every hour while there are changes.",
+      input: { type: "object", properties: {} },
+      run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg || !bkCfg.home) throw Object.assign(new Error("there is no team server to back up to"), { code: "not_found" }); return bkRun(); },
+    });
+    const bkTimer = bkCfg && bkCfg.home ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
+    if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
     // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
     // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
     const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });
@@ -1810,6 +1848,7 @@ export default {
     return {
       async stop() {
         stopping = true;
+        if (bkTimer) clearInterval(bkTimer);
         if (identity) identity.stop();
         clearTimeout(timer);
         off();
