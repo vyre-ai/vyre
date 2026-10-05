@@ -6,3 +6,4 @@ export { parseExpr, evalExpr, exprNames } from "./expr.js";
 export { LanguageError } from "./errors.js";
 /** The object `createGateway({ expr })` takes; it is the gateway's default, so a consumer wires nothing. */
 export const expr = Object.freeze({ parseExpr, evalExpr });
+export { holds, isEmpty, fieldState, fieldStates, stagesFor, stageNamesOf, defaultEvaluator } from "./conditions.js";

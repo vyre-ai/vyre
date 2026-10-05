@@ -6,6 +6,12 @@
 /** @param {any} kit the compiled Kit @returns {any} */
 export function toKernelKit(kit) {
   const roles = kit.roles ?? [];
+  // A view is stored with the type it shows (TypeDefinition.views), where the app reads it; the Kit's `views` list stays for the install card and removal.
+  const views = kit.views ?? [];
+  const types = (kit.types ?? []).map((/** @type {any} */ t) => {
+    const mine = views.filter((/** @type {any} */ v) => v.of === t.name).map((/** @type {any} */ { of, ...v }) => v);
+    return mine.length ? { ...t, views: mine } : t;
+  });
   return {
     format: 1,
     id: kit.id,
@@ -13,7 +19,7 @@ export function toKernelKit(kit) {
     name: kit.label ?? kit.id,
     description: kit.description ?? "",
     includes: {
-      types: kit.types ?? [],
+      types,
       templates: (kit.templates ?? []).map((/** @type {any} */ t) => ({ ...t })),
       // a person role is built on one of the five roles; the Kit's own grants ride along as data for the install card
       roles: roles.filter((/** @type {any} */ r) => r.kind !== "teammate").map((/** @type {any} */ r) => ({ name: r.name, base: "member", abilities: ["projects.work_member_of"], label: r.label, description: r.description, grants: r.grants })),

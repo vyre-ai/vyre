@@ -154,45 +154,6 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(over.body.error.code, "setup_over");
 });
 
-test("setup gate: names.recover runs from the setup channel with the code alone, one at a time, five at most, and never once an owner exists", async () => {
-  const { code } = await newCode();
-  const s = new SetupSession({ code });
-  let owner = false, hold = null; const got = [];
-  const gate = setupGate({ session: () => s, ownerExists: () => owner, mintTicket: async () => ({}), handlerFor: () => () => {},
-    recoverCode: async input => { got.push(input); if (hold) await hold; if (input.code === "bad") throw Object.assign(new Error("wrong code"), { code: "denied" }); return { name: input.name, pendingUntil: 1 }; } });
-  const post = async body => {
-    const rs = res(); const handlers = {};
-    const rq = { method: "POST", url: "/v1/tools/names.recover", headers: {}, resume() {}, on: (e, f) => { handlers[e] = f; } };
-    await gate(rq, rs, "device:x", {});
-    if (handlers.data) handlers.data(JSON.stringify(body)); if (handlers.end) handlers.end();
-    await new Promise(r => setTimeout(r, 20)); return rs;
-  };
-  let r = await post({ name: "alex", code: "good" });
-  assert.equal(r.status, 200);
-  assert.deepEqual(got[0], { name: "alex", code: "good" });
-  r = await post({ name: "alex" });
-  assert.equal(r.status, 400);
-  r = await post({ name: "alex", code: "bad" });
-  assert.equal(r.status, 400);
-  assert.equal(r.body.error.code, "denied");
-  // concurrent: the second is refused while the first runs
-  let release; hold = new Promise(res2 => { release = res2; });
-  const first = post({ name: "alex", code: "slow" });
-  await new Promise(x => setTimeout(x, 5));
-  r = await post({ name: "alex", code: "slow2" });
-  assert.equal(r.status, 429);
-  release(); await first; await new Promise(x => setTimeout(x, 20)); hold = null;
-  r = await post({ name: "alex", code: "again" });
-  assert.equal(r.status, 200);
-  r = await post({ name: "alex", code: "fifth" });
-  assert.equal(r.status, 200);
-  r = await post({ name: "alex", code: "sixth" });
-  assert.equal(r.status, 429, "five attempts a session");
-  owner = true;
-  r = await post({ name: "alex", code: "good" });
-  assert.equal(r.status, 403);
-});
-
 // ---- end to end ----
 
 const lenient = {

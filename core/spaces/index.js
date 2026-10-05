@@ -320,7 +320,7 @@ export default {
         const r = await dir.resolve(name);
         if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
         const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
-        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof, e);
       } catch { return false; }
     };
     const personRef = async (/** @type {any} */ value) => {
@@ -1101,7 +1101,7 @@ export default {
     const kernelSpacesOf = async (/** @type {string} */ person) => {
       const ids = [];
       if (K && typeof K.membership === "function") {
-        if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
+        if (typeof K.space === "string" && ((await K.membership(person, K.space).catch(() => ({ member: false }))).member === true || person === K.owner)) ids.push(K.space); // the home Space is its owner's by definition
         // every space this home's kernel hosts (made here, or hosted for the person by spaces.host-here), plus the module's finished rows that have a kernel
         const all = new Set([...(K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : []), ...spaces.all().filter(r => r.status === "done").map(r => r.id)]);
         for (const id of all) if (id !== K.space && kernelHandle(id) && (await K.membership(person, id).catch(() => ({ member: false }))).member === true) ids.push(id);
@@ -1215,6 +1215,9 @@ export default {
           const person = who || (typeof K.owner === "string" ? K.owner : null);
           let member = false;
           if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          // The home's own Space belongs to the home's owner by definition: a kernel whose membership table still names the owner it had before the identity was adopted must not turn the owner's own
+          // confirmed devices away (typed-paired devices got no person chain, so records.* said "not a signed-in person").
+          if (!member && person && id === K.space && person === K.owner) member = true;
           if (!member) return { enrolled: false };
         }
         // Belonging is asked of the kernel NOW (a removed, expired, revoked member is not enrolled anywhere): for a space with a kernel, whoever this home's person is must be an active member.
