@@ -16,7 +16,8 @@ export type MacShell = {
     makeServer?(): Promise<void>;
     /** The Secure Enclave key of this Mac's entry (Touch ID per signature): its raw uncompressed point, and a raw r||s signature. Absent or rejecting on a Mac with no Secure Enclave. */
     enclavePublic?(create?: boolean): Promise<string>;
-    enclaveSign?(message: string, prompt: string): Promise<string>;
+    /** `prompt` is the page's caption and the shell does not show it (KP-3): the shell reads `message` and says what it signs. A yes-moment proof also passes its card's fields and space so the shell can check them against the proof's hash. */
+    enclaveSign?(message: string, prompt: string, card?: { fields?: Record<string, unknown>; space?: string }): Promise<string>;
     /** This computer's agreement key (ECDH P-256, never leaves the OS keystore or hardware): its raw uncompressed point, and the 32-byte shared secret with a peer's point (both base64url). No prompt per use. */
     agreePublic?(create?: boolean): Promise<string>;
     agree?(epk: string): Promise<string>;

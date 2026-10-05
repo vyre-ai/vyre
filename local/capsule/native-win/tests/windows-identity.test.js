@@ -66,3 +66,14 @@ test("the TPM key is a P-256 key in the Platform Crypto Provider behind a UI pol
   assert.match(nc, /This computer has no TPM that Vyre can use\./);
   assert.match(nc, /point_from_ecc_blob/);
 });
+
+test("the TPM key signs only bytes the shell can summarise, behind the shell's own native confirmation, and never shows the page's caption (KP-3)", () => {
+  const rs = read("../app/src/main.rs");
+  const body = /fn enclave_sign\([\s\S]*?\n}\n/.exec(rs)[0];
+  assert.match(body, /chain_summary\(&m\)\.ok_or_else/, "no summary, no signature");
+  assert.match(body, /confirm_native\(&said\)/);
+  assert.ok(body.indexOf("confirm_native") < body.indexOf("ncrypt::sign"), "the person says yes before the key signs");
+  assert.ok(!/confirm_native\([^)]*prompt/.test(body), "the page's prompt is not what is shown");
+  assert.match(rs, /MessageBoxW/);
+  assert.match(read("../src/identity.rs"), /pub fn chain_summary/);
+});

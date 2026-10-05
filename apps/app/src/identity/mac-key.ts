@@ -46,10 +46,10 @@ export async function macEnclavePublic(create = false): Promise<string | null> {
 }
 
 /** The enclave key's signature over `message`, behind Touch ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig`. Rejects with the shell's words when declined. */
-export async function macEnclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
+export async function macEnclaveSign(message: Uint8Array, prompt: string, card?: { fields?: Record<string, unknown>; space?: string }): Promise<Uint8Array> {
   const id = shellIdentity();
   if (!id?.enclaveSign) throw Object.assign(new Error("This Mac has no Secure Enclave key to sign with."), { code: "ERR_NO_ENCLAVE" });
-  return lowS(unb64u(await id.enclaveSign(b64u(message), prompt)));
+  return lowS(unb64u(await id.enclaveSign(b64u(message), prompt, card)));
 }
 
 /** A list change from this Mac: the Ed25519 key signs it, and when the entry names an enclave key the enclave signs the same bytes behind Touch ID. Touch ID is asked once. */

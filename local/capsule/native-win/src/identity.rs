@@ -46,6 +46,47 @@ pub fn point_from_ecc_blob(blob: &[u8]) -> Option<[u8; 65]> {
     Some(p)
 }
 
+/// What the person is told they are signing (KP-3): the shell reads the identity-list change itself ("vyre-chain-v1\n" and the op's JSON) and writes the words, so a page cannot call "add this
+/// device" something else. None means the shell cannot read it, and then it is not signed. The page's own caption is never read.
+pub fn chain_summary(message: &[u8]) -> Option<String> {
+    let body = message.strip_prefix(b"vyre-chain-v1\n")?;
+    let op: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let clean = |v: Option<&serde_json::Value>, max: usize| -> String {
+        let t: String = v.and_then(|x| x.as_str()).unwrap_or("").chars().filter(|c| !c.is_control()).collect();
+        let t = t.trim().to_string();
+        if t.chars().count() > max { format!("{}...", t.chars().take(max).collect::<String>()) } else { t }
+    };
+    let entry = op.get("entry");
+    let name = |e: &serde_json::Value| -> String {
+        let l = clean(e.get("label"), 40);
+        let l = if l.is_empty() { clean(e.get("subject"), 40) } else { l };
+        if l.is_empty() { "unnamed".to_string() } else { l }
+    };
+    match op.get("type")?.as_str()? {
+        "add" => {
+            let e = entry?;
+            match e.get("kind")?.as_str()? {
+                "device" => Some(format!("Add a device: {}", name(e))),
+                "contact" => Some(format!("Add a recovery contact: {}", name(e))),
+                "code" => Some("Add a recovery code".to_string()),
+                "owner" => Some(format!("Make {} an owner", name(e))),
+                _ => None,
+            }
+        }
+        "remove" => {
+            let t = clean(op.get("target"), 12);
+            if t.is_empty() { None } else { Some(format!("Remove a sign-in ({})", t)) }
+        }
+        "replace-code" => if entry?.get("kind")?.as_str()? == "code" { Some("Replace your recovery code".to_string()) } else { None },
+        "recover" => {
+            let e = entry?;
+            if e.get("kind")?.as_str()? == "device" { Some(format!("Recover your name onto a new device: {}", name(e))) } else { None }
+        }
+        "genesis" => Some(format!("Start an identity with this device: {}", name(entry?))),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,6 +100,27 @@ mod tests {
     const SIG: &str = "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b";
 
     fn seed() -> [u8; 32] { hex(SEED).try_into().unwrap() }
+
+    fn chain(json: &str) -> Vec<u8> { let mut m = b"vyre-chain-v1\n".to_vec(); m.extend_from_slice(json.as_bytes()); m }
+
+    #[test]
+    fn the_shell_writes_the_summary_from_the_bytes_and_refuses_what_it_cannot_read() {
+        assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"device","label":"Ana's iPhone"}}"#)).as_deref(), Some("Add a device: Ana's iPhone"));
+        assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"owner","label":"Sam"}}"#)).as_deref(), Some("Make Sam an owner"));
+        assert_eq!(chain_summary(&chain(r#"{"type":"remove","target":"abc"}"#)).as_deref(), Some("Remove a sign-in (abc)"));
+        assert_eq!(chain_summary(&chain(r#"{"type":"mystery"}"#)), None);
+        assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"robot"}}"#)), None);
+        assert_eq!(chain_summary(b"not a chain message"), None);
+        assert_eq!(chain_summary(&chain("{")), None);
+    }
+
+    #[test]
+    fn a_label_cannot_smuggle_lines_or_length_into_the_summary() {
+        let s = chain_summary(&chain(r#"{"type":"add","entry":{"kind":"device","label":"A\nUnlock Drive\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}"#)).unwrap();
+        assert!(!s.contains('\n'));
+        assert!(s.starts_with("Add a device: "));
+        assert!(s.chars().count() < 70);
+    }
 
     #[test]
     fn the_ed25519_key_matches_rfc_8032() {

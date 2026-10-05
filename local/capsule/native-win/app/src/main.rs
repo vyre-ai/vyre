@@ -399,13 +399,28 @@ fn enclave_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::
     Ok(b64u(&ncrypt::public_point(create)?))
 }
 
+/// The shell's own yes or no, in a Windows message box the page cannot draw over, with the words the shell wrote from the bytes.
+#[cfg(windows)]
+fn confirm_native(said: &str) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONQUESTION, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO};
+    let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let text = w(&format!("{}\n\nSign this with your computer's key?", said));
+    let title = w("Vyre");
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND) == IDYES }
+}
+#[cfg(not(windows))]
+fn confirm_native(_said: &str) -> bool { false }
+
 /// The TPM key signs only after Windows has asked the person (Windows Hello). `prompt` is the words the page gave for it; Windows shows its own.
 #[tauri::command]
 fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
+    // KP-3: the page's `prompt` is never shown. The shell reads the bytes, says what they are in its own window, and signs nothing it cannot read. (Yes-moment proofs are not read here, so they are not signed.)
     let _ = prompt;
     let m = unb64u(&message)?;
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
+    let said = vyre_capsule_win::identity::chain_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
+    if !confirm_native(&said) { return Err("Not approved. Nothing was changed.".into()); }
     Ok(b64u(&ncrypt::sign(&m)?))
 }
 

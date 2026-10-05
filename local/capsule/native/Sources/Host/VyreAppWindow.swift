@@ -165,7 +165,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             reply(id, ["publicKey": MacIdentity.b64url(pt)])
         case "enclave.sign":
             guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let e = enclave else { return reply(id, ["error": "There is no Secure Enclave key on this Mac to sign with."]) }
-            guard let sig = await e.sign(m, reason: (args["prompt"] as? String).map { String($0.prefix(120)) } ?? "Approve this change to your name") else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
+            // KP-3: the words on the Touch ID sheet are the shell's own, read from the bytes. The page's `prompt` is never shown, and bytes the shell cannot read are not signed.
+            guard let said = SignSummary.of(message: m, fields: args["fields"] as? [String: Any], space: args["space"] as? String) else { return reply(id, ["error": "Vyre cannot tell what this would sign, so it did not."]) }
+            guard let sig = await e.sign(m, reason: String(said.prefix(300))) else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
             reply(id, ["signature": MacIdentity.b64url(sig)])
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
@@ -322,7 +324,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           agree: function (epk) { return call("agree.agree", { epk: epk }).then(function (r) { return r.secret; }); },
           makeServer: function () { return call("setup.server").then(function () {}); },
           enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
-          enclaveSign: function (message, prompt) { return call("enclave.sign", { message: message, prompt: prompt }).then(function (r) { return r.signature; }); }
+          enclaveSign: function (message, prompt, card) { return call("enclave.sign", { message: message, prompt: prompt, fields: card && card.fields, space: card && card.space }).then(function (r) { return r.signature; }); }
         },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },

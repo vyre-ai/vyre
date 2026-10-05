@@ -26,7 +26,7 @@ export async function shellSigner(): Promise<Signer | null> {
       // the card carries the person (approveCard passes the id the box named); without one the proof refuses (ERR_NO_PERSON)
       const person = card.person || "";
       const body = proofBody({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, person }, { keyId, now: Date.now(), nonce: b64url(crypto.getRandomValues(new Uint8Array(16))), signer: shellKind() === "windows" ? "tpm" : "secure_enclave" });
-      const signature = await macEnclaveSign(proofBytes(body), card.prompt || "Approve this change");
+      const signature = await macEnclaveSign(proofBytes(body), card.prompt || "Approve this change", { fields: card.fields, space: card.space });
       return { ...body, signature: b64url(signature) };
     },
   };
