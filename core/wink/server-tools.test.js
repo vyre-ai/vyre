@@ -34,7 +34,7 @@ test("wink.server.home: the paired server, whether it answers, and its https nam
 
 test("wink.server.health: reach, latency and since, cached; unreachable says why", async () => {
   const r = rig();
-  const a = await r.run("wink.server.health"); assert.deepEqual([a.state, a.path, a.reach], ["relayed", "relay", "relay"]); assert.equal(typeof a.latencyMs, "number");
+  const a = await r.run("wink.server.health"); assert.deepEqual([a.state, a.path, a.dot, a.reach], ["relayed", "relay", "relay", "relay"]); assert.equal(typeof a.handshake, "number"); assert.equal(typeof a.latencyMs, "number");
   const n = r.calls.length; await r.run("wink.server.health"); assert.equal(r.calls.length, n, "a second read inside 15 seconds asks nothing");
   await r.run("wink.server.health", { fresh: true }); assert.ok(r.calls.length > n, "fresh asks again");
   const d = await rig({ down: true }).run("wink.server.health"); assert.deepEqual([d.state, d.reach, d.reachable], ["offline", "none", false]); assert.ok(d.why);

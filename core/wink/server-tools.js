@@ -85,14 +85,14 @@ export function serverTools(d) {
 
   ctx.tool("wink.server.health", {
     effect: "read",
-    description: "How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.",
+    description: "How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, dot: direct | relay | unknown, handshake (ms of the last answer), reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.",
     input: obj({ fresh: { type: "boolean" } }),
     run: async (i, meta = {}) => {
       person(meta, "reading the server's health");
       const s = await serverOf(undefined);
-      if (!s) return { state: "offline", path: "none", reach: "none", reachable: false, why: "this computer is not paired with a server", since: null, latencyMs: null };
+      if (!s) return { state: "offline", path: "none", dot: "unknown", handshake: null, reach: "none", reachable: false, why: "this computer is not paired with a server", since: null, latencyMs: null };
       const p = await probe(s.sid, Boolean(i && i.fresh));
-      return { state: p.ok ? "relayed" : "offline", path: p.ok ? "relay" : "none", reach: p.ok ? "relay" : "none", reachable: p.ok, latencyMs: p.ms, since: p.since, ...(p.ok ? {} : { why: p.why || "the server did not answer" }) };
+      return { state: p.ok ? "relayed" : "offline", path: p.ok ? "relay" : "none", dot: p.ok ? "relay" : "unknown", handshake: p.lastSeen, reach: p.ok ? "relay" : "none", reachable: p.ok, latencyMs: p.ms, since: p.since, ...(p.ok ? {} : { why: p.why || "the server did not answer" }) };
     },
   });
 
