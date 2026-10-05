@@ -1998,8 +1998,9 @@ for (const driver of ["cli", "sdk"]) {
     const l = w.launches().at(-1);
     assert.ok(!l.argv.includes("--append-system-prompt"), "nothing of Claude Code's own prompt is kept");
     const sys = l.argv[l.argv.indexOf("--system-prompt") + 1];
+    // The prompt may end with the one time line every model call carries (lib/time).
     assert.match(sys, /^You are Vyre Memory/);
-    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"$/);
+    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"(\n\nTime: [^\n]*)?$/);
     assert.doesNotMatch(sys, /no tools here|in markdown|What the user's own notes say/, "the Capsule's old instructions are gone");
     assert.doesNotMatch(sys, /\u2014/, "no em dash in the prompt itself");
     assert.equal(l.max_thinking, "0", "thinking off");
@@ -2013,7 +2014,7 @@ for (const driver of ["cli", "sdk"]) {
     const r = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule" })).data;
     await w.finished(r.id);
     const sys2 = w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--system-prompt") + 1];
-    assert.match(sys2, /^You are Vyre Memory[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
+    assert.match(sys2, /^You are Vyre Memory[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)(\n\nTime: [^\n]*)?$/);
     assert.equal((await w.events(r.id)).find(e => e.type === "thread.started").payload.prompt, "capsule@own-1");
     const p = (await w.tool("sessions.prompt.preview", { purpose: "capsule" })).data;
     assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 2, true], ["capsule", 1, false]]);
