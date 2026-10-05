@@ -206,7 +206,7 @@ export function render(s, ctx) {
   region("domain", domainKey, () => {
     if (domainKey === "none") return [];
     if (domainKey === "closed") return [el("div", { class: "actions" }, button("Use a domain of your own too", "secondary", () => actions.openDomain(true)))];
-    const input = el("input", { type: "text", class: "name", name: "domain", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Your domain", "aria-describedby": "domain-status", maxlength: "100", placeholder: "harlowlegal.com" });
+    const input = el("input", { type: "text", class: "name", name: "domain", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Your domain", "aria-describedby": "domain-status", maxlength: "100", placeholder: "juniperstudio.com" });
     /** @type {any} */ (input).value = dm.input;
     input.addEventListener("input", ev => actions.setDomain(/** @type {any} */ (ev.currentTarget).value));
     input.addEventListener("keydown", ev => { if (/** @type {any} */ (ev).key === "Enter") actions.checkDomain(); });
