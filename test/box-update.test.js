@@ -399,6 +399,18 @@ test("box update: a pulled image (no compose.build.yml) is tagged vyre:prev and 
   assert.ok(!b.hits.includes("/dl/v0.2.0/vyre.tgz"));
 });
 
+test("box update: a box whose compose.yml names the image by digest keeps THAT image as vyre:prev, never a stale :latest", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  const pinned = "ghcr.io/vyre-ai/vyre@sha256:" + "b".repeat(64);
+  const name = ref => path.join(b.FAKE, "images", ref.replace(/[/:]/g, "_"));
+  fs.writeFileSync(path.join(b.DIR, "compose.yml"), COMPOSE.replace(/^( *image: *).*$/gm, `$1${pinned}`));
+  fs.writeFileSync(name(pinned), "pinned");
+  fs.writeFileSync(name("ghcr.io/vyre-ai/vyre:latest"), "stale");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(b.image("vyre:prev"), "pinned", "the rollback image is the one the box ran, named by its digest");
+});
+
 test("box update (pulled): an image cosign cannot verify, a compose.yml on a moving tag, and a release without release.json are each refused with nothing changed", async t => {
   const state = b => ({ calls: b.calls().filter(c => /^compose (pull|up|build)/.test(c)), compose: b.read(path.join(b.DIR, "compose.yml")), image: b.image("ghcr.io/vyre-ai/vyre:latest"), db: b.db() });
   // cosign says no (an unsigned image, or another signer's): refused before the box is touched.

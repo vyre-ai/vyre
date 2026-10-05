@@ -5,6 +5,9 @@ import { Button, Card, Chip, Ring, Row, Text, type IconName, IconTile } from "@v
 import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { COPY, DEFAULT_NAMES, lastStep, showsRing, stepLine, stepWords, wordsStep, type DeviceKind } from "./wink.js";
+import { installLine, isPhone } from "../install/first-run.js";
+import { deviceKindHere } from "../../src/real/pair-say";
+import { shell } from "../../src/shell/shell";
 import { PairEntry, PairWords, openPairing, type LongCode } from "./PairParts";
 import { SAMPLE_CODE } from "../../src/api/wink-code";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
@@ -32,6 +35,8 @@ export function WinkAdd() {
   const router = useRouter();
   const addDevice = useDevices((s) => s.addDevice);
   const [kind, setKind] = useState<DeviceKind | null>(null);
+  // A phone or a browser never hosts or picks a server: it adds a phone or a computer (DESIGN-first-run-per-platform).
+  const kinds = isPhone(deviceKindHere()) || deviceKindHere() === "web" ? KINDS.filter((k) => k.id !== "server") : KINDS;
   const [step, setStep] = useState(0);
   const [session, setSession] = useState<PairingSession | null>(null);
   const [said, setSaid] = useState("");
@@ -42,7 +47,7 @@ export function WinkAdd() {
     return (
       <Page title="Add a device" sub="What are you adding?" back="/u/wink">
         <Card flush>
-          {KINDS.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<IconTile name={k.icon} size={40} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
+          {kinds.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<IconTile name={k.icon} size={40} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
         </Card>
       </Page>
     );
@@ -80,7 +85,7 @@ export function WinkAdd() {
       right = <Screen cap="Your phone"><Text strong tone="ok">Added</Text><Text tone="muted" className="text-center">{`${name} can now reach your server.`}</Text><Button size="sm" label="Done" onPress={finish} /></Screen>;
     }
   } else if (step === 0) {
-    left = <Screen cap="Your server"><Text strong>Run this on it</Text><Text mono size="caption">curl -fsSL vyre.run/i | sh</Text><Text tone="muted" className="text-center">It prints a QR code and a long code.</Text></Screen>;
+    left = <Screen cap="Your server"><Text strong>Run this on it</Text><Text mono size="caption">{installLine(shell()?.version)}</Text><Text tone="muted" className="text-center">It prints a QR code and a long code.</Text></Screen>;
     right = <Screen cap="Your phone"><Text strong>Scan it, or paste the long code</Text><PairEntry onCode={got} sample={SAMPLE_CODE} /></Screen>;
   } else if (atWords) {
     left = <Screen cap="Your server" dim><Text strong>{`${name} is waiting`}</Text>{session ? <Text mono size="title" strong className="text-center">{wordsLine(session.words())}</Text> : null}<Text tone="muted" className="text-center">It shows who is asking and waits for yes.</Text></Screen>;

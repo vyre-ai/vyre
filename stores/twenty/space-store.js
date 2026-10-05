@@ -140,7 +140,7 @@ export function createStoreFor(cfg) {
     // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
     { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
-    fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name }), { mode: 0o600 });
+    fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
     log(`store for ${space}: Twenty ready`);
     /** @type {any} */ (store).keyCheck = checkKey;
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);

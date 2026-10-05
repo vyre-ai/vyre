@@ -70,6 +70,10 @@ export interface FieldDefinition {
    * type's other stored fields (`days_since(last_contact)`), or a total over the records of another type that link here (`over`: `{ type: "matter", via: "client", fn: "sum",
    * field: "fee.amount" }`, `where` an optional filter). A reader who cannot see everything it is made from gets no value.
    */
+  /** Shown only while this Expression, over the record's other stored fields, is true (`practice_area == "Personal Injury"`). Not shown means not editable and not written: the value is kept, and shows again when the condition holds. Never together with `required`. */
+  readonly visible_if?: string;
+  /** Required only while this Expression is true and the field is visible (`stage == "Signed"`). A write that leaves it empty then is refused. Never together with `required`. */
+  readonly required_if?: string;
   readonly computed?: { readonly expr: string } | { readonly over: { readonly type: string; readonly via: string; readonly fn: 'count' | 'sum' | 'min' | 'max' | 'avg'; readonly field?: string; readonly where?: unknown } };
 }
 
@@ -85,7 +89,28 @@ export interface TaskTemplateDef {
   readonly required?: boolean;
 }
 
-export interface StageDef { readonly name: string; readonly tasks?: readonly TaskTemplateDef[] }
+export interface StageDef {
+  readonly name: string;
+  readonly tasks?: readonly TaskTemplateDef[];
+  /** The record can enter this stage only while this Expression, over the record as it would be after the write, is true. */
+  readonly enter_if?: string;
+}
+
+/** A stage set: the stages a record follows while `when` holds for it. The first set that holds wins; the type's `stages` are the default set. */
+export interface StageSetDef { readonly name: string; readonly when: string; readonly stages: readonly StageDef[] }
+
+/** How a type is shown, stored with the type. `columns` are field names; a `board` groups by a choice or stage field and shows `columns` on its cards. */
+export interface ViewDef {
+  readonly name: string;
+  readonly type: 'list' | 'board' | 'calendar' | 'page' | 'dashboard';
+  readonly label?: string;
+  readonly groupBy?: string;
+  readonly dateField?: string;
+  readonly columns?: readonly string[];
+  /** An Expression over the record's stored fields; only records it is true for are shown. */
+  readonly filter?: string;
+  readonly sort?: { readonly field: string; readonly dir?: 'asc' | 'desc' };
+}
 
 export interface TypeDefinition {
   readonly name: string;
@@ -94,7 +119,12 @@ export interface TypeDefinition {
   /** "project" marks a type that holds work (the app shows it as a project); anything else is refused. Left out for a plain type. */
   readonly kind?: 'project';
   readonly fields: readonly FieldDefinition[];
+  /** The default stages. The stage field's options are every stage name of these and of the `stage_sets`. */
   readonly stages?: readonly StageDef[];
+  /** Stage sets that vary by a value on the record (a personal-injury case and an estate-planning case on one type follow different stages). */
+  readonly stage_sets?: readonly StageSetDef[];
+  /** How the type is shown. The app reads these; its own table is only the default for a type that has none. */
+  readonly views?: readonly ViewDef[];
   /** Expression strings in the Expression language, validated, never code. */
   readonly rules?: readonly { readonly name?: string; readonly require: string }[];
   /**
