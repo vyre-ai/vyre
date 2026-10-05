@@ -12,7 +12,10 @@ const HERE = path.dirname(new URL(import.meta.url).pathname), KERNEL = path.reso
 const code = f => fs.readFileSync(path.join(KERNEL, f), "utf8").split("\n").filter(l => l.trim() && !l.trim().startsWith("//")).length;
 const GROUPS = {
   leases: { cap: 120, files: ["seal/leases.js"] },
-  attest: { cap: 250, files: ["seal/appattest.js", "seal/strength.js"] },
+  // KP-2 (reviewer-3 asked for the proposal): entry-proof.js joins the attestation group (33 lines, the glue that asks Apple's and Android's verifiers whether a paired device's chip key is real), so the cap goes 250 -> 260 (255 used).
+  attest: { cap: 260, files: ["seal/appattest.js", "seal/strength.js", "seal/entry-proof.js"] },
+  // The Android Keystore attestation verifier (276 lines): about 110 of them are Google's four pinned attestation roots as data (PEM), the rest is the DER walk, the chain and key-description checks and the revocation list. Own group, cap 300.
+  androidattest: { cap: 300, files: ["seal/androidattest.js"] },
   // BG-1 (reviewer-2's sign-off, RC1): 900 is the CEILING for the sealing group, raised from 800 for what RC1 had to put inside the sealing process: the one key-strength rule (strength.js, by method and signer,
   // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-2's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
   sealing: { cap: 900, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
