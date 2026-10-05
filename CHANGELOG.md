@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): Shared leaves More until the user decides whether it is a tab in Drive; /u/shared stays reachable by address but unlinked.
+
 - refactor(app): the provider marks file lives in apps/app/ui/marks/provider-art.js (copied unmodified), so the app no longer reads deck/js/provider-art.js.
 
 - feat(app): a record's sealed field has a Fill (Replace once filled) button and the line "Hidden from AI; your assistant sees a placeholder". Filling and revealing go to the box as held calls: the owner's phone answers the ask and the call goes again with the approval, as the Vault's held fields do. The simulated Face ID proof is gone from the record page.
