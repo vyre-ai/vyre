@@ -28,6 +28,8 @@ import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
+import { ChatToolsSheet } from "../../screens/chat-tools";
+import { readDraft, writeDraft } from "./drafts";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -81,6 +83,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   const [note, setNote] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
+  const [draftN, setDraftN] = useState(0);
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
@@ -148,7 +153,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
+      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} onForked={p.onBranched}
+        onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -236,6 +243,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
           phone={phone}

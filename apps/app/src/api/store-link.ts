@@ -1,7 +1,7 @@
 // Gives the generated screens their Store: the vyred the app is paired with, through the box connection (src/api/box), one tool call per Store method.
 // Imported once by the /u layout, before any screen asks for a Store. The mock exists only in a build made with EXPO_PUBLIC_VYRE_MOCK=1 (deck/ui/store.js).
-import { allowMock, setStore } from "../../../../deck/ui/store.js";
-import { createGatewayStore, storeError } from "../../../../deck/ui/gateway-adapter.js";
+import { allowMock, setStore } from "../vendor/deck/ui/store.js";
+import { createGatewayStore, storeError } from "../vendor/deck/ui/gateway-adapter.js";
 import { call, listen, send } from "./box";
 import { tool as heldTool } from "../real/box";
 import { withSpace } from "../real/with-space.js";

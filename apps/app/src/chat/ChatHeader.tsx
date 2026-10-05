@@ -45,7 +45,7 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, line, phone, onBack, onOpen }: {
+export function ChatHeader({ title, participants, viewer, line, phone, onBack, onOpen, onTools }: {
   title: string;
   participants: readonly Person[];
   viewer: string;
@@ -54,6 +54,8 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
   phone: boolean;
   onBack?: () => void;
   onOpen: () => void;
+  /** The chat tools sheet (fork, effort, mode, mention, context, transcript). */
+  onTools?: () => void;
 }) {
   const { color } = useUiTheme();
   const stack = avatarStack(participants, viewer, 3);
@@ -71,6 +73,11 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
           {line ? <Text size="caption" tone="label" numberOfLines={1}>{line}</Text> : null}
         </View>
       </Pressable>
+      {onTools ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Chat tools" onPress={onTools} style={S.back}>
+          <Icon name="more" size={20} tone="text" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

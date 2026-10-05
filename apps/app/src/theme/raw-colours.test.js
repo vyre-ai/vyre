@@ -17,7 +17,8 @@ export const EXCEPTIONS = Object.freeze({
   "ui/marks/source.js": "the avatar illustration (skin, hair, clothes and background palettes): art, drawn the same under either scheme",
 });
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "dist-ios", ".expo", "android", "ios", "assets", "public", "scripts"]);
+// src/vendor holds the Deck's own domain modules and third-party code copied in as they are (the token source, the avatar art, xterm): not screens, not ours to recolour.
+const SKIP_DIRS = new Set(["vendor", "node_modules", "dist", "dist-ios", ".expo", "android", "ios", "assets", "public", "scripts"]);
 const SKIP_FILES = new Set(["src/theme/tokens.ts"]);
 const EXT = /\.(?:ts|tsx|js|jsx|cjs|mjs|css)$/;
 

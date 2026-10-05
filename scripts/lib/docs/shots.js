@@ -46,7 +46,7 @@ const DECK = ["deck/css/deck.css", "deck/js/app.js", "deck/index.html"];
 const NOW = ["deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"];
 const PAIR = ["deck/js/pair.js", "deck/css/pair.css", "core/link/box.js"];
 const PHONE = ["deck/js/phone-setup.js", "deck/css/views/phone-setup.css"];
-const ONBOARD = ["deck/onboard/onboard.js", "deck/onboard/onboard.css", "deck/onboard/index.html", "deck/css/deck.css", "core/onboard/index.js"];
+const ONBOARD = ["web/onboard/onboard.js", "web/onboard/onboard.css", "web/onboard/index.html", "deck/css/deck.css", "core/onboard/index.js"];
 const BOTH = ["light", "dark"];
 
 // Page scripts. The held email is the gate item sent via "mail"; its id is new every run.

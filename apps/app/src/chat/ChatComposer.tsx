@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
-import { COMMANDS } from "../../../../deck/chat/core/commands.js";
+import { COMMANDS } from "../vendor/deck/chat/core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 

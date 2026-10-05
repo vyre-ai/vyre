@@ -7,7 +7,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPacer } from "../../../../deck/chat/core/pace.js";
+import { createPacer } from "../vendor/deck/chat/core/pace.js";
 import { cv } from "../../../../lib/perf/meter.js";
 import { createReveal } from "./reveal.js";
 

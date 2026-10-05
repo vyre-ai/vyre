@@ -6,10 +6,10 @@
 // core adopts this row, so its key (u:<uuid>) and its place never change. dropLocal takes it
 // back on a refusal.
 
-import { applyEvent, localSend } from "../../../../deck/chat/core/session-state.js";
+import { applyEvent, localSend } from "../vendor/deck/chat/core/session-state.js";
 
 /**
- * @param {import("../../../../deck/chat/core/session-state.js").Session} s
+ * @param {import("../vendor/deck/chat/core/session-state.js").Session} s
  * @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at: number, surface: string }} m
  * @returns {string[]} the keys touched
  */

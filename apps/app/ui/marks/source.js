@@ -4,11 +4,11 @@
 // plus the person face v2 ported from the prototype (team/0.2.2/prototype-src/p3o.js personV2) and the device marks of team/0.3/assets.
 // Same seed, same mark, on every surface. A mark never falls back to a letter.
 
-import { creature } from "../../../../deck/vendor/vyrecode/creature.js";
-import { character } from "../../../../deck/vendor/vyrecode/characters.js";
-import { emblem } from "../../../../deck/vendor/vyrecode/emblem.js";
-import { agentV2 } from "../../../../deck/vendor/vyrecode/agent2.js";
-import { PROJECT_COLORS } from "../../../../deck/vendor/vyrecode/identity.js";
+import { creature } from "../../src/vendor/deck/vendor/vyrecode/creature.js";
+import { character } from "../../src/vendor/deck/vendor/vyrecode/characters.js";
+import { emblem } from "../../src/vendor/deck/vendor/vyrecode/emblem.js";
+import { agentV2 } from "../../src/vendor/deck/vendor/vyrecode/agent2.js";
+import { PROJECT_COLORS } from "../../src/vendor/deck/vendor/vyrecode/identity.js";
 import { projectBytes } from "../../../../lib/avatar-seed/index.js";
 
 /** @typedef {"person" | "assistant" | "teammate" | "agent" | "project" | "space" | "device"} MarkKind */

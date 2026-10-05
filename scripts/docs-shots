@@ -473,7 +473,7 @@ try {
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.open = () => null;" });
     await page.viewport(1280, 800);
     await page.goto(ob.url, 3000);
-    // The onboarding's order (deck/onboard/onboard.js STEPS): You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ... Your devices.
+    // The onboarding's order (web/onboard/onboard.js STEPS): You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ... Your devices.
     // The steps between history and devices (secrets, accounts, computers, drive) have no shots: the walk goes to them by address, as it did before they were steps.
     const order = ["you", "live", "tailscale", "name", "claude", "history", "devices", "ready"];
     for (const step of order) {
