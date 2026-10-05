@@ -12,8 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../../../../core/daemon/index.js";
 import { asOwner, tempHome, present } from "../../../../test/helpers.js";
-import { FAKE } from "../../../../core/sessions/testing/boot.js";
-import { membersFrom } from "./members.js";
+import { FAKE, until } from "../../../../core/sessions/testing/boot.js";
+import { membersFrom, slotNames } from "./members.js";
 import { modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -37,13 +37,18 @@ test("group chat on a real daemon: @ lists the chat's members and agents, # list
   if ((await call("work.chat.list", {})).error?.code === "no_such_tool") return t.skip("this tree has no One Chat server (work.chat.*)");
 
   // the person's own: an agent, a chat with it, and records of a type with a sealed field
-  await data("agents.create", { name: "kit", projects: ["*"], instructions: "Kit keeps the intake tidy." });
-  const made = await data("work.chat.create", { agents: ["kit"], title: "Intake" });
+  await data("agents.create", { name: "kit", kind: "assistant", instructions: "Kit keeps the intake tidy." });
+  const made = await data("work.chat.create", { title: "Intake" });
   const chat = String(made.id ?? made.chat?.id ?? made.chat);
   assert.match(chat, /^chat_/);
   await data("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "ssn", kind: "sealed", label: "SSN" }] }] } });
   await data("records.create", { type: "matter", data: { title: "Northwind lease dispute" } });
   await data("records.create", { type: "matter", data: { title: "Reyes probate" } });
+
+  // a model joins a chat when it is first asked in it: the first message goes through the stream, as the app sends it
+  const sent = await call("stream.send", { chat, text: "Hello, who is here?", message: "0190c3f2-aaaa-4abc-8def-000000000001", surface: "deck" });
+  assert.ok(!sent.error, `stream.send: ${JSON.stringify(sent.error)}`);
+  await until(async () => ((await call("work.chat.get", { chat })).data?.slots ?? []).length > 0, "the model's slot appears in the chat", 60_000);
 
   // @ : the chat's own members, then the space's actors and the person's agents
   const got = await data("work.chat.get", { chat });
@@ -52,9 +57,10 @@ test("group chat on a real daemon: @ lists the chat's members and agents, # list
   const me = String((await data("records.me", {})).person ?? "");
   const members = membersFrom(got, actors, me);
   assert.ok(members.some((m) => m.id === `person:${me}` && m.name === "You"), JSON.stringify(members));
-  assert.ok(members.some((m) => m.id === "agent:kit" && m.family === "assistant"), `kit is in the chat: ${JSON.stringify(members)}`);
+  // the model the chat was made with is a slot, and the chip that switches it is named for it
+  assert.equal(slotNames(got).length, 1, JSON.stringify(got.slots));
   const people = peopleFor({ actors, agents, viewer: me, here: members.filter((m) => m.id !== `person:${me}`).map((m) => ({ name: m.name, family: m.family })) });
-  assert.ok(people.some((p) => p.name === "kit" && p.family === "assistant"), `@ lists kit: ${JSON.stringify(people)}`);
+  assert.ok(people.some((p) => p.name === "kit" && p.family === "assistant"), `@ lists kit (the person's own assistant): ${JSON.stringify(people)}`);
 
   // # : the records the person may read, named by title, with the sealed ones marked
   const types = (await data("records.types", {})).types ?? (await data("records.types", {}));
