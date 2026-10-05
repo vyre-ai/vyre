@@ -177,7 +177,8 @@ export const TASK = {
     f("rich_text", "note", "Note"),
     f("datetime", "due", "Due"),
     choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
-    { name: "stage", kind: "stage", label: "Stage", options: ["Backlog", "Doing", "Done"], owned_by: "kernel" },
+    // the stage of the record the task is about, which can be any Kit's stage: no fixed list of options
+    { name: "stage", kind: "stage", label: "Stage", owned_by: "kernel" },
     f("link", "parent", "Part of", { to: "task" }),
     f("link", "project", "Project", { to: "project" }),
     f("link", "record", "About", { owned_by: "kernel" }),
@@ -196,7 +197,6 @@ export const TASK = {
     f("date", "date", "Date"),
     choice("source", "Source", TASK_SOURCES),
   ],
-  stages: [{ name: "Backlog" }, { name: "Doing" }, { name: "Done" }],
   views: [
     { name: "tasks_board", type: "board", label: "Tasks by status", groupBy: "status", columns: ["title", "due", "priority"] },
     { name: "tasks_list", type: "list", label: "All tasks", columns: ["title", "status", "due", "project"], sort: { field: "due", dir: "asc" } },
