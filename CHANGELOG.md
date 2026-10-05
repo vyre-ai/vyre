@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(memory)!: an unlock ask is signed over sorted-key canonical JSON (kernel/core/canonical.js), not plain `JSON.stringify`: field order never decides validity. `finish` now checks on the server that a standing grant matches the asking server's fingerprint (before, any grant let any ask finish); a grant for server A cannot finish an ask from server B. Test: core/memory/identity/grant-server.test.js.
 - feat(memory): `memory.identity.status` also returns `server_key` (this server's public JWK, which the phone pins when the person says yes to the grant) and `id` (the identity id the grant proof is over). Public data only.
 - fix(memory): `memory.upgrade.plan` and `memory.upgrade.move` answer only the spaces module (`module:spaces`), not any module caller (reviewer-5 LOW).
 - fix(memory): `memory.upgrade.move` calls `spaces.storage.*` with `{ relay: true }`, so the storage calls reach as the person the spaces module relayed (a plain nested module call carries no person). Needs windows' ctx.call relay (work/spaces).

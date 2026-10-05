@@ -176,7 +176,9 @@ export class IdentityLive {
     const open = this.asks.get(request);
     if (!open) throw Object.assign(new Error("no unlock is waiting for that request"), { code: "not_found" });
     this.asks.delete(request);
-    if (!this.home.grants().length) throw Object.assign(new Error("this server was not given the person's memory (or it was revoked)"), { code: "denied" });
+    // the standing grant must be for the server that asked: a grant for server A never finishes an ask from server B
+    const fp = open.ask.server && open.ask.server.fp;
+    if (!fp || !this.home.grants().some(g => g.fp === fp)) throw Object.assign(new Error("this server was not given the person's memory (or it was revoked)"), { code: "denied" });
     this.#open(await this.home.finishUnlock(open.ask, open.secret, answer));
     return this.status();
   }
