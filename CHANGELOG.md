@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Settings, Connections at /u/settings/connections (the Deck's connections.js, ported): MCP servers (Test with per-tool Read, Held or Off, Restart, Remove), Google accounts (Test shows each scope granted or refused, Remove) and GitHub accounts (device-code sign-in followed by github.connected and github.connect-failed, a pasted token that is never echoed back, Disconnect). Not yet: adding an MCP server or a Google account, and the connectors catalog (7 tests).
+
 - feat(app): Settings has Spending limits (spend.summary, spend.raise: a daily cap per provider, No cap) and Standing permissions (gate.said.list, add, revoke: what Vyre may send, post or pay without asking, Take back in one tap, a payment or a blanket allow asks for the person's proof). The Deck's settings-spend and settings-permissions, ported (screens/settings/limits-*.ts, LimitsScreens.tsx, routes /u/settings/spend and /u/settings/permissions; 4 tests).
 
 - feat(app): Settings, AI accounts lists every account sessions can run on (Codex, Grok, ...) from sessions.accounts.list with who is signed in, Make default, Remove and Grok's privacy note, and adds one through the provider's own sign-in (link, code, a pasted code, followed to done or failed). The Deck's settings-accounts, ported (screens/settings/accounts-model.ts, accounts-source.ts, AccountsCard.tsx; 4 tests).
