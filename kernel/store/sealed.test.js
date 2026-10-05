@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { createSealedStore, PERSONAL_TYPES } from "./sealed.js";
 import { newKey } from "../../lib/keywrap.js";
+import { conformance, CONTACT, ACCOUNT, LEAD, SUITE_REVISION } from "../conformance/suite.js";
 import { FileBackend } from "../../core/memory/identity/home.js";
 
 const tmp = (/** @type {any} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prec-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
@@ -18,7 +19,7 @@ const ids = ["0190c3f2-1111-4abc-8def-000000000001", "0190c3f2-1111-4abc-8def-00
 
 async function seed(/** @type {any} */ t, /** @type {any} */ o = {}) {
   const dir = tmp(t), backend = new FileBackend(dir), imk = newKey();
-  const s = createSealedStore({ backend, identity: "alex", imk, create: true, ...o });
+  const s = createSealedStore({ backend, identity: "alex", imk, create: true, allow: PERSONAL_TYPES, ...o });
   await s.store.define({ add_types: [REMINDER, NOTE] });
   await s.store.create("reminder", ids[0], { text: "Call the dentist about Dana Reyes", due_at: 1000, done: false });
   await s.store.create("reminder", ids[1], { text: "Send the Northwind invoice", due_at: 5000, done: false });
@@ -66,4 +67,18 @@ test("sealed store: only the fixed personal types, and the owner's per-member ca
   cap = s.status().used_bytes + 10_000_000;
   await s.store.create("note", "0190c3f2-1111-4abc-8def-000000000009", { text: "now it fits" });
   assert.equal(s.status().cap_bytes, cap);
+});
+
+// The suite is what "a store" is: this one passes it like any other. It allows the suite's own types (the fixed-type policy is a layer above the store's rules).
+conformance(async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-conf-"));
+  process.on("exit", () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ } });
+  return createSealedStore({ backend: new FileBackend(dir), identity: "alex", imk: newKey(), create: true, }).store;
+}, { test, assert }, "sealed personal records");
+
+test("sealed store: it reports the suite revision it passes", async t => {
+  const { s } = await seed(t);
+  const v = await s.store.version();
+  assert.equal(v.store, "sealed-personal");
+  assert.equal(v.conformance, SUITE_REVISION);
 });

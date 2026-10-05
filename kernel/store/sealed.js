@@ -6,9 +6,9 @@
 // Key: one random records key (PK), sealed under the person's identity memory key (the IMK of core/memory/identity), so the person's one yes that unlocks the identity home unlocks this too; nothing
 // else holds it. A server stores, under `personal/<identity>/`: key.json (PK sealed under the IMK), types.json (sealed), rec/<id> (one sealed blob per record, named by an HMAC so a type and an
 // id do not show) and chg/<n> (the change log in sealed segments). The "due between" kind of question is the store's own query over a decrypted-in-process table: no index is written in the clear.
-// Only the fixed types a Personal person keeps here may be defined; anything else is refused. A per-member cap (set by the space owner) refuses writes once the stored bytes reach it.
+// The fixed types a Personal person keeps here (`allow: PERSONAL_TYPES`) are the only ones defined when asked; with no `allow` it holds any type the kernel defines. A per-member cap (set by the space owner) refuses writes once the stored bytes reach it.
 import crypto from "node:crypto";
-import { createMemoryStore } from "./memory.js";
+import { createMemoryStore, CONFORMANCE_REVISION } from "./memory.js";
 import { newKey, seal, open } from "../../lib/keywrap.js";
 
 const SEG = 200;
@@ -28,7 +28,8 @@ const bytes = (/** @type {any} */ b) => (b ? Buffer.byteLength(b) : 0);
  */
 export function createSealedStore(cfg) {
   const { backend, identity } = cfg;
-  const allow = new Set(cfg.allow || PERSONAL_TYPES);
+  // `allow` limits which types may be defined (a personal Space passes PERSONAL_TYPES); left out, the store keeps whatever the kernel defines in it, as any store does (the suite holds it to that).
+  const allow = cfg.allow ? new Set(cfg.allow) : null;
   const keyFile = `${dir(identity)}/key.json`;
   /** @type {Buffer | null} */ let pk = null;
   const raw = backend.get(keyFile);
@@ -69,13 +70,13 @@ export function createSealedStore(cfg) {
     initial: { types, records, changes },
     hook: (op, args) => {
       if (!WRITES.has(op)) return;
-      if (op === "define") { for (const t of (args[0].add_types || [])) if (!allow.has(t.name)) throw fail("unsupported", `a personal store keeps only ${[...allow].join(", ")}`); for (const t of (args[0].change_types || [])) if (!allow.has(t.name)) throw fail("unsupported", "not a personal type"); }
+      if (op === "define" && allow) for (const t of (args[0].add_types || [])) if (!allow.has(t.name)) throw fail("unsupported", `a personal store keeps only ${[...allow].join(", ")}`);
       const cap = capNow();
       if (cap > 0 && usedBytes() >= cap) throw fail("unavailable", "this person's storage on the server is full: the space owner sets the limit");
     },
     persist: {
       type: (name, def) => { if (def) typeMap[name] = def; else delete typeMap[name]; put(`${dir(identity)}/types.json`, sealed(typeMap, "types")); },
-      record: r => { if (!allow.has(r.type)) return; put(`${dir(identity)}/rec/${nameOf(r.type, r.id)}`, sealed(r, "rec")); },
+      record: r => { put(`${dir(identity)}/rec/${nameOf(r.type, r.id)}`, sealed(r, "rec")); },
       change: e => {
         const n = Math.floor(nChanges / SEG), name = `${dir(identity)}/chg/${n}`;
         const cur = n * SEG < nChanges && backend.get(name) ? opened(backend.get(name), "chg") : [];
@@ -95,7 +96,7 @@ export function createSealedStore(cfg) {
 
   const locked = () => fail("unavailable", "the personal records are locked: they open for the person's own assistant after their yes");
   // The store a caller sees: every call goes to the live store, and none after `lock()`.
-  const store = new Proxy({}, { get: (_t, prop) => { if (prop === "then") return undefined; return (/** @type {any[]} */ ...a) => { if (!inner) return Promise.reject(locked()); const f = inner[prop]; return typeof f === "function" ? f.apply(inner, a) : f; }; } });
+  const store = new Proxy({}, { get: (_t, prop) => { if (prop === "then") return undefined; if (prop === "version") return async () => ({ store: "sealed-personal", version: "1", conformance: CONFORMANCE_REVISION }); return (/** @type {any[]} */ ...a) => { if (!inner) return Promise.reject(locked()); const f = inner[prop]; return typeof f === "function" ? f.apply(inner, a) : f; }; } });
   return Object.freeze({
     store: /** @type {any} */ (store),
     /** The bytes on the server, the owner's limit, and what is left. */
