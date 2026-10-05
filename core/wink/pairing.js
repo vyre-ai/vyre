@@ -65,12 +65,13 @@ export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
 /**
  * What an offered device entry may carry beyond its key and label, copied into the entry the identity list takes: `agree` (its key-agreement point), `enclave` (its chip key) and `held: "web"` (a key a
  * page script can reach, so the entry cannot change who speaks for the identity). The chain validates each one's shape; nothing else is copied, and a `held` that is not "web" or true is dropped.
- * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web" }}
+ * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web", attest?: string }}
  */
 export const entryExtras = e => ({
   ...(e && typeof e.agree === "string" && e.agree ? { agree: e.agree.slice(0, 200) } : {}),
   ...(e && typeof e.enclave === "string" && e.enclave ? { enclave: e.enclave.slice(0, 200) } : {}),
   ...(e && (e.held === "web" || e.held === true) ? { held: /** @type {"web"} */ ("web") } : {}),
+  ...(e && typeof e.attest === "string" && e.attest && e.attest.length <= 16384 ? { attest: e.attest } : {}),
 });
 if (!ADMIN_ROLES.every(r => ROLE_IDS.includes(r))) throw new Error("wink: ADMIN_ROLES must be roles of the contract");
 
@@ -1493,7 +1494,7 @@ export function createPairing(o) {
     ctx.tool("wink.phone.wait", {
       callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
-      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str, agree: str, enclave: str, held: { anyOf: [{ type: "string" }, { type: "boolean" }] } }) }),
+      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str, agree: str, enclave: str, attest: str, held: { anyOf: [{ type: "string" }, { type: "boolean" }] } }) }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();

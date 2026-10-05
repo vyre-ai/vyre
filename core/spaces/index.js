@@ -48,11 +48,12 @@ import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
 import fs from "node:fs";
 import path from "node:path";
+import { entryProof } from "../../kernel/seal/entry-proof.js";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
-  /** @type {((entry: { publicKey: string, enclave?: string, agree?: string }, meta: any) => Promise<boolean> | boolean) | null} answers true only for an offered device entry it PROVED is held by the OS's key store (a platform attestation); none is wired, so every enrolled entry is held "web" (KP-2) */ entryProof: null,
+  /** @type {((entry: { publicKey: string, enclave?: string, agree?: string, attest?: string }, meta: any) => Promise<boolean> | boolean) | null} replaces the default verifier (kernel/seal/entry-proof.js): answers true only for an offered device entry it PROVED is held by the OS's key store (a platform attestation); the default is closed until a real-device fixture passes, so every enrolled entry is held "web" (KP-2) */ entryProof: null,
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
@@ -88,6 +89,9 @@ function plainDirectory(e) {
   if (e && e.code === "not_found") return "No such name.";
   return e && typeof e.message === "string" && e.message ? e.message : "The name directory could not do that. Try again in a moment.";
 }
+
+/** @type {((entry: any, meta?: any) => Promise<boolean>) | null} the default entry verifier, made on first use */
+let defaultEntryProof = null;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -1854,13 +1858,15 @@ export default {
       return found;
     }, { internal: true });
     // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
-    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str, enclave: str, held: str }, ["publicKey"]), async (i, meta) => {
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str, enclave: str, held: str, attest: str }, ["publicKey"]), async (i, meta) => {
       me();
       // KP-2: the entry's `held` is decided HERE, from what this side can verify, never from the offered fields (they come from the pairing's channel, which can be a page script). An entry nobody proved is held by the OS's key store
-      // is "web" by default: it cannot change who speaks for the identity. A caller can only make it stricter (it may say held web; it cannot say "not web"). `hooks.entryProof` is where a verifier of a platform
-      // attestation plugs in (it answers true only for an entry it proved is held by the OS's key store); none is wired yet, so every enrolled entry is web until one is.
+      // is "web" by default: it cannot change who speaks for the identity. A caller can only make it stricter (it may say held web; it cannot say "not web"). `hooks.entryProof` replaces the default verifier (tests); the
+      // default is kernel/seal/entry-proof.js, closed until a real-device fixture passes, so every enrolled entry is web until then.
+      // The proof is a platform attestation of the chip key (kernel/seal/entry-proof.js: App Attest for an iPhone, Keystore key attestation for Android), each closed by its own VERIFIED flag until a real-device fixture passes. It is checked here and not stored on the list.
       let proven = false;
-      if (typeof hooks.entryProof === "function") { try { proven = (await hooks.entryProof({ publicKey: String(i.publicKey), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(typeof i.agree === "string" ? { agree: i.agree } : {}) }, meta)) === true; } catch { proven = false; } }
+      const proofOf = typeof hooks.entryProof === "function" ? hooks.entryProof : (defaultEntryProof ||= entryProof());
+      try { proven = (await proofOf({ publicKey: String(i.publicKey), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.attest === "string" ? { attest: i.attest } : {}) }, meta)) === true; } catch { proven = false; }
       try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(proven && i.held !== "web" ? {} : { held: "web" }) }); } catch (e) { throw idFail(e); }
     }, { internal: true });
     // The device's own signer for the transport's proof: only the transport's own message, never anything else.
