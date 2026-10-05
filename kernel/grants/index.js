@@ -114,6 +114,12 @@ function checkDraftable(rule, def) {
 export const DEFAULT_ASSISTANT = "assistant";
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
 const MAX_DEPTH = 3;
+// A chat's key ring (lib/chat-keys.js) rides in the chat's own events: `chat.created` carries the first, and a `chat.changed` that adds or removes a participant carries the one `addHolders` or
+// `removeHolders` made on a device that holds the key, so the room's version and the ring's epoch change in one event. The kernel keeps wrapped material only (never a key) and checks the shape and
+// the epoch, not the wraps (it cannot open them).
+/** @param {any} r @param {string} id */
+const ringOk = (r, id) => Boolean(r && typeof r === "object" && r.v === 1 && r.id === id && Number.isInteger(r.epoch) && r.epoch >= 1 && r.epochs && typeof r.epochs === "object" && r.names && typeof r.names === "object"
+  && Object.keys(r.epochs).length >= 1 && Object.keys(r.epochs).length <= 1000 && JSON.stringify(r).length <= 512 * 1024);
 const HISTORY = 1000;
 const freeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
 const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
@@ -969,7 +975,7 @@ export function createGrantsStore(cfg) {
     // A chat is a list of people and assistants. The kernel keeps it because three decisions depend on it and none may be a module's word: who may READ the chat's stream
     // (its participants only: an owner or admin outside it is refused; an assistant reads only chats the person it acts for is in), who is in the AUDIENCE of a turn an
     // assistant writes (every person in the room, asker included), and who may change the list (a person in it). Every call here takes a kernel-built chain.
-    /** @param {any} chain @param {{ people?: string[], assistants?: string[], id?: string }} [o] */
+    /** @param {any} chain @param {{ people?: string[], assistants?: string[], id?: string, ring?: any }} [o] */
     async chatCreate(chain, o = {}) {
       if (chain && (chain.viewer === true || chain.delegated === true)) throw new KernelError("chain_not_person", "only a person acting directly starts a chat: a viewer or a session's chain does not");
       const p = person(chain);
@@ -981,7 +987,8 @@ export function createGrantsStore(cfg) {
       if (people.length > 100 || assistants.length > 20) throw new KernelError("bad_input", "too many in one chat");
       const id = o.id === undefined ? `chat_${mintUuid(clock())}` : String(o.id);
       if (!/^chat_[A-Za-z0-9_-]{4,64}$/.test(id) || chats.has(id)) throw new KernelError("bad_input", "a chat id is new and shaped chat_...");
-      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, h: [{ ver: 1, people: [...people] }] });
+      if (o.ring !== undefined && !ringOk(o.ring, id)) throw new KernelError("bad_input", "a chat's ring is the document the creator's device made for this chat id");
+      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, h: [{ ver: 1, people: [...people] }], ...(o.ring !== undefined ? { ring: structuredClone(o.ring) } : {}) });
       chats.set(id, rec);
       await note(chain, "chat.created", urn("chat", id), { chat: rec }, null);
       return rec;
@@ -1002,9 +1009,16 @@ export function createGrantsStore(cfg) {
       // people who were in the room then (the kernel answers "may this person receive it"; the stream never decides).
       const ver = (c.ver || 1) + 1;
       const joined = [...people].filter(x => !c.people.includes(x)), left = c.people.filter(x => !people.has(x));
-      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
+      // A chat with a ring changes its people only together with its ring: someone added needs a wrap of the key, someone removed needs the key rotated to a higher epoch.
+      const ring = change.ring;
+      if (c.ring && (joined.length || left.length)) {
+        if (!ringOk(ring, c.id)) throw new KernelError("bad_input", "adding or removing someone changes the chat's ring too: send the ring the change made");
+        if (left.length && !(ring.epoch > c.ring.epoch)) throw new KernelError("bad_input", "removing someone rotates the chat's key to a new epoch");
+        if (ring.epoch < c.ring.epoch) throw new KernelError("bad_input", "the ring's epoch does not go back");
+      } else if (ring !== undefined) throw new KernelError("bad_input", "a ring comes with a change of people, on a chat that has one");
+      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY), ...(ring !== undefined ? { ring: structuredClone(ring) } : {}) });
       chats.set(c.id, n);
-      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined, left }, null);
+      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined, left, ...(ring !== undefined ? { ring: structuredClone(ring) } : {}) }, null);
       return n;
     },
     /**
@@ -1023,6 +1037,8 @@ export function createGrantsStore(cfg) {
       if (agent && String(agent.id).startsWith("model:") && (!chain.room || chain.room.chat !== String(id))) throw new KernelError("not_found", "no such chat");
       return c;
     },
+    /** The epoch of a chat's key ring, or 0 when it keeps its folders in the clear (no ring). Sync and kernel-internal: the Drive asks it to know a chat's files are ciphertext, and which key is the newest. @param {string} id */
+    chatEpoch(id) { const c = chats.get(String(id)); return c && c.ring ? c.ring.epoch : 0; },
     /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
     hasDefaultAssistant() { return memberOk({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space }); },
     /**
@@ -1157,7 +1173,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "rule.proposed") proposals.set(d.proposal.id, freeze(structuredClone(d.proposal)));
         else if (e.type === "rule.dismissed") proposals.delete(d.id);
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
-        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY) })); }
+        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY), ...(d.ring ? { ring: structuredClone(d.ring) } : {}) })); }
       };
       if (snap) {
         const st = snap.core.state;

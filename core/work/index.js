@@ -421,7 +421,7 @@ export default {
         const rec = await hubOf().chatRecord(chat);
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
         const slots = runs.map((/** @type {any} */ r) => ({ slot: r.slot || (r.agent ? `agent:${r.agent}` : null), thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
-        return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
+        return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}`, ...(c.ring ? { ring: c.ring } : {}) };
       },
     });
     // Personal to My Cloud (windows' upgrade, one approval for the whole move): the person's chats move to their other Space under their own chain in both, ids kept (core/work/chat-upgrade.js).
@@ -502,23 +502,48 @@ export default {
     });
     ctx.tool("work.chat.create", {
       description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.",
-      input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } } }),
+      input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } },
+        id: { type: "string", description: "the chat's id (chat_<uuid>), chosen by the device that made the ring: the ring is bound to it" }, ring: { type: "object", description: "the chat's key ring, made on the creator's device (createRing in lib/chat-keys.js: wrapped to every device of every participant); with it the chat's folders are stored sealed. Left out, the chat is in the clear." } }),
       run: async (input, extra) => {
         if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
         const chain = await chainOf(extra);
-        const made = await kernelOf().chats.create(chain, { people: input.people || [], assistants: input.agents || [] });
+        const made = await kernelOf().chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(input.id ? { id: String(input.id) } : {}), ...(input.ring ? { ring: input.ring } : {}) });
         const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
     });
     ctx.tool("work.chat.change", {
       description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
-      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } } }, ["chat"]),
+      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },
+        ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents });
+        const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },
+    });
+    // A chat's key, lent to this server by a participant's own device for the chat's files to open (kernel/gateway/chat-keys.js). The server never makes or keeps a key: the device opens the ring with its own key and
+    // answers the request with the keys wrapped to a one-use key, which live in this process's memory and nowhere else.
+    const lease = () => { const k = kernelOf(); if (!k.chats || !k.chats.keys) throw Object.assign(new Error("this kernel keeps no sealed chats"), { code: "unavailable" }); return k.chats.keys; };
+    ctx.tool("work.chat.keys.begin", {
+      description: "Ask to lend a chat's key: returns { request, session_pub, epoch }. The device opens the chat's ring (work.chat.get names it) with its own key and answers with work.chat.keys.finish.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => lease().begin(await chainOf(extra), String(input.chat)),
+    });
+    ctx.tool("work.chat.keys.finish", {
+      description: "Answer a key request: the chat's keys wrapped to the request's session_pub (bundleFor in lib/chat-keys.js). The server holds them in memory only, and the chat's files open for its participants while they are held; a rotation drops them.",
+      input: obj({ request: { type: "string" }, bundle: { type: "object" } }, ["request", "bundle"]),
+      run: async (input, extra) => lease().finish(await chainOf(extra), String(input.request), input.bundle),
+    });
+    ctx.tool("work.chat.keys.lock", {
+      description: "Wipe a chat's key from this server's memory now.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => lease().lock(await chainOf(extra), String(input.chat)),
+    });
+    ctx.tool("work.chat.keys.status", {
+      description: "Whether a chat keeps its folders sealed (it has a key ring), its ring's epoch, and whether its key is lent to this server now.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => { const k = kernelOf(); await k.chats.read(await chainOf(extra), String(input.chat)); const epoch = k.chats.epoch ? k.chats.epoch(String(input.chat)) : 0; return { sealed: epoch > 0, epoch, unlocked: epoch > 0 && lease().unlocked(String(input.chat)) }; },
     });
     ctx.tool("work.chat.rename", {
       description: "Rename a chat: the record's title and every run's name agree; its id does not change.",
