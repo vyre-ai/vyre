@@ -333,14 +333,6 @@
    "module": "computers",
    "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
   },
-  "connectors.declared": {
-   "module": "connectors",
-   "reason": "read-only, no value: lists the shipped declarations and whether a credential exists; a model sees only names and operation kinds (guard: holds no secret or host beyond the public base host)"
-  },
-  "connectors.logging": {
-   "module": "connectors",
-   "reason": "read-only recipe that writes nothing: the watcher and Flow it returns are made only through watchers.preset (asked, held) and flows.define (a person approves), so nothing runs from this call (guard: checked input, no side effect)"
-  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
