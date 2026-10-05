@@ -443,6 +443,9 @@ export default {
         if (!acct) throw fail(`no account ${String(i.account).slice(0, 40)}`, "not_found");
         const method = String(i.method).toUpperCase(), path = String(i.path);
         if (caller === "module:watchers" && method !== "GET") throw fail("a watcher only reads", "denied");
+        // a write that would notify guests (sendUpdates other than none) must name attendees in its body: the sync writes with sendUpdates left at none
+        const su = i.query && typeof i.query === "object" ? /** @type {any} */ (i.query).sendUpdates : undefined;
+        if (method !== "GET" && su !== undefined && su !== "none" && !(i.body && Array.isArray(i.body.attendees) && i.body.attendees.length)) throw fail("sendUpdates other than none is for a write that names its attendees", "bad_input");
         // a segment may be percent-encoded (a calendar id is an address: alex%40example.com) but never decodes to . or .. or to something with a slash
         for (const seg of path.split("/")) { let d; try { d = decodeURIComponent(seg); } catch { d = "."; } if (d === "." || d === ".." || d.includes("/") || d.includes("\\")) throw fail("a path segment may not be . or .. or hide a slash", "bad_input"); }
         if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) throw fail("only Calendar events calls and Gmail reads go through here", "bad_input");

@@ -104,6 +104,8 @@ test("google.api is for Vyre's own modules, Calendar events and Gmail reads only
   assert.equal((await as("module:leases", { path: "/gmail/v1/users/me/messages" })).data.status, 200, "a Gmail read is let through");
   assert.equal((await as("module:leases", { path: "/calendar/v3/calendars/alex%40example.com/events" })).data.status, 200, "an address as the calendar id is fine");
   assert.equal((await as("module:watchers", { method: "POST", body: {} })).error?.code, "denied", "a watcher only reads");
+  assert.equal((await as("module:leases", { method: "POST", body: { summary: "x" }, query: { sendUpdates: "all" } })).error?.code, "bad_input", "no guests are notified without attendees named");
+  assert.equal((await as("module:leases", { method: "POST", body: { summary: "x", start: { dateTime: "2026-10-20T17:00:00Z" }, end: { dateTime: "2026-10-20T18:00:00Z" }, attendees: [{ email: "sam@rivera.test" }] }, query: { sendUpdates: "all" } })).error?.code, undefined, "and with attendees named it is the sync's to ask about first");
   assert.equal((await as("module:watchers")).data.status, 200, "and may read");
   assert.equal((await as("module:gate", { path: "/calendar/v3/calendars/primary/events" })).error?.code, "denied", "no other module calls it");
   assert.equal((await as("module:leases", { account: "nope" })).error?.code, "not_found");

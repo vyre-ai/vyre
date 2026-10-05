@@ -217,3 +217,16 @@ test("an event only on the person's own calendar (nobody invited) is written to 
   assert.equal(sent.length, 1); assert.equal(sent[0].body.summary, "Focus time");
   assert.equal(sent[0].body.attendees, undefined, "nobody was invited");
 });
+
+test("a change to an event pulled from Google that has guests is still asked about: the pull keeps the attendees as people, so the patch invites", async t => {
+  const { google, w, h, sent, events, tasks, owner } = await rig(t, { ask: true });
+  google.putEvent({ id: "sign1", summary: "Signing", start: { dateTime: "2026-10-08T16:00:00Z" }, end: { dateTime: "2026-10-08T17:00:00Z" }, attendees: [{ email: "sam@rivera.test" }] });
+  await h.runNow();
+  const [row] = await events();
+  assert.deepEqual(row.data.people, ["sam@rivera.test"], "the guests came in as people");
+  await w.kernel.records.update(owner(), "event", row.id, { title: "Signing (moved)" }, row.version);
+  const out = await h.runNow();
+  assert.equal(out["google-home"].pushed.held, 1, JSON.stringify(out));
+  assert.equal(sent.length, 0, "nothing was patched without a yes");
+  assert.equal((await tasks()).length, 1);
+});
