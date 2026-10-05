@@ -128,11 +128,10 @@ export function createMoves(cfg) {
       const d = await gate(chain, "project.move_finish", `vyre://${space}/project/${i.move_id}`);
       const got = log.read({ type: "project.move_in" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id);
       if (!got || typeof got.actor !== "string" || !got.actor.startsWith(`person:${who.id}@`)) throw new KernelError("not_found", "this Space received no such move from you");
-      const done = log.read({ type: "project.move_done" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id);
-      const at = done ? Number(done.time) : clock();
-      if (!done) log.append(chain, { type: "project.move_done", sv: 1, subject: got.subject, data: { move_id: i.move_id, from: got.data.from, counts: i.counts, files_root: i.files_root } }, { decision: d.decision });
-      const rec = done ? done.data : { from: got.data.from, counts: i.counts, files_root: i.files_root };
-      return { v: 1, move_id: i.move_id, from: rec.from, to: space, counts: rec.counts, files_root: rec.files_root, at };
+      const doneOf = () => log.read({ type: "project.move_done" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id);
+      if (!doneOf()) log.append(chain, { type: "project.move_done", sv: 1, subject: got.subject, data: { move_id: i.move_id, from: got.data.from, counts: i.counts, files_root: i.files_root } }, { decision: d.decision });
+      const done = doneOf();
+      return { v: 1, move_id: i.move_id, from: done.data.from, to: space, counts: done.data.counts, files_root: done.data.files_root, at: Number(done.time) };
     },
     /**
      * In the SOURCE: the target's signed receipt for this move arrives, `cfg.verifyReceipt` (the spaces module) checks it against the TARGET Space's published key, and only then is `project.moved` written.
