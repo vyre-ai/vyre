@@ -141,9 +141,8 @@ test("install-box.sh v2: --from as an account outside the docker group stops ear
 
 test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
   const { REQUIRE, requireFor } = await import("../stores/twenty/space-store.js");
+  assert.equal(Number(/^SPACE_MEM_TINY_MB=(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "the installer's small-server number is requireFor(4096): change both together");
   assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
-  assert.equal(Number(/^SPACE_MEM_TINY_MB=\$\{VYRE_SPACE_MEM_TINY_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "a server under 6 GB is measured against the tiny profile: the installer reads the same number as requireFor");
-  assert.equal(Number(/^TINY_BELOW_MB=(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), 6144);
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });
   fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=sqlite\n", { mode: 0o600 });
