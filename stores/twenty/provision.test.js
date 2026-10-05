@@ -196,3 +196,13 @@ test("with the clock a year ahead, rotation replaces the key before it ends, the
     assert.equal((await rotateApiKey({ home, space: "harlow", runner, reach: "ip", now: () => now })).rotated, false);
   } finally { await fake.stop(); }
 });
+
+test("PIN-1: a Space whose env file names the Twenty image without a digest is refused at start, like a bare-tag upgrade", async () => {
+  const fake = await new FakeTwenty().start(); const home = tmp();
+  const runner = fakeRunner(fake, []);
+  await provisionSpace({ home, space: "harlow", runner });
+  const envFile = path.join(spaceDir(home, "harlow"), ".env");
+  fs.writeFileSync(envFile, fs.readFileSync(envFile, "utf8").replace(/^TWENTY_IMAGE_REF=.*$/m, "TWENTY_IMAGE_REF=twentycrm/twenty:v2.44.0"));
+  await assert.rejects(() => provisionSpace({ home, space: "harlow", runner }), /without a digest/);
+  await fake.stop();
+});

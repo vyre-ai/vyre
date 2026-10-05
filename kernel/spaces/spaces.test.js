@@ -299,3 +299,10 @@ test("retire (RT-1, more): a database that cannot be read refuses with the folde
   assert.ok(fs.existsSync(folder(b)));
   // member.removed and grant.revoked are allowed only because any record they could hide stays in the table, where it is found
 });
+
+test("a new Space has the person's default assistant as an actor from its start, the personal Space and a hosted one alike, so a task there can go to it", async () => {
+  const { spaces, personal, pid } = await home();
+  const a = await spaces.host({ owner: ME });
+  for (const h of [spaces.for(pid), a]) assert.equal(h.kernel.grants.hasDefaultAssistant(), true, `${h.space}`);
+  void personal;
+});

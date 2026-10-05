@@ -2,6 +2,7 @@
 // Which record store a server is using, for `vyre status` and /v1/health (launch's update proof asserts it): the store in use (built-in or Twenty), where that choice came from
 // (VYRE_STORE set, or the default), and the number of records it sees. When VYRE_STORE asks for Twenty and this server is not on it, or the Twenty it is on does not answer, it says so in
 // `note` and never falls back quietly. Reads only.
+import { isPackaged } from "../kernel/devbuild.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -12,7 +13,7 @@ import path from "node:path";
 export async function storeStatus(o) {
   const env = o.env ?? process.env;
   const asked = env.VYRE_STORE;
-  const mode = asked || "sqlite";
+  const mode = asked || (isPackaged() ? "twenty" : "sqlite");
   const from = asked ? "VYRE_STORE" : "default";
   const store = o.store;
   const inUse = store && (store.kind === "twenty" || (typeof store.constructor === "function" && store.constructor.name === "TwentyStore")) ? "twenty" : "builtin";
