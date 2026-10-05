@@ -16,8 +16,7 @@ import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
-import { toCredentialConfig, isOutward } from "../../records/connectors/format.js";
-import { connectorWatcherName } from "../watchers/connector-preset.js";
+import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };
@@ -135,9 +134,12 @@ export default {
         const list = id ? [declared(String(id))].filter(Boolean) : Object.values(DECLARATIONS);
         if (id && !list.length) throw fail(`no connector ${String(id).slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
         const have = new Set(((await ctx.call("vault.list", {})).data?.items || []).map(/** @param {any} x */ x => String(x.name)));
+        // A Google connector has no vault credential: it is read and written through a Google account connected to the google module.
+        const accounts = list.some(d => d.auth.type === "google") ? (/** @type {any[]} */ ((await ctx.call("google.accounts", {})).data || [])).map(a => String(a.name)) : [];
         return { connectors: list.map(d => ({
           id: d.id, label: d.label, host: new URL(d.base_url).hostname, auth: { type: d.auth.type, ...(d.auth.also ? { also: d.auth.also } : {}), ...(d.auth.scopes ? { scopes: d.auth.scopes } : {}) },
-          installed: have.has(d.id) || (d.auth.also !== undefined && have.has("google-api")),
+          installed: d.auth.type === "google" ? accounts.length > 0 : have.has(d.id),
+          ...(d.auth.type === "google" ? { accounts } : {}),
           ops: Object.entries(d.ops).map(([name, op]) => ({ name, label: op.label || name, kind: op.kind, outward: isOutward(op), ...(op.idempotent === false ? { idempotent: false } : {}) })),
           polls: Object.entries(d.poll || {}).map(([name, p]) => ({ name, label: p.label || name, every_minutes: p.every_minutes ?? 15 })),
         })) };
@@ -148,9 +150,8 @@ export default {
     // Nothing is written here: the person or their assistant makes each part under their own chain, and the vault credential, the watcher card and the Flow card are each theirs to say yes to.
     ctx.tool("connectors.logging", {
       effect: "read",
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
-      description: "The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, credential? (default: the connector's id), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.",
-      input: obj({ connector: str, address: str, project: str, credential: str, createUnknown: { type: "boolean" }, skipInternal: str }, ["connector", "address", "project"]),
+      description: "The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, google? (the Google account's name, from google.accounts; default: the one whose address is this one), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.",
+      input: obj({ connector: str, address: str, project: str, google: str, createUnknown: { type: "boolean" }, skipInternal: str }, ["connector", "address", "project"]),
       run: async input => {
         const d = declared(String(input.connector));
         const poll = d && d.poll && Object.keys(d.poll).find(n => ["mail.recent", "events.changed"].includes(n));
@@ -158,15 +159,17 @@ export default {
         const address = String(input.address || "").trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) && d.id === "gmail") throw fail("address is the mailbox's email address", "bad_input");
         if (!address || address.length > 200) throw fail("address is the mailbox or calendar to log", "bad_input");
+        // The mailbox or calendar is read through a Google account connected to the google module (the one Google path): the named one, or the one whose address this is.
+        const accts = /** @type {any[]} */ ((await ctx.call("google.accounts", {})).data || []);
+        const acct = input.google ? accts.find(a => a.name === String(input.google)) : accts.find(a => String(a.email || "").toLowerCase() === address) || (accts.length === 1 ? accts[0] : undefined);
+        if (!acct) throw fail(input.google ? `no Google account ${String(input.google).slice(0, 40)}; google.accounts lists them` : `no connected Google account for ${address.slice(0, 80)}; connect it (vyre connect add google ... --sign-in) or name one with google`, "not_found");
         const needs = poll === "mail.recent" ? "mailbox" : "calendar";
-        const have = new Set(((await ctx.call("vault.list", {})).data?.items || []).map(/** @param {any} x */ x => String(x.name)));
-        const credential = input.credential ? String(input.credential) : ["google-api", d.id, `${d.id}-api`].find(n => have.has(n)) || d.id;
-        const watcher = { kind: "connector", connector: d.id, poll, project: String(input.project), credential, vars: { [needs]: address } };
+        const watcher = { kind: "connector", connector: d.id, poll, project: String(input.project), google: String(acct.name), vars: { [needs]: address } };
         const name = connectorWatcherName(d, { poll, vars: watcher.vars });
         const flow = logCommunicationsFlow({ watcher: name, createUnknown: input.createUnknown === true, ...(input.skipInternal ? { skipInternal: String(input.skipInternal) } : {}) });
         return { watcher, flow, name, steps: [
-          `connectors.declare { id: "${d.id}", ... } if the vault has no credential named ${credential} (or connect it with the ${d.id}-api app)`,
-          "watchers.preset with `watcher` (a draft with its card), then watchers.test, then the person grants the credential to it and turns it on with watchers.create",
+          `the Google account ${acct.name} is connected to the google module (nothing to make in the vault)`,
+          "watchers.preset with `watcher` (a draft with its card), then watchers.test, then the person turns it on with watchers.create (the card says it reads that account, read only)",
           "flows.define with `flow`, then a person approves it with flows.approve (the card shows it reads and writes records and never sends)",
         ] };
       },
@@ -184,8 +187,9 @@ export default {
         const ds = ids.map(i => declared(i));
         if (ds.some(x => !x)) throw fail(`no connector ${ids[ds.indexOf(null)].slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
         const d = /** @type {any} */ (ds[0]);
+        if (ds.some(x => /** @type {any} */ (x).auth.type === "google")) throw fail(`${d.label} is signed in through the Google module, not the vault: connect the account with vyre connect add google ... --sign-in`, "bad_input");
         const many = ds.length > 1;
-        const name = input.name ? String(input.name) : many ? (String(d.auth.authorize_uri).startsWith("https://accounts.google.com/") ? "google-api" : ids.join("-").slice(0, 32)) : d.id;
+        const name = input.name ? String(input.name) : many ? ids.join("-").slice(0, 32) : d.id;
         const secretAuth = d.auth.type === "bearer" || d.auth.type === "api-key";
         if (!secretAuth && input.secret) throw fail(`${d.label} does not take a pasted secret; it signs in as a service account (as, subject, item) or with an OAuth app (client)`, "bad_input");
         let config;

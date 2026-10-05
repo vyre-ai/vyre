@@ -140,11 +140,14 @@ export const POLL_MS = 1500;
  *   identityPin?: () => Promise<{ id: string, seq: number, head: string } | null> | { id: string, seq: number, head: string } | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
- *   serve?: (tool: string, input: any) => Promise<any>,
+ *   serve?: (tool: string, input: any, from: string) => Promise<any>,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
  *   typedCode?: boolean | (() => boolean), typedDefault?: () => boolean, codeNow?: () => { code: string, expires: number, offer: string } | null, cancelCode?: () => void, confirmAdopt?: boolean, askMs?: number, askHoldMs?: number, askPollMs?: number, pairWordsFor?: (device: string) => Promise<string>,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
+/** The device's key-agreement point as the identity chain takes it: 65 bytes, uncompressed P-256 (first byte 4). Anything else is not passed on. @param {any} v */
+const agreeOf = v => { if (typeof v !== "string") return false; const b = Buffer.from(v, "base64url"); return b.length === 65 && b[0] === 4 && b.toString("base64url") === v; };
+
 export function createPairing(o) {
   const { ctx, now, directory } = o;
   const db = ctx.store.db;

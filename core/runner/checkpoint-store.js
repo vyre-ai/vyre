@@ -34,7 +34,9 @@ const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const STRIDE = 256, CHUNK = 1 << 20;
 
 /**
- * @param {{ space: string, root: string, authorize: (i: { chain: any, action: string, resource: string }) => Promise<{ effect: string }>, caps?: Partial<typeof CAPS>, fs?: any }} o
+ * `key` (32 bytes, the Space's own: derived from its pool key) seals everything this folder holds at rest: every file, version, record and the commit pointer is AES-256-GCM under it with its own place in the associated data,
+ * each transcript line is sealed inside its JSON line (so the log's shape and offsets stay), and a file's folder is named by a keyed hash, not its path. With no key (tests, a home with no sealing process) it is plain as before.
+ * @param {{ space: string, root: string, key?: Buffer, authorize: (i: { chain: any, action: string, resource: string }) => Promise<{ effect: string }>, caps?: Partial<typeof CAPS>, fs?: any }} o
  */
 export function createCheckpointStore(o) {
   const fsx = o.fs || fs, caps = { ...CAPS, ...(o.caps || {}) };
@@ -45,12 +47,22 @@ export function createCheckpointStore(o) {
   const locks = new Map();
   const serial = (s, fn) => { const prev = locks.get(s) || Promise.resolve(); const next = prev.then(fn, fn); locks.set(s, next.catch(() => {})); return next; };
 
+  const K = o.key && o.key.length === 32 ? o.key : null;
   const dirOf = s => path.join(o.root, s);
-  const hexOf = rel => Buffer.from(rel).toString("hex");
+  const hexOf = rel => (K ? crypto.createHmac("sha256", K).update("name\n" + rel).digest("hex").slice(0, 40) : Buffer.from(rel).toString("hex"));
+  /** Sealed bytes: iv + ciphertext + tag; `aad` ties them to their place so a file moved to another name opens as nothing. */
+  const sealBuf = (b, aad) => { const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", K, iv); c.setAAD(Buffer.from(aad)); return Buffer.concat([iv, c.update(b), c.final(), c.getAuthTag()]); };
+  const openBuf = (b, aad) => { const d = crypto.createDecipheriv("aes-256-gcm", K, b.subarray(0, 12)); d.setAAD(Buffer.from(aad)); d.setAuthTag(b.subarray(-16)); return Buffer.concat([d.update(b.subarray(12, -16)), d.final()]); };
+  const aadOf = file => path.relative(o.root, file);
+  /** Read a file this store wrote. @param {string} file */
+  const rd = file => { const b = fsx.readFileSync(file); if (!K) return b; try { return openBuf(b, aadOf(file)); } catch { throw err("unavailable", "a saved file did not open: it was changed or is not this space's"); } };
+  const wireLine = e => (K ? { seq: e.seq, line: "e1:" + sealBuf(Buffer.from(e.line), `t|${e.seq}`).toString("base64") } : e);
+  const unwireLine = e => (K && e && typeof e.line === "string" && e.line.startsWith("e1:") ? { seq: e.seq, line: openBuf(Buffer.from(e.line.slice(3), "base64"), `t|${e.seq}`).toString() } : e);
   const syncDir = d => { try { const fd = fsx.openSync(d, "r"); try { fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); } } catch {} };
   /** Temp file, fsync, rename, folder fsync. A failure removes the temp file and leaves what was there. */
   function put(file, data) {
     const dir = path.dirname(file); fsx.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (K) data = sealBuf(Buffer.isBuffer(data) ? data : Buffer.from(data), aadOf(file));
     const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`; let fd = -1;
     try {
       fd = fsx.openSync(tmp, "wx", 0o600); let n = 0; const b = Buffer.isBuffer(data) ? data : Buffer.from(data);
@@ -83,7 +95,7 @@ export function createCheckpointStore(o) {
         const data = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : Buffer.from(buf.subarray(0, n));
         let off = 0, i;
         while ((i = data.indexOf(10, off)) >= 0) {
-          if (i > off) { let e; try { e = JSON.parse(data.subarray(off, i).toString("utf8")); } catch { return { end: good, size }; } if (cb(e, carryStart + off, carryStart + i + 1) === false) return { end: good, size }; }
+          if (i > off) { let e; try { e = unwireLine(JSON.parse(data.subarray(off, i).toString("utf8"))); } catch { return { end: good, size }; } if (cb(e, carryStart + off, carryStart + i + 1) === false) return { end: good, size }; }
           good = carryStart + i + 1; off = i + 1;
         }
         carry = Buffer.from(data.subarray(off)); carryStart += off;
@@ -118,7 +130,7 @@ export function createCheckpointStore(o) {
         if (r.end < r.size) { fsx.truncateSync(t, r.end); st.bytes -= r.size - r.end; }   // a torn tail from a crash
         st.tsize = r.end;
       }
-      try { st.turn = JSON.parse(fsx.readFileSync(path.join(d, "CURRENT"), "utf8")).turn; const cp = JSON.parse(fsx.readFileSync(path.join(d, "cp", `${st.turn}.json`), "utf8")); st.seq = cp.seq; st.prev = cp.manifest; } catch { st.turn = 0; }
+      try { st.turn = JSON.parse(rd(path.join(d, "CURRENT")).toString("utf8")).turn; const cp = JSON.parse(rd(path.join(d, "cp", `${st.turn}.json`)).toString("utf8")); st.seq = cp.seq; st.prev = cp.manifest; } catch { st.turn = 0; }
     }
     sess.set(s, st); return st;
   }
@@ -127,7 +139,7 @@ export function createCheckpointStore(o) {
   const blobPath = (s, rel, v, del) => path.join(dirOf(s), "files", hexOf(rel), String(v) + (del ? ".del" : ""));
   const hashOf = (st, s, rel, v) => {
     const k = rel + "|" + v; if (st.hashes.has(k)) return st.hashes.get(k);
-    let h; if (fsx.existsSync(blobPath(s, rel, v, true))) h = "deleted"; else try { h = sha(fsx.readFileSync(blobPath(s, rel, v))); } catch { h = null; }
+    let h; if (fsx.existsSync(blobPath(s, rel, v, true))) h = "deleted"; else try { h = sha(rd(blobPath(s, rel, v))); } catch { h = null; }
     if (h) st.hashes.set(k, h); return h;
   };
 
@@ -159,14 +171,14 @@ export function createCheckpointStore(o) {
         }
         const fresh = add.filter(e => e.seq > st.count);
         if (fresh.length) {
-          const text = fresh.map(e => JSON.stringify(e) + "\n").join(""), len = Buffer.byteLength(text);
+          const text = fresh.map(e => JSON.stringify(wireLine(e)) + "\n").join(""), len = Buffer.byteLength(text);
           room(st, len);
           let fd = -1;
           try { fd = fsx.openSync(t, "a", 0o600); fsx.writeSync(fd, text); fsx.fsyncSync(fd); fsx.closeSync(fd); fd = -1; }
           catch (e) { if (fd >= 0) try { fsx.closeSync(fd); } catch {} try { fsx.truncateSync(t, st.tsize); } catch {} throw e; }
           syncDir(dirOf(s));
           let at = st.tsize;
-          for (const e of fresh) { if (st.count % STRIDE === 0) st.idx.push(at); at += Buffer.byteLength(JSON.stringify(e)) + 1; st.count++; }
+          for (const e of fresh) { if (st.count % STRIDE === 0) st.idx.push(at); at += Buffer.byteLength(JSON.stringify(wireLine(e))) + 1; st.count++; }
           st.last = fresh[fresh.length - 1]; st.tsize = at; st.bytes += len;
         }
         return { acked: st.count };
@@ -192,7 +204,7 @@ export function createCheckpointStore(o) {
     },
     async getFile(chain, s, rel, version) {
       await ok(chain, ACTIONS.read, s);
-      return serial(s, () => { try { return fsx.readFileSync(blobPath(s, String(rel), Number(version))); } catch { throw err("not_found", "no such version"); } });
+      return serial(s, () => { try { return rd(blobPath(s, String(rel), Number(version))); } catch (e) { throw e && e.code === "unavailable" ? e : err("not_found", "no such version"); } });
     },
     async putCheckpoint(chain, s, cp) {
       await ok(chain, ACTIONS.write, s);
@@ -222,7 +234,7 @@ export function createCheckpointStore(o) {
     },
     async getCheckpoint(chain, s) {
       await ok(chain, ACTIONS.read, s);
-      return serial(s, () => { const st = load(s); if (!st.turn) return null; try { return JSON.parse(fsx.readFileSync(path.join(dirOf(s), "cp", `${st.turn}.json`), "utf8")); } catch { return null; } });
+      return serial(s, () => { const st = load(s); if (!st.turn) return null; try { return JSON.parse(rd(path.join(dirOf(s), "cp", `${st.turn}.json`)).toString("utf8")); } catch { return null; } });
     },
     /** Bytes the session holds and the cap, for the settings card. */
     async usage(chain, s) { await ok(chain, ACTIONS.read, s); return serial(s, () => ({ bytes: load(s).bytes, cap: caps.sessionBytes, turn: load(s).turn })); },

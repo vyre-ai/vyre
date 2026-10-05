@@ -19,6 +19,8 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
+  "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "spaces.identity.devices": "lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger",
   "pluginagent.pending": "lists what Claude Code on a computer is waiting to be let do: a read, nothing is granted",
   "presence.person.locked": "lists the paired devices locked after wrong sign-in answers and when each lock ends: a read for the Devices list",
@@ -174,8 +176,6 @@ export const DECLARED = Object.freeze({
     "chrome.status", "chrome.stop", "chrome.summary", "chrome.tabs", "chrome.type", "chrome.wait"].map(t => [t, "cb69aea6d"])),
   ...Object.fromEntries(["threads.release", "github.accounts"].map(t => [t, "3c2ce3bcf"])),
   "vault.revoke": "59980bf43",
-  "connectors.declared": "1cb1cdd71",
-  "connectors.logging": "1cb1cdd71",
   "pluginagent.ask": "2bbe50159",
   "pluginagent.status": "2bbe50159",
   "link.pending": "235da322d",
@@ -192,8 +192,6 @@ export const DECLARED_NOTES = Object.freeze({
   "apps.list": "a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
   "apps.targets": "a read of the notes and lists inside one app; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
   "apps.send": "sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module",
-  "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
-  "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "capsule.status": "a read of whether the Capsule can run on this machine: build and autostart, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/capsule/index.js)",
   "learn.add": "a model's lesson is proposed and never made active; the person accepts it",
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
