@@ -1143,7 +1143,7 @@ test("the My Cloud upgrade end to end: a space made on the person's server has a
   const droot = ident.home;
   fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "m1", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
-  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  const device = await start({ root: droot, kernel: true, presence: lenient, kernelPresence: { check: async () => null }, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
   t.after(() => { spacesHooks.sessionFor = null; spacesHooks.buildRoot = undefined; });
   t.after(() => device.stop());
