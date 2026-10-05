@@ -3,7 +3,8 @@
 // and gates decide every answer; `tasks.move` only picks which kernel act a target state is (start, stuck, skip, unblock), so the screen never chooses one. Approving or rejecting
 // (`tasks.decide`) is a person's act with their presence proof, which rides beside the request (the kernel proof header), never in the body.
 import { createDoor } from "../../lib/gateway-door.js";
-import { cloudGate } from "../../lib/cloud-gate.js";
+import { cloudGate, spaceZone } from "../../lib/cloud-gate.js";
+import { personZone, showTimes } from "../../lib/time/index.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -17,7 +18,16 @@ export default {
     const door = createDoor(ctx);
     /** @typedef {{ space: string, gateway: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn */
-    const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta); const gate = await cloudGate(ctx, d.space); if (gate) throw gate; return fn(i || {}, d); } });
+    const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta); const gate = await cloudGate(ctx, d.space); if (gate) throw gate; return withDue(await fn(i || {}, d), d.space, meta); } });
+    /** A task due in a space with its own zone shows both clocks: `due_shown`, "9:00 am PT · 9:00 pm your time" (the reader's zone is the device's). A space with no zone, or the reader in it, adds nothing. @param {any} out @param {string} space @param {any} meta */
+    const withDue = async (out, space, meta) => {
+      if (!out || typeof out !== "object" || !(out.task || Array.isArray(out.tasks))) return out;
+      const zone = await spaceZone(ctx, space);
+      if (!zone) return out;
+      const person = personZone(meta);
+      const one = (/** @type {any} */ t) => (t && typeof t.due === "number" ? { ...t, due_shown: showTimes(t.due, { person, space: zone }).text, due_zone: zone } : t);
+      return out.task ? { ...out, task: one(out.task) } : { ...out, tasks: out.tasks.map(one) };
+    };
     const asks = (/** @type {Opened} */ d) => { if (!d.gateway.ask) throw refuse("this Space keeps no tasks", "unavailable"); return d.gateway.ask; };
     /** A task's actor from an id: a person by their per_ id, else an assistant or teammate by name. @param {string} id @param {string} space */
     const actor = (id, space) => ({ kind: /^per_/.test(id) ? "person" : "agent", id, space });

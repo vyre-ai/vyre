@@ -744,7 +744,7 @@
  "lib/bearer/index.test.js": 7,
  "lib/caller.test.js": 12,
  "lib/caps-flags/index.test.js": 3,
- "lib/cloud-gate.test.js": 1,
+ "lib/cloud-gate.test.js": 2,
  "lib/connector-presets/index.test.js": 10,
  "lib/connectors/auth.test.js": 17,
  "lib/connectors/calendar.test.js": 6,
