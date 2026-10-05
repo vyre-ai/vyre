@@ -48,7 +48,7 @@ import { fileURLToPath } from "node:url";
 import { transcriptOf, readTranscript, nativeIdOf, usageOf } from "./memory-parts.js";
 
 test("the reading side: a transcript is found by its native id, read as neutral turns, and its usage counted", () => {
-  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "transcripts", "fixtures");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-parts-"));
   try {
     const folder = path.join(tmp, "proj");
