@@ -1025,6 +1025,14 @@
    "module": "projects",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
+  "projects.access.pending": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local; read only"
+  },
+  "projects.access.restore": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local; a grant needs the person's own proof, which only the person's own call carries"
+  },
   "projects.access.list": {
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local"

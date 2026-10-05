@@ -99,3 +99,30 @@ test("an agent's grants are keyed by its stable id: a deleted agent's name given
   assert.notEqual(again.data.uid, uid, "never the same id");
   assert.equal(await granted(call, "northwind", "kit"), false, "the name given again inherits nothing");
 });
+
+test("what agents could reach before reach became a grant waits for the person's approval, then becomes grants: granted rows restored, an explicit revoke stays revoked, the old rows cleared", { timeout: 180_000 }, async t => {
+  const { d, call, home } = await boot(t);
+  for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
+  for (const a of ["kit", "other", "later"]) assert.ok(!(await call("agents.create", { name: a, projects: [] })).error, a);
+  // an upgraded box: the old rows came through the migration, held in projects_access_legacy
+  const db = d.registry.deps.db;
+  const ins = db.prepare("INSERT INTO projects_access_legacy (id, project, agent, status, by, at) VALUES (?,?,?,?,?,1)");
+  ins.run("r1", "northwind", "kit", "granted", "cli");
+  ins.run("r2", "northwind", "other", "revoked", "cli");
+  ins.run("r3", "harlow", "", "granted", "cli");          // the project's default for any agent with no row of its own
+  ins.run("r4", "harlow", "later", "revoked", "cli");
+  assert.equal(await granted(call, "northwind", "kit"), false, "nothing is granted by the migration: fail closed");
+  const pending = await call("projects.access.pending", {});
+  assert.equal(pending.data.pending, 4);
+  const noPerson = await d.registry.call("projects.access.restore", {}, "cli", {});
+  assert.ok(noPerson.error, "a grant needs the person's own call");
+  assert.equal((await call("projects.access.pending", {})).data.pending, 4, "and nothing was cleared");
+  const r = await call("projects.access.restore", {});
+  assert.ok(!r.error, JSON.stringify(r));
+  assert.equal(await granted(call, "northwind", "kit"), true, "a granted row is a grant");
+  assert.equal(await granted(call, "northwind", "other"), false, "an explicit revoke is never re-granted");
+  assert.equal(await granted(call, "harlow", "kit"), true, "the project's default reaches an agent with no row of its own");
+  assert.equal(await granted(call, "harlow", "other"), true);
+  assert.equal(await granted(call, "harlow", "later"), false, "except the one revoked for that project");
+  assert.equal((await call("projects.access.pending", {})).data.pending, 0, "the old rows are cleared");
+});
