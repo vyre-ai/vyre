@@ -504,6 +504,7 @@ export class FlowRunner {
 
   /** @param {any} ctx */
   #chain(ctx) {
+    if (ctx.actAs) return ctx.actAs;
     const r = ctx.run;
     return this.chains.forFlow({ flow: r.flow, space: r.space, approver: r.approver, tainted: r.tainted, run: r.id, source_spaces: r.source_spaces });
   }
@@ -532,7 +533,10 @@ export class FlowRunner {
       if (!approved) throw new StepFail("refused", `a person said no to step ${s.id}`);
     }
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
-    const d = await this.k.authorize({ chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
+    // An approved act is the task's DOER's to carry out (the approval is a single-use authority for exactly that act, given to the doer: the Flows service under the approver): the run presents the approval
+    // as the doer, and this check only looks at it (peek): the act's own gate below it spends the one use.
+    const doerChain = approvedTask && this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
+    const d = await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
     let effect = d.effect;
     // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
     const obl = Array.isArray(d.obligations) ? d.obligations : [];
@@ -576,7 +580,8 @@ export class FlowRunner {
     if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
-    return act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined);
+    ctx.actAs = doerChain;
+    try { return await act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined); } finally { ctx.actAs = null; }
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */

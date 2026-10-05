@@ -53,7 +53,7 @@ export function createCalendarSyncHost(o) {
       const resource = `vyre://${s.space}/service/${encodeURIComponent(connector)}`;
       const send = async (/** @type {any} */ req, /** @type {any} */ extra) => {
         const approval = extra && extra.approval;
-        const r = await s.service({ chain: s.ownerChain(), connector, request: req, idem: extra && extra.idem, ...(approval ? { approval, bind: requestBind({ connector, method: req.method, path: req.path, query: req.query, body: req.body, headers: req.headers }) } : {}) });
+        const r = await s.service({ chain: (extra && extra.chain) || s.ownerChain(), connector, request: req, idem: extra && extra.idem, ...(approval ? { approval, bind: requestBind({ connector, method: req.method, path: req.path, query: req.query, body: req.body, headers: req.headers }) } : {}) });
         if (r && r.held) throw Object.assign(new Error("the vault is holding the call for a yes"), { code: "held" });
         const text = r && typeof r.body === "string" ? Buffer.from(r.body, "base64").toString("utf8") : "";
         let json; try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
@@ -92,7 +92,9 @@ export function createCalendarSyncHost(o) {
         }
         const t = await s.gw.ask.get(chain, note.task);
         if (t && t.state === "done" && t.outcome === "approved") {
-          const value = await perform({ approval: note.task, idem: change.key });
+          // The approval is the task's DOER's to spend (the Flows service under the owner): the write is carried out as that doer, which needs no standing grant of its own.
+          const doerChain = s.chains.forDoer({ flow: "calendar-sync", space: s.space, approver: actor(s.ownerId()), run: change.key });
+          const value = await perform({ approval: note.task, idem: change.key, chain: doerChain });
           setPending(change.key, undefined);
           return { done: true, value };
         }
