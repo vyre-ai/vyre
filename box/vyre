@@ -1242,7 +1242,8 @@ sp_dc() {
   n=$1; shift
   sp_name_ok "$n" || return 1
   d=$SP_PRIV/spaces/$n
-  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-$n-twenty" \
+  # 40 minutes: a first start migrates an empty database (compose waits for the server through its 15 minute start period, see composeFile), which a slow server can need most of
+  timeout 2400 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-$n-twenty" \
     --env-file "$d/secrets.env" -f "$d/compose.yml" "$@"
 }
 sp_known() { sp_name_ok "$1" && [ -f "$SP_PRIV/spaces/$1/record" ] && [ ! -L "$SP_PRIV/spaces/$1/record" ]; }

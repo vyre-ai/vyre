@@ -297,3 +297,13 @@ test("on a server the saved database is root's: nothing is written for it here, 
   assert.ok(!fs.existsSync(path.join(spaceDir(home2, "northwind"), "state", "types.json")), "and no saved types are claimed");
   await fake.stop(); await fake2.stop();
 });
+
+test("the server's health check has a start period longer than a first migration, so `up --wait` does not give up on a slow server and leave a half-migrated database (#91)", () => {
+  for (const o of [{}, { golden: true }, { migrated: true }, { memory: "tiny" }]) {
+    const y = composeFile({ space: "harlow", ...o });
+    const server = y.slice(y.indexOf("\n  server:"), y.indexOf("\n  worker:"));
+    const m = /healthcheck: \{[^}]*retries: (\d+), start_period: (\d+)s \}/.exec(server);
+    assert.ok(m, `a server health check with a start period for ${JSON.stringify(o)}`);
+    assert.ok(Number(m[2]) >= 600, `the start period (${m[2]} s) covers a migration of an empty database on a small server`);
+  }
+});
