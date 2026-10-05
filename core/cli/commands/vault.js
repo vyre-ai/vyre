@@ -1226,7 +1226,7 @@ async function audit(args) {
 
 // ------------------------------------------------------------ Watchtower, breaches, history
 
-/** The Deck's Watchtower words (deck/vault/model.js REASON), in the order it lists them. */
+/** The app's Watchtower words (screens/vault REASON), in the order it lists them. */
 const REASONS = [
   ["weak", "weak", "easy to guess · vyre vault generate <name> makes a strong one"],
   ["reused", "reused", "the same value is in more than one item"],

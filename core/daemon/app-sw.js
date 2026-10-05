@@ -1,8 +1,7 @@
 // The one app's service worker (ADR 0027), scope /app/ (or / when config app.root serves the app at the root,
 // BASE ""). vyred serves this file at <BASE>/sw.js (core/daemon/app.js appWorker) with BASE, PRECACHE and BUILD
 // filled in from the app's export (precache.json), so every build is a new worker with a fresh cache. It never
-// answers for anything outside the app: at /app/ the Deck at / keeps its own worker (deck/sw.js); at the root the
-// box's own paths (DENY) are left alone; and no /v1/ call is ever cached here. Self-contained on purpose: a worker cannot share the Deck's
+// answers for anything outside the app: the box's own paths (DENY) are left alone; and no /v1/ call is ever cached here. Self-contained on purpose: a worker cannot share the app's
 // modules, and this one must run before anything else loads.
 
 const BASE = "/app";
@@ -24,7 +23,7 @@ self.addEventListener("install", e => e.waitUntil((async () => {
 })()));
 
 self.addEventListener("activate", e => e.waitUntil((async () => {
-  // Only this worker's own older caches. The Deck's ("vyre-deck-*") are the Deck's.
+  // Only this worker's own older caches. Older "vyre-deck-*" caches (the old Deck's worker) are left alone.
   for (const k of await caches.keys()) if (k.startsWith("vyre-app-") && k !== CACHE) await caches.delete(k);
   await self.clients.claim();
 })()));
@@ -35,7 +34,7 @@ function appPath(p) {
   return !BASE || s === BASE || s.startsWith(BASE + "/") ? s : BASE + s;
 }
 
-// Push: the same payload as the Deck's worker, {kind, title, path, tag, at} and for a labelled
+// Push: the same payload as the old Deck's worker, {kind, title, path, tag, at} and for a labelled
 // planner ring a body, never a held item's words or an ask's details (core/push).
 const BODY = { ask: "Waiting on your answer.", draft: "Held at the Gate.", watch: "Finished.", lesson: "A lesson needs you.", test: "A test notification." };
 self.addEventListener("push", e => {

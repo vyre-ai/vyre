@@ -54,7 +54,7 @@ export function RealEngineer() {
     return (
       <View style={{ flex: 1, minHeight: 0 }}>
         {cards ? <View className="p-s3">{cards}</View> : null}
-        <ChatScreen sessionId={agent.thread} title="@Engineer" onBack={() => router.push("/u/flows" as never)} onBranched={(id) => router.push({ pathname: "/session/[id]", params: { id } } as never)} />
+        <ChatScreen sessionId={agent.thread} title="@Engineer" onBack={() => router.push("/u/flows" as never)} onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } } as never)} />
       </View>
     );
   }

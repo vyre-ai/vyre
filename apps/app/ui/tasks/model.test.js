@@ -2,8 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { runClientPays } from "../../../../deck/ui/scenario.js";
+import { createMockStore } from "../../src/store-core/mock-store.js";
+import { runClientPays } from "../../src/store-core/scenario.js";
 import { isRawId, plainLine, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
 import { loadWorld } from "./world.js";
 
@@ -28,7 +28,7 @@ test("client pays: the Welcome card names what it used and offers Send with Face
   assert.ok(m.tags.some((t) => t.text === "Doe estate plan"));
   const d = draftOf(w, need[0]);
   assert.match(d.body, /trust funded before the house sale/);
-  assert.match(d.subject, /Welcome to Harlow Legal, Jane/);
+  assert.match(d.subject, /Welcome to Juniper Studio, Jane/);
 });
 
 test("approving the Welcome email through the Gate sends it and moves the stage on by itself", async () => {
@@ -75,7 +75,7 @@ test("scope narrows Now to a space; calendar and doing-now come from the store",
   assert.equal(all.calendar.length, 3);
   assert.ok(all.working.length >= 5);
   assert.ok(all.doneToday.length >= 1);
-  assert.equal(whenLabel(all.calendar[0].at, NOW), "10:00");
+  assert.equal(whenLabel(all.calendar[0].at, NOW), "10:00 am");
 });
 
 test("the project page: stages made of tasks, the team with its doing-now line, the live line, the created line", async () => {
@@ -93,7 +93,7 @@ test("the project page: stages made of tasks, the team with its doing-now line, 
   assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Drafting is drafting the engagement letter"]);
   assert.equal(liveLine(tasks, w.actors), "Drafting is drafting the engagement letter");
   const events = await s.events({ record: rec.urn });
-  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Estate planning matter, 09:00. Flow On payment: Jane Doe paid $1,500.");
+  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Estate planning matter, 9:00 am. Flow On payment: Jane Doe paid $1,500.");
   assert.equal(progressText(tasks), "2 of 4 tasks");
   assert.equal(stateWord(tasks.find((t) => t.state === "ready"), w.me), "Ready");
 });
@@ -114,7 +114,7 @@ test("Now never greets a raw id, and Recent is plain sentences with kernel house
   const w = { me: id, actors: [{ id, name: id, family: "person" }], spaces: [{ id: "spc_1", name: "Home" }], types: new Map(), tasks: [], events: [], calendar: [], records: new Map(), now: NOW };
   assert.equal(isRawId(id), true);
   assert.equal(isRawId("Devbox"), false);
-  assert.equal(nowModel(w).greeting, "Good afternoon, there");
+  assert.equal(nowModel(w).greeting, "Good afternoon");
   assert.equal(nowModel({ ...w, actors: [{ id, name: "Devbox", family: "person" }] }).greeting, "Good afternoon, Devbox");
   assert.deepEqual(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), { what: "became the owner of Home", actor: "You", record: "vyre://spc_1/space/x" });
   assert.equal(plainLine(w, { what: "member.set", actor: "Vyre" }), null);

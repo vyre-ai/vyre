@@ -30,8 +30,8 @@ export function useRealComposer(session: string | undefined, here: Person[] | un
   const { models, model } = useMemo(() => modelChoices(provRows, current), [provRows, current]);
   const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [] }), [actors, agents, viewer, here]);
   const records: RecordPick[] = useMemo(() => (world ? recordPicks(world as never, (d: unknown, r: unknown) => titleOf(d as never, r as never)) : []), [world]);
-  const onModel = useCallback((id: string) => {
-    const c = session ? switchCall(session, id, provRows, current) : null;
+  const onModel = useCallback((id: string, slot?: string) => {
+    const c = session ? switchCall(session, id, provRows, current, slot) : null;
     if (!c) return;
     onNote(null);
     void tool(c.tool, c.input).catch((e: Error) => onNote(e.message || "The model did not switch."));

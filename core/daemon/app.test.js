@@ -77,9 +77,9 @@ test("app: no dist on this machine is no_app", t => {
   assert.equal(JSON.parse(r.body).error.code, "no_app");
 });
 
-test("app: vyred routes /app beside the Deck", async t => {
+test("app: with config app.root off, vyred serves the app at /app and nothing answers /", async t => {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [] }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: false } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
@@ -92,11 +92,11 @@ test("app: vyred routes /app beside the Deck", async t => {
   const b = /** @type {any} */ (await hit("/app/now"));
   if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.equal(b.status, 200);
   else assert.equal(JSON.parse(b.body).error.code, "no_app");
-  const deck = /** @type {any} */ (await hit("/now"));
-  assert.equal(deck.status, 200, "the Deck still answers everything else");
+  const other = /** @type {any} */ (await hit("/now"));
+  assert.equal(other.status, 404, "there is no other web app to answer a page address");
 });
 
-test("app: with config app.root, /app/* is a 301 to the same path under / instead of serving the app", async t => {
+test("app: with config app.root (the default), /app/* is a 301 to the same path under / instead of serving the app", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: true } }));
   const d = await start({ root, log: () => {} });
@@ -112,8 +112,9 @@ test("app: with config app.root, /app/* is a 301 to the same path under / instea
   assert.deepEqual([b.status, b.headers.location], [301, "/"]);
   const c = /** @type {any} */ (await hit("/app/now?tab=chat"));
   assert.deepEqual([c.status, c.headers.location], [301, "/now?tab=chat"], "a deeper path and its query survive the redirect");
-  const deck = /** @type {any} */ (await hit("/now"));
-  assert.equal(deck.status, 200, "the Deck still answers everything else while the flag is on (it does not itself move / yet)");
+  const page = /** @type {any} */ (await hit("/now"));
+  if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.notEqual(page.status, 301, "the app answers a page address at /");
+  else assert.equal(JSON.parse(page.body).error.code, "no_app", "the app answers a page address at /, here it is not built");
 
   // The redirect must never become protocol-relative ("//host/path" is scheme-relative, so a
   // browser reading Location: //evil.example leaves the box entirely for it).

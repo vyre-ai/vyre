@@ -23,7 +23,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
 
   const load = useCallback(() => {
     setErr("");
-    spaceList(undefined, prefix).then((r) => { setItems(children(r.entries, prefix)); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
+    spaceList(undefined, prefix).then((r) => { setItems(children(r.entries, prefix, { names: r.names, folders: r.folders })); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
   }, [prefix]);
   useEffect(() => { setItems(null); load(); }, [load]);
 
@@ -78,8 +78,8 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
       {!err && items ? (
         <Card flush>
           {items.length ? items.map((i, k) => (
-            <View key={i.name}>{k ? <Divider inset={60} /> : null}
-              <Row dense chevron={i.dir} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={itemLine(i)} onPress={() => show(i)} />
+            <View key={i.path}>{k ? <Divider inset={60} /> : null}
+              <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} onPress={i.locked ? undefined : () => show(i)} /></View>
             </View>
           )) : <EmptyState title={prefix ? "Nothing here" : "The Drive is empty"} body={prefix ? "This folder has no file you may read." : "Files you add, or that assistants save, appear here with their versions."} />}
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}

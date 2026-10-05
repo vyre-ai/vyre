@@ -20,11 +20,11 @@ function tree(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), body); };
   put("deck/views/now.js", "export default () => 'Two things need you.';\n");
-  put("deck/css/deck.css", ":root { --bg: #0E0D0C; }\n");
+  put("web/css/deck.css", ":root { --bg: #0E0D0C; }\n");
   put("docs/nav.json", JSON.stringify({ sections: [{ title: "Using", pages: ["using/deck.md"] }], unpublished: [] }));
   put("docs/using/deck.md", "---\ntitle: Deck\nsummary: The Deck.\naudience: users\nowner: docs\nstatus: draft\n---\n# Deck\n\n![Now in the Deck](shots/deck-now.png)\n");
   put("docs/using/shots/deck-now.png", PNG);
-  const m = { "docs/using/shots/deck-now.png": entryFor(root, ["deck/views/now.js", "deck/css/deck.css"]) };
+  const m = { "docs/using/shots/deck-now.png": entryFor(root, ["deck/views/now.js", "web/css/deck.css"]) };
   put(MANIFEST, manifestText(m));
   return { root, put };
 }
@@ -46,17 +46,17 @@ test("shots: a shot is older than the code it shows once that file's contents ch
 
 test("shots: only contents count, not mtimes", t => {
   const { root } = tree(t);
-  const f = path.join(root, "deck/css/deck.css");
+  const f = path.join(root, "web/css/deck.css");
   fs.utimesSync(f, new Date(2030, 0, 1), new Date(2030, 0, 1));
   assert.deepEqual(checkShots({ root }), []);
 });
 
 test("shots: a shown file that is gone fails", t => {
   const { root } = tree(t);
-  fs.rmSync(path.join(root, "deck/css/deck.css"));
+  fs.rmSync(path.join(root, "web/css/deck.css"));
   const p = checkShots({ root });
   assert.equal(p.length, 1);
-  assert.match(p[0].problem, /shows deck\/css\/deck\.css, which no longer exists/);
+  assert.match(p[0].problem, /shows web\/css\/deck\.css, which no longer exists/);
 });
 
 test("shots: a PNG under a shots/ folder that shots.json does not list fails", t => {
@@ -104,10 +104,10 @@ test("shots: docs-check runs the rule, as kind shots", async t => {
 
 test("shots: the record is deterministic and hashes contents", t => {
   const { root } = tree(t);
-  const a = entryFor(root, ["deck/views/now.js", "deck/css/deck.css"]);
-  const b = entryFor(root, ["deck/css/deck.css", "deck/views/now.js", "deck/css/deck.css"]);
+  const a = entryFor(root, ["deck/views/now.js", "web/css/deck.css"]);
+  const b = entryFor(root, ["web/css/deck.css", "deck/views/now.js", "web/css/deck.css"]);
   assert.deepEqual(a, b);
-  assert.deepEqual(Object.keys(a.shows), ["deck/css/deck.css", "deck/views/now.js"]);
+  assert.deepEqual(Object.keys(a.shows), ["deck/views/now.js", "web/css/deck.css"]);
   const text = manifestText({ "docs/z.png": a, "docs/a.png": b });
   assert.ok(text.indexOf("docs/a.png") < text.indexOf("docs/z.png"));
   assert.equal(text, manifestText(JSON.parse(text)));

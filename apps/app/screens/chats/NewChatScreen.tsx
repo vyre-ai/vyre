@@ -3,18 +3,20 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
-import { agentsList, providers } from "../settings/real";
+import { agentsList } from "../settings/real";
+import { writeDraft } from "../../src/chat/drafts";
+import { getAgreeKey } from "../../src/crypto/agree-key";
+import { holdersFor, newChatRing } from "../../src/crypto/chat-ring.js";
+import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { SURFACE } from "../../src/state/live";
 import { tool } from "../../src/real/box";
-import { agentChoices, defaultAccount, startInput, threadIdOf } from "../../src/state/new-chat-model.js";
+import { agentChoices, chatIdOf, createInput } from "../../src/state/new-chat-model.js";
 
-/** /u/chats/new: pick an agent (your assistant is the default), say what you want first if you like, and start. threads.start runs as you, naming the agent and the AI account; the new session opens. */
+/** /u/chats/new: pick who to talk to (your assistant is the default and is never listed), say what you want first if you like, and start. work.chat.create makes the chat; it opens with your first words ready to send. */
 export default function NewChatScreen() {
   const router = useRouter();
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
-  const [account, setAccount] = useState<string | null>(null);
-  const [root, setRoot] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -23,23 +25,40 @@ export default function NewChatScreen() {
     let live = true;
     void (async () => {
       try {
-        const [a, p, d] = await Promise.all([agentsList(), providers().catch(() => []), tool<{ roots?: { path?: string }[] }>("files.dirs", {}).catch(() => null)]);
+        const a = await agentsList();
         if (!live) return;
         const c = agentChoices(a);
-        setAgents(c); setPick(c[0]?.name ?? null); setAccount(defaultAccount(p)); setRoot(d?.roots?.[0]?.path ?? null);
+        setAgents(c); setPick(c[0]?.name ?? null);
       } catch (e) { if (live) setLoadErr(e instanceof Error ? e.message : "Your Vyre did not answer."); }
     })();
     return () => { live = false; };
   }, []);
+  // Every chat is private: this device makes the ring (the server never makes a key). It does not start the chat quietly short of that: no key on this device, this device's agree point not yet published on its
+  // identity list, or a participant whose devices cannot agree each stop it with a plain line.
+  const ringFor = async (): Promise<{ id: string; ring: unknown } | { say: string }> => {
+    const me = await getAgreeKey();
+    if (!me) return { say: "This device can't start private chats yet." };
+    const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
+    if (!who?.person) return { say: "Vyre could not tell who you are, so the chat did not start." };
+    const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
+    if (!r.listed) return { say: "This device isn't ready for private chats yet." };
+    if (r.without.length) return { say: "Some devices can't open private chats yet." };
+    return newChatRing(`chat_${newUuid()}`, r.holders);
+  };
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
-    const r = startInput({ agent, account, text, root, surface: SURFACE });
-    if ("error" in r) { setErr(r.error); return; }
     setBusy(true); setErr("");
     try {
-      const id = threadIdOf(await tool("threads.start", r.input));
+      const made = await ringFor();
+      if ("say" in made) { setErr(made.say); return; }
+      const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...made }));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
-      router.replace({ pathname: "/session/[id]", params: { id } });
+      // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
+      if (text.trim()) {
+        const first = await tool("stream.send", { chat: id, text: text.trim(), message: newUuid(), surface: SURFACE }).then(() => null).catch((e: Error) => e);
+        if (first) writeDraft(id, text.trim());
+      }
+      router.replace({ pathname: "/u/chats/[id]", params: { id } });
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };
   return (

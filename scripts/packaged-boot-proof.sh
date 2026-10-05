@@ -36,7 +36,7 @@ fs.writeFileSync(process.argv[1]+"/proof.pub",k.publicKey.export({type:"spki",fo
 OLD=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/release-sig.js")
 NEW=$(cat "$WORK/proof.pub")
 [ -n "$OLD" ] || { echo "packaged-boot-proof: could not read the pinned key" >&2; exit 1; }
-for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh deck/sw.js; do [ -f "$SRC/$f" ] && sed -i "s#$OLD#$NEW#g" "$SRC/$f"; done
+for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh; do [ -f "$SRC/$f" ] && sed -i "s#$OLD#$NEW#g" "$SRC/$f"; done
 grep -q "$NEW" "$SRC/lib/release-sig.js" "$SRC/box/vyre"
 
 ( cd "$SRC" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \

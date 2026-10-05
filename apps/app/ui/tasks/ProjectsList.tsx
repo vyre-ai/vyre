@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { aid, stageFieldOf, stageNames } from "../../../../deck/ui/kernel-view.js";
-import { viewDefOf } from "../../../../deck/ui/view-defs.js";
+import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Avatar } from "../components/Avatar";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
@@ -46,7 +46,7 @@ function TaskBar({ done, total, width = 40 }: { done: number; total: number; wid
 
 /**
  * Projects: every record of a type that holds work (Matters, Projects, Trips). One scope control (All spaces, Mine, a space); the type filter is a Filter menu and
- * shows as one applied chip. A wide screen gets a table (emblem and title with "Matter · Harlow Legal" under it, stage steps and name, owner, "2 of 4"); a phone gets
+ * shows as one applied chip. A wide screen gets a table (emblem and title with "Matter · Juniper Studio" under it, stage steps and name, owner, "2 of 4"); a phone gets
  * 72 high rows (emblem 44, title, "Matter · Engagement", the owner at the end, a 3 high progress bar), grouped by space only in All spaces.
  */
 export function ProjectsList({ world, items, onOpen, onNew }: { world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void }) {

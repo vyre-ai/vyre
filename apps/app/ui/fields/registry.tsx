@@ -26,7 +26,7 @@ const make = (kind: keyof typeof KIND_LOGIC, view: Kind["view"], edit: Kind["edi
 /** Every kind of the kernel (kernel/contracts/fields.d.ts FieldKind), keyed by its kernel name. */
 export const registry: Record<string, Kind> = {
   text: make("text", D.TextView, E.TextEdit),
-  url: make("url", D.TextView, E.TextEdit),
+  url: make("url", D.UrlLinkView, E.TextEdit),
   rich_text: make("rich_text", D.RichTextView, E.RichTextEdit),
   number: make("number", D.NumberView, E.NumberEdit),
   money: make("money", D.MoneyView, E.MoneyEdit),

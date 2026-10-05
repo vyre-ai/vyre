@@ -10,4 +10,7 @@ export const viewCache = {
   async set(key: string, value: unknown): Promise<void> {
     mem.set(key, value);
   },
+  async clear(): Promise<void> {
+    mem.clear();
+  },
 };

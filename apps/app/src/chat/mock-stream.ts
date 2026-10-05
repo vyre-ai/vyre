@@ -7,12 +7,16 @@
 // Same plug as the real client: `connect({ from, onFrame })` replays what the log holds after `from`,
 // then goes live, so the screen cannot tell it from core/stream.
 
+import { typeOf } from "./frame-type.js";
+
 export type Frame = {
   v: 1; id: string; cur: number; session: string; turn: string; type: string; time: number; corr: string;
   /** performance.now() at emit; the perf script reads it. Not part of the wire frame. */
   t?: number; data: any;
   /** Group chats (task H): who wrote it, for whom, and which message. See group.js. */
   author?: string; acts_for?: string; message?: string;
+  /** "assistant" when the person's assistant did it for them. */
+  via?: string;
 };
 export type StreamState = "connecting" | "live" | "offline";
 export type StreamConnection = { close(): void };
@@ -24,7 +28,7 @@ export type StreamSource = {
   answer(ask: string, decision: "approve" | "deny"): void;
   stop(): void;
   /** Group chats: send to chosen assistants (two or more make a fan-out), keep a fan-out answer, react, pin, mark read. */
-  sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string }): void;
+  sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string }): void;
   /** The log's head when the box last opened the stream: frames up to it are history, shown at once. */
   head?(): number;
   /** Who the box says is looking ("person:owner"), once it has said. */
@@ -49,11 +53,11 @@ class Clock {
   at(ms: number) { this.t = Math.max(this.t, ms); return this; }
   push(type: string, data: any, wait = 0, top?: Record<string, any>) { this.t += wait; this.steps.push({ at: Math.round(this.t), type, data, ...(top ? { top } : {}) }); return this; }
   /** Streaming text at `tps` tokens a second. `top` is the frame's author, acts_for and message (group chats). */
-  say(message: string, text: string, tps: number, gapBefore = 120, top?: Record<string, any>) {
+  say(message: string, text: string, tps: number, gapBefore = 120, top?: Record<string, any>, extra?: Record<string, any>) {
     this.t += gapBefore;
     const every = 1000 / tps;
     let i = 0;
-    for (const tok of tokens(text)) { this.push("text-delta", { message, index: i++, text: tok }, 0, top); this.t += every; }
+    for (const tok of tokens(text)) { this.push("text-delta", { message, index: i++, text: tok, ...extra }, 0, top); this.t += every; }
     this.push("text-done", { message }, 0, top);
     return this;
   }
@@ -113,7 +117,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   c.push("tool-finished", {
     tool_id: "tl5", ok: true,
     result: {
-      block: "record", urn: "urn:vyre:harlow:matter:nb-0042", type: "Matter", title: "Northwind Bakery, lease dispute",
+      block: "record", urn: "urn:vyre:juniper:matter:nb-0042", type: "Matter", title: "Northwind Bakery, lease dispute",
       fields: [
         { label: "Stage", kind: "stage", value: "Demand sent" },
         { label: "Lead", kind: "text", value: "Alex Rivera" },
@@ -134,7 +138,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   d.push("ask-answered", { ask_id: "k1", decision: "approve" });
   d.push("status", { state: "working", turn: "turn-1" }, 30);
   d.push("tool-started", { tool_id: "tl6", tool: "memory.search", kind: "answer", summary: "Northwind Bakery, last contact" }, 150);
-  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:harlow:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:harlow:file:lease" }] } }, 300);
+  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:juniper:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:juniper:file:lease" }] } }, 300);
   d.push("tool-started", { tool_id: "tl7", tool: "draft.email", kind: "draft", summary: "Status note" }, 150);
   d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your lease matter stands", body: "Hello,\n\nThe demand letter went out on 2 October. The landlord has until 14 October to reply. I will write again that day either way." } }, 300);
   d.push("tool-started", { tool_id: "tl8", tool: "flow.propose", kind: "flow", summary: "Follow-up on 14 Oct" }, 150);
@@ -210,9 +214,66 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: all }];
 }
 
+/**
+ * The three-model chat of the sample world (CONTRACT-one-chat.md section 4): alex asks one question and kit on Claude, kit on Codex and a Grok model answer at once, each frame carrying its provider; alex
+ * keeps one answer.
+ */
+export function modelsScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 30;
+  const alex = { author: VIEWER };
+  const slots = [
+    { id: "agent:kit", name: "kit on Claude", provider: "claude", message: "q1a", text: "Section 4 lets the landlord pass on any tax increase without a cap. Ask for a cap tied to the first year." },
+    { id: "model:codex/gpt-5#1", name: "kit on Codex", provider: "codex", message: "q1b", text: "The lease has no repair duty for the landlord. Check the roof and the oven vent before you sign." },
+    { id: "model:grok/grok-4#1", name: "Grok", provider: "grok", message: "q1c", text: "Sixty days notice with no cause is the exposure: the bakery has no fixed term to rely on." },
+  ];
+  const a = new Clock();
+  a.push("status", { state: "working", turn: "turn-m" });
+  a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
+  for (const sl of slots) a.push("participant-joined", { who: sl.id, name: sl.name, role: sl.provider }, 5);
+  a.push("user-message", { message: "m1", text: "One line each: what is the biggest risk in the Northwind lease?", state: "sent" }, 40, { ...alex, message: "m1" });
+  a.push("fanout", { group: "f1", message: "m1", members: slots.map((sl) => ({ message: sl.message, author: sl.id })) }, 40);
+  const t0 = a.t;
+  const clocks = slots.map((sl, i) => new Clock().at(t0).say(sl.message, sl.text, tps * (1.4 - i * 0.2), 120 + i * 40, { author: sl.id, message: sl.message }, { provider: sl.provider }));
+  const end = new Clock().at(Math.max(...clocks.map((c) => c.t)) + 200);
+  end.push("status", { state: "waiting", turn: "turn-m" }, 0);
+  end.push("fanout-keep", { group: "f1", keep: "q1a" }, 600, { ...alex });
+  return [{ gate: null, steps: [a, ...clocks, end].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];
+}
+
+/** The people-only chat of the sample world: alex and Sam, no assistant, so nobody answers unless someone is asked. */
+export function peopleScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 30;
+  const sam = { author: "person:sam" };
+  const a = new Clock();
+  a.push("status", { state: "waiting", turn: "turn-p" });
+  a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
+  a.push("participant-joined", { who: "person:sam", name: "Sam", role: "Associate" }, 5);
+  a.push("user-message", { message: "p1", text: "Did the intake form come through for the Okafor estate?", state: "sent" }, 40, { author: VIEWER, message: "p1" });
+  const s = new Clock().at(a.t);
+  s.say("p2", "Yes, this morning. I will call them Monday to book the first meeting.", tps, 600, { ...sam, message: "p2" });
+  return [{ gate: null, steps: [a, s].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];
+}
+
+/**
+ * A chat where the person's assistant acted for them (CONTRACT-one-chat.md section 5): the message is the person's, with `via: "assistant"`, so it reads "(Sent by Vyre Assistant)". The assistant holds no seat:
+ * kit, a space agent, answers as itself, acting for the person.
+ */
+export function assistantScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 30;
+  const kit = { author: "agent:kit", acts_for: VIEWER };
+  const a = new Clock();
+  a.push("status", { state: "working", turn: "turn-a" });
+  a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
+  a.push("participant-joined", { who: "agent:kit", name: "kit", role: "Engineer" }, 5);
+  a.push("user-message", { message: "s1", text: "@kit please run the intake tests before the 3 pm call and tell me what fails.", state: "sent" }, 40, { author: VIEWER, via: "assistant", message: "s1" });
+  const k = new Clock().at(a.t);
+  k.say("s2", "Ran them: 14 pass, none fail. The leap-year case you flagged is covered now.", tps, 400, { ...kit, message: "s2" }, { provider: "claude" });
+  return [{ gate: null, steps: [a, k].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];
+}
+
 export type MockOptions = {
   /** "group": two people, two assistants, a fan-out (groupScript). */
-  scenario?: "group";
+  scenario?: "group" | "models" | "people" | "assistant";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -231,7 +292,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : script({ tps: opts.tps });
+  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();
@@ -314,7 +375,10 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
     },
     sendGroup(text, o) {
       const message = `m${nextMsg++}`;
-      emit("user-message", { message, text, state: "sent" }, { author: VIEWER, message });
+      // A quoted reply (the frame's reply_to and quote): the quote is the message answered, as the log holds it.
+      const quoted = o.replyTo ? log.find((f) => f.message === o.replyTo || f.data?.message === o.replyTo) : null;
+      const qtext = quoted ? String(quoted.data?.text ?? "") : "";
+      emit("user-message", { message, text, state: "sent", ...(o.replyTo ? { reply_to: o.replyTo, quote: { message: o.replyTo, author: quoted?.author ?? VIEWER, text: qtext } } : {}) }, { author: VIEWER, message });
       if (o.parent) emit("thread-reply", { parent: o.parent }, { author: VIEWER, message });
       const c = new Clock();
       const tps = opts.tps ?? 30;
@@ -358,7 +422,7 @@ export function historyFrames(n: number, session = "demo"): Frame[] {
   while (msg < n) {
     const k = msg % 8;
     const id = `h${msg}`;
-    if (k === 0) out.push(f("user-message", { message: id, text: `Message ${msg}: look at the intake form for Harlow Legal and tell me what is left.`, state: "sent" }));
+    if (k === 0) out.push(f("user-message", { message: id, text: `Message ${msg}: look at the intake form for Juniper Studio and tell me what is left.`, state: "sent" }));
     else if (k === 3) {
       out.push(f("tool-started", { tool_id: id, tool: "Bash", kind: "terminal", summary: "npm test" }));
       out.push(f("tool-finished", { tool_id: id, ok: true, result: { block: "terminal", command: "npm test", output: `${green("pass")} 14  fail 0\n`, exit: 0 } }));

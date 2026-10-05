@@ -1,6 +1,7 @@
 // @ts-check
 // Invite someone on the real box: the pure half. What spaces.invites.create is sent, what its answer and the invites list say in words.
 
+import { dayOf } from "../../src/time/show.js";
 import { ROLES, assignable } from "../spaces/roles.js";
 
 const DAY = 86_400_000;
@@ -21,7 +22,7 @@ export function createInput(o) {
 /** What a made invite says: the link to send, how long it lasts, and whether the inviter must confirm words before it works. @param {any} r */
 export function madeNote(r) {
   const until = Number(r?.valid_until);
-  const when = until ? new Date(until).toLocaleDateString([], { day: "numeric", month: "short" }) : "";
+  const when = until ? dayOf(new Date(until).getTime(), { year: false }) : "";
   return { code: typeof r?.code === "string" && r.code ? r.code : null, codeExpires: Number(r?.code_expires) || null, codeOffer: typeof r?.code_offer === "string" && r.code_offer ? r.code_offer : null, link: String(r?.link ?? ""), id: String(r?.id ?? ""), needsConfirm: r?.needs_confirm === true, line: when ? `Good until ${when}. The link works once for one person.` : "The link works once for one person." };
 }
 
@@ -42,7 +43,7 @@ export function inviteRow(i) {
   const status = String(i?.status ?? "open");
   const who = String(i?.joined_by_label ?? i?.accepted_by_label ?? i?.joined_by ?? "");
   const device = String(i?.joined_device ?? i?.device_label ?? "");
-  return { who, device, id: String(i?.id ?? ""), title: `${role[0].toUpperCase()}${role.slice(1)} invite${i?.to_label ? ` for ${i.to_label}` : ""}`, sub: [status === "open" || status === "pending" ? "" : status, until ? `until ${new Date(until).toLocaleDateString([], { day: "numeric", month: "short" })}` : ""].filter(Boolean).join(" · "), open: status === "open" || status === "pending" || status === "waiting_confirm" || status === "needs_confirm" };
+  return { who, device, id: String(i?.id ?? ""), title: `${role[0].toUpperCase()}${role.slice(1)} invite${i?.to_label ? ` for ${i.to_label}` : ""}`, sub: [status === "open" || status === "pending" ? "" : status, until ? `until ${dayOf(new Date(until).getTime(), { year: false })}` : ""].filter(Boolean).join(" · "), open: status === "open" || status === "pending" || status === "waiting_confirm" || status === "needs_confirm" };
 }
 
 /** The words for a refused invite call. @param {string | undefined} code @param {string} message */

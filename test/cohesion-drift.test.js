@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The surfaces: what a person sees. Box modules own these lists and may name them.
-const SURFACES = ["deck", "local/capsule/native/Sources", "apps"];
+const SURFACES = ["web", "local/capsule/native/Sources", "apps"];
 const SKIP = /(^|\/)(node_modules|vendor|dist|build|\.build)(\/|$)|\.test\.|Tests?\//;
 const EXT = /\.(js|mjs|ts|tsx|swift|html)$/;
 
@@ -30,13 +30,12 @@ const RULES = {
 /** Today's copies, by rule, file and count. Shrink it as surfaces read the owner instead. */
 const ALLOWED = {
   models: {
-    "deck/views/agents.js": 3,
     // The Capsule's one fallback pair when sessions.models.get is missing (ModelFallback; CapsuleModel.models).
     "local/capsule/native/Sources/Vyred/Route.swift": 2,
   },
   policy: {
     "apps/app/src/auth/person.ts": 2, // debt: mobile, after 0.1.0
-    "deck/js/api.js": 1,
+    "web/js/api.js": 1,
   },
 };
 

@@ -1,6 +1,9 @@
 // kernel/core/canonical.js: one canonical JSON and one hash, so a commitment, an event hash and a presence
 // payload hash are the same bytes on every node. Keys sorted, no whitespace, undefined dropped, numbers finite.
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+// Portable: @noble through lib/databox.js's neighbours, no node:crypto and no Buffer, so the same file runs on a server, a phone and a browser.
+import { sha256 as sha256Bytes } from "@noble/hashes/sha2";
+import { hmac as hmacBytes } from "@noble/hashes/hmac";
+import { toB64u, utf8 } from "../../lib/databox.js";
 
 /** @param {unknown} v @returns {string} */
 export function canonical(v) {
@@ -20,16 +23,19 @@ export function canonical(v) {
   throw new TypeError(`canonical: cannot encode ${typeof v}`);
 }
 
-const b64 = (/** @type {Buffer} */ b) => b.toString("base64url");
+const bytes = (/** @type {string | Uint8Array} */ x) => (typeof x === "string" ? utf8(x) : x);
 
 /** sha-256 over text or bytes, base64url without padding. @param {string | Uint8Array} x */
-export const sha256 = x => b64(createHash("sha256").update(x).digest());
+export const sha256 = x => toB64u(sha256Bytes(bytes(x)));
 
 /** @param {string | Uint8Array} key @param {string} text */
-export const hmac = (key, text) => b64(createHmac("sha256", key).update(text).digest());
+export const hmac = (key, text) => toB64u(hmacBytes(sha256Bytes, bytes(key), utf8(text)));
 
 /** Constant-time equality for two base64url strings. */
 export function sameMac(/** @type {string} */ a, /** @type {string} */ b) {
-  const x = Buffer.from(a), y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
+  const x = utf8(a), y = utf8(b);
+  if (x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
 }

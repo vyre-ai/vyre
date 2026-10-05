@@ -5,13 +5,18 @@
 
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Icon, Text, useUiTheme } from "@vyre/ui";
+import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
-import { askAudience } from "./group.js";
+import { askAudience, authorLabel } from "./group.js";
+import { quoteOf } from "./reply.js";
+import { timeLineOf } from "../time/show.js";
+import { metaOf } from "./stamp.js";
+import { useRouter } from "expo-router";
+import { artifactHref, artifactOf } from "./extras.js";
 import { readSelection } from "./highlight.js";
 import { FanoutSet } from "./FanoutSet";
 import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
@@ -61,18 +66,18 @@ function Who({ name, family, meta, sub }: { name: string; family: "person" | "as
   );
 }
 
-type Dress = { mentioned?: boolean; divider?: number | null; pinned?: boolean; replies?: number; reply?: boolean; cut?: string | null };
+type Dress = { flash?: boolean; mentioned?: boolean; divider?: number | null; pinned?: boolean; replies?: number; reply?: boolean; cut?: string | null };
 
 function Message({ who, family, meta, sub, dress, children, wide, provider }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
   const { color } = useUiTheme();
   return (
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
-      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
+      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
         <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
           <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
-          {dress?.reply ? <Text size="caption" tone="label">in a thread</Text> : null}
+          {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
           {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
@@ -185,25 +190,53 @@ function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
 /** Who wrote this row. Without an author on the frame (a one-to-one over the old stream) it is the person or the assistant of the chat. */
 function whoOf(store: ChatStore, k: string): { name: string; family: "person" | "assistant" | "model"; sub: string | null } {
   if (store.group.author(k.slice(2))?.author) return store.group.label(k);
+  // The sample names (alex, juno) belong to the sample world only: a real chat says You and the chat's own assistant.
+  if (!allowsMock()) return k.startsWith("u:") ? { name: "You", family: "person", sub: null } : { name: store.group.assistantName(), family: "assistant", sub: null };
   return k.startsWith("u:") ? { name: PERSON, family: "person", sub: null } : { name: ASSISTANT, family: "assistant", sub: null };
 }
 
-function dressOf(store: ChatStore, k: string, text: string): Dress {
+function dressOf(store: ChatStore, k: string, text: string, ctx: BlockCtx): Dress {
   const g = store.group;
   const m = k.slice(2);
   const d = g.divider();
-  return { mentioned: g.mentioned(m, text), divider: d.key === k ? d.count : null, pinned: g.pinned(m), replies: g.replyCount(m), reply: !!g.parent(m), cut: g.cut(m) };
+  return { flash: ctx.flash === m, mentioned: g.mentioned(m, text), divider: d.key === k ? d.count : null, pinned: g.pinned(m), replies: g.replyCount(m), reply: !!g.parent(m), cut: g.cut(m) };
+}
+
+/** The small quote above a reply: who said it and the first words. Tapping it goes to the original and lights it up; it never opens a side thread. */
+function QuoteBlock({ store, it, ctx }: { store: ChatStore; it: { [k: string]: any }; ctx: BlockCtx }) {
+  const { color } = useUiTheme();
+  const q = quoteOf(it);
+  if (!q) return null;
+  const who = q.author ? authorLabel({ author: q.author, viewer: store.group.viewer, names: store.group.names() }).name : "";
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`Go to the message${who ? ` from ${who}` : ""}`} onPress={() => ctx.onJumpTo?.(q.message)}
+      style={{ borderLeftWidth: 3, borderLeftColor: color.accent, backgroundColor: color["surface-2"], borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8, gap: 1, alignSelf: "flex-start", maxWidth: "100%" }}>
+      {who ? <Text size="caption" strong tone="accent" numberOfLines={1}>{who}</Text> : null}
+      <Text size="caption" tone="muted" numberOfLines={2}>{q.text || "A message above"}</Text>
+    </Pressable>
+  );
+}
+
+/** Reply to a message in any chat: swipe it on a phone, or long-press it anywhere. The same timeline, never a thread. */
+function Replyable({ ctx, message, name, text, children }: { ctx: BlockCtx; message: string; name: string; text: string; children: React.ReactNode }) {
+  const go = ctx.onReplyTo ? () => ctx.onReplyTo?.(message, name, text) : undefined;
+  if (!go) return <>{children}</>;
+  return (
+    <SwipeActions enabled={!ctx.wide} leading={[{ id: "reply", label: "Reply", icon: "back", tone: "accent", onPress: go, haptic: "selection" }]}>
+      <Pressable accessibilityActions={[{ name: "reply", label: "Reply" }]} onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === "reply") go(); }} onLongPress={go} delayLongPress={450}>{children}</Pressable>
+    </SwipeActions>
+  );
 }
 
 /** Reactions and the Reply / React / Pin tools, only in a chat that has people in it (a group). */
 function GroupTools({ store, k, ctx, name }: { store: ChatStore; k: string; ctx: BlockCtx; name: string }) {
   const g = store.group;
-  if (!g.participants().length) return null;
   const m = k.slice(2);
+  if (!g.participants().length) return ctx.onReplyTo ? <MessageTools big={!ctx.wide} pinned={false} onReply={() => ctx.onReplyTo?.(m, name, "")} /> : null;
   return (
     <>
       <Reactions items={g.reactions(m)} big={!ctx.wide} onToggle={(e, mine) => store.social.react(m, e, mine)} />
-      <MessageTools big={!ctx.wide} pinned={g.pinned(m)} onReply={ctx.onReplyTo ? () => ctx.onReplyTo?.(m, name) : undefined} onReact={(e) => store.social.react(m, e)} onPin={(p) => store.social.pin(m, p)} />
+      <MessageTools big={!ctx.wide} pinned={g.pinned(m)} onReply={ctx.onReplyTo ? () => ctx.onReplyTo?.(m, name, "") : undefined} onReact={(e) => store.social.react(m, e)} onPin={(p) => store.social.pin(m, p)} />
     </>
   );
 }
@@ -217,12 +250,15 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const w = whoOf(store, k);
       const mine = store.group.isMine(k);
       return (
-        <Message who={w.name} family={w.family} sub={w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
+        <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
+        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
+          <QuoteBlock store={store} it={it} ctx={ctx} />
           <Text size="read" selectable>{it.text}</Text>
           {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
           <HighlightAction from={w.name} text={it.text} ctx={ctx} />
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>
+        </Replyable>
       );
     }
     case "text": {
@@ -233,11 +269,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       }
       const w = whoOf(store, k);
       return (
-        <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text)} wide={wide} provider={it.provider ?? null}>
+        <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
+        <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} />
           {it.done ? <HighlightAction from={w.name} text={it.text} ctx={ctx} /> : null}
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>
+        </Replyable>
       );
     }
     case "tool":
@@ -246,6 +284,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
+      const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
+      if (art) return <Frame wide={wide} indent><ArtifactLink title={art.title} href={artifactHref(art)} /></Frame>;
       return (
         <Frame wide={wide} indent>
           {block ? <BlockView block={block} ctx={ctx} output={running ? it.output : undefined} running={running} /> : <ToolLine it={it} running={running} />}
@@ -268,6 +308,19 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     default:
       return null;
   }
+}
+
+/** An artifact made in this chat: one tap opens its page. */
+function ArtifactLink({ title, href }: { title: string; href: string }) {
+  const router = useRouter();
+  const { color } = useUiTheme();
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${title}`} onPress={() => router.push(href as never)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], alignSelf: "flex-start" }}>
+      <Icon name="file" />
+      <Text strong numberOfLines={1}>{title}</Text>
+      <Icon name="chev" />
+    </Pressable>
+  );
 }
 
 export const ChatRow = memo(

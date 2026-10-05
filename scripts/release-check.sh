@@ -78,10 +78,10 @@ tgz=$work/$name
 tar -tzf "$tgz" | sed 's|^package/||' >"$work/files"
 ok "$name, $(wc -l <"$work/files" | tr -d ' ') files, $(du -k "$tgz" | cut -f1) KB"
 for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugin/plugin.json \
-  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js deck/index.html scripts/install-box.sh lib/theme/tokens.json LICENSE package.json; do
+  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js web/onboard/index.html scripts/install-box.sh lib/theme/tokens.json LICENSE package.json; do
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
-ok "has the bin, core, the Harness plugin, the Deck, the design tokens and the box installer"
+ok "has the bin, core, the Harness plugin, the pre-app pages, the design tokens and the box installer"
 # The web app vyred serves at /app/ (ADR 0027): build-site.sh exports it (scripts/build-app.sh).
 if [ -f "$repo/apps/app/package.json" ]; then
   for want in apps/app/dist/index.html apps/app/dist/precache.json; do

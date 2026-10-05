@@ -6,7 +6,7 @@ import { boxOrigin, listen } from "../../src/api/box";
 import { APP_BASE } from "../../src/pwa/model";
 import type { GlassFrameHandle } from "./GlassFrame";
 import { glass } from "./source-real";
-import { EVENTS, LIFECYCLE, agentOf, closeMeaning, errText, eventLine, isRepeat, levels, mine as isMine, nextBackoff, other as isOther, pickTargets,
+import { EVENTS, LIFECYCLE, handedBackBanner, agentOf, closeMeaning, errText, eventLine, isRepeat, levels, mine as isMine, nextBackoff, other as isOther, pickTargets,
   type Conn, type Holder, type Link, type Target } from "./model";
 
 export const FRAME_URL = `${APP_BASE}/glass/frame.html`;
@@ -216,8 +216,7 @@ export function useGlass(name: string, target: string) {
       const r = await glass.release(target, surface, note);
       setH(null); setIdleAt(0);
       frame.current?.post({ t: "holding", on: false });
-      const held = r.heldMs ? ` after ${Math.floor(r.heldMs / 60000)}:${String(Math.floor(r.heldMs / 1000) % 60).padStart(2, "0")}` : "";
-      setNotice({ tone: "ok", text: `You handed the keyboard back to ${name}${held}.${note.trim() ? " Your note is in its thread." : ""}` });
+      setNotice({ tone: "ok", text: handedBackBanner(name, r.heldMs, note, r.noted) });
     } catch (e) { setNotice({ tone: "err", title: "Hand-back did not go through", text: errText(e as { code?: string; message?: string }) }); }
     setBusy(false);
   }

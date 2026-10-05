@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { install, text as allText } from "../../deck/test/fake-dom.js";
+import { install, text as allText } from "../../web/test/fake-dom.js";
 
 install();
 const { mountWink } = await import("./page.js");

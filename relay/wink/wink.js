@@ -6,12 +6,12 @@
 // (lead's one-card ruling and platform's wink-registry.md). It looks nothing up, makes no key, keeps no storage, sets no cookie
 // and may connect nowhere. An iPhone or iPad in Safari gets the install steps instead: the installed app scans inside itself.
 //
-// The pieces: page.js (the screen), flow.js (the rules), the Deck's decoder and relay client (deck/js/scan.js,
+// The pieces: page.js (the screen), flow.js (the rules), the Deck's decoder and relay client (web/js/scan.js,
 // relay/client). Open: a QR or link carrying a purpose other than pairing (the registry's other purposes).
 
 import { mountWink } from "./page.js";
-import { startScan } from "../../deck/js/scan.js";
-import { haptic } from "../../deck/js/haptics.js";
+import { startScan } from "../../web/js/scan.js";
+import { haptic } from "../../web/js/haptics.js";
 
 const root = /** @type {HTMLElement} */ (document.getElementById("wink-root"));
 const wink = mountWink(root, {

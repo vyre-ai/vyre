@@ -53,7 +53,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         if (n !== seq.current) return;
         if (r.error) setErrs((e) => ({ ...e, [key]: label })); else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", "") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), drive: got("drive", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
@@ -88,7 +88,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const pick = (r: Hit) => {
     remember();
     if (r.file) { setPreview({ file: r.file, state: "loading" }); find.preview(r.file.path, r.file.source).then((x) => setPreview((p) => (p && p.file.path === r.file!.path ? { file: p.file, state: x.error ? { kind: "none", note: "No preview." } : previewOf(p.file, x.data) } : p))); return; }
-    if (r.session) { go(`/session/${r.session}`); return; }
+    if (r.session) { go(`/u/chats/${r.session}`); return; }
     if (r.href) go(r.href);
   };
 
@@ -100,7 +100,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       if (cmd.kind === "agent") {
         setDone(`Asking ${cmd.agent}.`);
         const r = await find.ask(cmd.agent, cmd.text);
-        if (r.thread) { go(`/session/${r.thread}`); return; }
+        if (r.thread) { go(`/u/chats/${r.thread}`); return; }
         setDone(r.note || doneLine(cmd, "")); return;
       }
       if ((cmd.kind === "drive" || cmd.kind === "watch") && target) {
@@ -114,7 +114,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       if (!all.assistant) { setDone("No assistant is set up yet."); return; }
       setDone(`Asking ${assistant}.`);
       const r = await find.ask(all.assistant, line);
-      if (r.thread) { go(`/session/${r.thread}`); return; }
+      if (r.thread) { go(`/u/chats/${r.thread}`); return; }
       setDone(r.note || `Sent to ${assistant}.`);
     } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
   };
@@ -124,7 +124,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
       state={r.right} onPress={() => pick(r)} />
   );
-  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions"] as const).some((k) => fetched[k] === undefined && !errs[k]);
+  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
       <Composer label="Find or ask" placeholder={`Ask ${assistant}, find, or run`} value={q} onChangeText={setQ} onSend={() => void run()} sendLabel="Run" />

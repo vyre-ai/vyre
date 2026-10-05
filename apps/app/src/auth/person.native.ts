@@ -109,6 +109,11 @@ export async function keepPairedToken(route: string, token: string): Promise<voi
   await secureSlot(slotName("token", route)).save(token);
 }
 
+/** Forget every slot this phone kept for a box: the session token, the presence and the human key (a removed device). @param {string[]} names the box's name and its pairing route */
+export async function forgetPersonSlots(names: string[]): Promise<void> {
+  for (const n of names) for (const what of ["token", "human", "presence"]) await secureSlot(slotName(what, n)).save(null);
+}
+
 let pending: { box: string; verifier: string; at: number; code: string | null } | null = null;
 
 /** The code in a return URL, or null. */

@@ -1,5 +1,5 @@
 import { kindOf, type AvatarRef } from "../components/Avatar";
-import { aid } from "../../../../deck/ui/kernel-view.js";
+import { aid } from "../../src/store-core/kernel-view.js";
 import { recordTitle, spaceName, who, type World } from "./model";
 
 /** An actor as a mark reference. */
@@ -18,7 +18,7 @@ export function taskHeader(world: World, task: any): { title: string; context: s
   };
 }
 
-/** For a project: the emblem, its title, and "Matter · Harlow Legal". */
+/** For a project: the emblem, its title, and "Matter · Juniper Studio". */
 export function projectHeader(world: World, def: any, row: any): { title: string; context: string; faces: AvatarRef[] } {
   const title = recordTitle(world, row);
   return {

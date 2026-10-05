@@ -1,6 +1,6 @@
 // @ts-check
 // adapter: real event shapes from the repo (the switchboard's thread.* vocabulary as
-// deck/chat/core/session-state.test.js feeds it, the transcripts fixture, core/term's ring) become frames.
+// the app's chat core session-state test feeds it, the transcripts fixture, core/term's ring) become frames.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

@@ -15,7 +15,7 @@ import { FORBIDDEN, SECRET } from "../scripts/lib/hygiene.js";
 import { discover } from "../core/modules/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SHIPPED = ["bin", "core", "harness", "local", "deck", "modules"];
+const SHIPPED = ["bin", "core", "harness", "local", "web", "modules"];
 
 function files(dir) {
   const out = [];

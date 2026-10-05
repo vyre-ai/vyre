@@ -4,6 +4,8 @@
 
 import { MIN_NAME, SETUP_STEPS, slug } from "./flow.js";
 
+import { spaceName as spaceNameOf } from "../../src/state/space-name.js";
+
 /** spaces.identity.status: the person's name on this device, or null when none is claimed yet. @param {any} s */
 export function identityFrom(s) {
   if (!s || s.exists !== true) return null;
@@ -100,7 +102,7 @@ export const savesAt = (/** @type {string} */ step) => SETUP_STEPS.includes(step
 export function setupElsewhere(list, hereSpace) {
   return (Array.isArray(list) ? list : [])
     .filter((r) => r && r.setup && typeof r.setup === "object" && r.id !== hereSpace)
-    .map((r) => ({ space: String(r.id), spaceName: String(r.displayName || r.label || r.name || r.id), device: String(r.setup.device?.name || "device"), setup: r.setup }));
+    .map((r) => ({ space: String(r.id), spaceName: spaceNameOf(r), device: String(r.setup.device?.name || "device"), setup: r.setup }));
 }
 
 /** What a claimed setup (spaces.setup.claim) puts back on the screen. @param {any} a */
@@ -121,7 +123,7 @@ export function applyClaim(a) {
 }
 
 /**
- * spaces.invites.preview, as the invite card shows it. Real answer: { space: "harlow.vyre.run", label: "Harlow Legal", role, role_label,
+ * spaces.invites.preview, as the invite card shows it. Real answer: { space: "juniper.vyre.run", label: "Juniper Studio", role, role_label,
  * sees: { scope: [], expires }, valid_until, fingerprint, fingerprint_words, button }. The older object form of `space` is read too.
  * @param {any} p @param {string} link
  */

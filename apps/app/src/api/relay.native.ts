@@ -49,6 +49,11 @@ export function relayKeyStore() {
   };
 }
 
+/** Forget this phone's relay key (a removed device). */
+export async function forgetRelayKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEY, ONLY_HERE);
+}
+
 export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
   try {
     // The biometric-bound key, so every presence proof over the relay needs a fingerprint or face

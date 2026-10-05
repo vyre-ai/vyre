@@ -19,5 +19,5 @@ test("a screen's own space wins, and All spaces or no space adds nothing", () =>
 
 test("a tool that does not take a space is left alone", () => {
   for (const t of ["records.get", "records.update", "files.drive.list", "spaces.list", "vault.list"]) assert.deepEqual(withSpace(t, { id: "x" }, A), { id: "x" }, t);
-  assert.equal(SPACE_TOOLS.size, 33);
+  assert.equal(SPACE_TOOLS.size, 34);
 });

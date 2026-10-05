@@ -6,7 +6,7 @@ import { flowText, goLive, grantedOf, liveOf, previewOf, publishNew, rollBack, s
 
 const D = (v, st, pipe) => ({ v, st, by: "kit", when: "now", msg: "m", pipe });
 const done = ["done", "done", "done", "done", "done"];
-const site = () => ({ id: "intake", name: "Client intake form", type: "App", sp: "harlow", src: ["GitHub repo", "harlow-legal/intake-form", "branch main"], dom: { name: "intake.harlowlegal.com", ok: true }, sec: { Clio: false, Gmail: true }, dep: [D("v13", "preview", ["done", "done", "done", "cur", ""]), D("v12", "live", done), D("v11", "old", done)], logs: { build: [], run: [] } });
+const site = () => ({ id: "intake", name: "Client intake form", type: "App", sp: "juniper", src: ["GitHub repo", "juniper-studio/intake-form", "branch main"], dom: { name: "intake.juniperstudio.example", ok: true }, sec: { Clio: false, Gmail: true }, dep: [D("v13", "preview", ["done", "done", "done", "cur", ""]), D("v12", "live", done), D("v11", "old", done)], logs: { build: [], run: [] } });
 
 test("a preview past its checks waits on a person", () => {
   assert.equal(waitingOnYou(site()), true);
