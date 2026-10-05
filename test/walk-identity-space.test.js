@@ -100,7 +100,9 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   // The app signs in before it calls anything of the person's (the router sets meta.person from the cookie or the signed token): `signedIn` is that sign-in. Refused devices are tried both ways.
   const viaDevice = async (/** @type {string} */ id, /** @type {string} */ tool, /** @type {any} */ input, signedIn = false) => {
     const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
-    const facts = callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, info.data || null);
+    // the daemon's own device row is the relay's row plus the person Wink's record names (core/daemon/index.js); the home's own owner is who a device of this home was confirmed by
+    const row = info.data ? { ...info.data, person: d.kernel.id.owner } : null;
+    const facts = callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, row);
     return d.registry.call(tool, input, `device:${id}`, { ...(facts ? { kernelFacts: facts } : {}), ...(signedIn ? { person: { id: alexId, kind: "cookie" } } : {}) });
   };
   for (const id of [ids.web, ids.webTrusted, ids.setup, ids.gone, ids.never]) {

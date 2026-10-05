@@ -835,10 +835,10 @@ test("a home that already has a claimed owner is not paired by a different ident
   const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
   const ks = keystore(t);
   const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: () => {} });
-  await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /already belongs to another/.test(e.message), "refused with its own words");
+  await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /^This server belongs to .*Ask them to add you to a space, or reset the server to start over/.test(e.message), "refused with its own words");
   assert.equal(((await w.call("wink.server.pairing", {}, "cli", PROOF)).data || {}).asking || false, false, "the person at the server is never asked");
   const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
-  assert.equal(st.owned, false, "the pairing record names no owner");
+  assert.equal(st.released, true, "the pairing record names no owner: the status is the kernel's owner, released from any app");
   assert.equal(w.d.kernel.id.owner, ownerAfterClaim, "the kernel owner is unchanged");
   await noOwnerDevices(w);
 });
@@ -865,7 +865,7 @@ test("a kernel that refuses the owner fails the pairing: the owner record is tak
   const ownerAfterClaim = w.d.kernel.id.owner;
   await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF);
   await assert.rejects(() => pairing, e => e.code === "owned_by_other");
-  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false, "the owner record was taken back");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.released, true, "the pairing's owner record was taken back (the status is only the kernel's owner)");
   assert.equal(w.d.kernel.id.owner, ownerAfterClaim);
   await noOwnerDevices(w);
 });
@@ -1076,6 +1076,34 @@ test("an invitee on a development build joins in one accept: its own software ke
   assert.ok(!joined.error && joined.data.joined === true, JSON.stringify(joined.error || joined.data).slice(0, 400));
   const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
   assert.deepEqual([member.person, member.role], [kit.id, "member"]);
+  // the joined space is kit's now: it is listed, and its records are reached through a member stream to the home (no invite, no pairing)
+  const listed = await k.call("spaces.list");
+  assert.ok(!listed.error && listed.data.some((/** @type {any} */ x) => x.id === made.space && x.member === true), JSON.stringify(listed).slice(0, 300));
+  // the home ends an invitee channel after its life (5 minutes in production; 1.2 s here): a member's next call reconnects with no error
+  seams.set(f.w.root, { ...(seams.get(f.w.root) || {}), inviteeTotalMs: 1200 });
+  t.after(() => { seams.delete(f.w.root); });
+  const asKit = (/** @type {string} */ tool, /** @type {any} */ input) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: k.root, caller: "cli" }));
+  const types = await asKit("records.types", { space: made.space });
+  assert.ok(!types.error, JSON.stringify(types.error || types.data).slice(0, 400));
+  assert.equal(types.data.acted_in.id, made.space);
+  assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted");
+  const opened = () => f.w.logs.filter(l => /peer door: invitee .* opened a stream/.test(l)).length;
+  const before = opened();
+  await new Promise(r => setTimeout(r, 1800));
+  const later = await asKit("records.types", { space: made.space });
+  assert.ok(opened() > before, "the lapsed channel was really replaced by a new stream");
+  assert.ok(!later.error, `after the channel's life the next call reconnects: ${JSON.stringify(later.error)}`);
+  await new Promise(r => setTimeout(r, 1800));
+  const [x, y] = await Promise.all([asKit("records.types", { space: made.space }), asKit("records.types", { space: made.space })]);
+  assert.ok(!x.error && !y.error, `two calls at once after a lapse: ${JSON.stringify(x.error || y.error)}`);
+  // a person who is NOT a member gets nothing from the member door, even holding a row that says otherwise: the home's kernel answers for membership
+  const z = await world(t, { kernel: true });
+  const zed = (await z.call("spaces.identity.create", { name: "zed", password: "four plain words here", deviceLabel: "Zed's laptop" })).data;
+  assert.match(String(zed && zed.id), /^per_/);
+  z.d.registry.deps.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`member-of/${made.space}`, JSON.stringify({ channel: ROUTE, name: "harlow.vyre.run", role: "member", at: 1 }));
+  const nope = await import("../core/daemon/client.js").then(m => m.call("records.types", { space: made.space }, { root: z.root, caller: "cli" }));
+  assert.ok(nope.error, "a non-member reads nothing through the member door");
+  await until(async () => f.w.logs.some(l => /peer door: member .* refused \(not_a_member/.test(l)));
 });
 
 test("one permission rule: a paired device is you: an admin act passes with no session, before and after its sessions end; a vault reveal without a yes is refused", async t => {

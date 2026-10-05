@@ -66,12 +66,16 @@ const PERSON = "per_" + "q".repeat(26);
 const BOX = "Qm94S2V5MTIzNDU2Nzg5MA";
 const INVITEE = "zyxwvutsrqponmlk";
 
-function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askPresence = false } = {}) {
+function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askPresence = false, memberWatchMs = 0, age = { founder: true, since: 0 } } = {}) {
+  /** what the identity's list and the space's membership say now; a test flips these mid-stream */
+  const live = { entry, member: true };
   const key = crypto.generateKeyPairSync("ed25519");
   const raw = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
   const served = [];
   const server = { serve: async (request, peer) => {
     served.push({ request, peer });
+    if (request.call === "grants.members.get") return live.member ? { v: 1, id: request.id, ok: true, result: { person: request.args[0], role: "member" } } : { v: 1, id: request.id, ok: false, error: { code: "not_a_member", message: "no chain for this connection" } };
+    if (request.call === "records.query") return { v: 1, id: request.id, ok: true, result: { rows: [] } };
     if (request.call === "grants.invites.get") return addressedTo && addressedTo !== peer.person ? { v: 1, id: request.id, ok: false, error: { code: "not_found", message: "no such invite" } } : { v: 1, id: request.id, ok: true, result: { id: request.args[0], status, space: { id: SPACE } } };
     if (askPresence && request.call === "grants.invites.accept" && !(request.proof)) return { v: 1, id: request.id, ok: false, error: { code: "needs_presence", message: "needs presence", challenge: { nonce: "n" } } };
     return { v: 1, id: request.id, ok: true, result: { accepted: true } };
@@ -80,7 +84,7 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
   const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
   let clock = 1_000_000;
   const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: space => (space === SPACE ? server : null), boxId: async () => BOX,
-    identityEntry: async (identity, eid) => (entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url") } : null), ...(limits ? { inviteeLimits: limits } : {}) });
+    identityEntry: async (identity, eid) => (live.entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url"), ...age } : null), ...(limits ? { inviteeLimits: limits } : {}), ...(memberWatchMs ? { memberWatchMs } : {}) });
   const hello = (over = {}) => {
     const h = { space: SPACE, invite: INVITE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, ...over };
     const msg = Buffer.from(`vyre-invitee-hello-v2\n${over.box || BOX}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`);
@@ -95,7 +99,7 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
     return peerSession(c, { first: 1 });
   };
   const kcall = (client, call, args, space = SPACE) => client.call("kernel.call", { v: 1, space, id: "c" + Math.random().toString(36).slice(2), ts: clock, call, args }, { timeoutMs: 3000 });
-  return { d, hello, open, kcall, served, tick: ms => { clock += ms; } };
+  return { d, hello, open, kcall, served, live, tick: ms => { clock += ms; } };
 }
 
 test("invitee door: a fresh hello with the identity's signature and a live invite reads the preview and accepts, and accepting ends the stream", async () => {
@@ -383,4 +387,66 @@ test("invitee door: a silent stream is closed after the idle time, a presence as
   const signed = await r.c.call("kernel.call", { v: 1, space: SPACE, id: "r", ts: 1_000_000, call: "grants.invites.accept", args: [INVITE, {}], proof: { p: 1 } }, { timeoutMs: 3000 });
   assert.equal(signed.ok, true, "the signed retry arrives inside the presence time, past the idle time");
   void dead;
+});
+
+// ---- the member stream: a person who joined reaches the space with a hello that names `member`; every call re-checks the device and the membership ----
+const stillOpen = (/** @type {any} */ w, /** @type {any} */ c) => Promise.race([w.kcall(c, "records.query", ["contact", {}]).then((/** @type {any} */ r) => (r && r.ok ? "answered" : "refused"), () => "refused"), new Promise(r => setTimeout(() => r("closed"), 1500))]);
+
+test("member stream: a member's hello opens kernel calls for that space only, as the member; an invite call and another space are refused", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello({ invite: "member" }));
+  assert.equal(await stillOpen(w, c), "answered");
+  assert.ok(w.served.filter(x => x.request.call === "records.query").every(x => x.peer.person === PERSON && x.peer.device_key_id === INVITEE));
+  assert.equal(await w.kcall(c, "grants.invites.accept", [INVITE, {}]).then(() => "answered", () => "refused"), "refused", "an invite call is not a member's");
+  assert.equal(await w.kcall(c, "records.query", ["contact", {}], "spc_otherotherxx").then(() => "answered", () => "refused"), "refused", "another space is not reachable");
+});
+
+test("member stream: a person who is not a member is refused at the door", async () => {
+  const w = inviteeWorld();
+  w.live.member = false;
+  const c = await w.open(w.hello({ invite: "member" }));
+  assert.notEqual(await stillOpen(w, c), "answered");
+});
+
+test("member stream: a device taken off the identity's list mid-stream is refused on its next call and the stream is closed", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello({ invite: "member" }));
+  assert.equal(await stillOpen(w, c), "answered");
+  w.live.entry = false;
+  const before = w.served.length;
+  assert.notEqual(await stillOpen(w, c), "answered", "the removed device's next call is refused");
+  assert.equal(w.served.slice(before).filter(x => x.request.call === "records.query").length, 0, "nothing was served to it");
+  w.live.entry = true;
+  assert.notEqual(await stillOpen(w, c), "answered", "and the stream stays closed, even if the list says yes again");
+});
+
+test("member stream: a member removed from the space mid-stream is refused on the next call and the stream is closed", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.hello({ invite: "member" }));
+  assert.equal(await stillOpen(w, c), "answered");
+  w.live.member = false;
+  assert.notEqual(await stillOpen(w, c), "answered");
+  w.live.member = true;
+  assert.notEqual(await stillOpen(w, c), "answered", "closed for good");
+});
+
+test("member stream: a removal ends an open stream by itself, with no call, within the watch interval", async () => {
+  const w = inviteeWorld({ memberWatchMs: 40 });
+  const c = await w.open(w.hello({ invite: "member" }));
+  assert.equal(await stillOpen(w, c), "answered");
+  w.live.member = false;
+  await new Promise(r => setTimeout(r, 250));
+  assert.ok(c.closed === true || (await stillOpen(w, c)) !== "answered", "the stream was closed by the door");
+});
+
+test("member stream: a device under 24 hours old on the identity's list is refused at the member hello unless it founded the list; an older device and the founder get in (MB-2)", async () => {
+  const young = inviteeWorld({ age: { founder: false, since: 1_000_000 - 3_600_000 } });
+  const c1 = await young.open(young.hello({ invite: "member" }));
+  assert.notEqual(await stillOpen(young, c1), "answered", "an hour-old device reaches nothing");
+  const unknown = inviteeWorld({ age: /** @type {any} */ ({}) });
+  assert.notEqual(await stillOpen(unknown, await unknown.open(unknown.hello({ invite: "member" }))), "answered", "an entry whose age is unknown is young");
+  const old = inviteeWorld({ age: { founder: false, since: 1_000_000 - 90_000_000 } });
+  assert.equal(await stillOpen(old, await old.open(old.hello({ invite: "member" }))), "answered", "a device over a day old gets in");
+  const founder = inviteeWorld({ age: { founder: true, since: 1_000_000 - 60_000 } });
+  assert.equal(await stillOpen(founder, await founder.open(founder.hello({ invite: "member" }))), "answered", "the founding device gets in at once");
 });

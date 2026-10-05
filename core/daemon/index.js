@@ -313,13 +313,13 @@ async function startLocked(opts, root, p, release) {
     // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
     const remoteFor = (/** @type {string} */ id) => {
       const sf = opts.sessionFor || /** @type {any} */ (registry.deps).winkSessionFor;
-      if (typeof sf !== "function") return null;
       let device = null;
-      try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
-      if (typeof device !== "string" || !device) return null;
+      if (typeof sf === "function") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ } }
+      // A space this person JOINED on someone else's server (an invite accepted here): the spaces module reaches it with a member stream to the home its record names (the module hands the remote up as `memberRemote`)
+      if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -459,7 +459,11 @@ async function startLocked(opts, root, p, release) {
         let entries = st && Array.isArray(st.entries) ? st.entries : [];
         if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
         const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+        if (!e || typeof e.pub !== "string") return null;
+        // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
+        let age = e;
+        if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
+        return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });

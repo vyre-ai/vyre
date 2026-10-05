@@ -159,7 +159,7 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   // a creation that was cancelled is no space to be enrolled in, and neither is one still being made
   const mine = (await deck("spaces.identity.create", { name: "alex" })).data;
   assert.ok(mine.id);
-  const w = (await deck("spaces.create", { name: "cancelme", home: { kind: "this-computer" } })).data;
+  const w = (await deck("spaces.create", { name: "cancelme", home: { kind: "server" } })).data;
   assert.equal(await enrolled(dev, w.space), false, "still being made");
   assert.ok(!(await deck("spaces.cancel", { space: w.space })).error);
   assert.equal(await enrolled(dev, w.space), false, "cancelled");

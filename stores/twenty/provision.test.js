@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { composeFile, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG } from "./provision.js";
+import { TWENTY_TESTED_REF, isPinnedRef, composeFile, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG } from "./provision.js";
 import { FakeTwenty } from "./testing/fake-twenty.js";
 
 const dirs = [];
@@ -16,7 +16,8 @@ test("the compose file publishes no port, keeps the network internal and mounts 
   assert.ok(!/^\s*ports:/m.test(y), "no ports anywhere");
   assert.match(y, /networks:\n  store:\n    internal: true/);
   assert.match(y, /\.\/empty-front:\/app\/packages\/twenty-server\/dist\/front:ro/);
-  assert.match(y, /twentycrm\/twenty:\$\{TWENTY_TAG:-v2\.44\.0\}/);
+  assert.match(y, /image: \$\{TWENTY_IMAGE_REF:-twentycrm\/twenty:v2\.44\.0@sha256:[0-9a-f]{64}\}/);
+  for (const m of y.matchAll(/^\s+image: (.*)$/gm)) assert.match(m[1], /@sha256:[0-9a-f]{64}/, `an unpinned image in the Space compose: ${m[1]}`);
   assert.match(y, /OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS: vyre-harlow\n/);
   assert.equal((y.match(/OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS/g) ?? []).length, 2, "set on the worker as well as the server");
   assert.match(y, /--requirepass/);
@@ -82,21 +83,29 @@ test("two Spaces never share a folder, a secret or a key file", async () => {
   await fake.stop();
 });
 
+const NEXT_REF = `twentycrm/twenty:v2.45.0@sha256:${"a".repeat(64)}`, NEXT2_REF = `twentycrm/twenty:v2.46.0@sha256:${"b".repeat(64)}`;
+
+test("an upgrade or a compose takes only a full pinned image reference (tag and digest), never a bare tag", async () => {
+  assert.ok(isPinnedRef(TWENTY_TESTED_REF) && !isPinnedRef("twentycrm/twenty:v2.45.0") && !isPinnedRef("twentycrm/twenty:latest"));
+  assert.throws(() => composeFile({ space: "harlow", image: "twentycrm/twenty:v2.45.0" }), /full reference/);
+  await assert.rejects(() => upgradeSpace({ home: tmp(), space: "harlow", toImage: "v2.45.0", verify: async () => {} }), /full image reference/);
+});
+
 test("upgrade backs up first, verifies before reopening, and rolls back with the old image on a failed verify", async () => {
   const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];
   const runner = fakeRunner(fake, calls);
   await provisionSpace({ home, space: "harlow", runner });
   calls.length = 0;
   let verified = 0;
-  const ok = await upgradeSpace({ home, space: "harlow", runner, toTag: "v2.45.0", verify: async () => { verified++; } });
-  assert.equal(ok.ok, true); assert.equal(ok.rolledBack, false); assert.equal(ok.from, TWENTY_TESTED_TAG); assert.equal(verified, 1);
+  const ok = await upgradeSpace({ home, space: "harlow", runner, toImage: NEXT_REF, verify: async () => { verified++; } });
+  assert.equal(ok.ok, true); assert.equal(ok.rolledBack, false); assert.equal(ok.from, TWENTY_TESTED_REF); assert.equal(verified, 1);
   assert.ok(calls[0].includes("pg_dump"), "the dump is the first thing that happens");
-  assert.match(fs.readFileSync(path.join(spaceDir(home, "harlow"), ".env"), "utf8"), /^TWENTY_TAG=v2\.45\.0$/m);
+  assert.match(fs.readFileSync(path.join(spaceDir(home, "harlow"), ".env"), "utf8"), new RegExp(`^TWENTY_IMAGE_REF=${NEXT_REF.replace(/[.]/g, "\\.")}$`, "m"));
   assert.ok(fs.existsSync(ok.backup));
   calls.length = 0; verified = 0;
-  const bad = await upgradeSpace({ home, space: "harlow", runner, toTag: "v2.46.0", verify: async () => { verified++; if (verified === 1) throw new Error("isolation test failed"); } });
+  const bad = await upgradeSpace({ home, space: "harlow", runner, toImage: NEXT2_REF, verify: async () => { verified++; if (verified === 1) throw new Error("isolation test failed"); } });
   assert.equal(bad.ok, false); assert.equal(bad.rolledBack, true); assert.equal(verified, 2, "verify runs again after the rollback");
-  assert.match(fs.readFileSync(path.join(spaceDir(home, "harlow"), ".env"), "utf8"), /^TWENTY_TAG=v2\.45\.0$/m, "the old tag is back");
+  assert.match(fs.readFileSync(path.join(spaceDir(home, "harlow"), ".env"), "utf8"), new RegExp(`^TWENTY_IMAGE_REF=${NEXT_REF.replace(/[.]/g, "\\.")}$`, "m"), "the old image is back");
   assert.ok(calls.some((c) => c.includes("DROP DATABASE")) && calls.some((c) => c.includes("psql") && c.includes("ON_ERROR_STOP")));
   await fake.stop();
 });
