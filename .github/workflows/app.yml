@@ -96,6 +96,17 @@ jobs:
           cache-dependency-path: apps/app/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npx expo export -p web --output-dir dist
+      - name: Playwright (outside the repo), for the render check
+        run: |
+          echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: Render check (the sample world: every main screen draws at phone and desktop width)
+        run: |
+          EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock
+          node scripts/render-check.mjs --dist dist-mock --out "$RUNNER_TEMP/render"
       - name: Bundle size (gzipped JS, the ADR expects about 3 MB)
         run: |
           total=0

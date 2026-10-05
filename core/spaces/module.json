@@ -82,6 +82,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.tier", "effect": "read",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.get", "effect": "read",
     "reach": "person"
    },

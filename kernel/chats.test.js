@@ -37,6 +37,48 @@ test("chat read: participants only; an owner or admin outside the chat is refuse
   assert.throws(() => C.read(bob, "chat_nonesuch0"), { code: "not_found" });
 });
 
+test("the person's default assistant is never listed in a chat and acts as its person: a member's assistant reads, a non-member's is refused, and a named assistant must still be listed", async () => {
+  const make = (k, person) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session: `s-${person}` });
+  const r = await rig();
+  const c2 = await r.C.create(r.bob, { people: [CAROL] });
+  assert.deepEqual([...c2.assistants], [], "no assistant is listed");
+  assert.equal(r.C.read(make(r.k, BOB), c2.id).id, c2.id, "bob's assistant reads bob's chat");
+  assert.equal(r.C.read(make(r.k, CAROL), c2.id).id, c2.id, "carol's assistant reads a chat carol is in");
+  assert.throws(() => r.C.read(make(r.k, OWNER), c2.id), { code: "not_found" }, "an assistant of someone outside the chat");
+  assert.throws(() => r.C.read(r.asst(BOB, "s9"), c2.id), { code: "not_found" }, "a named assistant that is not listed is still refused");
+});
+
+const SLOT = "model:anthropic/claude-sonnet-5-5#1";
+
+test("model slot: opened by the person in a chat, the chain is the person's plus the slot's agent hop, the Project is in the token, and nothing a caller says widens it", async () => {
+  const { k, owner, bob, carol, ada, g, C } = await rig();
+  const group = await C.create(bob, { people: [CAROL] });
+  const t = await k.surfaces.open(bob, { chat: group.id, agent: SLOT, project: "p1" });
+  const facts = await k.surfaces.verify(t.token);
+  assert.deepEqual([facts.agent, facts.chat, facts.project], [SLOT, group.id, "p1"]);
+  const chain = await k.surfaces.chainFor(t.token);
+  assert.deepEqual(chain.hops.map(h => [h.actor.kind, h.actor.id]), [["person", BOB], ["agent", SLOT]]);
+  assert.equal(chain.project, "p1");
+  assert.equal(chain.delegated, true);
+  // no client-chosen id: a slot is a model:provider/model#n id and lives in a chat; a Project belongs to a slot only; a session's own chain cannot open another
+  await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, agent: "model:nonsense" }), { code: "bad_input" });
+  await assert.rejects(() => k.surfaces.open(bob, { agent: SLOT }), { code: "bad_input" }, "a slot lives in a chat");
+  await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, project: "p1" }), { code: "bad_input" }, "only a slot is narrowed to a project");
+  await assert.rejects(() => k.surfaces.open(ada, { chat: group.id, agent: SLOT }), { code: "not_found" }, "an admin outside the chat opens no slot in it");
+  await assert.rejects(() => k.surfaces.open(chain, { chat: group.id, agent: SLOT }), { code: "chain_not_person" });
+  // the slot reads its chat while its person is in it, as the person's, and is never a listed assistant
+  assert.equal(C.read(chain, group.id).id, group.id);
+  const other = await (async () => { const t2 = await k.surfaces.open(carol, { chat: group.id, agent: "model:openai/gpt-5#2" }); return k.surfaces.chainFor(t2.token); })();
+  assert.equal(C.read(other, group.id).id, group.id, "carol's slot, carol being in the chat");
+  // the slot ends when its adding person leaves the chat
+  await C.change(carol, group.id, { remove_people: [BOB] });
+  assert.throws(() => C.read(chain, group.id), { code: "not_found" }, "bob left: bob's slot reads nothing");
+  assert.equal(C.read(other, group.id).id, group.id, "carol's slot goes on");
+  // and it can never change who is in a chat, nor hold a grant act
+  await assert.rejects(() => C.change(other, group.id, { add_people: [ADA] }), e => ["chain_not_person", "not_found"].includes(e.code));
+  void owner; void g;
+});
+
 test("CH-2: only a person in the chat changes it: never a viewer chain, an assistant, or someone outside; each change is an event", async () => {
   const { k, owner, bob, carol, ada, asst, C } = await rig();
   const c = await C.create(bob, {});

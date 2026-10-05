@@ -41,7 +41,7 @@ export default function Devices() {
         {trust === "untrusted" ? (
           <Text style={[type.meta, { color: color.text2 }]}>This browser is limited. Trust changes are made from your Mac or phone.</Text>
         ) : null}
-        {list.length === 0 ? <Text style={[type.read, { color: color.label }]}>No devices paired through the relay yet.</Text> : null}
+        {list.length === 0 ? <Text style={[type.read, { color: color.label }]}>No devices paired yet.</Text> : null}
         {list.map((d) => (
           <DeviceRow key={d.id} d={d} self={d.id === self} viewer={trust} now={now} />
         ))}
