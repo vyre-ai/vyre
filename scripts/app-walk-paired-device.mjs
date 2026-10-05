@@ -132,9 +132,15 @@ await check("no: the stand-in phone refuses and the app says so", async () => {
   assert("ended" in out && out.ended === "refused", `expected refused: ${JSON.stringify(out)}`);
   return endLine(out.ended);
 });
-await check("records.define from the paired device (reported as it answers)", async () => {
-  const r = await dev("records.define", { diff: { add_types: [{ name: "walk_note", label: "Walk note", fields: [{ name: "title", label: "Title", kind: "text" }] }] } });
-  return r.error ? `refused: ${r.error.code}: ${String(r.error.message).slice(0, 140)}` : "accepted without a prompt";
+await check("records.define from the paired device (a relabel of one of the person's own types, then back)", async () => {
+  const ty = await dev("records.types", {});
+  if (ty.error) return `records.types refused: ${ty.error.code}: ${String(ty.error.message).slice(0, 120)}`;
+  const own = (ty.data?.types ?? []).find((t) => !/^(def-|flow-|goal$)/.test(String(t.name)) && !t.internal);
+  if (!own) return "the box has no type of the person's own to change";
+  const r = await dev("records.define", { diff: { change_types: [{ ...own, label: `${own.label} (walk)` }] } });
+  if (r.error) return `refused: ${r.error.code}: ${String(r.error.message).slice(0, 160)}`;
+  const back = await dev("records.define", { diff: { change_types: [own] } });
+  return `accepted without a prompt${back.error ? `; put back: ${back.error.code}` : "; put back"}`;
 });
 try { conn?.close(); } catch {}
 const failed = results.filter((r) => !r.ok);
