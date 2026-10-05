@@ -9,7 +9,7 @@ async function go() {
   try { await invoke("save_pairing", { address }); }
   catch (e) { err.textContent = String(e); }
 }
-// The typed code is a development and walk path only: the page shows it when the shell was built with it (get_state.typed_code), never in a release build.
-invoke("get_state").then((s) => { if (s && s.typed_code) document.getElementById("typed").hidden = false; }).catch(() => {});
+// The typed code is on in every build unless the shell was built with VYRE_TYPED_CODE=0 (get_state.typed_code false): then the page hides it.
+invoke("get_state").then((s) => { if (s && s.typed_code === false) document.getElementById("typed").hidden = true; }).catch(() => {});
 document.getElementById("go").addEventListener("click", go);
 addr.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
