@@ -32,6 +32,15 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var agreement: MacAgree?
     /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
     var makeServer: (() -> Void)?
+    /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
+    var confirmForget: () -> Bool = {
+        let a = NSAlert()
+        a.messageText = "Forget this Mac's key?"
+        a.informativeText = "This Mac will no longer be able to sign in to your name. You can get back in with your recovery code or another device."
+        a.addButton(withTitle: "Forget it")
+        a.addButton(withTitle: "Keep it")
+        return a.runModal() == .alertFirstButtonReturn
+    }
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -149,7 +158,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
                 guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let sig = id0.sign(m) else { return reply(id, ["error": "There is no key on this Mac to sign with."]) }
                 reply(id, ["signature": MacIdentity.b64url(sig)])
             case "identity.has": reply(id, ["has": id0.has])
-            default: id0.forget(); reply(id, ["ok": true])
+            default:
+                guard confirmForget() else { return reply(id, ["error": "Not forgotten. Your key is still on this Mac."]) }
+                id0.forget(); reply(id, ["ok": true])
             }
         case "agree.public":
             guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }

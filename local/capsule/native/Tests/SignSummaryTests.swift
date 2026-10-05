@@ -14,6 +14,8 @@ let signSummarySuite = Suite("sign summary") { t in
     }
 
     t.test("bytes the shell cannot read have no summary, so they are not signed") {
+        t.eq(SignSummary.of(message: chain(#"{"type":"agree","target":"abc","agree":"x"}"#)), "Add a sharing key to this device")
+        t.eq(SignSummary.of(message: chain(#"{"type":"agree","agree":"x"}"#)), nil)
         t.eq(SignSummary.of(message: chain(#"{"type":"mystery"}"#)), nil)
         t.eq(SignSummary.of(message: chain(#"{"type":"add","entry":{"kind":"robot"}}"#)), nil)
         t.eq(SignSummary.of(message: chain("{")), nil)

@@ -46,6 +46,7 @@ enum SignSummary {
         case "recover":
             guard let e = entry, e["kind"] as? String == "device" else { return nil }
             return "Recover your name onto a new device: \(name(e))"
+        case "agree": return op["target"] is String ? "Add a sharing key to this device" : nil
         case "genesis":
             guard let e = entry else { return nil }
             return "Start an identity with this device: \(name(e))"

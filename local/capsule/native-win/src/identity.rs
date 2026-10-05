@@ -82,6 +82,7 @@ pub fn chain_summary(message: &[u8]) -> Option<String> {
             let e = entry?;
             if e.get("kind")?.as_str()? == "device" { Some(format!("Recover your name onto a new device: {}", name(e))) } else { None }
         }
+        "agree" => if op.get("target")?.as_str().is_some() { Some("Add a sharing key to this device".to_string()) } else { None },
         "genesis" => Some(format!("Start an identity with this device: {}", name(entry?))),
         _ => None,
     }
@@ -108,6 +109,7 @@ mod tests {
         assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"device","label":"Ana's iPhone"}}"#)).as_deref(), Some("Add a device: Ana's iPhone"));
         assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"owner","label":"Sam"}}"#)).as_deref(), Some("Make Sam an owner"));
         assert_eq!(chain_summary(&chain(r#"{"type":"remove","target":"abc"}"#)).as_deref(), Some("Remove a sign-in (abc)"));
+        assert_eq!(chain_summary(&chain(r#"{"type":"agree","target":"abc","agree":"x"}"#)).as_deref(), Some("Add a sharing key to this device"));
         assert_eq!(chain_summary(&chain(r#"{"type":"mystery"}"#)), None);
         assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"robot"}}"#)), None);
         assert_eq!(chain_summary(b"not a chain message"), None);
