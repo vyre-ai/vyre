@@ -139,15 +139,25 @@ export function createSealedStore(cfg) {
 
   const locked = () => fail("unavailable", "the personal records are locked: they open for the person's own assistant after their yes");
   // The store a caller sees: every call goes to the live store, and none after `lock()`.
+  // A backend with a remote behind it (core/memory/identity/remote-backend.js) is read before each call and flushed after each write, both asynchronous; a local folder needs neither.
+  const remote = typeof backend.pull === "function" && typeof backend.flush === "function";
   const store = new Proxy({}, { get: (_t, prop) => { if (prop === "then") return undefined; if (prop === "version") return async () => ({ store: "sealed-personal", version: "1", conformance: CONFORMANCE_REVISION });
     return (/** @type {any[]} */ ...a) => {
       if (!inner) return Promise.reject(locked());
-      try { refresh(); } catch (e) { return Promise.reject(e); }
-      const f = inner[prop];
-      if (typeof f !== "function") return f;
-      // a write that lost to another device is refused as version_conflict and the next call reads what that device wrote
-      const r = f.apply(inner, a);
-      return r;
+      if (!remote) {
+        try { refresh(); } catch (e) { return Promise.reject(e); }
+        const f = inner[prop];
+        return typeof f === "function" ? f.apply(inner, a) : f;
+      }
+      return (async () => {
+        await backend.pull();
+        refresh();
+        const f = inner[prop];
+        if (typeof f !== "function") return f;
+        const r = await f.apply(inner, a);
+        if (WRITES.has(String(prop))) { try { await backend.flush(); } catch (e) { stale = true; throw conflict(); } }
+        return r;
+      })();
     }; } });
   return Object.freeze({
     store: /** @type {any} */ (store),
@@ -176,4 +186,16 @@ export function usageOf(backend, identity) {
   const t = backend.get(`${base}/types.json`); if (t) n += Buffer.byteLength(t);
   walk(`${base}/rec`, 1); walk(`${base}/chg`, 1);
   return n;
+}
+
+/**
+ * Open a sealed store over a remote backend: read the server's objects into the cache first (the store's core is synchronous). Same options as createSealedStore.
+ * @param {Parameters<typeof createSealedStore>[0]} cfg
+ */
+export async function openSealedStore(cfg) {
+  const b = /** @type {any} */ (cfg.backend);
+  if (typeof b.pull === "function") await b.pull();
+  const s = createSealedStore(cfg);
+  if (typeof b.flush === "function") await b.flush();   // a store made here (the key file, first types) goes up now
+  return s;
 }

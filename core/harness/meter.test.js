@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { lastUsage, meterOf, wantsMillion, warning } from "./meter.js";
 
@@ -102,6 +103,7 @@ test("harness.enrich: no warning for an agent, a session Vyre runs, a transcript
   assert.ok((await w.enrich()).data.notice, "and the person's own session is told");
   // Off: told nothing, ever.
   const off = await world(t, [person("hi"), reply(usage(10, 150_000, 500))]);
-  assert.equal((await off.d.registry.call("settings.set", { key: "sessions.rollover", value: false }, "cli")).error, undefined);
+  // through the daemon socket, as a person's surface (a registry call with no kernel facts is not one)
+  assert.equal((await call("settings.set", { key: "sessions.rollover", value: false }, { root: off.root, caller: "cli" })).error, undefined);
   assert.equal((await off.enrich()).data?.notice, undefined);
 });
