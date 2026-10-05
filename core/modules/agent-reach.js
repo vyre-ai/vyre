@@ -245,6 +245,7 @@ export const OPEN = new Set([
   "records.types",
   "records.list",
   "records.get",
+  "records.reference",
   "records.create",
   "records.update",
   "records.seal-put",

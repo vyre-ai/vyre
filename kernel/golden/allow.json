@@ -356,6 +356,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
  },
  {
+  "tool": "records.reference",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
+ },
+ {
   "tool": "records.seal-put",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a sealed value through the sealing process: the kernel and the sealer decide, never the module"
  },

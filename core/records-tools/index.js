@@ -77,6 +77,10 @@ export default {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.get(d.chain, u.type, u.id) };
     }, byUrn);
+    tool("records.reference", "A record put in front of the AI (the # in the composer): the record as data, with every sealed part (and any part this room may not read) a {{field:urn#name}} placeholder, never a value. Null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
+    }, byUrn);
     tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data) }));
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);

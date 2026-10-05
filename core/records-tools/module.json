@@ -15,6 +15,7 @@
       { "name": "records.define", "effect": "write", "reach": "person" },
       { "name": "records.list", "effect": "read", "reach": "person" },
       { "name": "records.get", "effect": "read", "reach": "person" },
+      { "name": "records.reference", "effect": "read", "reach": "person" },
       { "name": "records.create", "effect": "write", "reach": "person" },
       { "name": "records.update", "effect": "write", "reach": "person" },
       { "name": "records.linked", "effect": "read", "reach": "person" },
