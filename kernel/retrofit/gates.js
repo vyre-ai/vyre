@@ -106,7 +106,7 @@ export function createLegacyGates(cfg) {
       const chain = chainOf(caller, meta);
       const cls = flags(tool, def, input);
       if (!door && String(caller).startsWith("module:") && (await ask("declared", chain, tool, cls)).effect !== "allow") return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
-      if ((await ask("outward", chain, tool, cls)).effect !== "allow") return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+      if ((await ask("outward", chain, tool, cls)).effect !== "allow") return (typeof reg.outwardRefusal === "function" ? await reg.outwardRefusal({ tool, def, caller, input, meta }) : null) || { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       if ((await ask("visible", chain, tool, cls)).effect !== "allow") return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if ((await ask("callers", chain, tool, cls)).effect !== "allow") return ["web", "setup"].includes(callerKind(caller)) && classReach(caller, tool, () => reg.declaredSetupTools()) === false ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };

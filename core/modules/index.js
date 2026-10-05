@@ -1249,6 +1249,31 @@ export class Registry {
         .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t)));
   }
 
+  /**
+   * What the older outward kind words (send, post, pay, delete) and the ask-first agent tools do for a caller who is not the person: the held answer (placeholders resolved first, the held card told the field
+   * names), or null when this is not such a call. One place, used by the registry's own gates and by the kernel retrofit gates (kernel/retrofit/gates.js), so both give the same answer.
+   * @param {{ tool: string, def: any, caller: string, input: any, meta: any }} o
+   */
+  async outwardRefusal({ tool, def, caller, input, meta }) {
+    if (!(((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller))) return null;
+    // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
+    // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
+    /** @type {any} */ let held = {};
+    if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
+      try {
+        if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
+        const r = await this.deps.resolveFields({ tool, input, meta });
+        held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+      } catch (e) {
+        // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
+        return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
+      }
+      // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
+      if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
+  }
+  return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+  }
+
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -1295,24 +1320,7 @@ export class Registry {
       // here can yet tell that the person's own words asked for it.
       // The plain mark `outward: true` is what the one-yes moment reads (isOutward); a tool so marked keeps its own held flow for an agent (publish's requests, github's asked, apps.send's proof,
       // vault's Gate sender), which this fail-closed stand-in would pre-empt. Only the older kind words (send, post, pay, delete) are held here.
-      if (((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller)) {
-        // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
-        // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
-        /** @type {any} */ let held = {};
-        if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
-          try {
-            if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
-            const r = await this.deps.resolveFields({ tool, input, meta });
-            held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
-          } catch (e) {
-            // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
-            return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
-          }
-          // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
-          if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
-        }
-        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
-      }
+      { const held = await this.outwardRefusal({ tool, def, caller, input, meta }); if (held) return held; }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       // a browser (`web:<id>`) and a setup page (`setup:<id>`) are none of the person's classes (BR-2): each reaches only its own short list (WEB_REACH, SETUP_REACH), whatever a tool's `callers` says, and a label nobody
