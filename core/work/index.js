@@ -119,11 +119,22 @@ export default {
     const sideOf = async (/** @type {string} */ space, /** @type {any} */ extra) => {
       const k = kernelOf();
       const chain = await k.chainIn(space, extra);
-      const gw = space === k.space ? { records: k.records, drive: k.drive, definitions: k.definitions } : (await k.for(space)).gateway;
-      return { space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+      // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
+      const gw = (await k.for(space)).gateway;
+      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
     };
-    // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when this kernel has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
-    const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => { const k = kernelOf(); if (k.moves && typeof k.moves.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => k.moves.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id }); return from; };
+    // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
+    // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).
+    const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => {
+      const mv = from.gw && from.gw.moves;
+      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
+      if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
+        const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
+        if (defs.length !== names.length) throw Object.assign(new Error("a record type of this project is not defined here, so it cannot be installed in the other Space"), { code: "blocked" });
+        await to.gw.records.define(c, { add_types: defs });
+      };
+      return from;
+    };
     ctx.tool("work.project.move-plan", {
       description: "What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.",
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" } }, ["project", "to_space"]),
@@ -139,13 +150,13 @@ export default {
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" }, plan_hash: { type: "string" } }, ["project", "to_space", "plan_hash"]),
       run: async (input, extra) => {
         const k = kernelOf();
-        if (!k.moves || typeof k.moves.out !== "function" || typeof k.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet (the compound approval is Windows'), so nothing was moved"), { code: "unavailable" });
         const to = await sideOf(String(input.to_space), extra), from = withCarry(await sideOf(k.space, extra), to);
+        if (!from.gw.moves || typeof from.gw.moves.out !== "function" || !to.gw.moves || typeof to.gw.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet, so nothing was moved"), { code: "unavailable" });
         const plan = await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         if (plan.hash !== input.plan_hash) throw Object.assign(new Error("the project is not what you were shown; plan the move again"), { code: "stale_plan" });
         // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one
-        const out = await k.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
-        await k.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
+        const out = await from.gw.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
+        await to.gw.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
         // The memory room moves with it: each Space has its own memory instance, reached through that Space's handle under the mover's chain there (the target proves the source with the signed evidence).
         // A kernel that cannot reach a Space's memory this way has no `memory` port, and the move says so instead of leaving the room behind unseen.
         const mem = (/** @type {any} */ side, /** @type {string} */ tool) => {
@@ -163,7 +174,7 @@ export default {
         // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
         const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
         const know = Object.values(kn).every(Boolean) ? kn : undefined;
-        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
       },
     });
