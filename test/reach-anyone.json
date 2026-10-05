@@ -1029,10 +1029,6 @@
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local"
   },
-  "projects.access.migrate": {
-   "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local"
-  },
   "projects.archive": {
    "module": "projects",
    "reason": "callers list in code (cli, local, capsule, deck, module; no mcp), person-only by the floor; module:agents and presence archive on the person's behalf"

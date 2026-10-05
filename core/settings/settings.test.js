@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
 import { MASK } from "./index.js";
 import { settingTo, settingIntents } from "../../lib/said/setting.js";
@@ -535,7 +535,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 });
 
 test("the recorder's string for a setting ask is the one settings.request asks for, value and level included (reviewer-2's alignment check)", { timeout: 30_000 }, async t => {
-  const { c, d } = await world(t);
+  const { c, d, root } = await world(t);
   const keys = (await c("settings.schema")).data.keys;
   // A plain on/off setting that is set per project, worded the way a person would say it.
   let found = null;
@@ -546,7 +546,7 @@ test("the recorder's string for a setting ask is the one settings.request asks f
   }
   assert.ok(found, "a bool project setting the recorder can name");
   const { x: m, intents } = found;
-  assert.ok(!(await c("agents.create", { name: "kit", projects: ["northwind"] })).error);
+  assert.ok(!(await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] })).error);
   const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "a setting ask", ...i }, "module:sessions");
   const agent = "mcp:agent:kit";
   const req = (/** @type {any} */ input) => d.registry.call("settings.request", input, agent, { thread: "t_rec" });

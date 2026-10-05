@@ -152,6 +152,7 @@ export default {
       input: obj({ slug: { type: "string" }, name: { type: "string" } }, ["slug"]),
       callers: ["module"],
       run: async (input, extra) => {
+        kernelOf();
         if (String((extra && extra.caller) || "") !== "module:projects") throw Object.assign(new Error("work.project.ensure is the projects module's"), { code: "denied" });
         const rec = await hubOf().ensureProject(String(input.slug), typeof input.name === "string" ? input.name : undefined);
         if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
