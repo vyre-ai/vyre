@@ -35,3 +35,22 @@ test("RV2-RP1: a proof naming another home, another challenge, or neither is ref
   for (const n of ["another home", "another challenge", "no home no challenge"]) assert.notEqual(out[n], "ACCEPTED", n + " was accepted");
   assert.equal(out["right home right challenge"], "ACCEPTED");
 });
+
+test("a project move out crosses the wire with the person's own proof for exactly its target, plan and projects (one and a batch)", async () => {
+  const seen = [];
+  const signer = async ch => { seen.push([ch.call, ch.op]); return { presence: { payload_hash: ch.payload_hash, nonce: "n_" + Math.random(), home: ch.home, challenge: ch.nonce } }; };
+  const { device } = await rig({ signer });
+  const TO = "spc_bbbbbbbbbbbb", hash = "p".repeat(43);
+  const project = `vyre://${SPACE}/project/0190c3f2-1111-4abc-8def-0000000000a1`;
+  const one = await device.gateway.moves.out({}, { project, to: TO, plan_hash: hash });
+  assert.match(one.move_id, /^[0-9a-f-]{36}$/);
+  const many = await device.gateway.moves.outMany({}, { projects: [project, `vyre://${SPACE}/project/0190c3f2-1111-4abc-8def-0000000000a2`], to: TO, plan_hash: hash });
+  assert.equal(many.moves.length, 2);
+  assert.deepEqual(seen, [["moves.out", "grant.move_out"], ["moves.outMany", "grant.move_out"]]);
+  // a device whose signer is handed a challenge for other arguments signs nothing
+  let signed = 0;
+  const wary = await rig({ signer: async () => { signed++; return { presence: {} }; } });
+  const bad = await wary.device.gateway.moves.out({}, { project, to: TO, plan_hash: "q".repeat(43) }).catch(e => e);
+  assert.ok(bad instanceof Error);
+  void signed;
+});

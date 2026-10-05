@@ -155,3 +155,10 @@ test("a time_zone field holds an IANA zone and nothing else", async () => {
   for (const bad of ["Pacific", "not/a/zone", "", "America/"]) await assert.rejects(() => R.create(o, "person_x", { name: "x", time_zone: bad }), (e) => /time zone/.test(e.message) || e.code === "bad_input", bad);
   await assert.rejects(() => R.define(o, { add_types: [{ name: "bad_f", label: "Bad f", fields: [{ name: "x", kind: "text", label: "X", format: "nope" }] }] }), { code: "bad_input" });
 });
+
+test("one type listed twice in a diff is one type, not a duplicate of itself; two different names with one label are", async () => {
+  const k = await boot(), o = ownerChain(k), R = k.gateway.records;
+  const two = (a, b) => ({ add_types: [{ name: a, label: "Gadget", fields: [{ name: "x", kind: "text", label: "X" }] }, { name: b, label: "Gadget", fields: [{ name: "x", kind: "text", label: "X" }] }] });
+  await assert.rejects(() => R.define(o, two("gadget_a", "gadget_b")), { code: "type_exists" });
+  assert.equal((await R.define(o, two("gadget", "gadget"))).applied, true);
+});
