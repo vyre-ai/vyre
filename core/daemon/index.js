@@ -243,6 +243,7 @@ async function startLocked(opts, root, p, release) {
   // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
+  let basicDevice = false;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
@@ -257,7 +258,7 @@ async function startLocked(opts, root, p, release) {
     const isServerInstall = config.isServer(cfg.machine);
     // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
     /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
-    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; }
+    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; basicDevice = true; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
       storeFor = createStoreFor({ home: root, log, server: isServerInstall });
@@ -512,7 +513,7 @@ async function startLocked(opts, root, p, release) {
   // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
   if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
   // A Basic device holds no planner records (the planner and tasks need a server, records/basic-types.js), so the planner does not start there.
-  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules, ...(basic ? { disable: [...new Set([...((cfg.modules && cfg.modules.disable) || []), "planner"])] } : {}) });
+  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules, ...(basicDevice ? { disable: [...new Set([...((cfg.modules && cfg.modules.disable) || []), "planner"])] } : {}) });
   if (reopenLater) reopenLater();
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
   // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
