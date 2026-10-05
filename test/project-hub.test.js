@@ -84,3 +84,24 @@ test("a terminal session (the Harness's SessionStart and SessionEnd hooks) gets 
   await new Promise(r => setTimeout(r, 300));
   assert.equal((await q()).data.ended, done.data.ended, "a second end changes nothing");
 });
+
+test("moving a Project between two real Spaces: the engine over both gateways, as the mover, with a new id in the target and a marker in the source", { timeout: 180_000 }, async t => {
+  const { planMove, runMove } = await import("../core/work/project-move.js");
+  const { d, admin, meta } = await boot(t);
+  const ownerId = d.kernel.id.owner;
+  const firm = await d.kernel.spaces.host({ owner: ownerId, name: "Harlow Legal" });
+  const firmAdmin = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-h", person: ownerId, path: "direct", session: "s" });
+  const made = await d.registry.call("work.project.create", { name: "Rivera" }, "cli", await meta());
+  const urn = made.data.project;
+  await d.kernel.gateway.records.create(admin, "session-summary", { title: "Intake", thread: "t-1", project: { urn }, drive: made.data.drive_path });
+  await d.kernel.gateway.drive.put(admin, `${made.data.drive_path}/retainer.txt`, new TextEncoder().encode("signed"));
+  const side = (/** @type {any} */ space, /** @type {any} */ gw, /** @type {any} */ chain) => ({ space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) });
+  const from = side(d.kernel.id.space, d.kernel.gateway, admin);
+  const to = side(firm.space, firm.gateway, firmAdmin);
+  // the work module's types exist in the home Space only; the firm Space has none, so the plan says so
+  const plan = await planMove({ from, to, project: urn });
+  assert.equal(plan.counts.files, 2);
+  assert.ok(plan.blockers.some((/** @type {string} */ b) => /no record type/.test(b) || /no Drive/.test(b)), JSON.stringify(plan.blockers));
+  await assert.rejects(() => runMove({ from, to, plan }), /cannot run/);
+  void d;
+});

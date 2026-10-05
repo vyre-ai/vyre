@@ -52,6 +52,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     // The marker is the CALLER's own write (drive.write on its chain): a person who cannot write Drive cannot make a project, and the record is taken back so none is left half made.
     try { await folderMarker(rec, caller || chain(), true); }
     catch (e) { await kernel.records.remove(caller || chain(), PROJECT, rec.id).catch(() => {}); throw e; }
+    // this computer learns of it: a local row and a home folder for the sessions that start here
+    await tool("projects.adopt", { slug: s, name: nm });
     return rec;
   }
 
@@ -217,8 +219,14 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
 
   /** Events that carry a name change from the other sides: the old project list's `project.changed` and the thread's `thread.renamed`. */
   async function onProjectChanged(p) {
-    if (!p || typeof p.project !== "string" || typeof p.name !== "string") return null;
-    try { const rec = await find(PROJECT, "slug", p.project); return rec ? await renameProject(rec, p.name, "list") : null; } catch (e) { log(`project hub: rename of ${p.project} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
+    if (!p || typeof p.project !== "string") return null;
+    try {
+      const rec = await find(PROJECT, "slug", p.project);
+      if (!rec) return null;
+      // archived or brought back in the project list: the record's status follows
+      if (typeof p.archived === "boolean") { const want = p.archived ? "archived" : "active"; if (rec.data.status !== want) return await kernel.records.update(chain(), PROJECT, rec.id, { status: want, archived_at: p.archived ? iso(now()) : null }, rec.version); return rec; }
+      return typeof p.name === "string" ? await renameProject(rec, p.name, "list") : null;
+    } catch (e) { log(`project hub: rename of ${p.project} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
   }
   async function onThreadRenamed(p) {
     if (!p || typeof p.thread !== "string" || typeof p.name !== "string") return null;

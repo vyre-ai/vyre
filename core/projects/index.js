@@ -8,12 +8,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Projects, MIGRATIONS, threadId } from "./projects.js";
 import { label } from "./brief.js";
-import { moveProjects, RECORD } from "./move.js";
-import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
-import { real } from "./markers.js";
+import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
 
 const str = { type: "string" };
@@ -108,9 +106,7 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
     });
     const setHistory = (project, state) => ctx.store.db.prepare("INSERT INTO projects_history (project, state, at) VALUES (?,?,?) ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at").run(project, state, Date.now());
-    // Only markers already known are read at start. Walking the roots waits for the first list
-    // or create, so starting vyred never crawls the user's folders unasked.
-    try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
+    try { P.refresh(); } catch (e) { ctx.log("could not read the projects: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
@@ -281,33 +277,15 @@ export default {
       input: { type: "object", properties: { project: str, cwd: str, session: str } },
       run: async input => P.context(input),
     });
-    ctx.tool("projects.move", {
-      description: "Box only, the owner only: move the project homes from ~/Vyre/projects to /work/projects, leaving a link at each old folder and rewriting the rows and markers. dry: true (do this first) answers what would move, what would be skipped and why, and the rewrites, and changes nothing. A real move runs once, only while VYRE_PROJECTS_MOVE=1 or config projects.move is \"enabled\", and answers restart: true: vyred uses /work/projects after a restart.",
-      input: { type: "object", properties: { dry: { type: "boolean" } } },
-      callers: OWNER,
-      run: async ({ dry = false } = {}, meta = {}) => {
-        if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw refuse("an agent cannot move the projects folder; that is for the owner", "denied");
-        if (ctx.config.role !== "box") throw refuse("projects.move is for a box; a Mac keeps its projects where they are", "not_box");
-        const root = ctx.paths ? ctx.paths.root : vyreHome();
-        const from = oldProjectsDir(), to = boxProjectsDir();
-        const record = path.join(root, RECORD);
-        let done = null;
-        try { done = JSON.parse(fs.readFileSync(record, "utf8")); } catch {}
-        if (done) {
-          if (dry) return { dry: true, done: true, ...done, next: `already moved; the record is ${record}` };
-          throw refuse(`the projects were already moved (${record})`, "already_moved");
-        }
-        let work = false;
-        try { work = fs.statSync(workDir()).isDirectory(); } catch {}
-        if (!work) throw refuse(`this box has no work folder (${workDir()}), so there is nowhere to move the projects to`, "no_work_folder");
-        const on = process.env.VYRE_PROJECTS_MOVE === "1" || (ctx.config.projects && ctx.config.projects.move === "enabled");
-        if (!dry && !on) throw refuse("the move is off until box-deploy validates it on a copy of this box; run it with dry: true to see what it would do", "move_off");
-        const out = moveProjects({ db: ctx.store.db, from, to, root, dryRun: dry,
-          log: m => ctx.log(m), emit: (type, payload) => ctx.events.emit(type, payload) });
-        if (!out) return { dry, from, to, moved: [], skipped: [], rewrites: [], next: `nothing to move: ${from} is not a folder, or is ${to} itself` };
-        if (dry) return { dry: true, ...out };
-        P.refresh();
-        return { dry: false, ...out, restart: true, next: `Restart vyred: the projects folder is now ${to}` };
+    // The work module tells this computer about a Project record it made (and about one made on another computer): a local row and a home folder, nothing else. Only the work module may.
+    ctx.tool("projects.adopt", {
+      description: "This computer learns of a Project record: a local row and a home folder for it. Only the work module calls it.",
+      input: { type: "object", required: ["slug", "name"], properties: { slug: str, name: str } },
+      callers: ["module"],
+      run: async ({ slug, name }, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:work") throw refuse("projects.adopt is the work module's", "denied");
+        const p = P.adopt({ slug, name });
+        return { slug: p.slug, name: p.name, home: p.home };
       },
     });
 

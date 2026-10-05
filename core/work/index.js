@@ -10,6 +10,7 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
+import { planMove, runMove } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
@@ -89,6 +90,8 @@ export default {
     const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
+      // a project made through the old project list (the CLI, the app) gets its record
+      hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
       hear("thread.started", p => hubOf().onStarted(p));
       hear("thread.stopped", p => hubOf().onStopped(p));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
@@ -109,6 +112,38 @@ export default {
       run: async (input, extra) => {
         const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug });
         return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope };
+      },
+    });
+    // Moving a Project to another Space (core/work/project-move.js, team/0.3/DESIGN-project-move.md): a side is a Space's gateway with the mover's own chain in THAT Space.
+    const sideOf = async (/** @type {string} */ space, /** @type {any} */ extra) => {
+      const k = kernelOf();
+      const chain = await k.chainIn(space, extra);
+      const gw = space === k.space ? { records: k.records, drive: k.drive, definitions: k.definitions } : (await k.for(space)).gateway;
+      return { space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+    };
+    ctx.tool("work.project.move-plan", {
+      description: "What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.",
+      input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" } }, ["project", "to_space"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const plan = await planMove({ from: await sideOf(k.space, extra), to: await sideOf(String(input.to_space), extra), project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        return { plan_hash: plan.hash, counts: plan.counts, blockers: plan.blockers, from: plan.from, to: plan.to };
+      },
+    });
+    ctx.tool("work.project.move", {
+      description: "Move a Project to another Space: the target makes a NEW project (new id, new Drive folder) and the linked records and files are copied across as you, verified, and the old Space keeps a 'moved to' marker. Needs an owner or admin in both Spaces and one phone yes for the plan you were shown (plan_hash).",
+      input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" }, plan_hash: { type: "string" } }, ["project", "to_space", "plan_hash"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        if (!k.moves || typeof k.moves.out !== "function" || typeof k.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet (the compound approval is Windows'), so nothing was moved"), { code: "unavailable" });
+        const from = await sideOf(k.space, extra), to = await sideOf(String(input.to_space), extra);
+        const plan = await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        if (plan.hash !== input.plan_hash) throw Object.assign(new Error("the project is not what you were shown; plan the move again"), { code: "stale_plan" });
+        // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one
+        const out = await k.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
+        await k.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
+        const done = await runMove({ from, to, plan, ports: { ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        return { project: done.target, moved: done.moved, left_behind: done.left_behind.length };
       },
     });
     ctx.tool("work.project.rename", {

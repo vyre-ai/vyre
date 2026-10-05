@@ -89,11 +89,6 @@
         "effect": "read"
       },
       {
-        "name": "projects.move",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
         "name": "projects.access.grant",
         "reach": "anyone",
         "effect": "write"
@@ -124,6 +119,12 @@
       {
         "name": "projects.reach",
         "reach": "modules"
+      },
+      {
+        "name": "projects.adopt",
+        "summary": "learn of a Project record: a local row and a home folder (the work module only)",
+        "reach": "modules",
+        "effect": "write"
       }
     ]
   },
@@ -132,8 +133,7 @@
       "project.created",
       "project.changed",
       "thread.picked",
-      "thread.unpicked",
-      "projects.moved"
+      "thread.unpicked"
     ]
   },
   "shows": {

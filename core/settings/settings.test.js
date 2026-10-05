@@ -20,12 +20,13 @@ async function world(t, { disable = [] } = {}) {
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".vyre", "project.json"), JSON.stringify({ name: "Northwind Bakery", slug: "northwind" }));
   const claudeDir = path.join(root, "claude");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn", ...disable] },
     projectsDir: projects, settings: { claude_dir: claudeDir } }));
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
+  await d.registry.call("projects.create", { name: "Northwind", home }, "cli");
+  await d.registry.call("projects.rename", { project: "northwind", name: "Northwind Bakery" }, "cli");
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   return { root, home, claudeDir, c, d };
 }

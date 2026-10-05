@@ -168,12 +168,14 @@ export const PROJECT = {
     text("name", "Name", { required: true }),
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
-    choice("status", "Status", ["active", "archived"]),
+    choice("status", "Status", ["active", "archived", "moved"]),
     f("link", "client", "Client"),
     text("drive_path", "Drive folder"),
     text("repo", "Repository"),
     text("memory_scope", "Memory scope"),
     f("datetime", "archived_at", "Archived"),
+    text("moved_to", "Moved to (Space and project) when it left this Space"),
+    text("moved_from", "Moved from (Space and project) when it came from another"),
   ],
 };
 

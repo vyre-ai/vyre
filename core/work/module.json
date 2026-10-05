@@ -31,6 +31,18 @@
         "effect": "write"
       },
       {
+        "name": "work.project.move-plan",
+        "summary": "what moving a Project to another Space would carry, and the hash the person approves",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.project.move",
+        "summary": "move a Project to another Space as a new project there, with one yes",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.project.rename",
         "summary": "rename a Project from Records: its record, Drive folder and project list follow",
         "reach": "anyone",
@@ -169,7 +181,8 @@
               "label": "Status",
               "options": [
                 "active",
-                "archived"
+                "archived",
+                "moved"
               ]
             },
             {
@@ -196,6 +209,16 @@
               "name": "archived_at",
               "kind": "datetime",
               "label": "Archived"
+            },
+            {
+              "name": "moved_to",
+              "kind": "text",
+              "label": "Moved to (Space and project) when it left this Space"
+            },
+            {
+              "name": "moved_from",
+              "kind": "text",
+              "label": "Moved from (Space and project) when it came from another"
             }
           ]
         },
