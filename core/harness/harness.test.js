@@ -208,7 +208,7 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
     ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, styleOff],
   ]);
-  assert.equal((await withStyleOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
+  assert.equal(body(await withStyleOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")), "Project harlow-legal.");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {
