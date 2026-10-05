@@ -16,7 +16,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "leads",
+            "label": "Leads"
+          }
         },
         {
           "name": "practice_area",
@@ -115,7 +119,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "appointments",
+            "label": "Appointments"
+          }
         },
         {
           "name": "kind",
@@ -203,7 +211,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "clients",
+            "label": "Clients"
+          }
         },
         {
           "name": "practice_area",
@@ -284,7 +296,11 @@
           "name": "client",
           "kind": "link",
           "label": "Client",
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "projects",
+            "label": "Projects"
+          }
         },
         {
           "name": "drive_path",
