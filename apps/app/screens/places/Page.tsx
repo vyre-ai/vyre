@@ -29,10 +29,10 @@ export function Page({ title, sub, actions, scope = true, back, children }: { ti
   );
 }
 
-/** All spaces, Mine, Juniper Studio. */
+/** All spaces, Mine, Harlow Legal. */
 export function ScopeBar() {
   const { scope, setScope } = useScope();
-  return <Segmented<Scope> label="Space" value={scope} onChange={setScope} options={[["all", "All spaces"], ["mine", SPACES.mine.name], ["juniper", SPACES.juniper.name]]} />;
+  return <Segmented<Scope> label="Space" value={scope} onChange={setScope} options={[["all", "All spaces"], ["mine", SPACES.mine.name], ["harlow", SPACES.harlow.name]]} />;
 }
 
 /** A labelled group: a small caption, an optional count, then the content. */

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { answer, edit, forget, group, restore, subjectOf, visible } from "./logic.js";
 
 const F = (id, sp, subj, kind, text = id) => ({ id, sp, subj, kind, text, src: { kind: "chat", label: "x" }, by: "kit", when: "Today", used: 1 });
-const facts = [F("a", "juniper", "jane", "person"), F("b", "juniper", "jane", "person"), F("c", "mine", "sam", "person"), F("d", "juniper", "estate", "project")];
+const facts = [F("a", "harlow", "jane", "person"), F("b", "harlow", "jane", "person"), F("c", "mine", "sam", "person"), F("d", "harlow", "estate", "project")];
 const subjects = { jane: "Jane Doe", sam: "Sam", estate: "Doe estate plan" };
 
 test("a space scope reads only its own facts", () => {
@@ -15,7 +15,7 @@ test("a space scope reads only its own facts", () => {
 
 test("grouping keeps one section per subject and space, in order", () => {
   const g = group(facts, "person");
-  assert.deepEqual(g.map((x) => [x.subj, x.sp, x.facts.length]), [["jane", "juniper", 2], ["sam", "mine", 1]]);
+  assert.deepEqual(g.map((x) => [x.subj, x.sp, x.facts.length]), [["jane", "harlow", 2], ["sam", "mine", 1]]);
 });
 
 test("forget removes one fact and undo puts it back in place", () => {

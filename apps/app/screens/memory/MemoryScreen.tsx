@@ -91,8 +91,8 @@ export default function MemoryScreen() {
 
   return (
     <Frame title="Memory" sub="What Vyre knows, and where each fact came from." scope={!real}>
-      {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Juniper Studio never show here, and your assistants do not carry them into Mine.</Footnote> : null}
-      {!real && scope === "juniper" ? <Footnote icon="shield">This is the Juniper Studio boundary. Facts here stay in Juniper Studio. Your own Mine facts are not shown.</Footnote> : null}
+      {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Harlow Legal never show here, and your assistants do not carry them into Mine.</Footnote> : null}
+      {!real && scope === "harlow" ? <Footnote icon="shield">This is the Harlow Legal boundary. Facts here stay in Harlow Legal. Your own Mine facts are not shown.</Footnote> : null}
 
       {real ? <View className="pt-s2"><Segmented label="Memory" value={tab} onChange={setTab} options={[["facts", "Facts"], ["lessons", proposed ? `Lessons (${proposed})` : "Lessons"], ["sites", "Sites"]]} /></View> : null}
       {real && tab === "lessons" ? <RealLessons onCount={setProposed} /> : null}

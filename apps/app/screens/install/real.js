@@ -121,7 +121,7 @@ export function applyClaim(a) {
 }
 
 /**
- * spaces.invites.preview, as the invite card shows it. Real answer: { space: "juniper.vyre.run", label: "Juniper Studio", role, role_label,
+ * spaces.invites.preview, as the invite card shows it. Real answer: { space: "harlow.vyre.run", label: "Harlow Legal", role, role_label,
  * sees: { scope: [], expires }, valid_until, fingerprint, fingerprint_words, button }. The older object form of `space` is read too.
  * @param {any} p @param {string} link
  */

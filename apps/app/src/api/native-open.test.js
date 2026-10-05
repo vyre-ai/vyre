@@ -45,7 +45,7 @@ async function run(chunks) {
   const { createOpen } = await load();
   FakeXhr.all = [];
   /** @type {any[]} */ const got = [];
-  const s = follow({ paths: ["https://juniper.example.ts.net"], open: createOpen({ XHR: /** @type {any} */ (FakeXhr) }), onEvent: e => got.push(e), backoff: backoff({ min: 1, max: 1 }) });
+  const s = follow({ paths: ["https://harlow.example.ts.net"], open: createOpen({ XHR: /** @type {any} */ (FakeXhr) }), onEvent: e => got.push(e), backoff: backoff({ min: 1, max: 1 }) });
   await until(() => FakeXhr.all.length === 1);
   const x = FakeXhr.all[0];
   x.answer(200);
@@ -62,7 +62,7 @@ test("native-open: the whole stream in one chunk gives the events, heartbeats ig
   assert.equal(got[0].payload.text, "hi");
   assert.equal(got[2].type, "x", "two data lines join with a newline");
   assert.equal(cursor, 9);
-  assert.equal(x.url, "https://juniper.example.ts.net/v1/events/stream?type=*&since=latest");
+  assert.equal(x.url, "https://harlow.example.ts.net/v1/events/stream?type=*&since=latest");
   assert.equal(x.headers.accept, "text/event-stream");
   assert.equal(x.headers["x-vyre-caller"], undefined);
   assert.equal(x.aborted, true, "stop() aborts the request");
@@ -88,7 +88,7 @@ test("native-open: a frame without its blank line is held back", { skip: !strip 
   FakeXhr.all = [];
   const open = createOpen({ XHR: /** @type {any} */ (FakeXhr) });
   const ac = new AbortController();
-  const p = open({ base: "https://juniper.example.ts.net", path: "/v1/events/stream", headers: {}, signal: ac.signal });
+  const p = open({ base: "https://harlow.example.ts.net", path: "/v1/events/stream", headers: {}, signal: ac.signal });
   const x = FakeXhr.all[0];
   x.answer(200);
   const r = await p;
@@ -105,7 +105,7 @@ test("native-open: a drop resumes with Last-Event-ID and never repeats an event"
   const { createOpen } = await load();
   FakeXhr.all = [];
   /** @type {number[]} */ const got = [];
-  const s = follow({ paths: ["https://juniper.example.ts.net"], open: createOpen({ XHR: /** @type {any} */ (FakeXhr) }), onEvent: e => got.push(e.id), backoff: backoff({ min: 1, max: 1 }) });
+  const s = follow({ paths: ["https://harlow.example.ts.net"], open: createOpen({ XHR: /** @type {any} */ (FakeXhr) }), onEvent: e => got.push(e.id), backoff: backoff({ min: 1, max: 1 }) });
   await until(() => FakeXhr.all.length === 1);
   const a = FakeXhr.all[0];
   a.answer(200);
@@ -127,7 +127,7 @@ test("native-open: a long response is ended at maxBytes so the stream reconnects
   const { createOpen } = await load();
   FakeXhr.all = [];
   const open = createOpen({ XHR: /** @type {any} */ (FakeXhr), maxBytes: 10 });
-  const p = open({ base: "https://juniper.example.ts.net", path: "/v1/events/stream", headers: {}, signal: new AbortController().signal });
+  const p = open({ base: "https://harlow.example.ts.net", path: "/v1/events/stream", headers: {}, signal: new AbortController().signal });
   const x = FakeXhr.all[0];
   x.answer(200);
   const r = await p;

@@ -23,7 +23,7 @@ export function RecordScreen({ id }: { id: string }) {
   const title = titleOf(def, rec);
   const space = SPACES.find((s) => s.id === rec.labels?.source_spaces?.[0])?.name;
   const vd = viewDefOf(def);
-  // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
+  // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Harlow Legal".
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} />

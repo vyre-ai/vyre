@@ -26,7 +26,7 @@ test("anything unknown, from another version or not JSON is nothing", () => {
 });
 
 test("only a look the person changed is kept: the default one and the sample space are not", () => {
-  const looks = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, juniper: { accent: "amber", density: "compact" }, spc_a: { accent: "sky" } };
+  const looks = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, harlow: { accent: "amber", density: "compact" }, spc_a: { accent: "sky" } };
   assert.deepEqual(Object.keys(changedLooks(looks)), ["spc_a"]);
   assert.deepEqual(Object.keys(changedLooks({ mine: { accent: "rose", tint: "accent", density: "default", font: "system", corners: "default" } })), ["mine"]);
 });

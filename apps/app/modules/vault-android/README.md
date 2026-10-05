@@ -44,8 +44,8 @@ modules/vault-android/
 ```ts
 import * as Autofill from "../../modules/vault-android";
 
-await Autofill.setServer("https://vault.juniper.example");       // https only; http://127.0.0.1 in a debug build
-await Autofill.pair("https://vault.juniper.example", "ABCD2345", "alex's Pixel 8");
+await Autofill.setServer("https://vault.harlow.test");       // https only; http://127.0.0.1 in a debug build
+await Autofill.pair("https://vault.harlow.test", "ABCD2345", "alex's Pixel 8");
 await Autofill.status();   // { paired, server, device, name, level, unlocked, enabled, reachable, revoked }
 Autofill.isEnabled();      // Vyre is the phone's autofill service
 Autofill.openSettings();   // Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE for this package

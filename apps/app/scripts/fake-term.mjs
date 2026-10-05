@@ -5,7 +5,7 @@ import http from "node:http";
 import { acceptKey, encodeFrame, FrameParser } from "../../../lib/ws.js";
 
 const C = (n, s) => `\x1b[${n}m${s}\x1b[0m`;
-const prompt = `${C("1;32", "alex@juno")}:${C("1;34", "~/juniper-site")}$ `;
+const prompt = `${C("1;32", "alex@juno")}:${C("1;34", "~/harlow-site")}$ `;
 export const CANNED = [
   `${prompt}ls -la\r\n`,
   `total 48\r\n`,
@@ -21,7 +21,7 @@ export const CANNED = [
   `${C("32", "M")}  src/components/Hero.tsx\r\n`,
   `${C("31", "??")} notes/draft.md\r\n`,
   `${prompt}npm test\r\n`,
-  `\r\n> juniper-site@1.4.0 test\r\n> node --test\r\n\r\n`,
+  `\r\n> harlow-site@1.4.0 test\r\n> node --test\r\n\r\n`,
   `${C("32", "✔")} hero renders the firm name ${C("90", "(3.1ms)")}\r\n`,
   `${C("32", "✔")} contact form posts to the intake ${C("90", "(11.8ms)")}\r\n`,
   `${C("31", "✖")} sitemap lists every practice area ${C("90", "(2.2ms)")}\r\n`,

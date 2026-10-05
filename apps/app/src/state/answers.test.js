@@ -13,7 +13,7 @@ const load = () => import("./answers.ts");
 
 /** A need, as needs-model.ts makes it. @param {string} id */
 const need = id => /** @type {any} */ ({ id, source: "ask", ref: id.slice(4), kind: "permission", title: "Run a command", detail: "npm test",
-  mono: true, agent: "kit", project: "Juniper Studio", thread: "t1", at: 1, presence: { required: false, covered: false, since: null } });
+  mono: true, agent: "kit", project: "Harlow Legal", thread: "t1", at: 1, presence: { required: false, covered: false, since: null } });
 
 /** Fake timers and a delivery that resolves when the test says. */
 function world() {

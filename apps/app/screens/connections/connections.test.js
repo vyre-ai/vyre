@@ -23,7 +23,7 @@ function box(o = {}) {
         { id: "slack-via", label: "Slack", group: "work", setup: "via", via: "linear", connected: [{ name: "slack" }] },
         { nope: true }] } };
       case "mcp.servers": return { data: [
-        { name: "tracker", transport: "stdio", state: "running", tools: 4, lastUsed: 1, command: "npx", args: ["tracker-mcp"], auth: { type: "env" }, env: { TRACKER_TOKEN: { item: "tracker", field: "token" }, OTHER: "other-item" }, scope: { projects: ["juniper"], agents: "*" }, policy: { mode: { send: "off", list: "read", bad: "zzz" } }, token: "leak" },
+        { name: "tracker", transport: "stdio", state: "running", tools: 4, lastUsed: 1, command: "npx", args: ["tracker-mcp"], auth: { type: "env" }, env: { TRACKER_TOKEN: { item: "tracker", field: "token" }, OTHER: "other-item" }, scope: { projects: ["harlow"], agents: "*" }, policy: { mode: { send: "off", list: "read", bad: "zzz" } }, token: "leak" },
         { name: "docs", transport: "http", url: "https://docs.example.com/mcp", state: "weird", auth: { type: "bearer", item: "docs-key" }, scope: { assistant: true, agents: [] } }, { nope: 1 }] };
       case "mcp.test": return { data: { ok: true, ms: 120, tools: [{ tool: "list", outward: false }, { tool: "send", outward: true, sends: true }], stderr: ["a", "b"] } };
       case "google.accounts": return { data: [{ name: "work", email: "a@x.com", auth: { type: "service-account", item: "sa", subject: "a@x.com" }, secret: "x" }, { name: "home", email: "h@x.com", auth: { type: "oauth", item: "client" } }] };
@@ -35,7 +35,7 @@ function box(o = {}) {
       case "github.repos": return { data: { repos: [{ full_name: "o/r", name: "r", private: true, description: "d", updated_at: "2026-10-01T00:00:00Z" }, { nope: 1 }], more: true, page: 1 } };
       case "vault.list": return { data: { items: [{ name: "client", kind: "env-set", fields: ["client_id"], grants: [{ module: "google" }] }, { name: "old", kind: "secret", state: "trashed" }, { name: "key", kind: "api-key" }] } };
       case "vault.connections.list": return { data: [{ id: "c1", provider: "google-oauth", account: "a@x.com", label: "Work", state: "ready", capabilities: ["mail"], surfaces: ["chat", "bogus", "agents"], last_used: 5, needs: [{ module: "gate", need: "x" }] }, { provider: "mcp" }] };
-      case "projects.list": return { data: { projects: [{ slug: "juniper", name: "Juniper" }, { name: "no slug" }] } };
+      case "projects.list": return { data: { projects: [{ slug: "harlow", name: "Harlow" }, { name: "no slug" }] } };
       default: return { data: {} };
     }
   };
@@ -55,10 +55,10 @@ test("connect: only what was chosen is sent; each answer becomes one step", { sk
   const b = box({ data: { "connectors.connect": { step: "open", id: "f1", url: "https://vendor.example/auth" } } });
   const s = connectionsSource(b.call);
   assert.deepEqual(await s.connect("linear", "Linear"), { step: "open", id: "f1", url: "https://vendor.example/auth" });
-  await s.connect("linear", "Linear", { scope: { projects: ["juniper"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" });
+  await s.connect("linear", "Linear", { scope: { projects: ["harlow"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" });
   await s.connect("linear", "Linear", { scope: null, extra: {} });
   await s.connect("slack", "Slack", { app: { client_id: "id", client_secret: "sec" } });
-  assert.deepEqual(b.seen.map((x) => x.input), [{ preset: "linear" }, { preset: "linear", scope: { projects: ["juniper"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" }, { preset: "linear" }, { preset: "slack", app: { client_id: "id", client_secret: "sec" } }]);
+  assert.deepEqual(b.seen.map((x) => x.input), [{ preset: "linear" }, { preset: "linear", scope: { projects: ["harlow"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" }, { preset: "linear" }, { preset: "slack", app: { client_id: "id", client_secret: "sec" } }]);
 });
 
 test("steps: connected line, open with an https-only link, token, client, via", { skip: !strip }, async () => {
@@ -113,7 +113,7 @@ test("MCP servers: only named fields, a bad state is stopped, env refs with fiel
   assert.equal(d.state, "stopped");
   assert.equal(authWords(t), "TRACKER_TOKEN from tracker.token, OTHER from other-item");
   assert.equal(authWords(d), "Bearer token, from docs-key");
-  assert.equal(serverScopeLine(t), "juniper, every agent");
+  assert.equal(serverScopeLine(t), "harlow, every agent");
   assert.equal(serverScopeLine(d), "Just you and the assistant");
   assert.equal(serverHow(t), "npx tracker-mcp");
   assert.equal(serverHow(d), "https://docs.example.com/mcp");
@@ -221,7 +221,7 @@ test("vault items, grants and connections by surface", { skip: !strip }, async (
   assert.deepEqual(c.map((x) => [x.id, x.word, x.label, x.ready, x.surfaces]), [["c1", "Google", "Work", true, ["chat", "agents"]]]);
   await s.grantSurface("c1", "agents"); await s.revokeSurface("c1", "chat");
   assert.deepEqual(b.seen.filter((x) => x.tool !== "vault.list" && x.tool !== "vault.connections.list").map((x) => [x.tool, x.input]), [["vault.grant", { name: "client", module: "google" }], ["vault.connections.grant", { id: "c1", surface: "agents" }], ["vault.connections.revoke", { id: "c1", surface: "chat" }]]);
-  assert.deepEqual(await s.projects(), [{ slug: "juniper", name: "Juniper" }]);
+  assert.deepEqual(await s.projects(), [{ slug: "harlow", name: "Harlow" }]);
   const now = Date.parse("2026-10-05T12:00:00Z");
   assert.deepEqual([since(null, now), since(now - 30_000, now), since(now - 5 * 60_000, now), since(now - 3 * 3600_000, now), since(now - 3 * 86400_000, now)], ["never", "just now", "5 min ago", "3 h ago", "3 days ago"]);
 });

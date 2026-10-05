@@ -10,7 +10,7 @@ const matter = { name: "matter", label: "Matter", fields: [{ name: "title", labe
   stages: [{ name: "Intake", tasks: [{ title: "Collect", doer: "juno", output: { kind: "note" } }] }, { name: "Closed" }] };
 
 test("a kernel type reads as the screen's type", () => {
-  const t = toTypeDef(matter, "juniper");
+  const t = toTypeDef(matter, "harlow");
   assert.equal(t.id, "matter");
   assert.equal(t.work, true);
   assert.deepEqual(t.stages, ["Intake", "Closed"]);
@@ -19,7 +19,7 @@ test("a kernel type reads as the screen's type", () => {
 });
 
 test("adding a field is one change_types diff that keeps what the screen does not show", () => {
-  const t = addField(toTypeDef(matter, "juniper"), "Plan year", "text");
+  const t = addField(toTypeDef(matter, "harlow"), "Plan year", "text");
   const d = /** @type {any} */ (diffFor(t, matter));
   const next = d.change_types[0];
   assert.deepEqual(next.fields.map((/** @type {any} */ f) => f.name), ["title", "stage", "ssn", "plan_year"]);

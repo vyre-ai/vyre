@@ -15,7 +15,7 @@ import { backoff } from "../../../../core/resilience/backoff.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://juniper.example.ts.net";
+const BOX = "https://harlow.example.ts.net";
 const enc = new TextEncoder();
 const TOKEN = "abcdefgh1234.secretsecretsecret1234";
 

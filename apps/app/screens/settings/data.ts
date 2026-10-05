@@ -6,7 +6,7 @@ export type Assistant = { id: string; name: string; role: string; model: string;
 
 export function loadAccount() {
   return {
-    name: "Alex Rivera", vyreName: "alex.vyre.run", line: "Owner of Mine, Admin of Juniper Studio",
+    name: "Alex Rivera", vyreName: "alex.vyre.run", line: "Owner of Mine, Admin of Harlow Legal",
     ways: [
       { id: "w1", name: "Alex's iPhone", line: "Passkey, Face ID. Added 12 Aug", here: true, family: "device" as AvatarFamily },
       { id: "w2", name: "Alex's Mac", line: "Passkey, Touch ID. Added 12 Aug", here: false, family: "device" as AvatarFamily },
@@ -30,14 +30,14 @@ export function loadAssistants(): Assistant[] {
     { id: "juno", name: "juno", role: "Your assistant", model: "Claude Sonnet 5.5", family: "assistant", autonomy: "exceptions", paused: false },
     { id: "kit", name: "kit", role: "Assistant of Alex", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "exceptions", paused: false },
     { id: "iris", name: "iris", role: "Assistant of Chris", model: "Codex", family: "assistant", autonomy: "asks", paused: false },
-    { id: "rev", name: "rev", role: "Teammate, Juniper Studio", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "asks", paused: false },
+    { id: "rev", name: "rev", role: "Teammate, Harlow Legal", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "asks", paused: false },
   ];
 }
 
 export const SEEING: { id: string; name: string; works: string; family: AvatarFamily }[] = [
-  { id: "juno", name: "juno", works: "Mine, Juniper Studio", family: "assistant" },
-  { id: "kit", name: "kit", works: "Juniper Studio", family: "teammate" },
-  { id: "rev", name: "rev", works: "Juniper Studio", family: "teammate" },
+  { id: "juno", name: "juno", works: "Mine, Harlow Legal", family: "assistant" },
+  { id: "kit", name: "kit", works: "Harlow Legal", family: "teammate" },
+  { id: "rev", name: "rev", works: "Harlow Legal", family: "teammate" },
 ];
 
 /** How many records each type holds (for "hidden on all N records"). */

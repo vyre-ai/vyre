@@ -2,7 +2,7 @@ import { Pressable, View } from "react-native";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
 
-/** A row of filter pills, one on (All spaces, Mine, Juniper Studio). Wraps on a narrow screen. Narrowing a list; for switching views use Tabs or Segmented. */
+/** A row of filter pills, one on (All spaces, Mine, Harlow Legal). Wraps on a narrow screen. Narrowing a list; for switching views use Tabs or Segmented. */
 export function FilterPills<T extends string>({ options, value, onChange, label }: { options: [T, string][]; value: T; onChange: (v: T) => void; label?: string }) {
   return (
     <View accessibilityRole="radiogroup" accessibilityLabel={label} className="flex-row flex-wrap gap-s2">

@@ -49,7 +49,7 @@ export function personId(alias) {
 }
 
 /** The two spaces of the made-up world, as SpaceIds. */
-export const SPACE = Object.freeze({ mine: "spc_mineaaaaaaaa", juniper: "spc_juniperaaaaaa" });
+export const SPACE = Object.freeze({ mine: "spc_mineaaaaaaaa", harlow: "spc_harlowaaaaaa" });
 
 /** The people and assistants of the made-up world, by the short name the lab and the tests use, as actor ids. */
 export const WHO = Object.freeze({
@@ -68,11 +68,11 @@ export function parseUrn(urn) {
 
 /** The type of every seeded record alias and the space it lives in, so a test can name a record by its alias. "m1" is the Doe estate plan, "c1" Jane Doe. */
 const ALIAS = /** @type {const} */ ([
-  [/^c\d+$/, "contact", "juniper"], [/^m\d+$/, "matter", "juniper"], [/^tpl\d+$/, "template", "juniper"], [/^t\d+$/, "trip", "mine"],
+  [/^c\d+$/, "contact", "harlow"], [/^m\d+$/, "matter", "harlow"], [/^tpl\d+$/, "template", "harlow"], [/^t\d+$/, "trip", "mine"],
 ]);
-/** The urn of a seeded record, by its alias: "m1" is the Doe estate plan. Projects p1 and p2 are Juniper's, p3 and p4 are Mine. @param {string} alias */
+/** The urn of a seeded record, by its alias: "m1" is the Doe estate plan. Projects p1 and p2 are Harlow's, p3 and p4 are Mine. @param {string} alias */
 export function aliasUrn(alias) {
-  if (/^p\d+$/.test(alias)) return urnOf(Number(alias.slice(1)) <= 2 ? SPACE.juniper : SPACE.mine, "project", seeded(alias));
+  if (/^p\d+$/.test(alias)) return urnOf(Number(alias.slice(1)) <= 2 ? SPACE.harlow : SPACE.mine, "project", seeded(alias));
   for (const [re, type, space] of ALIAS) if (re.test(alias)) return urnOf(SPACE[space], type, seeded(alias));
   throw new Error(`No seeded record is called ${alias}.`);
 }

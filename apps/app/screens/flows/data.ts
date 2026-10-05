@@ -80,10 +80,10 @@ export const flowsRepo = {
   },
   kits(): { installed: KitCard[]; available: KitCard[] } {
     return {
-      installed: [{ id: "estate", name: "Estate planning matter", v: 3, blurb: "Matters, stages, the engagement Flows and the letter templates.", adds: { types: 2, flows: 3, views: 4, roles: 1 }, notes: [], space: "Juniper Studio" }],
+      installed: [{ id: "estate", name: "Estate planning matter", v: 3, blurb: "Matters, stages, the engagement Flows and the letter templates.", adds: { types: 2, flows: 3, views: 4, roles: 1 }, notes: [], space: "Harlow Legal" }],
       available: [
-        { id: "pi", name: "PI intake", v: 2, blurb: "Personal injury intake, medical records and liens.", adds: { types: 2, flows: 3, views: 3, roles: 1 }, notes: ["Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.", "Sealed fields are in play: assistants only ever see placeholders."], space: "Juniper Studio" },
-        { id: "re", name: "Real estate deals", v: 1, blurb: "Deals by stage, closings and escrow tasks.", adds: { types: 2, flows: 2, views: 3, roles: 0 }, notes: ["Assistants start from this Kit's own instructions, which count as outside text until you have read them."], space: "Juniper Studio" },
+        { id: "pi", name: "PI intake", v: 2, blurb: "Personal injury intake, medical records and liens.", adds: { types: 2, flows: 3, views: 3, roles: 1 }, notes: ["Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.", "Sealed fields are in play: assistants only ever see placeholders."], space: "Harlow Legal" },
+        { id: "re", name: "Real estate deals", v: 1, blurb: "Deals by stage, closings and escrow tasks.", adds: { types: 2, flows: 2, views: 3, roles: 0 }, notes: ["Assistants start from this Kit's own instructions, which count as outside text until you have read them."], space: "Harlow Legal" },
       ],
     };
   },

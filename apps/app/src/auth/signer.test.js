@@ -12,7 +12,7 @@ import { createHash, createPublicKey, generateKeyPairSync, sign as nodeSign, ver
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://juniper.example.ts.net";
+const BOX = "https://harlow.example.ts.net";
 const enc = new TextEncoder();
 
 /** @param {number} n @param {number} fill */

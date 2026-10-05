@@ -29,7 +29,7 @@ export function SampleAssistantsScreen() {
         <Divider />
         <View className="flex-row items-center gap-s3 p-s3">
           <Avatar of={markRef("agent", "@Engineer")} size={40} />
-          <View className="min-w-0 flex-1"><View className="flex-row flex-wrap items-center gap-s2"><Text strong>@Engineer</Text><Chip>Admins only</Chip></View><Text size="caption" tone="label">Changes definitions in Juniper Studio. Cannot send, pay or read the Vault.</Text></View>
+          <View className="min-w-0 flex-1"><View className="flex-row flex-wrap items-center gap-s2"><Text strong>@Engineer</Text><Chip>Admins only</Chip></View><Text size="caption" tone="label">Changes definitions in Harlow Legal. Cannot send, pay or read the Vault.</Text></View>
           <Button size="sm" label="Open" onPress={() => router.push("/u/engineer" as never)} />
         </View>
       </Card>

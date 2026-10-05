@@ -25,8 +25,8 @@ test("shell: command as a string or an argv array", () => {
 });
 
 test("read: the gutter stripped, its first number as offset", () => {
-  assert.deepEqual(toolDetail("Read", { file_path: "/home/alex/notes.md" }, "    10\tJuniper Studio\n    11\tNorthwind"),
-    { type: "read", filePath: "/home/alex/notes.md", content: "Juniper Studio\nNorthwind", offset: 10 });
+  assert.deepEqual(toolDetail("Read", { file_path: "/home/alex/notes.md" }, "    10\tHarlow Legal\n    11\tNorthwind"),
+    { type: "read", filePath: "/home/alex/notes.md", content: "Harlow Legal\nNorthwind", offset: 10 });
   assert.deepEqual(toolDetail("Read", { file_path: "a.md", offset: 4, limit: 2 }, "plain text", { bodies: false }),
     { type: "read", filePath: "a.md", offset: 4, limit: 2 });
 });

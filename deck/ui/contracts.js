@@ -79,7 +79,7 @@
 /**
  * UI-side: what a task carries that the kernel's Task does not (Kits may add fields to the task type, SPEC-core-contract.md 9.4, and these are the Deck's). Held under `ext`
  * on the task. The doer's evidence (`result`) is what the real gateway keeps on the record and its files; the Deck reads it from there.
- *   now       what the doer is doing right now ("is reading juniperstudio.example"), from the session's events
+ *   now       what the doer is doing right now ("is reading harlowlegal.com"), from the session's events
  *   say       the one line Now shows, when the task wants to word it
  *   note      the tag on its card ("Needs your approval", "Flow: Large refunds")
  *   required  false when the stage can move on without it (TaskTemplateDef.required)

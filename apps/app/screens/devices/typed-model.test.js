@@ -12,7 +12,7 @@ test("each refusal has its own sentence, none from the box and none naming a ser
 
 test("a pairing's status becomes what the screen does next", () => {
   assert.deepEqual(phaseOf({ state: "waiting", ack: "WINK-AAAA-BBBB" }), { phase: "waiting", ack: "WINK-AAAA-BBBB" });
-  assert.deepEqual(phaseOf({ state: "done", invite: { link: "https://h.vyre.run/join/x", space: "Juniper Studio" } }), { phase: "done", invite: { link: "https://h.vyre.run/join/x", space: "Juniper Studio" } });
+  assert.deepEqual(phaseOf({ state: "done", invite: { link: "https://h.vyre.run/join/x", space: "Harlow Legal" } }), { phase: "done", invite: { link: "https://h.vyre.run/join/x", space: "Harlow Legal" } });
   assert.equal(phaseOf({ state: "done" }).phase, "done");
   assert.deepEqual(phaseOf({ state: "confirm", words: ["amber", "quilt", "river"] }), { phase: "confirm", words: ["amber", "quilt", "river"] });
   assert.equal(phaseOf({ state: "failed" }).phase, "failed");

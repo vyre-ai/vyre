@@ -27,7 +27,7 @@ test("name status follows the directory, and a free 'alex' is ok", () => {
   assert.equal(nameStatusReal("alex", "taken").state, "taken");
   assert.equal(nameStatusReal("alex", "unknown").state, "unknown");
   assert.equal(nameStatusReal("Jane", "free", ["jane"]).state, "taken");
-  assert.equal(nameNoteReal(nameStatusReal("juniper", "taken"), true), "juniper.vyre.run is taken. People and spaces share names.");
+  assert.equal(nameNoteReal(nameStatusReal("harlow", "taken"), true), "harlow.vyre.run is taken. People and spaces share names.");
   assert.equal(nameNoteReal(nameStatusReal("northwind", "free"), false), "northwind.vyre.run is yours to take.");
 });
 
@@ -37,7 +37,7 @@ test("create input: here confirms this computer, a server names its kind", () =>
 });
 
 test("a created space is done, running or failed", () => {
-  assert.deepEqual(createdFrom({ spaceId: "spc_1", status: "done", name: "juniperdev", domain: "juniperdev.vyre.run" }), { state: "done", id: "spc_1", address: "juniperdev.vyre.run", say: "" });
+  assert.deepEqual(createdFrom({ spaceId: "spc_1", status: "done", name: "harlowdev", domain: "harlowdev.vyre.run" }), { state: "done", id: "spc_1", address: "harlowdev.vyre.run", say: "" });
   assert.equal(createdFrom({ spaceId: "spc_1", status: "running" }).state, "running");
   assert.equal(createdFrom({ spaceId: "spc_1", status: "failed", message: "No." }).say, "No.");
 });
@@ -51,7 +51,7 @@ test("what is saved is the shape the box keeps and nothing else", () => {
 
 test("setup elsewhere lists other devices' unfinished setups, not this one's", () => {
   const list = [
-    { id: "spc_a", displayName: "Juniper Studio", label: "juniperdev", setup: null },
+    { id: "spc_a", displayName: "Harlow Legal", label: "harlowdev", setup: null },
     { id: "spc_b", displayName: "Northwind Bakery", label: "northwind", setup: { step: "members", device: { id: "k", name: "iPhone" }, picks: { connectors: [], kit: null } } },
     { id: "spc_c", label: "mine", setup: { step: "look", device: { id: "z", name: "MacBook" } } },
   ];
@@ -67,14 +67,14 @@ test("a claim puts the saved state back on the screen", () => {
 });
 
 test("an invite card reads the space, the role and the sender", () => {
-  const c = inviteFrom({ id: "inv_1", role: "member", status: "pending", space: { id: "spc_1", label: "juniper" } }, "juniper.vyre.run/join/x");
-  assert.deepEqual([c.space, c.address, c.role, c.status], ["juniper", "juniper.vyre.run", "Member", "pending"]);
+  const c = inviteFrom({ id: "inv_1", role: "member", status: "pending", space: { id: "spc_1", label: "harlow" } }, "harlow.vyre.run/join/x");
+  assert.deepEqual([c.space, c.address, c.role, c.status], ["harlow", "harlow.vyre.run", "Member", "pending"]);
 });
 
 test("the real invite card: the display name, the address, the role label, what is seen and the check words", () => {
-  const real = { space: "juniperdev.vyre.run", label: "Juniper Studio", role: "member", role_label: "Member", sees: { scope: [], expires: null }, valid_until: 1791678820968, fingerprint: "5d57", button: "Join Juniper Studio", fingerprint_words: "front ribbon army more" };
-  const c = inviteFrom(real, "https://juniperdev.vyre.run/join/t");
-  assert.deepEqual([c.space, c.address, c.role, c.words, c.from], ["Juniper Studio", "juniperdev.vyre.run", "Member", "front ribbon army more", ""]);
+  const real = { space: "harlowdev.vyre.run", label: "Harlow Legal", role: "member", role_label: "Member", sees: { scope: [], expires: null }, valid_until: 1791678820968, fingerprint: "5d57", button: "Join Harlow Legal", fingerprint_words: "front ribbon army more" };
+  const c = inviteFrom(real, "https://harlowdev.vyre.run/join/t");
+  assert.deepEqual([c.space, c.address, c.role, c.words, c.from], ["Harlow Legal", "harlowdev.vyre.run", "Member", "front ribbon army more", ""]);
   assert.match(c.sees, /Member role/);
   const t = inviteFrom({ ...real, role: "temp", role_label: "Temp", sees: { scope: ["Doe estate plan"], expires: Date.UTC(2026, 9, 14) } }, "l");
   assert.equal(t.sees, "Doe estate plan, until 2026-10-14");

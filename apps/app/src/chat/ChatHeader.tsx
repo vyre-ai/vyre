@@ -49,7 +49,7 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
   title: string;
   participants: readonly Person[];
   viewer: string;
-  /** The one quiet line: the record and the space ("Northwind Bakery, lease dispute · Juniper Studio"). */
+  /** The one quiet line: the record and the space ("Northwind Bakery, lease dispute · Harlow Legal"). */
   line?: string;
   phone: boolean;
   onBack?: () => void;

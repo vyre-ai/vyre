@@ -15,9 +15,9 @@ export function loadInstall() {
     { id: "violet", label: "Violet" }, { id: "amber", label: "Amber" }, { id: "sky", label: "Sky" }, { id: "sage", label: "Sage" }, { id: "rose", label: "Rose" },
   ];
   const invite: Invite = {
-    space: "Juniper Studio", address: "juniper.vyre.run", from: "Chris Park", role: "Member", link: "juniper.vyre.run/join/7Kq2-M9",
+    space: "Harlow Legal", address: "harlow.vyre.run", from: "Chris Park", role: "Member", link: "harlow.vyre.run/join/7Kq2-M9",
     roleLine: "Works on the projects you are added to.",
-    sees: "The projects you are added to and what Juniper Studio shares. Nothing else on your devices, and none of your other spaces.",
+    sees: "The projects you are added to and what Harlow Legal shares. Nothing else on your devices, and none of your other spaces.",
   };
   const connectors: Connector[] = [
     { id: "gmail", label: "Gmail", sub: "Mail the assistants can read and draft in" }, { id: "calendar", label: "Google Calendar", sub: "Meetings on Now" },

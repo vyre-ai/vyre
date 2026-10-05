@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { addGrant, heldIn, listOf, removeGrant, REVEAL_MS, useLine, usesToday } from "./logic.js";
 
 const item = (id, sp, kind, grants = [], use = []) => ({ id, sp, kind, name: id, user: "u", secret: "s", use, grants });
-const items = [item("a", "juniper", "Login", [{ who: "kit", right: "use" }], [{ who: "kit", for: "Gmail", times: 3, note: "" }]), item("b", "mine", "Login"), item("c", "juniper", "Card")];
+const items = [item("a", "harlow", "Login", [{ who: "kit", right: "use" }], [{ who: "kit", for: "Gmail", times: 3, note: "" }]), item("b", "mine", "Login"), item("c", "harlow", "Card")];
 
 test("a list is one kind in the spaces in view", () => {
   assert.deepEqual(listOf(items, "all", "Login").map((v) => v.id), ["a", "b"]);
@@ -25,7 +25,7 @@ test("use is counted and said plainly", () => {
 });
 
 test("held fields follow the space and Reveal lasts 30 seconds", () => {
-  const held = [{ id: "1", sp: "juniper", title: "Jane Doe", field: "SSN" }, { id: "2", sp: "mine", title: "Alex", field: "Passport number" }];
+  const held = [{ id: "1", sp: "harlow", title: "Jane Doe", field: "SSN" }, { id: "2", sp: "mine", title: "Alex", field: "Passport number" }];
   assert.equal(heldIn(held, "mine").length, 1);
   assert.equal(REVEAL_MS, 30000);
 });

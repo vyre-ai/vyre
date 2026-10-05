@@ -4,13 +4,13 @@ import { PHONE_SAY } from "./first-run.js";
 // Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
 
-export const NAMES_TAKEN = ["alex", "chris", "juniper", "vyre", "admin"];
+export const NAMES_TAKEN = ["alex", "chris", "harlow", "vyre", "admin"];
 export const MIN_NAME = 3;
 export const RECOVERY_CODE = "R7K4-Q2MX-9HDP-W3NB";
 /** What the server prints: a long code (also drawn as a QR). The app reads it by scan or paste; there is no short code to type. */
 export const SERVER_LONG_CODE = "vyre://wink/2?t=SGVsbG9TYW1wbGVTZWNyZQ&r=wss%3A%2F%2Frelay.example";
 
-/** "Juniper Studio" > "juniper-studio". The slug is what goes before .vyre.run. */
+/** "Harlow Legal" > "harlow-legal". The slug is what goes before .vyre.run. */
 export function slug(/** @type {string} */ s) {
   return String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }

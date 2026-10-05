@@ -70,7 +70,7 @@ test("a box error keeps its code", { skip: !strip }, async () => {
 
 const AGENTS = [
   { name: "juno", kind: "assistant", projects: "*", model: "sonnet", effort: null, computer: false, auth: "subscription", status: "idle", doing: "idle", thread: "t1" },
-  { name: "kit", kind: "agent", projects: ["juniper", "site"], model: null, auth: "api-key", status: "stopped", doing: "stopped", thread: "t2" },
+  { name: "kit", kind: "agent", projects: ["harlow", "site"], model: null, auth: "api-key", status: "stopped", doing: "stopped", thread: "t2" },
   { name: "new", kind: "agent", projects: [], status: "new", doing: "not started", thread: null },
 ];
 const USAGE = [{ agent: "juno", kind: "assistant", turns: 4, threads: 1, cost_usd: 1.5, api_cost_usd: 0, budget_usd: null, spent_usd: 1.5, left_usd: null, auth: "subscription" }, { agent: "kit", kind: "agent", turns: 9, threads: 2, cost_usd: 12, api_cost_usd: 12, budget_usd: 50, spent_usd: 50, left_usd: 0, auth: "api-key" }];

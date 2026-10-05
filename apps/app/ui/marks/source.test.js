@@ -8,12 +8,12 @@ test("seed: own seed, then id, then the name's slug", () => {
   assert.equal(seedOf({ id: "u1", name: "Alex Rivera", seed: "alex-rivera" }), "alex-rivera");
   assert.equal(seedOf({ id: "c7", name: "Jane Doe" }), "c7");
   assert.equal(seedOf({ name: "Doe estate plan" }), "doe-estate-plan");
-  assert.equal(slug("Juniper Studio"), "juniper-studio");
+  assert.equal(slug("Harlow Legal"), "harlow-legal");
 });
 
 test("every kind draws a mark with a viewBox and no fixed size or letter", () => {
   for (const kind of KINDS) {
-    const s = markSource(kind, kind === "teammate" ? "research-juniper" : "alex-rivera", "dark", { size: 32 });
+    const s = markSource(kind, kind === "teammate" ? "research-harlow" : "alex-rivera", "dark", { size: 32 });
     assert.match(s, /^<svg [^>]*viewBox=/, kind);
     assert.doesNotMatch(/^<svg[^>]*>/.exec(s)[0], /\swidth="\d+"/, kind);
     assert.doesNotMatch(s, /<text/, kind);
@@ -28,7 +28,7 @@ test("same seed, same mark; another seed, another mark; dark and paper differ fo
 });
 
 test("project and space use the same emblem for the same seed", () => {
-  assert.equal(markSource("project", "juniper-studio", "dark"), markSource("space", "juniper-studio", "dark"));
+  assert.equal(markSource("project", "harlow-legal", "dark"), markSource("space", "harlow-legal", "dark"));
 });
 
 test("ids are scoped per mark, so two marks never share a clipPath", () => {
@@ -51,6 +51,6 @@ test("cache key: one parse per kind, seed, size band and scheme", () => {
 test("device type follows the name", () => {
   assert.equal(deviceTypeOf("Alex's iPhone"), "phone");
   assert.equal(deviceTypeOf("nova"), "server");
-  assert.equal(deviceTypeOf("Juniper archive"), "storage");
+  assert.equal(deviceTypeOf("Harlow archive"), "storage");
   assert.equal(deviceTypeOf("Alex's Mac"), "computer");
 });

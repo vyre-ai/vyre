@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE, AFTER_HOME, nextSetup, isResumable, resumeStep, packProgress, unpackProgress, setupElsewhere, connectedLine } from "./flow.js";
 
 test("a slug is what goes before .vyre.run", () => {
-  assert.equal(slug("Juniper Studio"), "juniper-studio");
+  assert.equal(slug("Harlow Legal"), "harlow-legal");
   assert.equal(slug("  Northwind Bakery! "), "northwind-bakery");
   assert.equal(slug(""), "");
 });
@@ -23,8 +23,8 @@ test("a space cannot take its owner's name", () => {
 });
 
 test("the note says what happened", () => {
-  assert.equal(nameNote(nameStatus("juniper"), true), "juniper.vyre.run is taken. People and spaces share names.");
-  assert.equal(nameNote(nameStatus("juniper"), false), "juniper.vyre.run is taken.");
+  assert.equal(nameNote(nameStatus("harlow"), true), "harlow.vyre.run is taken. People and spaces share names.");
+  assert.equal(nameNote(nameStatus("harlow"), false), "harlow.vyre.run is taken.");
   assert.equal(nameNote(nameStatus("ab"), false), "Use at least three letters.");
   assert.equal(nameNote(nameStatus("northwind"), true), "northwind.vyre.run is yours to take.");
   assert.equal(nameNote(nameStatus(""), true), "");

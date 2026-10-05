@@ -7,12 +7,12 @@ const block = (title: string, children: React.ReactNode) => (
 );
 const PEOPLE = ["Alex Rivera", "Chris Park", "Dana Reyes", "Mei Tanaka", "Ben Ortiz", "Marco Ruiz", "Jane Doe"];
 const SIZES = [20, 24, 28, 32, 40, 44, 56] as const;
-const SPACES = [spaceRef("Juniper Studio"), spaceRef("Northwind Bakery"), spaceRef("Mine", "mine", "alex-personal")];
+const SPACES = [spaceRef("Harlow Legal"), spaceRef("Northwind Bakery"), spaceRef("Mine", "mine", "alex-personal")];
 type Matter = { id: string; title: string; client: string; stage: string; fee: string };
 const MATTERS: Matter[] = [
   { id: "1", title: "Estate of Doe", client: "Jane Doe", stage: "Intake", fee: "$4,800" },
   { id: "2", title: "Northwind lease", client: "Northwind Bakery", stage: "Drafting", fee: "$2,200" },
-  { id: "3", title: "Juniper trust", client: "Alex Juniper", stage: "Intake", fee: "$6,500" },
+  { id: "3", title: "Harlow trust", client: "Alex Harlow", stage: "Intake", fee: "$6,500" },
 ];
 
 /** Every base component, drawn live from the tokens: the one place a change shows up for everyone. */
@@ -46,7 +46,7 @@ export function ComponentGallery() {
           <View className="flex-row flex-wrap items-center gap-s3">{PEOPLE.map((n) => <Avatar key={n} of={markRef("person", n)} size={40} onPress={() => showToast(n)} />)}</View>
           <View className="flex-row flex-wrap items-center gap-s3">
             <Avatar of={markRef("assistant", "juno")} size={40} onPress={() => showToast("juno")} /><Avatar of={markRef("agent", "kit")} size={40} /><Avatar of={markRef("agent", "iris")} size={40} />
-            {["Research", "Intake", "Drafting", "Reviewer"].map((n) => <Avatar key={n} of={markRef("teammate", n, `${n.toLowerCase()}-juniper`)} size={40} />)}
+            {["Research", "Intake", "Drafting", "Reviewer"].map((n) => <Avatar key={n} of={markRef("teammate", n, `${n.toLowerCase()}-harlow`)} size={40} />)}
           </View>
         </View>
       ))}
@@ -60,33 +60,33 @@ export function ComponentGallery() {
         <View className="flex-row flex-wrap items-center gap-s3">
           {["Doe estate plan", "Roe succession plan", "Shah will update", "Ortiz power of attorney", "Site rebuild", "Passport renewal"].map((n) => <Avatar key={n} of={markRef("project", n)} size={44} space={SPACES[0]} />)}
           {SPACES.map((sp) => <SpaceMark key={sp.id} space={sp} size={56} />)}
-          {["Alex's iPhone", "Alex's Mac", "nova", "Juniper archive"].map((n) => <Avatar key={n} of={markRef("device", n)} size={44} />)}
+          {["Alex's iPhone", "Alex's Mac", "nova", "Harlow archive"].map((n) => <Avatar key={n} of={markRef("device", n)} size={44} />)}
           <IconTile name="kits" size={44} />
         </View>
       ))}
-      {block("Space switcher", <SpaceSwitcherTitle spaces={[{ id: "all", name: "All spaces" }, { id: "mine", name: "Mine" }, { id: "juniper", name: "Juniper Studio" }]} space="juniper" onSpace={(id) => showToast(`Switched to ${id}`)} />)}
+      {block("Space switcher", <SpaceSwitcherTitle spaces={[{ id: "all", name: "All spaces" }, { id: "mine", name: "Mine" }, { id: "harlow", name: "Harlow Legal" }]} space="harlow" onSpace={(id) => showToast(`Switched to ${id}`)} />)}
       {block(`Icons, ${ICON_NAMES.length} in one family`, (
         <View className="flex-row flex-wrap gap-s3">{ICON_NAMES.map((n) => <View key={n} className="w-s12 items-center gap-s1"><Icon name={n} size={24} tone="text" /><Text size="caption" tone="label" numberOfLines={1}>{n}</Text></View>)}</View>
       ))}
       {block("Card of rows", (
         <Card title="Contacts" flush>
-          <Row lead={<Avatar of={markRef("person", "Jane Doe")} />} title="Jane Doe" sub="Juniper Studio" end={<Chip tone="accent">Intake</Chip>} onPress={() => showToast("Opened Jane Doe")} />
+          <Row lead={<Avatar of={markRef("person", "Jane Doe")} />} title="Jane Doe" sub="Harlow Legal" end={<Chip tone="accent">Intake</Chip>} onPress={() => showToast("Opened Jane Doe")} />
           <Divider />
           <Row lead={<Avatar of={markRef("project", "Northwind Bakery")} />} title="Northwind Bakery" sub="Customer" onPress={() => {}} />
         </Card>
       ))}
-      {block("Scope control", <Segmented label="Space" value={scope} onChange={setScope} options={[["all", "All spaces"], ["mine", "Mine"], ["juniper", "Juniper Studio"]]} />)}
+      {block("Scope control", <Segmented label="Space" value={scope} onChange={setScope} options={[["all", "All spaces"], ["mine", "Mine"], ["harlow", "Harlow Legal"]]} />)}
       {block("Card, and the Ask hero card", (
         <View className="gap-s3">
           <Card><Text strong size="headline">A standard card</Text><Text size="secondary" tone="label">Surface two on the ground, one step up, level-one shadow, no coloured edge.</Text></Card>
-          <AskCard hero lead={<Avatar of={markRef("teammate", "Intake", "intake-juniper")} size={44} space={SPACES[0]} />} title="Welcome email for Jane Doe is ready" why="Intake drafted it from Welcome, using Research's notes." actions={[{ label: "Send with Face ID", kind: "primary", onPress: () => setSheet(true) }, { label: "Edit" }]} />
+          <AskCard hero lead={<Avatar of={markRef("teammate", "Intake", "intake-harlow")} size={44} space={SPACES[0]} />} title="Welcome email for Jane Doe is ready" why="Intake drafted it from Welcome, using Research's notes." actions={[{ label: "Send with Face ID", kind: "primary", onPress: () => setSheet(true) }, { label: "Edit" }]} />
         </View>
       ))}
       {block("Grouped list: one card, inset separators", (
         <Card flush>
           <Row lead={<Avatar of={markRef("person", "Marco Ruiz")} space={SPACES[1]} />} title="Marco Ruiz" sub="Reads Intake and Billing" onPress={() => {}} />
           <Divider inset={60} />
-          <Row lead={<Avatar of={markRef("person", "Mei Tanaka")} />} title="Mei Tanaka" sub="Member of Juniper Studio" onPress={() => {}} />
+          <Row lead={<Avatar of={markRef("person", "Mei Tanaka")} />} title="Mei Tanaka" sub="Member of Harlow Legal" onPress={() => {}} />
         </Card>
       ))}
       {block("Banner", <View className="gap-s2"><Banner>Everything is up to date.</Banner><Banner tone="warn">Something to look at.</Banner><Banner tone="err">Could not reach the server.</Banner></View>)}

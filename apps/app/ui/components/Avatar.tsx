@@ -31,7 +31,7 @@ function Mark({ of, size }: { of: AvatarRef; size: number }) {
 }
 
 /**
- * The space an avatar belongs to, as the 16 pt emblem badge at the bottom right (the "Juniper Studio" and "Mine" text chips are gone). `ring`
+ * The space an avatar belongs to, as the 16 pt emblem badge at the bottom right (the "Harlow Legal" and "Mine" text chips are gone). `ring`
  * is the colour of the card it sits on, so the 2 pt ring reads as a gap.
  */
 function Badge({ space, size, ring }: { space: AvatarRef; size: number; ring?: string }) {

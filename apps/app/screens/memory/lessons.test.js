@@ -9,7 +9,7 @@ const strip = Boolean(/** @type {any} */ (process.features).typescript);
 
 const LESSONS = [
   { id: 1, rule: "Never push to main", level: "block", status: "active", scope: "all", check: { kind: "tool" }, applied: 14, caught: 3, broken: 1, source: { kind: "denied" } },
-  { id: 2, rule: "Ask before sending email", level: "ask", status: "proposed", scope: { project: "juniper" } },
+  { id: 2, rule: "Ask before sending email", level: "ask", status: "proposed", scope: { project: "harlow" } },
   { id: 3, rule: "Old rule", level: "remind", status: "retired" },
   { id: 4, rule: "Dormant one", level: "remind", status: "dormant" },
 ];
@@ -77,7 +77,7 @@ test("grouping: proposed, active (dormant counts), retired", { skip: !strip }, a
 test("words: scope, counts, check, source, relax levels", { skip: !strip }, async () => {
   const { scopeWords, countsLine, checkWords, lowerLevels, SOURCE, skillLine } = await import("./lessons-model.ts");
   assert.equal(scopeWords("all"), "Everywhere");
-  assert.equal(scopeWords({ project: "juniper" }, new Map([["juniper", "Juniper Studio"]])), "Only in Juniper Studio");
+  assert.equal(scopeWords({ project: "harlow" }, new Map([["harlow", "Harlow Legal"]])), "Only in Harlow Legal");
   assert.equal(scopeWords({ agent: "kit" }), "Only for kit");
   assert.equal(countsLine(LESSONS[0]), "applied 14, caught 3, broken 1");
   assert.equal(countsLine(LESSONS[1]), "applied 0, caught 0, broken 0");

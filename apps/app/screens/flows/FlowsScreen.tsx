@@ -14,8 +14,8 @@ function SampleFlowsScreen() {
   const phone = usePhone();
   const { applied, off, setOn, installed } = useFlowsState();
   const scope = useScope((s) => s.scope);
-  // Every sample Flow belongs to Juniper Studio. A real source says which space each one is in.
-  const list = inScope(scope, "juniper") ? [...(applied ? [flowsRepo.engineerFlow()] : []), ...flowsRepo.flows()] : [];
+  // Every sample Flow belongs to Harlow Legal. A real source says which space each one is in.
+  const list = inScope(scope, "harlow") ? [...(applied ? [flowsRepo.engineerFlow()] : []), ...flowsRepo.flows()] : [];
   return (
     <Frame title="Flows" sub="What happens on its own when something changes, and who is asked." scope>
       <Card flush>
