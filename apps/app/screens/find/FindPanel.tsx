@@ -53,7 +53,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         if (n !== seq.current) return;
         if (r.error) setErrs((e) => ({ ...e, [key]: label })); else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", "") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), drive: got("drive", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
@@ -124,7 +124,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
       state={r.right} onPress={() => pick(r)} />
   );
-  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions"] as const).some((k) => fetched[k] === undefined && !errs[k]);
+  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
       <Composer label="Find or ask" placeholder={`Ask ${assistant}, find, or run`} value={q} onChangeText={setQ} onSend={() => void run()} sendLabel="Run" />

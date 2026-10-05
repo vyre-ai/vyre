@@ -21,7 +21,7 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
-import { build, swWithBuild, htmlWithBuild } from "./build.js";
+import { build, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
@@ -1415,13 +1415,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
   if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"), cfg);
   // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
-  // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
+  // ../../relay/client/<file>.js (web/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
   // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
   // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
   // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
   // (Settings, Add a Windows PC) imports - nothing else in relay/client/
   // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
-  // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
+  // /pair/scan without this fell straight through to the catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
@@ -1432,16 +1432,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
-  if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
+  if (req.method === "GET" && WEB_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
   // The verified-link files for the iPhone and Android apps (app-wire): public, tiny, and absent until the deploy sets the signing identities.
   if (req.method === "GET" && url.pathname.startsWith("/.well-known/")) {
     const body = associationFile(url.pathname);
     if (body) { res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" }); return res.end(body); }
   }
-  // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
-  // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
-  // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
-  // still opens once "/" serves the app.
+  // The one app (ADR 0027). With config app.root (on by default: core/config/index.js) /app/* is a 301 to
+  // the same path under "/", so an installed /app/ Home Screen icon or a stale bookmark still opens.
+  // With it off, the app is served at /app/ and nothing answers at /.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) {
     if (cfg.app?.root) {
       // Never let this become a protocol-relative Location: "/app//evil.example" (or a
@@ -1453,16 +1452,16 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       res.writeHead(301, { location: to, "cache-control": "no-cache" });
       return res.end();
     }
-    return serveApp(res, url.pathname);
+    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
   }
-  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
-  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
-  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
-  // then the Deck answers as before.
-  // The pre-app pages live in web/ (plain pages the app signs in through), in both modes; a file web/ does not hold falls through.
+  // The pre-app pages live in web/ (plain pages the app signs in through): the owner wizard, the device and passkey pages, sign-in and the signed release files.
+  // A file web/ does not hold falls through to the app.
   if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
-  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
-  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
+  // With config app.root (on by default) the app answers every other page address, from an export built for the root (npm run export:web:root; precache.json names the base).
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname)) {
+    if (appBase(APP_DIST) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/; build it for the root with npm run export:web:root" } });
+    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
+  }
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
 
@@ -1527,8 +1526,8 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
 /** At the root (config app.root) these stay the box's: the pre-app pages and what they load, and the signed release files. */
 const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon\.svg|favicon\.svg|icon-[^/]+|apple-touch-icon\.png|splash|kernel|lib)(\/|\.|$)/;
 
-/** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
-const DECK_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
+/** The lib files vyred serves to the pre-app pages (pure, import-free, shared with Node). */
+const WEB_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
 
 /**
  * The pre-app pages (web/): the owner wizard, the device and passkey pages and the person's sign-in, with the code, styles, fonts and
@@ -1551,48 +1550,9 @@ export function serveWeb(res, pathname, cfg) {
   let buf;
   try { buf = fs.readFileSync(file); } catch { return false; }
   if (page || path.basename(file) === "index.html") buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...webHeaders(cfg) });
   res.end(buf);
   return true;
-}
-
-/**
- * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
- * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
- * ever served, whatever the path says.
- */
-function serveDeck(res, pathname, cfg) {
-  const dir = path.join(REPO, "deck");
-  const shell = path.join(dir, "index.html");
-  let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
-  if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  // Sample data (deck/fixtures, deck/chat/fixtures) is for dev worlds and tests only: a real box
-  // never serves it, so no ?fixtures=1 link can put sample threads in front of a person (0.2
-  // honesty pass, PLAN.md D2). Dev worlds set VYRE_DECK_FIXTURES=1.
-  if (process.env.VYRE_DECK_FIXTURES !== "1" && path.relative(dir, file).split(path.sep).includes("fixtures")) {
-    return send(res, 404, { error: { code: "not_found", message: pathname } });
-  }
-  // A path that is not a file at all (any client route) wants the one shell. A path that IS a
-  // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
-  // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
-  // nothing about the URL said "this is a module", only that a browser asked for a page.
-  let wantsShell = false;
-  // The release's signed files (deck/sw.js verifyShell): a missing one is a plain 404, never the shell.
-  if (/^\/release\/(SHA256SUMS|SHA256SUMS\.sig|shell\.json)$/.test(pathname) && !fs.existsSync(file)) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
-  catch { file = shell; wantsShell = true; }
-  let buf;
-  try { buf = fs.readFileSync(file); }
-  catch {
-    if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
-    if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
-  }
-  // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
-  // at once (deck/sw.js BUILD).
-  if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  if (file === shell || wantsShell) buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
-  res.end(buf);
 }
 
 /**
@@ -1618,17 +1578,17 @@ function relaySources(cfg) {
   return out.join(" ");
 }
 
-/** What every Deck file goes out with. @param {any} cfg */
-function deckHeaders(cfg) {
+/** What every page and module file goes out with. @param {any} cfg */
+function webHeaders(cfg) {
   return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
     "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
 }
 
-/** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */
+/** One module from outside web/ that a page imports (core/resilience, relay/client), with the page headers. @param {any} cfg */
 function serveFile(res, file, cfg) {
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
-  res.writeHead(200, { "content-type": "text/javascript", ...deckHeaders(cfg) });
+  res.writeHead(200, { "content-type": "text/javascript", ...webHeaders(cfg) });
   res.end(buf);
 }
 

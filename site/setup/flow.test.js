@@ -546,7 +546,7 @@ test("devices: the screen draws the ring into its slot only while showing, and n
 });
 
 test("site: the phone's ring is plain SVG shapes: no script, style, link or handler for the page's CSP to refuse", async () => {
-  const { ticketRingSvg } = await import("../../deck/js/phone-code.js");
+  const { ticketRingSvg } = await import("../../web/js/phone-code.js");
   const svg = ticketRingSvg("AAECAwQFBgc", { size: 280 });
   assert.ok(svg.startsWith("<svg"));
   assert.ok(!/<script|<style|style=|href=|xlink|on\w+=/i.test(svg));

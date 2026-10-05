@@ -1,10 +1,10 @@
 // @ts-check
-// A QR code in the terminal: the matrix from the vendored qrcode-generator (deck/vendor/qrcode.js,
+// A QR code in the terminal: the matrix from the vendored qrcode-generator (web/vendor/qrcode.js,
 // MIT, all 40 versions, the one the Deck draws with), drawn as half blocks. One encoder for the
 // Deck, `vyre phone add` and `vyre relay pair`: a relay pair URL (about 200 to 260 characters)
 // needs more than version 10.
 
-import qrcode from "../../deck/vendor/qrcode.js";
+import qrcode from "../../web/vendor/qrcode.js";
 
 /**
  * The QR code for a text, level M, byte mode (UTF-8): rows of booleans, true for a dark module,

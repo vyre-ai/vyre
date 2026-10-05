@@ -71,7 +71,7 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
 /**
  * A box and a Mac, both running, with a work folder on each.
  * @param {any} t
- * `t` needs only `name` and `after(fn)`, so a script (deck/test/mac-world.js) can pass its own.
+ * `t` needs only `name` and `after(fn)`, so a script (web/test/mac-world.js) can pass its own.
  * @param {any} t
  * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean | any[], boxTranscripts?: any[], health?: any,
  *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any }} [opts]

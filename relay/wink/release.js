@@ -8,7 +8,7 @@
 //   node relay/wink/release.js verify <folder> --pub <file>
 //
 // The page's files are found by following the entry's imports, so the sealed tree is exactly what the page loads
-// and is laid out like the repo (relay/wink/wink.js at /relay/wink/wink.js, deck/js/scan.js at /deck/js/scan.js):
+// and is laid out like the repo (relay/wink/wink.js at /relay/wink/wink.js, web/js/scan.js at /web/js/scan.js):
 // nothing is rewritten. The key defaults to $VYRE_RELEASE_KEY (a raw seed file or a PKCS8 PEM) and never lives here.
 
 import fs from "node:fs";

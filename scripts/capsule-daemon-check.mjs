@@ -26,7 +26,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
 const watchdog = setTimeout(() => { console.log("FAIL the check did not finish in 3 minutes"); cleanup(); process.exit(1); }, 180_000);
 watchdog.unref();
 
-const env = { ...process.env, VYRE_HOME: home, VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: path.resolve("deck/test/fake-tailscale.js") };
+const env = { ...process.env, VYRE_HOME: home, VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: path.resolve("web/test/fake-tailscale.js") };
 const vyred = spawn(process.execPath, ["core/daemon/main.js"], { env, stdio: ["ignore", "pipe", "pipe"] });
 let vlog = ""; vyred.stdout.on("data", d => { vlog += d; }); vyred.stderr.on("data", d => { vlog += d; });
 let child;

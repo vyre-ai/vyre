@@ -1,12 +1,12 @@
 #!/bin/sh
-# build-app.sh: the web export of the one app (ADR 0027), which vyred serves at /app/.
+# build-app.sh: the web export of the one app (ADR 0027), which vyred serves at / (built for the root base).
 #
 #   scripts/build-app.sh [--src DIR]
 #
 #   --src DIR       the checkout (default: this repo)
 #
-# Writes <src>/apps/app/dist (gitignored): `expo export -p web`, then scripts/precache.mjs's
-# dist/precache.json, the list /app/sw.js caches. package.json "files" ships that folder in
+# Writes <src>/apps/app/dist (gitignored): `expo export -p web` with the root base, then scripts/precache.mjs's
+# dist/precache.json, the list /sw.js caches. package.json "files" ships that folder in
 # vyre.tgz, so build-site.sh, release.yml and box-image.yml run this before `npm pack`. A
 # checkout with no apps/app has no app to build: it says so and exits 0.
 set -eu
@@ -31,13 +31,13 @@ fi
 cd "$app"
 rm -rf dist
 npm ci --no-audit --no-fund --loglevel=error
-# The app's own export:web (expo export -p web, then scripts/precache.mjs), into dist, which
+# The app's own export:web:root (expo export -p web with the root base, then scripts/precache.mjs), into dist, which
 # core/daemon/app.js serves. Metro reads repo folders through aliases, so this runs in a checkout.
 # Between the two: Metro puts the icons of packages (expo-router, react-navigation) under
 # dist/assets/node_modules/, and npm never packs a folder named node_modules, so vyre.tgz lost them
-# and /app/sw.js failed to install on their 404s. They move to dist/assets/nm/ and the bundle's
+# and /sw.js failed to install on their 404s. They move to dist/assets/nm/ and the bundle's
 # paths follow, before the precache list is made.
-CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web
+CI=1 EXPO_NO_TELEMETRY=1 VYRE_APP_BASE=root EXPO_PUBLIC_VYRE_APP_BASE=root npx expo export -p web
 if [ -d dist/assets/node_modules ]; then
   mv dist/assets/node_modules dist/assets/nm
   node -e '
@@ -51,7 +51,7 @@ if [ -d dist/assets/node_modules ]; then
     if (!n) { console.error("build-app: no file named assets/node_modules; the icons would not load"); process.exit(1); }'
 fi
 [ -z "$(find dist -type d -name node_modules)" ] || { echo "build-app: dist still has a node_modules folder, which npm will not pack" >&2; exit 1; }
-node scripts/precache.mjs dist /app/
+node scripts/precache.mjs dist /
 [ -f dist/index.html ] || { echo "build-app: the export has no dist/index.html" >&2; exit 1; }
 [ -f dist/precache.json ] || { echo "build-app: precache.mjs wrote no dist/precache.json" >&2; exit 1; }
 files=$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync("dist/precache.json","utf8")).files.length))')

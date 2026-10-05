@@ -187,7 +187,7 @@
 .dev-card .pair-list:not(:empty) + .dev-state { display: none; }
 @media (prefers-reduced-motion: reduce) { .dev-wait .busy { animation: none; border-color: var(--text); } }
 
-/* Wink's .phone-code-* rules moved to deck/css/phone-code.css (28 Sep): Settings > Devices needs
+/* Wink's .phone-code-* rules moved to web/css/phone-code.css (28 Sep): Settings > Devices needs
    the same card, and the main Deck bundle never loads this file. */
 
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }

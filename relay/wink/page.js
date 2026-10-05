@@ -6,8 +6,8 @@
 // Haptics, system patterns only: a tick when a ring decodes, a firm double tap when its record checks out on this phone,
 // a success when the hand-off starts, a warning on a refusal. iPhone and iPad in Safari get the install card and nothing else.
 
-import { h, put } from "../../deck/js/dom.js";
-import { classifyError } from "../../deck/js/pair-ticket.js";
+import { h, put } from "../../web/js/dom.js";
+import { classifyError } from "../../web/js/pair-ticket.js";
 import { initial, step, needsInstall, handoffUrl } from "./flow.js";
 
 /**

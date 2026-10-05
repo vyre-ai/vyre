@@ -1,5 +1,5 @@
 {
-  "_comment": "Not wired into deck/js/api.js's fixture loader (one file per module, deck/fixtures/onboard.json is it). This is the join-caps unit test's fixture for the 'anywhere has shipped it' shape: a server, once vyre-core lands, where relay.join is allowed and no reason string is needed.",
+  "_comment": "Not wired into deck/js/api.js's fixture loader (one file per module, web/fixtures/onboard.json is it). This is the join-caps unit test's fixture for the 'anywhere has shipped it' shape: a server, once vyre-core lands, where relay.join is allowed and no reason string is needed.",
   "onboard.status": {
     "mode": "loopback",
     "role": "box",

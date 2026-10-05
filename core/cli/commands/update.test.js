@@ -338,7 +338,7 @@ test("update: a checkout refuses and points at git; so does the box's container"
   assert.deepEqual(box.served, [], "nothing was fetched");
 });
 
-test("update: after a healthy update the release's SHA256SUMS, signature and shell.json go into the installed package's deck/release, and never into a checkout", t => {
+test("update: after a healthy update the release's SHA256SUMS, signature and shell.json go into the installed package's web/release, and never into a checkout", t => {
   const home = tempHome(t);
   const dir = path.join(home, "rel"), pkg = path.join(home, "pkg"), checkout = path.join(home, "co");
   for (const d of [dir, pkg, checkout]) fs.mkdirSync(d, { recursive: true });
@@ -346,7 +346,7 @@ test("update: after a healthy update the release's SHA256SUMS, signature and she
   fs.writeFileSync(path.join(dir, "SHA256SUMS"), "sums\n");
   fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), "sig\n");
   publishRelease(dir, pkg);
-  const to = path.join(pkg, "deck", "release");
+  const to = path.join(pkg, "web", "release");
   assert.deepEqual(fs.readdirSync(to).sort(), ["SHA256SUMS", "SHA256SUMS.sig"], "only what the release has, and no temp file");
   assert.equal(fs.readFileSync(path.join(to, "SHA256SUMS.sig"), "utf8"), "sig\n");
   publishRelease(dir, checkout);
@@ -379,7 +379,7 @@ test("update: only a release whose signature verified is published for the phone
   const pkg = path.join(signed.home, "pkg");
   fs.mkdirSync(pkg);
   assert.equal(await update(["--yes"], { ...signed.deps, pkg }), 0, signed.text());
-  assert.deepEqual(fs.readdirSync(path.join(pkg, "deck", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+  assert.deepEqual(fs.readdirSync(path.join(pkg, "web", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
   const unsigned = await world(t, { sign: null });
   const pkg2 = path.join(unsigned.home, "pkg");
   fs.mkdirSync(pkg2);

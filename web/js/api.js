@@ -3,7 +3,7 @@
 // the Deck calls fetch.
 //
 // Fixtures. Tools that other workstreams have not merged yet (threads.*, agents.*, onboard.*,
-// vault.*, learn.*, gate.*) are answered from deck/fixtures/<module>.json, but only when fixtures
+// vault.*, learn.*, gate.*) are answered from web/fixtures/<module>.json, but only when fixtures
 // are switched on (?fixtures=1 once, remembered for the tab; ?fixtures=0 turns them off) and only
 // when the live tool is missing. Live always wins. With fixtures off, a missing tool is an
 // ApiError with missing: true, and the view says which module is not running.

@@ -19,7 +19,7 @@ import { pairOffer, connect } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
 import { qr } from "../../core/cli/qr.js";
-import jsQR from "../../deck/vendor/jsqr/jsqr.js";
+import jsQR from "../../web/vendor/jsqr/jsqr.js";
 import { recorder } from "./lib/results.mjs";
 
 if (!process.env.CI) { console.error("j5: runs on a CI runner only (CI is unset)"); process.exit(2); }

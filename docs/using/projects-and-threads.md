@@ -82,8 +82,6 @@ vyre new "Harlow Legal" --home ~/work/harlow --workspace ~/work/harlow-site \
 In the Deck, open **Projects** (`/projects`) and choose **New project**. Claude can call
 `projects.create`.
 
-![Projects in the Deck: Northwind Bakery and Harlow Legal, each with its person, thread count and last activity, and New project](shots/deck-projects.png)
-
 ## Find a session and pick it into a project
 
 The **catalogue** lists every session on this machine with its `/rename` name, first message,
@@ -148,8 +146,6 @@ when it needs it. The tool is `projects.context`.
 In the Deck, `/projects/<slug>` is the project board: threads and the brief on the left, the open
 thread in the centre, and the files it touched on the right, with tabs for **Threads**, **Team**,
 **Brief**, **Files** and **Memory**.
-
-![The Harlow Legal board: its threads and brief on the left, the open thread with a box to carry it on, and the files it touched on the right](shots/deck-project.png)
 
 ## Resume a thread or start a new one
 

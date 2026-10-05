@@ -4,7 +4,7 @@
 // that ADR's Consequences ("launch renders vyrecode2.js's output on the Deck's pairing screen")
 // plus the live/pairing variant app-design flagged as still needed from launch: a shimmer while
 // the ticket is valid, and a visible countdown/expiry state once it's stale. Geometry, palette
-// and the encode/decode math are app-design's vendored code (deck/vendor/vyrecode/), unchanged;
+// and the encode/decode math are app-design's vendored code (lib/wink-code/), unchanged;
 // everything in this file is launch's own.
 //
 // tailnet's relay.pair.ticket is built (work/tailnet 2990a810, sent to their reviewer): mint {}
@@ -19,9 +19,9 @@
 // the DOM as text or a data attribute. Only the drawn SVG (ticksSunburst's tick lengths/marker
 // dots) carries it; callers must stop drawing it (swap back to the placeholder/idle state) once
 // it expires or a phone redeems it, not go on re-rendering an already-spent or stale ticket.
-import { buildCodeword, bytesToBits } from "../vendor/vyrecode/payload.js";
-import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
-import { userAvatar } from "../vendor/vyrecode/identity.js";
+import { buildCodeword, bytesToBits } from "../../lib/wink-code/payload.js";
+import { renderCode2, bitsToLevels } from "../../lib/wink-code/vyrecode2.js";
+import { userAvatar } from "../../lib/wink-code/identity.js";
 
 /** A relay.pair.ticket `ticket` string (base64url) to its 8 raw bytes. Any string that doesn't
  * decode to exactly 8 bytes (a placeholder, or a still-mismatched real shape) is coerced by
@@ -57,7 +57,7 @@ export function ticketLevels(ticket) {
 export function ticketRingSvg(ticket, { userOption = 0, theme = "dark", size = 280 } = {}) {
   const levels = ticketLevels(ticket);
   const svg = renderCode2(levels, { userOption, style: "ticksSunburst", theme, size });
-  // app-design's locked renderer (deck/vendor/vyrecode) positions the face in one group; the dance
+  // app-design's locked renderer (lib/wink-code) positions the face in one group; the dance
   // needs an untransformed inner group to animate, so it is added here rather than in the vendor copy.
   return svg.replace(/(<g transform="translate\([^)]*\) scale\([^)]*\)">)([\s\S]*)(<\/g>\s*<\/svg>)$/, '$1<g class="vyrecode-face">$2</g>$3');
 }

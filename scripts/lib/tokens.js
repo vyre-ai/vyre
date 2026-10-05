@@ -249,7 +249,7 @@ export function attention(scheme: Scheme, alt?: keyof typeof tokens.color.attent
 `;
 }
 
-/** The Deck's roles as custom properties (deck/css/tokens.css); the renderer is lib/theme's css(). @param {any} t */
+/** The Deck's roles as custom properties (web/css/tokens.css); the renderer is lib/theme's css(). @param {any} t */
 export const css = t => renderCss(t, HEAD);
 
 const PX = n => `${num(n)}px`;
