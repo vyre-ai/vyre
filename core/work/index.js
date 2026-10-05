@@ -182,19 +182,22 @@ export default {
     // do: `project.move_started` in the source, `project.move_in` in the target, for this move id, plan hash and project. The mover's own chain reads the log.
     const knowProof = async (/** @type {any} */ extra, /** @type {"project.move_started"|"project.move_in"} */ type, /** @type {any} */ i) => {
       kernelOf();
+      // run by the move (this module's own tool, through ctx.call or the Space handle), never by a person's surface or another module: the authority is the move's own event in this Space's log
+      if (String((extra && extra.caller) || "") !== "module:work") throw fail("denied", "the Work engine's lines move only inside a project move");
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
-      const evs = await kernelOf().events.read(await chainOf(extra), { type });
+      const evs = await kernelOf().events.read(kernelOf().serviceChain("work"), { type });
       const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
       if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
     };
     const knowMove = obj({ move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } }, ["move_id", "plan_hash", "project"]);
     ctx.tool("work.know.move-export", {
       description: "Source side of a project's Work-engine lines move: the lines of the project's records, read for the move. Refused unless this Space's log holds project.move_started for it. Returns { rows, digest, count }.",
+      callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } } } },
       run: async (i, extra) => {
         await knowProof(extra, "project.move_started", i);
         const k = kernelOf();
-        const allowed = new Set(await linkedClosure(await sideOf(k.space, extra), String(i.project)));
+        const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
         const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
         if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
         return exportKnow(ctx.store.db, { records });
@@ -202,6 +205,7 @@ export default {
     });
     ctx.tool("work.know.move-import", {
       description: "Target side: writes the exported lines under the target project's records (one transaction, a repeat is a no-op) and indexes them. Refused unless this Space's log holds project.move_in for the move. Returns the receipt { digest, count }.",
+      callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, rows: { type: "array", items: { type: "object" } }, map: { type: "object" }, from_space: { type: "string" } } },
       run: async (i, extra) => {
         await knowProof(extra, "project.move_in", i);
@@ -213,11 +217,12 @@ export default {
     });
     ctx.tool("work.know.move-forget", {
       description: "Source side, after the target imported: needs the receipt; refuses if the lines changed since the export; drops them and what was derived from them. Returns { forgotten }.",
+      callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } }, receipt: { type: "object" } } },
       run: async (i, extra) => {
         await knowProof(extra, "project.move_started", i);
         const k = kernelOf();
-        const allowed = new Set(await linkedClosure(await sideOf(k.space, extra), String(i.project)));
+        const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
         const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
         if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
         return forgetKnow(ctx.store.db, { records, receipt: i.receipt });
