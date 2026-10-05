@@ -3,18 +3,16 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
-import { agentsList, providers } from "../settings/real";
-import { SURFACE } from "../../src/state/live";
+import { agentsList } from "../settings/real";
+import { writeDraft } from "../../src/chat/drafts";
 import { tool } from "../../src/real/box";
-import { agentChoices, defaultAccount, startInput, threadIdOf } from "../../src/state/new-chat-model.js";
+import { agentChoices, chatIdOf, createInput } from "../../src/state/new-chat-model.js";
 
-/** /u/chats/new: pick an agent (your assistant is the default), say what you want first if you like, and start. threads.start runs as you, naming the agent and the AI account; the new session opens. */
+/** /u/chats/new: pick who to talk to (your assistant is the default and is never listed), say what you want first if you like, and start. work.chat.create makes the chat; it opens with your first words ready to send. */
 export default function NewChatScreen() {
   const router = useRouter();
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
-  const [account, setAccount] = useState<string | null>(null);
-  const [root, setRoot] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -23,22 +21,22 @@ export default function NewChatScreen() {
     let live = true;
     void (async () => {
       try {
-        const [a, p, d] = await Promise.all([agentsList(), providers().catch(() => []), tool<{ roots?: { path?: string }[] }>("files.dirs", {}).catch(() => null)]);
+        const a = await agentsList();
         if (!live) return;
         const c = agentChoices(a);
-        setAgents(c); setPick(c[0]?.name ?? null); setAccount(defaultAccount(p)); setRoot(d?.roots?.[0]?.path ?? null);
+        setAgents(c); setPick(c[0]?.name ?? null);
       } catch (e) { if (live) setLoadErr(e instanceof Error ? e.message : "Your Vyre did not answer."); }
     })();
     return () => { live = false; };
   }, []);
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
-    const r = startInput({ agent, account, text, root, surface: SURFACE });
-    if ("error" in r) { setErr(r.error); return; }
     setBusy(true); setErr("");
     try {
-      const id = threadIdOf(await tool("threads.start", r.input));
+      const id = chatIdOf(await tool("work.chat.create", createInput({ agent })));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
+      // The first words wait in the new chat's box, ready to send.
+      if (text.trim()) writeDraft(id, text.trim());
       router.replace({ pathname: "/u/chats/[id]", params: { id } });
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };
