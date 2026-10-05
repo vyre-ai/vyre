@@ -1007,13 +1007,13 @@ test("paired sign-in: a signature by the identity entry's enclave key over the c
   assert.equal(run("d4", enc, null), "software", "no enclave key on record: nothing to verify against");
 });
 
-test("presence: the owner's own device is a confirmed paired Wink device: a stranger, an unconfirmed or removed device, a malformed id and a tailnet label are not", async () => {
+test("presence: the owner's own device is a confirmed paired Wink device: a stranger, another member's confirmed device, an unconfirmed or removed device, a malformed id and a tailnet label are not", async () => {
   const { ownerDeviceOf } = await import("./module.js");
-  const records = { ownerphone0001: { id: "ownerphone0001", confirmed: true, owner: "per_alex" }, unconfirmed0001: { id: "unconfirmed0001", confirmed: false, owner: "per_alex" } };
+  const records = { ownerphone0001: { id: "ownerphone0001", confirmed: true, owner: "per_alex", homeOwner: true }, unconfirmed0001: { id: "unconfirmed0001", confirmed: false, owner: "per_alex", homeOwner: true }, memberphone0001: { id: "memberphone0001", confirmed: true, owner: "per_member", homeOwner: false } };
   const calls = [];
   const ok = ownerDeviceOf(async (tool, input) => { calls.push([tool, input.id]); return { data: records[input.id] || null }; });
   assert.equal(await ok("device:ownerphone0001"), true);
-  for (const caller of ["device:unconfirmed0001", "device:removedphone01", "device:", "device:../x", "tailnet:alex@example.com", "cli", "mcp:agent:kit", "", undefined]) assert.equal(await ok(/** @type {any} */ (caller)), false, String(caller));
+  for (const caller of ["device:memberphone0001", "device:unconfirmed0001", "device:removedphone01", "device:", "device:../x", "tailnet:alex@example.com", "cli", "mcp:agent:kit", "", undefined]) assert.equal(await ok(/** @type {any} */ (caller)), false, String(caller));
   assert.equal(await ownerDeviceOf(async () => { throw new Error("wink is off"); })("device:ownerphone0001"), false, "no wink module, no owner device");
-  assert.deepEqual(calls.map(c => c[0]), ["wink.device.record", "wink.device.record", "wink.device.record"], "only well-formed device ids are looked up");
+  assert.deepEqual(calls.map(c => c[0]), ["wink.device.record", "wink.device.record", "wink.device.record", "wink.device.record"], "only well-formed device ids are looked up");
 });

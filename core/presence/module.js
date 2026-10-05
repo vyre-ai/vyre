@@ -24,7 +24,7 @@ export const ownerDeviceOf = call => async caller => {
   const m = /^device:([a-z0-9_-]{4,64})$/.exec(String(caller || ""));
   if (!m) return false;
   const r = await call("wink.device.record", { id: m[1] }).catch(() => null);
-  return Boolean(r && r.data && r.data.id === m[1] && r.data.confirmed === true && r.data.owner);
+  return Boolean(r && r.data && r.data.id === m[1] && r.data.confirmed === true && r.data.homeOwner === true);
 };
 const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const str = { type: "string" };
