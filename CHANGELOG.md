@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the calendar's times are read by lib/time: the viewer's own zone ("9:30 am"), and, once a space has a zone of its own, "9:00 am PT · 9:00 pm your time". The space zone is not read yet (windows have not named the field).
+
 - feat(app): every call to the box carries x-vyre-zone, the device's IANA zone, so the box reads a person's times in it (lib/time, platform-2; a copy of lib/time is in the tree until platform-2's typed version lands).
 
 - feat(app): Glass (renamed Screen Share, computer use under it) is hidden for 0.2.9 behind RC.glass: no Glass card or pill in a chat, no /u/glass page, no agent desktop in an agent's page or New agent, no egress or hand-back in This computer, no screen block in a transcript. refactor(app): every stream.* call names the chat (stream tools took the rename); merged trunk 3bbd663f0.

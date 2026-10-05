@@ -1,6 +1,7 @@
 // The space calendar, as pure functions: every record with a date on it (an Event, a deadline, a task's due date) as one dated item, shown by day, week or month.
 // Nothing here knows a record type. An Event type, when the space has one, is read by its fields: the first datetime field is the start, a field named
 // like end/ends/until after it is the end. Any other type shows once for each date field it has.
+import { clock, showTimes, systemZone } from "../../../../lib/time/index.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { isoDay, toDate } from "../../ui/fields/logic.js";
 
@@ -131,15 +132,20 @@ export function heading(view, anchor) {
   return `${d(a)} to ${d(b)}`;
 }
 
-/** "9:30" or "All day"; a timed event with an end says "9:30 to 10:15". @param {Item} i */
-export function timeLine(i) {
+/**
+ * "9:30 am" or "All day"; a timed event with an end says "9:30 am to 10:15 am". Every time is shown in the viewer's own zone (lib/time, the one place that converts); a time that belongs to a space with a zone
+ * of its own also says the space's: "9:00 am PT · 9:00 pm your time". With no zone given the viewer's device zone is used and no space zone is shown.
+ * @param {Item} i @param {{ person?: string, space?: string | null }} [z]
+ */
+export function timeLine(i, z = {}) {
   if (i.allDay) return "All day";
-  const t = (/** @type {Date} */ d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  return i.end ? `${t(i.start)} to ${t(i.end)}` : t(i.start);
+  const person = z.person || systemZone();
+  const first = showTimes(i.start.getTime(), { person, space: z.space ?? null }).text;
+  return i.end ? `${first} to ${clock(i.end.getTime(), person)}` : first;
 }
 
-/** The line under a title: when, then what it is ("Deadline" for a Matter's closing date, "Event" for an Event). @param {Item} i */
-export const subLine = (i) => `${timeLine(i)}, ${i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`}`;
+/** The line under a title: when, then what it is ("Deadline" for a Matter's closing date, "Event" for an Event). @param {Item} i @param {{ person?: string, space?: string | null }} [z] */
+export const subLine = (i, z) => `${timeLine(i, z)}, ${i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`}`;
 
 /** A day key as a heading for an agenda: "Sunday 4 October". @param {string} key */
 export function dayHeading(key) { const d = toDate(key); return d ? heading("day", d) : key; }
