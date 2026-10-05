@@ -72,7 +72,7 @@ if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-
   if (cmd.includes("-links +1")) out(has("post-dirty") ? "/srv/x" : "");
   out(rd("vol-content"));
 }
-if (a[0] === "create") { fs.appendFileSync(F + "/created", "1\n"); out("ctr-golden"); }
+if (a[0] === "create") { fs.appendFileSync(F + "/created", "1\\n"); out("ctr-golden"); }
 if (a[0] === "cp") { const src = a[1].replace(/^[^:]*:/, ""); if (has("cp-fails")) process.exit(1); fs.copyFileSync(src, a[2]); process.exit(0); }
 if (a[0] === "rm") process.exit(0);
 if (a[0] === "run") {
