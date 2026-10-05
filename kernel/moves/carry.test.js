@@ -102,3 +102,17 @@ test("carry runs only for an open move under an owner or admin of both Spaces, f
   // a module that is not the work module is not given the carry at all
   assert.equal(a.k.kernelFor({ name: "records-tools" }).moves, undefined);
 });
+
+test("without a destination the files land under the target project, and a chat's folders under the chat the move made there; a chat that was not mapped is refused", async t => {
+  const { a, b, moves, started } = await world(t);
+  await a.D.put(a.bob, `${a.folder}/note.txt`, enc("chat note")); await a.D.put(a.ada, "Projects/p1/retainer.txt", enc("plain project file"));
+  const oldChat = a.folder.split("/").pop(), newChat = b.folder.split("/").pop();
+  const entries = [{ path: `${a.folder}/note.txt`, sha256: sha("chat note"), size: 9 }, { path: "Projects/p1/retainer.txt", sha256: sha("plain project file"), size: 18 }];
+  started(a.ada, MOVE);
+  await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: {} }), { code: "bad_input" }, "an unmapped chat is not carried");
+  const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: { [oldChat]: newChat } });
+  assert.deepEqual(out.map(x => x.dest), [`Projects/p9/chat/${newChat}/note.txt`, "Projects/p9/retainer.txt"]);
+  assert.equal(new TextDecoder().decode(await b.D.get(b.bob, `Projects/p9/chat/${newChat}/note.txt`)), "chat note");
+  await assert.rejects(() => b.D.get(b.ada, `Projects/p9/chat/${newChat}/note.txt`), { code: "not_found" }, "the mover still reads nothing in the chat");
+  await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "../x", chat_map: { [oldChat]: newChat } }), { code: "bad_input" });
+});
