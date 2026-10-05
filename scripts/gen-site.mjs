@@ -409,7 +409,7 @@ const homeBody = `
       <p class="lead">Vyre is Apache 2.0 and runs on your server. You pay your AI providers, not us.</p>
     </div>
     <div class="cost rv">
-      <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. There is no Vyre cloud to sign up for.</p></div>
+      <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.</p></div>
       <div><p class="lbl">Your AI</p><p class="big">Your plans</p><p>Claude, Codex, Grok or OpenRouter, on the subscriptions or keys you already have.</p></div>
       <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on. Tailscale’s free plan is enough.</p></div>
     </div>
@@ -673,7 +673,7 @@ const DIR = `
 <section class="sec" aria-labelledby="same-h">
   <div class="wrap feat">
     <div class="feat-copy rv"><span class="num">What does not change</span><h2 id="same-h" class="h2">The rules <b>stay where they are.</b></h2></div>
-    <div class="rv">${list([['Your machines', 'Vyre runs on hardware you control. Nothing needs a Vyre cloud.'], ['Your accounts', 'Your own AI subscriptions and keys. Several per provider.'], ['Asking is approving', 'Your own words are the yes, and some rules no setting removes.'], ['Your own work only', 'A person’s computer never runs someone else’s work.'], ['Nothing feels walled off', 'The separation is in how it is built, not in how it feels to use.']])}</div>
+    <div class="rv">${list([['Your machines', 'Vyre runs on hardware you control. Your data lives on your devices and on servers you or your team run. Vyre doesn\'t hold it. A Cloud space is a server you or your team chose, not ours.'], ['Your accounts', 'Your own AI subscriptions and keys. Several per provider.'], ['Asking is approving', 'Your own words are the yes, and some rules no setting removes.'], ['Your own work only', 'A person’s computer never runs someone else’s work.'], ['Nothing feels walled off', 'The separation is in how it is built, not in how it feels to use.']])}</div>
   </div>
 </section>
 <section class="sec" aria-labelledby="note-h">
@@ -912,7 +912,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
 
 ## What it costs
-Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. There is no Vyre cloud.
+Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
 
 ## Where your data lives
 Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.

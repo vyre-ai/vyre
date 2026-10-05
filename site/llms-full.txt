@@ -30,7 +30,7 @@ Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Lice
 5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
 
 ## What it costs
-Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. There is no Vyre cloud.
+Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
 
 ## Where your data lives
 Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
