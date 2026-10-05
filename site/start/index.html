@@ -87,12 +87,12 @@
 <p>Option-Space opens Vyre Lumen from any app by default, with no extra permission. If you turn on Control twice instead from the menu-bar mark, grant Input Monitoring when it asks: macOS needs that permission to see the key. Contacts is optional, for contact results. More on the <a href="/mac/">Mac page</a>.</p></div></section>
 <section class="part rv" id="phone" aria-labelledby="phone-h"><span class="n">04</span><div><h2 id="phone-h">Your phone</h2><p>Install Tailscale on your phone and sign in with the same account. Then scan the ring the setup page shows, or open your server’s address in the phone’s browser and add Vyre to your Home Screen. The phone shows your server’s name and fingerprint and pairs only after you tap <em>Pair</em>. Open Vyre from your Home Screen from then on. More on the <a href="/phone/">phone page</a>.</p></div></section>
 <section class="part rv" id="windows" aria-labelledby="windows-h"><span class="n">05</span><div><h2 id="windows-h">Windows</h2><p>There is a Windows app for your Windows PC: a tray icon and an Alt+Space panel, and it updates itself. Its installer, <code>VyreSetup.exe</code>, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The app is not signed yet, so Windows may warn that the publisher is unknown: choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p></div></section>
-<section class="part rv" id="not-finished" aria-labelledby="not-finished-h"><span class="n">!</span><div><h2 id="not-finished-h">What is not in 0.2.1</h2><ul>
+<section class="part rv" id="not-finished" aria-labelledby="not-finished-h"><span class="n">!</span><div><h2 id="not-finished-h">What is not in 0.2.9</h2><ul>
 <li><strong>Interactive artifacts in Safari.</strong> On a Mac or an iPhone, a page that navigates itself can be sent your sign-in cookie. A fix comes next. Until then, open interactive pages only from agents you trust.</li>
 <li><strong>Terminal commands.</strong> Touch ID prompts for terminal commands that need them come next.</li>
-<li><strong>Chrome.</strong> API-first routing comes next, and parallel tabs for many agents in 0.2.3.</li>
-<li><strong>Two models at once.</strong> “Give it to two” and per-provider blocks for plans and diffs come in 0.2.2, with memory that Vyre carries across resets.</li>
-<li><strong>Scale and teams.</strong> Putting idle sessions to sleep comes in 0.2.3, and spaces for teams in 0.2.5.</li>
+<li><strong>Chrome.</strong> API-first routing comes next, and parallel tabs for many agents come later.</li>
+<li><strong>Two models at once.</strong> “Give it to two” and per-provider blocks for plans and diffs come later, with memory that Vyre carries across resets.</li>
+<li><strong>Scale and teams.</strong> Putting idle sessions to sleep comes later.</li>
 <li><strong>The Mac app is built, not downloaded.</strong> There is no signed Mac download yet; <code>vyre capsule install</code> builds it on your Mac.</li>
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li></ul>
 <p>More detail: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a>. Where this is going: <a href="/direction/">Direction</a>.</p></div></section>
@@ -116,7 +116,7 @@
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
-    <div class="foot-base"><span>Vyre 0.2.1 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+    <div class="foot-base"><span>Vyre 0.2.9 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
   </div>
 </footer>
 </body>
