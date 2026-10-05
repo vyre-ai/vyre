@@ -45,15 +45,20 @@ export function createMoves(o) {
     async carryFiles(fromChain, toChain, q) {
       const who = one(fromChain, "a carry"), whoTo = one(toChain, "a carry");
       if (who !== whoTo) throw new KernelError("not_allowed", "a move is carried by one person in both Spaces");
-      if (!q || typeof q.move_id !== "string" || !Array.isArray(q.entries) || q.entries.length > MAX_ENTRIES) throw new KernelError("bad_input", "name the move and its files");
+      const upgrade = Boolean(q) && q.upgrade_id !== undefined;
+      if (!q || (upgrade ? typeof q.upgrade_id !== "string" || q.move_id !== undefined : typeof q.move_id !== "string") || !Array.isArray(q.entries) || q.entries.length > MAX_ENTRIES) throw new KernelError("bad_input", "name the move and its files");
       if (fromChain.space === toChain.space) throw new KernelError("bad_input", "a move goes to another Space");
       const src = side(fromChain, "source"), dst = side(toChain, "target");
-      const ev = typeof src.log.read === "function" ? src.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === q.move_id) : null;
-      if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= DAY)) throw new KernelError("not_found", "no such move");
-      const id = String(ev.subject).split("/").pop();
+      // An open move (project.move_started) or an open upgrade of a Personal Space into My Cloud (space.upgrade_started, whose `to` is this target): the same person, within a day. An upgrade has no one project:
+      // each file's own source project is checked below, with the same restore act.
+      const ev = typeof src.log.read === "function" ? src.log.read({ type: upgrade ? "space.upgrade_started" : "project.move_started" }).find((/** @type {any} */ e) => e.data && (upgrade ? e.data.upgrade_id === q.upgrade_id && e.data.to === toChain.space && e.subject === `vyre://${fromChain.space}/space/upgrade` : e.data.move_id === q.move_id)) : null;
+      if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= DAY)) throw new KernelError("not_found", upgrade ? "no such upgrade" : "no such move");
+      const id = upgrade ? "" : String(ev.subject).split("/").pop();
+      const projOf = (/** @type {string} */ p) => { const m = /^Projects\/([^/]+)\/.+/.exec(p); return m ? m[1] : null; };
       // an owner or admin of both Spaces: the restore act on the project's folder (the move's own survey and inventory ask the same)
       const may = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ folder) => (await k.gateway.authorize({ chain, action: "drive.restore", resource: `vyre://${chain.space}/file/${folder}` })).effect === "allow";
-      if (!(await may(src, fromChain, `Projects/${id}`))) throw new KernelError("not_found", "no such move");
+      if (!upgrade && !(await may(src, fromChain, `Projects/${id}`))) throw new KernelError("not_found", "no such move");
+      /** @type {Set<string>} source projects already checked for an upgrade */ const okSrc = new Set();
       /** @type {{ dest: string, sha256: string }[]} */ const out = [];
       const ID = /^[A-Za-z0-9_-]{1,64}$/;
       const map = q.chat_map && typeof q.chat_map === "object" ? q.chat_map : null;
@@ -61,7 +66,7 @@ export function createMoves(o) {
       if (q.project_to !== undefined && !(typeof q.project_to === "string" && ID.test(q.project_to))) throw new KernelError("bad_input", "name the target project");
       /** Where a file lands in the target, when the caller did not say: under the target project, a chat's folders under the chat the move made there. */
       const destOf = (/** @type {string} */ p) => {
-        const rest = p.slice(`Projects/${id}/`.length);
+        const rest = p.slice(`Projects/${projOf(p)}/`.length);
         const m = /^(chat|made)\/([^/]+)\/(.+)$/.exec(rest);
         if (!m) return `Projects/${q.project_to}/${rest}`;
         const to = map && Object.hasOwn(map, m[2]) ? map[m[2]] : null;
@@ -69,9 +74,14 @@ export function createMoves(o) {
         return `Projects/${q.project_to}/${m[1]}/${to}/${m[3]}`;
       };
       for (const raw of q.entries) {
-        const e = raw && typeof raw === "object" && raw.dest === undefined && typeof raw.path === "string" && q.project_to !== undefined && raw.path.startsWith(`Projects/${id}/`) ? { ...raw, dest: destOf(raw.path) } : raw;
+        const e = raw && typeof raw === "object" && raw.dest === undefined && typeof raw.path === "string" && q.project_to !== undefined && projOf(raw.path) !== null && (upgrade || raw.path.startsWith(`Projects/${id}/`)) ? { ...raw, dest: destOf(raw.path) } : raw;
         if (!e || typeof e.path !== "string" || typeof e.dest !== "string" || typeof e.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(e.sha256) || !Number.isInteger(e.size)) throw new KernelError("bad_input", "a file to carry names its path, its destination, its hash and its size");
-        if (!e.path.startsWith(`Projects/${id}/`) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
+        if (upgrade) {
+          const sp = projOf(e.path);
+          if (sp === null || e.path.split("/").some((/** @type {string} */ x) => x === ".." || x === ".")) throw new KernelError("bad_input", "only a project's own files go, into a project folder");
+          if (!okSrc.has(sp)) { if (!(await may(src, fromChain, `Projects/${sp}`))) throw new KernelError("not_found", "that folder is not yours to move"); okSrc.add(sp); }
+        }
+        if ((!upgrade && !e.path.startsWith(`Projects/${id}/`)) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
         const destFolder = e.dest.split("/").slice(0, 2).join("/");
         if (!(await may(dst, toChain, destFolder))) throw new KernelError("not_found", "that folder is not yours to move into");
         // resume: already there with this hash
