@@ -264,6 +264,38 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired Mac or device, the person's own label"
  },
  {
+  "tool": "memory.follow",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; follows a project or a room so its memory is brought in for the person; it only widens what the person's own memory shows them; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.identity.lock",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; locks the person's private memory now, which only takes access away: the latest facts are sealed and the rows leave the process; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.identity.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; says whether the person's identity memory is sealed here, unlocked, and which servers hold the person's grant: no fact and no key; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.identity.unlock.begin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; asks the person's phone to unlock the person's private memory for this server: nothing is readable until the phone answers, and only for a server the person granted; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.markers",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the person's markers in a room, the places they marked in a conversation; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.space.file",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files a fact in the Space's memory under the caller's own chain: the kernel's memory.file grant decides, and the fact's source must be one the filer may read; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.space.recall",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; recalls the Space's facts the caller's chain may read: the kernel's memory.read grant is asked again for each fact; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
+  "tool": "memory.space.retire",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; retires a Space fact under the caller's own chain: the kernel's memory.retire grant decides, the filer or a person with the right; the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool"
+ },
+ {
   "tool": "mentions.kinds",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the kinds the # picker offers"
  },
@@ -336,10 +368,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
  },
  {
-  "tool": "records.reference",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
- },
- {
   "tool": "records.holders",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the holders of one role, under the caller's own chain; the kernel checks each row"
  },
@@ -362,6 +390,10 @@
  {
   "tool": "records.me",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
+ },
+ {
+  "tool": "records.reference",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
  },
  {
   "tool": "records.roles",

@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { OPEN, ASK_FIRST, PERSON_ONLY } from "../../core/modules/agent-reach.js";
-import { generate, render, flowsAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, DECLARED, DECLARED_NOTES } from "../../scripts/gen-allow.mjs";
+import { generate, render, flowsAnyone, memoryAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, MEMORY_NOTES, DECLARED, DECLARED_NOTES } from "../../scripts/gen-allow.mjs";
 
 const committed = () => JSON.parse(fs.readFileSync(ALLOW_FILE, "utf8"));
 
@@ -12,11 +12,11 @@ test("the committed allow file is exactly the generator's output: nothing hand-w
   assert.equal(fs.readFileSync(ALLOW_FILE, "utf8"), render(generate()), "run: npm run golden:allow");
 });
 
-test("every allow entry is a tool in OPEN, ASK_FIRST or DECLARED, or a reach anyone flows tool whose module authenticates the chain", () => {
-  const flows = new Set(flowsAnyone());
+test("every allow entry is a tool in OPEN, ASK_FIRST or DECLARED, or a reach anyone flows tool or a memory tool whose module authenticates the chain", () => {
+  const flows = new Set(flowsAnyone()), memory = new Set(memoryAnyone());
   for (const e of committed()) {
     assert.deepEqual(Object.keys(e).sort(), ["reason", "tool"], `${e.tool}: only tool and reason`);
-    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || e.tool in DECLARED, `${e.tool} is in none of OPEN, ASK_FIRST, the flows manifest or DECLARED`);
+    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || memory.has(e.tool) || e.tool in DECLARED, `${e.tool} is in none of OPEN, ASK_FIRST, DECLARED, the flows or the memory lists`);
     if (flows.has(e.tool)) assert.match(e.reason, /module authenticates the caller's chain/, `${e.tool}: a flows entry says the module authenticates the chain`);
   }
 });
@@ -87,4 +87,9 @@ test("the gate lets a ruled presence removal through only for its tool, its pers
   const tool2 = mk("spaces.members.add", "deck", "presence_required");
   assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
   assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
+
+test("every memory tool a model may call has a note, and a note is only for a tool the manifest still has", () => {
+  const have = new Set(memoryAnyone());
+  for (const t of Object.keys(MEMORY_NOTES)) assert.ok(have.has(t), `${t} has a memory note but is not a memory manifest tool`);
+  for (const t of have) assert.equal(PERSON_ONLY.has(t), false, `${t} is person only`);
 });

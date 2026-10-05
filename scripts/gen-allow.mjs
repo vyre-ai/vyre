@@ -231,6 +231,26 @@ export const FLOWS_NOTES = Object.freeze({
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";
 
+const MEMORY_REASON = "the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool";
+/** The reach `anyone` memory tools a person's assistant may call, each with what it does and who decides. Everything else in the memory manifest is person only (agent-reach.js) or refused to a model by its callers list. */
+export const MEMORY_NOTES = Object.freeze({
+  "memory.follow": "follows a project or a room so its memory is brought in for the person; it only widens what the person's own memory shows them",
+  "memory.markers": "reads the person's markers in a room, the places they marked in a conversation",
+  "memory.identity.status": "says whether the person's identity memory is sealed here, unlocked, and which servers hold the person's grant: no fact and no key",
+  "memory.identity.unlock.begin": "asks the person's phone to unlock the person's private memory for this server: nothing is readable until the phone answers, and only for a server the person granted",
+  "memory.identity.lock": "locks the person's private memory now, which only takes access away: the latest facts are sealed and the rows leave the process",
+  "memory.space.file": "files a fact in the Space's memory under the caller's own chain: the kernel's memory.file grant decides, and the fact's source must be one the filer may read",
+  "memory.space.recall": "recalls the Space's facts the caller's chain may read: the kernel's memory.read grant is asked again for each fact",
+  "memory.space.retire": "retires a Space fact under the caller's own chain: the kernel's memory.retire grant decides, the filer or a person with the right",
+});
+
+/** The memory tools allowed to a model, from MEMORY_NOTES, checked against the manifest. */
+export function memoryAnyone() {
+  const m = JSON.parse(fs.readFileSync(path.join(REPO, "core", "memory", "module.json"), "utf8"));
+  const have = new Set(toolEntries(m).map(e => e.name));
+  return Object.keys(MEMORY_NOTES).filter(t => have.has(t)).sort();
+}
+
 /** The reach `anyone` tools of the flows manifest, which are not in agent-reach.js because they are not reach person. */
 export function flowsAnyone() {
   const m = JSON.parse(fs.readFileSync(path.join(REPO, "core", "flows", "module.json"), "utf8"));
@@ -260,6 +280,7 @@ export function generate() {
     if (!note) throw new Error(`gen-allow: ${tool} is reach anyone in the flows manifest with no line in FLOWS_NOTES`);
     out.push({ tool, reason: `${RULING}; ${note}; ${FLOWS_REASON}` });
   }
+  for (const tool of memoryAnyone()) out.push({ tool, reason: `${RULING}; ${MEMORY_NOTES[tool]}; ${MEMORY_REASON}` });
   for (const e of out) if (PERSON_ONLY.has(e.tool)) throw new Error(`gen-allow: ${e.tool} is person only and must not be allowed`);
   const seen = new Set();
   for (const e of out) { if (seen.has(e.tool)) throw new Error(`gen-allow: ${e.tool} is listed twice`); seen.add(e.tool); }
