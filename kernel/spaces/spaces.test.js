@@ -338,3 +338,19 @@ test("moving a project between two Spaces of one home: approved once where it st
   await assert.rejects(() => a.gateway.moves.out(ca, { ...req, to: a.space }, sign(a.space, "moveOut", { ...req, to: a.space })), { code: "bad_input" });
   await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, from: b.space }), { code: "bad_input" });
 });
+
+test("a module tool's cross-space action: the hosted Space's own authorize allows a member's chain and refuses a stranger and another Space's chain", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME);
+  await a.gateway.grants.setRole(ca, { person: ALICE, role: "member" }, sign(a.space, "setRole", { person: ALICE, role: "member" }));
+  const res = `vyre://${a.space}/tool/notes.there`;
+  const mine = await a.gateway.authorize({ chain: ca, action: "records.read", resource: res });
+  assert.equal(mine.effect, "allow", "the owner may");
+  const alice = await ownerChain(a.kernel, ALICE);
+  assert.equal((await a.gateway.authorize({ chain: alice, action: "records.read", resource: res })).effect, "allow", "a member may read");
+  const stranger = await ownerChain(a.kernel, BOB);
+  assert.notEqual((await a.gateway.authorize({ chain: stranger, action: "records.read", resource: res })).effect, "allow", "a stranger may not");
+  const other = await ownerChain(b.kernel, ME);
+  assert.notEqual((await a.gateway.authorize({ chain: other, action: "records.read", resource: res })).effect, "allow", "a chain from another Space may not");
+});

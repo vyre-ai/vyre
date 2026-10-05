@@ -255,6 +255,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     const names = Array.isArray(e[key]) ? e[key] : [e[key]];
     if (!names.length || names.some(n => typeof n !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(n))) out.push(`tool "${e.name}": ${key} must be an input field name, or a list of them`);
   }
+  // crossSpace names the one kernel action another Space's authorize must allow before this tool runs there for a module (ctx.kernel.for(space).call); a tool without it is never run that way.
+  for (const e of toolEntries(m)) if (e.crossSpace != null && (typeof e.crossSpace !== "string" || !/^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace))) out.push(`tool "${e.name}": crossSpace must be a kernel action name`);
   // An asked tool's `target` names one internal tool of this module (built in only, see addedCheck).
   for (const e of toolEntries(m)) {
     if (!e.target) continue;
@@ -301,6 +303,7 @@ export function toolEntries(m) {
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
+    if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }
