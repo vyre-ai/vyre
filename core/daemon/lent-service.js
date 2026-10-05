@@ -7,11 +7,21 @@ import path from "node:path";
 import { createLentHome } from "../runner/lent-home.js";
 
 /** The Space's definition of a member's own session: the agent by name, the provider as the only network, no credential route until the Space maps one (the vault answers per request, never the lender). */
-const defaultSpec = () => ({ command: process.env.VYRE_LENT_AGENT || "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] });
+const PROVIDER_ALLOW = Object.freeze([{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }]);
+/**
+ * @param {{ item: string, base_url?: string | null } | null} account the member's provider account: the vault item that holds its key (a name, never a value) and its own endpoint, when it has one
+ */
+const defaultSpec = account => ({
+  command: process.env.VYRE_LENT_AGENT || "claude", args: [], env: {},
+  // the provider is the session's only network: the lender's proxy forwards /provider to it and the home's vault answers the credential per request, for this lease only
+  routes: account ? [{ prefix: "/provider", upstream: account.base_url || "https://api.anthropic.com", credential: { header: "x-api-key" }, allow: PROVIDER_ALLOW }] : [],
+  readOnly: [], labels: {}, network: "provider",
+  credentialRoutes: account ? [{ route: "/provider", ref: account.item, allow: PROVIDER_ALLOW, provider: true }] : [],
+});
 
 /**
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
- * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void }} o
+ * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null } | null> | { item: string, base_url?: string | null } | null }} o
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {
@@ -24,6 +34,6 @@ export function lentServiceFor(o) {
       subs.set(space, g.grants.offers.onRevoke((/** @type {any} */ info) => { if (info && info.device) o.onRevoke?.(space, info); }));
     }
     return createLentHome({ space, root: path.join(o.root, "lent", space), offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
-      specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec()) });
+      specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
   };
 }

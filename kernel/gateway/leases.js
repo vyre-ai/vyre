@@ -18,6 +18,9 @@ import { leasedUse, credentialAction, safePath, canonicalPath, requestBind, norm
  *   resolve?: (i: { space: string, ref: string, route: string }) => Promise<any>, forward?: (q: any) => Promise<any>, routeAction?: (route: string) => string, session_ttl_ms?: number }} cfg
  *   resolve: the core vault's release for a credential on a route and host (the caller's; this never holds a value)
  */
+/** What a model-provider route may do without a grant: ask a model, count tokens, list models. Nothing here changes anything at the provider. */
+const INFERENCE = Object.freeze([{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }]);
+
 export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
   /** @type {Map<string, { member: string, device: string, device_key?: string }>} */ const info = new Map();
@@ -76,7 +79,7 @@ export function createLeases(cfg) {
       // `methods` and `paths` stay as the older shorthand (every listed method on every listed path; GET and HEAD by default). A route with no path matches nothing.
       const routes = [];
       for (const r of Array.isArray(def.routes) ? def.routes : []) {
-        try { routes.push(Object.freeze({ ...normalizeRoute(r), ...(typeof r.connector === "string" ? { connector: r.connector } : {}) })); } catch { throw new KernelError("bad_input", "a credential route names a host and a credential, and its lists are exact paths or end in /*"); }
+        try { routes.push(Object.freeze({ ...normalizeRoute(r), ...(typeof r.connector === "string" ? { connector: r.connector } : {}), ...(r.provider === true ? { provider: true } : {}) })); } catch { throw new KernelError("bad_input", "a credential route names a host and a credential, and its lists are exact paths or end in /*"); }
       }
       sessions.set(String(session), String(id));
       defs.set(String(session), routes);
@@ -97,10 +100,15 @@ export function createLeases(cfg) {
       try { path = canonicalPath(i.path.split(/[?#]/)[0]); } catch { throw new KernelError("not_found", "that credential is not open to this session"); }
       const hit = (defs.get(i.session) || []).find(r => r.route === route && routeAllows(r, method, path));
       if (!hit) throw new KernelError("not_found", "that credential is not open to this session");
-      const action = credentialAction("api", method);
-      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(hit.ref)}` });
-      if (d.effect !== "allow") throw new KernelError(d.effect === "ask" ? d.reason : "not_found", "that credential is not open to this chain");
-      if (cfg.enforce) cfg.enforce(chain, d);
+      // A model-provider route (`provider: true`, set only by the home's own definition of the member's session, never by a caller) may carry inference, which is a POST that changes nothing at the provider:
+      // the lease only exists while both Offers stand (the person's yes, with presence), and these three calls are all it may make. Every other route, and every other call on this one, is authorized by the
+      // kernel's grants as before: a write method asks.
+      if (!(hit.provider && INFERENCE.some(a => a.method === method && (a.path === path)))) {
+        const action = credentialAction("api", method);
+        const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(hit.ref)}` });
+        if (d.effect !== "allow") throw new KernelError(d.effect === "ask" ? d.reason : "not_found", "that credential is not open to this chain");
+        if (cfg.enforce) cfg.enforce(chain, d);
+      }
       const go = leasedUse({
         leaseOf: s => sessions.get(s) ?? null,
         check: ({ chain: c, id }) => sealer.lease.check({ chain: c, id }),

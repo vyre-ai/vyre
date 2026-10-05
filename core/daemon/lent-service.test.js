@@ -49,3 +49,13 @@ test("an Offer for a computer that ends tells the daemon which computer, once pe
   f("spc_aaaaaaaaaaaa", k);   // the server for the Space was made again: the old listener goes
   assert.equal(unsubbed, 1);
 });
+
+test("the member's provider account becomes the session's only route and credential route; no account means no model route", async () => {
+  const root = fs.mkdtempSync(path.join(SCRATCH, "ls-"));
+  const k = kernel({ spaceAllows: true, memberAccepts: true });
+  const withKey = lentServiceFor({ root, providerAccount: async () => ({ item: "ai-key-claude-abc", base_url: "https://llm.example" }) })("spc_aaaaaaaaaaaa", k);
+  const s = await withKey.start(chain("per_bob", "dev_laptop"), { session: "s1" });
+  assert.deepEqual(s.routes.map(r => [r.prefix, r.upstream, r.credential.header]), [["/provider", "https://llm.example", "x-api-key"]]);
+  const none = await lentServiceFor({ root, providerAccount: async () => null })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s1" });
+  assert.deepEqual(none.routes, []);
+});
