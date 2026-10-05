@@ -554,7 +554,11 @@ export function createTasks(cfg) {
       // One rule, no older looser path: an OUTWARD approval that recorded no bind covers nothing, since it could be spent on any act of that kind.
       if (q.outward === true && recorded === null) return false;
       if (recorded !== null && recorded !== asked) return false;
-      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
+      // What the approval covers: the act the approved body names (a draft task's evidence) or, for a Flow's or a connector's held act, the act the task's own form names (kind held_act: action, resource, bind),
+      // which the checker was shown and which is frozen with the task. Nothing else is covered.
+      const form = t && t.form && /** @type {any} */ (t.form).kind === "held_act" ? /** @type {any} */ (t.form) : null;
+      const coveredAction = a && a.body.action !== undefined ? a.body.action : form && form.action, coveredResource = a && a.body.resource !== undefined ? a.body.resource : form && form.resource;
+      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && coveredAction === q.action && coveredResource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
     },
     /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
     useApproval(q) {
