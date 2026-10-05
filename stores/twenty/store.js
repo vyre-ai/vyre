@@ -19,12 +19,13 @@ import crypto from "node:crypto";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
+import { inversesOf } from "../../kernel/gateway/links.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
-import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty } from "./plan.js";
+import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty, idOfLink, camel } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 5;
+export const CONFORMANCE_REVISION = 6;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 /** A search ranks the first this many matching rows of each type per tier (one request): scanning every match cost minutes at 20,000 records, and 1,000 still held Twenty for about half a second a search (testbox4, 5 Oct). */
@@ -82,7 +83,7 @@ export class TwentyStore {
   #loadTypes() {
     const f = path.join(/** @type {string} */ (this.dir), "types.json");
     if (!fs.existsSync(f)) return;
-    for (const t of JSON.parse(fs.readFileSync(f, "utf8"))) { const p = planType(t.def, { plural: t.plural }); this.plans.set(p.vyre, p); }
+    for (const t of JSON.parse(fs.readFileSync(f, "utf8"))) { const p = planType(t.def, { plural: t.plural, space: this.space }); this.plans.set(p.vyre, p); }
   }
   #saveTypes() {
     if (!this.dir) return;
@@ -115,8 +116,85 @@ export class TwentyStore {
     const f = scope === "any" ? { and: [{ id: { eq: id } }, EITHER] } : scope === "deleted" ? { and: [{ id: { eq: id } }, { deletedAt: { is: "NOT_NULL" } }] } : { id: { eq: id } };
     try {
       const d = await this.client.gql("graphql", `query Get_${p.singular}($f: ${pascal(p.singular)}FilterInput) { ${p.singular}(filter: $f) { ${selection(p)} } }`, { f: f });
-      return d[p.singular] ?? null;
+      return d[p.singular] ? await this.#hydrate(p, d[p.singular]) : null;
     } catch (e) { if (/** @type {any} */ (e)?.code === "not_found") return null; throw e; }
+  }
+
+  // ---- list links: a hidden junction object per `many` link (Twenty has no native many-to-many) --------------------------------------------------
+  /** @param {import("./plan.js").TypePlan} p */
+  #junctionFields(p) { return p.fields.filter((f) => f.type === "JUNCTION"); }
+  /** The junction object of one list link: one row per (record, linked record). Its names are derived, so nothing is stored about it. @param {import("./plan.js").TypePlan} p @param {import("./plan.js").FieldPlan} f */
+  #jn(p, f) {
+    const singular = `vyreLink${pascal(p.vyre)}${pascal(f.vyre)}`;
+    if (singular.length > 40) throw new StoreError("invalid", `${p.vyre}.${f.vyre} has a name too long for a list link: Twenty limits an object name`);
+    return { singular, plural: `${singular}Rows`, P: pascal(singular), PP: pascal(`${singular}Rows`) };
+  }
+  /** One page of a junction's rows for a filter, every page, as `{ id, from, to }` (a row whose linked record is gone has no `to`). @param {import("./plan.js").TypePlan} p @param {import("./plan.js").FieldPlan} f @param {any} filter */
+  async #junctionRows(p, f, filter) {
+    const jn = this.#jn(p, f);
+    /** @type {{ id: string, from: string, to: string | null }[]} */ const out = []; let after;
+    do {
+      const d = await this.client.gql("graphql", `query Q_${jn.plural}($f: ${jn.P}FilterInput, $first: Int, $after: String) { ${jn.plural}(filter: $f, first: $first, after: $after, orderBy: [{ id: AscNullsFirst }]) { edges { node { id fromRecId toRecId } } pageInfo { hasNextPage endCursor } } }`, { f: filter, first: MAX_PAGE, after });
+      const c = d[jn.plural];
+      for (const e of c.edges) out.push({ id: e.node.id, from: e.node.fromRecId, to: e.node.toRecId ?? null });
+      after = c.pageInfo.hasNextPage ? c.pageInfo.endCursor : undefined;
+      if (out.length > MAX_SCAN) throw new StoreError("unsupported", `${p.vyre}.${f.vyre} holds too many links to read at once`);
+    } while (after);
+    return out;
+  }
+  /** The rows with their list links filled in (`__many`), for the plan's junction fields. @param {import("./plan.js").TypePlan} p @param {any[]} rows */
+  async #hydrateAll(p, rows) {
+    const js = this.#junctionFields(p);
+    if (!js.length || !rows.length) return rows;
+    const out = rows.map((r) => ({ ...r, __many: /** @type {Record<string, string[]>} */ ({}) }));
+    for (const f of js) {
+      const by = new Map();
+      for (const j of await this.#junctionRows(p, f, { fromRecId: { in: rows.map((r) => r.id) } })) if (j.to) { const l = by.get(j.from) ?? []; l.push(j.to); by.set(j.from, l); }
+      for (const r of out) r.__many[f.vyre] = (by.get(r.id) ?? []).sort();
+    }
+    return out;
+  }
+  /** @param {import("./plan.js").TypePlan} p @param {any} row */
+  async #hydrate(p, row) { return (await this.#hydrateAll(p, [row]))[0]; }
+  /** Make a record's list links match `data` (the list a write names): rows added and removed, never a repeat. Only the fields the write names are touched. @param {import("./plan.js").TypePlan} p @param {string} id @param {Record<string, any>} data */
+  async #syncMany(p, id, data) {
+    for (const f of this.#junctionFields(p)) {
+      if (!Object.prototype.hasOwnProperty.call(data, f.vyre)) continue;
+      const v = data[f.vyre];
+      const want = new Set((Array.isArray(v) ? v : []).map((/** @type {any} */ x) => idOfLink(f, x)));
+      const have = await this.#junctionRows(p, f, { fromRecId: { eq: id } });
+      const jn = this.#jn(p, f);
+      const keep = new Set();
+      const drop = [];
+      for (const j of have) { if (j.to && want.has(j.to) && !keep.has(j.to)) keep.add(j.to); else drop.push(j.id); }
+      if (drop.length) await this.client.gql("graphql", `mutation Destroy_${jn.plural}($f: ${jn.P}FilterInput) { destroy${jn.PP}(filter: $f) { id } }`, { f: { id: { in: drop } } });
+      for (const to of want) if (!keep.has(to)) await this.client.gql("graphql", `mutation Create_${jn.singular}($d: ${jn.P}CreateInput!) { create${jn.P}(data: $d) { id } }`, { d: { id: crypto.randomUUID(), fromRecId: id, toRecId: to } });
+    }
+  }
+  /** Take every link that names a record out of the junctions (it is being destroyed for good), and the record's own lists. @param {import("./plan.js").TypePlan} p @param {string} id */
+  async #unlinkAll(p, id) {
+    for (const q of this.plans.values()) for (const f of this.#junctionFields(q)) {
+      const jn = this.#jn(q, f);
+      const filter = q.vyre === p.vyre && f.rel?.to === p.vyre ? { or: [{ fromRecId: { eq: id } }, { toRecId: { eq: id } }] } : q.vyre === p.vyre ? { fromRecId: { eq: id } } : f.rel?.to === p.vyre ? { toRecId: { eq: id } } : null;
+      if (!filter) continue;
+      const rows = await this.#junctionRows(q, f, filter);
+      if (rows.length) await this.client.gql("graphql", `mutation Destroy_${jn.plural}($f: ${jn.P}FilterInput) { destroy${jn.PP}(filter: $f) { id } }`, { f: { id: { in: rows.map((r) => r.id) } } });
+    }
+  }
+  /** A filter on a list link becomes a filter on the record ids the junction names (`contains` a record, or `is_null` for none). @param {import("./plan.js").TypePlan} p @param {any} f @returns {Promise<any>} */
+  async #resolveJunctionFilter(p, f) {
+    if (!f) return f;
+    if (f.and) return { and: await Promise.all(f.and.map((/** @type {any} */ x) => this.#resolveJunctionFilter(p, x))) };
+    if (f.or) return { or: await Promise.all(f.or.map((/** @type {any} */ x) => this.#resolveJunctionFilter(p, x))) };
+    if (f.not) return { not: await this.#resolveJunctionFilter(p, f.not) };
+    const fp = typeof f.field === "string" ? p.byVyre.get(f.field) : null;
+    if (!fp || fp.type !== "JUNCTION") return f;
+    if (f.op === "contains") {
+      const to = idOfLink(fp, f.value);
+      return { field: "id", op: "in", value: [...new Set((await this.#junctionRows(p, fp, { toRecId: { eq: to } })).map((j) => j.from))] };
+    }
+    if (f.op === "is_null") return { not: { field: "id", op: "in", value: [...new Set((await this.#junctionRows(p, fp, { toRecId: { is: "NOT_NULL" } })).map((j) => j.from))] } };
+    throw new StoreError("invalid", `${p.vyre}.${f.field} is a list of links: it supports contains and is_null only`);
   }
 
   /** compare-and-set write of some fields on a row; returns the new row or null when the guard no longer holds */
@@ -126,7 +204,7 @@ export class TwentyStore {
     const d = await this.client.gql("graphql", `mutation Update_${p.plural}($f: ${P}FilterInput, $d: ${P}UpdateInput!) { update${pascal(p.plural)}(filter: $f, data: $d) { ${selection(p)} } }`, { f, d: data });
     const rows = d[`update${pascal(p.plural)}`];
     if (rows.length) this.#mine(id, rows[0].updatedAt);
-    return rows[0] ?? null;
+    return rows[0] ? await this.#hydrate(p, rows[0]) : null;
   }
 
   /**
@@ -250,18 +328,62 @@ export class TwentyStore {
 
   // ---- definitions -----------------------------------------------------------------------------
   /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
-  async define(diff) {
+  async define(diff, o = {}) {
     const changes = [];
     const audit = await this.#auditSwitch();
     const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }`));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
+    // a link with no inverse of its own (a type defined straight on the store, not through the gateway) is named as the gateway would name it, so Twenty's inverse field and the kernel's agree
+    /** @type {Map<string, string>} */ const inverseLabels = new Map();
+    { const all = new Map([...this.plans].map(([n, q]) => [n, q.def])); for (const t of [...(diff.add_types ?? []), ...(diff.change_types ?? [])]) all.set(t.name, t);
+      for (const list of inversesOf([...all.values()]).values()) for (const i of list) inverseLabels.set(`${i.from_type}.${i.from_field}`, i.label); }
+    /** @type {{ p: import("./plan.js").TypePlan, f: import("./plan.js").FieldPlan }[]} */ const pending = [];
+    /** A relation field: many-to-one from `objectId` to the target, and its inverse on the target (named by `inverseLabel`). */
+    const createRelation = async (/** @type {string} */ objectId, /** @type {string} */ name, /** @type {string} */ label, /** @type {string} */ targetId, /** @type {string} */ inverseLabel) => {
+      await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: objectId, type: "RELATION", name, label, isNullable: true, relationCreationPayload: { targetObjectMetadataId: targetId, targetFieldLabel: inverseLabel, targetFieldIcon: "IconLink", type: "MANY_TO_ONE" } } } });
+    };
+    const relate = async () => {
+      for (const { p, f } of pending) {
+        const obj = objs.get(p.singular);
+        const rel = /** @type {NonNullable<typeof f.rel>} */ (f.rel);
+        const tp = this.plans.get(rel.to); const tobj = tp ? objs.get(tp.singular) : null;
+        if (!obj || !tp || !tobj) throw new StoreError("invalid", `${p.vyre}.${f.vyre} links to ${rel.to}, which is not a type here`);
+        const have = new Map(obj.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node]));
+        if (f.type === "RELATION") {
+          const ex = /** @type {any} */ (have.get(f.twenty));
+          const old = /** @type {any} */ (have.get(`${f.twenty}Old`));
+          if (ex && ex.type === "RELATION") { if (old && old.type === "TEXT") await this.#finishLinkMigration(p, f, old, changes); continue; }
+          if (ex && ex.type === "TEXT") {
+            // a link stored as urn text before links were relations: the text moves aside, the relation takes its name, the values are carried over, the text goes
+            await this.client.gql("metadata", "mutation RenameField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { name: `${f.twenty}Old`, label: `${f.twenty}Old` } } });
+            await createRelation(obj.id, f.twenty, f.def.label ?? f.vyre, tobj.id, rel.inverseLabel);
+            await this.#finishLinkMigration(p, f, { ...ex, name: `${f.twenty}Old` }, changes);
+            continue;
+          }
+          if (ex) throw new StoreError("unsupported", `Field ${f.vyre} of ${p.vyre} changed kind: that is a migration, not a define`);
+          await createRelation(obj.id, f.twenty, f.def.label ?? f.vyre, tobj.id, rel.inverseLabel);
+          changes.push(`added link ${p.vyre}.${f.vyre}`);
+        } else {
+          const jn = this.#jn(p, f);
+          let jobj = objs.get(jn.singular);
+          if (!jobj) {
+            const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: jn.singular, namePlural: jn.plural, labelSingular: `${p.label} ${f.def.label ?? f.vyre} link`, labelPlural: `${p.label} ${f.def.label ?? f.vyre} links`, icon: "IconLink" } } });
+            jobj = { id: r.createOneObject.id, nameSingular: jn.singular, fields: { edges: [] } }; objs.set(jn.singular, jobj);
+            changes.push(`added link ${p.vyre}.${f.vyre}`);
+          }
+          const jhave = new Set(jobj.fields.edges.map((/** @type {any} */ e) => e.node.name));
+          if (!jhave.has("fromRec")) await createRelation(jobj.id, "fromRec", "From", obj.id, `${p.label} ${f.def.label ?? f.vyre} rows`);
+          if (!jhave.has("toRec")) await createRelation(jobj.id, "toRec", "To", tobj.id, `${tp.label} ${p.label} ${f.def.label ?? f.vyre} rows`);
+        }
+      }
+    };
     /** @param {any} def @param {boolean} mustExist */
     const apply = async (def, mustExist) => {
       const known = this.plans.get(def.name);
       if (mustExist && !known && !objs.has(planType(def).singular)) throw new StoreError("unknown_type", `no type ${def.name}`);
-      const p = planType(def, known ? { plural: known.plural } : {});
+      const p = planType(def, { ...(known ? { plural: known.plural } : {}), space: this.space, inverseLabels });
       let obj = objs.get(p.singular);
-      if (known && canonical(known.def) === canonical(def) && obj) return;
+      if (known && canonical(known.def) === canonical(def) && obj && !(/** @type {any} */ (o).force)) return;
       if (!obj) {
         const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: p.singular, namePlural: p.plural, labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon, ...(audit ? { isAuditLogged: false } : {}) } } });
         obj = { id: r.createOneObject.id, nameSingular: p.singular, labelSingular: p.label, icon: p.icon, fields: { edges: [] } }; objs.set(p.singular, obj);
@@ -273,7 +395,7 @@ export class TwentyStore {
         if (obj.labelSingular !== p.label || (obj.icon ?? p.icon) !== p.icon) { await this.client.gql("metadata", "mutation UpdObj($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: obj.id, update: { labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon } } }); obj.labelSingular = p.label; obj.icon = p.icon; changes.push(`changed type ${def.name}`); }
       }
       /** @type {Map<string, any>} */ const have = new Map(obj.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node]));
-      const wanted = [...p.fields.filter((f) => !f.isTitle), { twenty: VERSION_FIELD, type: "NUMBER", vyre: VERSION_FIELD, def: { label: "Vyre version" }, settings: { dataType: "int", decimals: 0, type: "number" }, options: undefined, kind: "system" }, ...(uniqueFields(p).length ? [{ twenty: HELD_FIELD, type: "RAW_JSON", vyre: HELD_FIELD, def: { label: "Vyre held values" }, options: undefined, kind: "system" }] : [])];
+      const wanted = [...p.fields.filter((f) => !f.isTitle && f.type !== "RELATION" && f.type !== "JUNCTION"), { twenty: VERSION_FIELD, type: "NUMBER", vyre: VERSION_FIELD, def: { label: "Vyre version" }, settings: { dataType: "int", decimals: 0, type: "number" }, options: undefined, kind: "system" }, ...(uniqueFields(p).length ? [{ twenty: HELD_FIELD, type: "RAW_JSON", vyre: HELD_FIELD, def: { label: "Vyre held values" }, options: undefined, kind: "system" }] : [])];
       for (const f of wanted) {
         const ex = have.get(f.twenty);
         if (!ex) {
@@ -291,6 +413,8 @@ export class TwentyStore {
           if (f.options.some((o) => !exVals.has(o.value))) { await this.client.gql("metadata", "mutation UpdField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { options: f.options } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         }
       }
+      // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
+      for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
       this.plans.set(def.name, p);
@@ -298,6 +422,7 @@ export class TwentyStore {
     try {
       for (const t of diff.add_types ?? []) await apply(t, false);
       for (const t of diff.change_types ?? []) await apply(t, true);
+      await relate();
       for (const name of diff.remove_types ?? []) {
         const p = this.plans.get(name); if (!p) continue;
         const live = await this.query(name, { page: { limit: 1 }, include_deleted: false });
@@ -309,6 +434,43 @@ export class TwentyStore {
     } catch (e) { throw asStoreError(e); }
     this.#saveTypes();
     return { applied: changes.length > 0, changes };
+  }
+
+  /**
+   * The last steps of moving a link from urn text to a relation: carry every stored urn over to the relation's column (a removed record's too), then drop the text field. Safe to run again after a stop:
+   * a row whose column is already set is left, and the text goes only when every row was visited. A urn that names no record any more cannot be a relation (Twenty refuses a dangling one) and is counted, not carried.
+   * @param {import("./plan.js").TypePlan} p @param {import("./plan.js").FieldPlan} f @param {any} old the renamed text field @param {string[]} changes
+   */
+  async #finishLinkMigration(p, f, old, changes) {
+    const P = pascal(p.singular), col = /** @type {string} */ (f.column);
+    let after, moved = 0, dangling = 0;
+    do {
+      const d = await this.client.gql("graphql", `query Q_${p.plural}($f: ${P}FilterInput, $first: Int, $after: String) { ${p.plural}(filter: $f, first: $first, after: $after, orderBy: [{ id: AscNullsFirst }]) { edges { node { id ${old.name} ${col} } } pageInfo { hasNextPage endCursor } } }`, { f: { and: [{ [old.name]: { is: "NOT_NULL" } }, EITHER] }, first: MAX_PAGE, after });
+      const c = d[p.plural];
+      for (const e of c.edges) {
+        const n = e.node;
+        if (n[col]) { moved++; continue; }
+        let to; try { to = idOfLink(f, { urn: n[old.name] }); } catch { dangling++; continue; }
+        try {
+          const u = await this.client.gql("graphql", `mutation Update_${p.plural}($f: ${P}FilterInput, $d: ${P}UpdateInput!) { update${pascal(p.plural)}(filter: $f, data: $d) { id updatedAt } }`, { f: { and: [{ id: { eq: n.id } }, EITHER] }, d: { [col]: to } });
+          if (u[`update${pascal(p.plural)}`][0]) this.#mine(n.id, u[`update${pascal(p.plural)}`][0].updatedAt);
+          moved++;
+        } catch (err) { if (/** @type {any} */ (err)?.code === "invalid") dangling++; else throw err; }
+      }
+      after = c.pageInfo.hasNextPage ? c.pageInfo.endCursor : undefined;
+    } while (after);
+    await this.client.gql("metadata", "mutation DropField($i: DeleteOneFieldInput!) { deleteOneField(input: $i) { id } }", { i: { id: old.id } });
+    changes.push(`moved links ${p.vyre}.${f.vyre} to a relation (${moved} carried over${dangling ? `, ${dangling} named a record that is gone` : ""})`);
+  }
+
+  /**
+   * Bring links stored the old way (urn text) onto relations, for every type that has a link to a type. Called when a Space's store opens: a Space made before links were relations is
+   * moved once, its text values carried over and the text fields dropped; a Space already on relations does nothing (one metadata read). Returns what it changed.
+   */
+  async upgradeLinks() {
+    const defs = [...this.plans.values()].filter((p) => p.fields.some((f) => f.type === "RELATION" || f.type === "JUNCTION")).map((p) => structuredClone(p.def));
+    if (!defs.length) return { applied: false, changes: [] };
+    return this.define({ change_types: defs }, { force: true });
   }
 
   /** Every definition the store holds, as it was defined. */
@@ -338,6 +500,7 @@ export class TwentyStore {
     spec = await this.#withAttrFilter(type, spec);
     if (spec === null) return { rows: [] };
     const p = this.#plan(type);
+    if (this.#junctionFields(p).length && spec.filter) spec = { ...spec, filter: await this.#t(() => this.#resolveJunctionFilter(p, spec.filter)) };
     const limit = Math.min(Math.max(Number(spec.page?.limit) || 50, 1), MAX_PAGE);
     /** @type {any} */ let after;
     if (spec.page?.cursor !== undefined) {
@@ -354,7 +517,7 @@ export class TwentyStore {
     return this.#t(async () => {
       const d = await this.client.gql("graphql", `query Q_${p.plural}($f: ${P}FilterInput, $o: [${P}OrderByInput!], $first: Int, $after: String) { ${p.plural}(filter: $f, orderBy: $o, first: $first, after: $after) { edges { node { ${selection(p)} } } pageInfo { hasNextPage endCursor } totalCount } }`, { f: filter, o: order, first: limit, after });
       const c = d[p.plural];
-      const rows = c.edges.map((/** @type {any} */ e) => this.#snapIfNew(p, e.node));
+      const rows = (await this.#hydrateAll(p, c.edges.map((/** @type {any} */ e) => e.node))).map((/** @type {any} */ n) => this.#snapIfNew(p, n));
       return { rows, ...(c.pageInfo.hasNextPage && rows.length ? { next_cursor: "t1." + Buffer.from(c.pageInfo.endCursor).toString("base64url") } : {}), total_visible: c.totalCount };
     });
   }
@@ -502,9 +665,10 @@ export class TwentyStore {
     return this.#t(async () => {
       if (await this.#row(p, id, "any")) throw new StoreError("invalid", `${type} ${id} already exists`);
       const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), [VERSION_FIELD]: 1 } });
-      const row = d[`create${P}`];
+      let row = d[`create${P}`];
       if (row.id !== id) throw new StoreError("invalid", `Twenty replaced our id: sent ${id}, got ${row.id}`);
       this.#mine(id, row.updatedAt);
+      if (this.#junctionFields(p).length) { await this.#syncMany(p, id, data); row = await this.#hydrate(p, row); }
       const rec = this.#snap(p, row);
       this.#note({ type, id, kind: "created", version: 1, at: rec.updated_at, after: rec.data, source: "gateway" });
       return rec;
@@ -525,8 +689,9 @@ export class TwentyStore {
       const merged = { ...cur.data };
       for (const [k, v] of Object.entries(patch)) { if (!p.byVyre.has(k)) throw new StoreError("unknown_field", `${type} has no field ${k}`); if (v === null) delete merged[k]; else merged[k] = v; }
       const bad = checkData(p, merged); if (bad) throw new StoreError(bad.code, bad.message);
-      const next = await this.#cas(p, id, [{ updatedAt: { eq: row.updatedAt } }, { [VERSION_FIELD]: { eq: base } }], { ...toInput(p, patch), [VERSION_FIELD]: base + 1 });
+      let next = await this.#cas(p, id, [{ updatedAt: { eq: row.updatedAt } }, { [VERSION_FIELD]: { eq: base } }], { ...toInput(p, patch), [VERSION_FIELD]: base + 1 });
       if (!next) { const now = await this.#row(p, id, "live"); throw now ? new StoreError("version_conflict", `${type} ${id} changed while it was being updated`) : new StoreError("not_found", `no ${type} ${id}`); }
+      if (this.#junctionFields(p).some((f) => Object.prototype.hasOwnProperty.call(patch, f.vyre))) { await this.#syncMany(p, id, patch); next = await this.#hydrate(p, next); }
       const rec = this.#snap(p, next);
       this.#note({ type, id, kind: "updated", version: rec.version, at: rec.updated_at, before: cur.data, after: rec.data, source: "gateway" });
       return rec;
@@ -551,7 +716,7 @@ export class TwentyStore {
       const bumped = await this.#cas(p, id, [{ updatedAt: { eq: row.updatedAt } }, { [VERSION_FIELD]: { eq: base } }], { [VERSION_FIELD]: base + 1, ...held });
       if (!bumped) throw new StoreError("version_conflict", `${type} ${id} changed while it was being removed`);
       const d = await this.client.gql("graphql", `mutation Delete_${p.singular}($id: UUID!) { delete${P}(id: $id) { ${selection(p)} } }`, { id });
-      const gone = d[`delete${P}`]; this.#mine(id, gone.updatedAt);
+      const gone = await this.#hydrate(p, d[`delete${P}`]); this.#mine(id, gone.updatedAt);
       const rec = this.#snap(p, gone);
       this.#note({ type, id, kind: "removed", version: rec.version, at: rec.deleted_at ?? rec.updated_at, before: cur.data, source: "gateway" });
       return rec;
@@ -569,7 +734,7 @@ export class TwentyStore {
       if (!row) throw new StoreError("not_found", `no deleted ${type} ${id}`);
       const v = row[VERSION_FIELD] == null ? 1 : Number(row[VERSION_FIELD]);
       const d = await this.client.gql("graphql", `mutation Restore_${p.singular}($id: UUID!) { restore${P}(id: $id) { ${selection(p)} } }`, { id });
-      const back = d[`restore${P}`]; this.#mine(id, back.updatedAt);
+      const back = await this.#hydrate(p, d[`restore${P}`]); this.#mine(id, back.updatedAt);
       const held = row[HELD_FIELD] && typeof row[HELD_FIELD] === "object" ? row[HELD_FIELD] : null;
       let next;
       try { next = await this.#cas(p, id, [{ updatedAt: { eq: back.updatedAt } }], { [VERSION_FIELD]: v + 1, ...(held ? { ...held, [HELD_FIELD]: null } : {}) }); }
@@ -608,6 +773,7 @@ export class TwentyStore {
     this.searchKept.clear();
     const row = await this.#row(p, id, "any");
     if (!row) throw new StoreError("not_found", `no ${type} ${id}`);
+    await this.#t(() => this.#unlinkAll(p, id));
     await this.#t(() => this.client.gql("graphql", `mutation Destroy_${p.plural}($f: ${pascal(p.singular)}FilterInput) { destroy${pascal(p.plural)}(filter: $f) { id } }`, { f: { id: { eq: id } } }));
     for (const e of this.log) if (e.type === type && e.id === id) { delete e.before; delete e.after; e.erased = true; }
     if (this.logFile && fs.existsSync(this.logFile)) { const tmp = this.logFile + ".tmp"; fs.writeFileSync(tmp, this.log.map((e) => JSON.stringify(e)).join("\n") + (this.log.length ? "\n" : ""), { mode: 0o600 }); fs.renameSync(tmp, this.logFile); }

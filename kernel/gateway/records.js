@@ -2,6 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
+import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
 import { isChain, hasKind } from "../core/chain.js";
@@ -238,6 +239,21 @@ export function createRecords(cfg) {
       }
     }
   }
+  /** Each link in `input` must name a live record of the type it links to (a link with no target type: any live record of this Space). Nothing is read for a field that is not being set. @param {any[]} fields @param {any} input */
+  async function checkLinkTargets(fields, input) {
+    for (const f of fields) {
+      if (f.kind !== "link" || !input || !Object.prototype.hasOwnProperty.call(input, f.name)) continue;
+      const v = input[f.name];
+      if (v === null || v === undefined) continue;
+      for (const x of (f.many === true ? (Array.isArray(v) ? v : []) : [v])) {
+        const parts = x && typeof x.urn === "string" ? x.urn.split("/") : [];
+        if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", `${f.name} must name a record of this Space`);
+        if (f.to && parts[3] !== f.to) throw new KernelError("bad_input", `${f.name} links to ${f.to}, not ${parts[3]}`);
+        let there; try { there = await store.get(parts[3], parts[4]); } catch (e) { throw mapError(e); }
+        if (!there || there.deleted_at) throw new KernelError("bad_input", `${f.name} links to a ${parts[3]} that does not exist`);
+      }
+    }
+  }
   const COMPUTED_KINDS = new Set(["number", "text", "boolean", "date", "datetime"]);
   const OVER_FNS = new Set(["count", "sum", "min", "max", "avg"]);
   /** A computed field names its kind, and either an expression over this type's other fields or a total over the records that link to it. */
@@ -438,6 +454,8 @@ export function createRecords(cfg) {
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
+      // a link names live records of its type: the gateway checks, so every store holds only links that stand
+      await checkLinkTargets(fields, input);
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);
       for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
@@ -541,6 +559,9 @@ export function createRecords(cfg) {
       checkKinds(diff); await checkRoles(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
+      // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
+      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
+        diff = withInverses(diff, known); }
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
@@ -892,7 +913,7 @@ export function createRecords(cfg) {
         let cursor;
         do {
           let pg;
-          try { pg = await store.query(t.name, { filter: { field: lf.name, op: "eq", value: { urn: dropUrn } }, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+          try { pg = await store.query(t.name, { filter: linkFilter(lf, dropUrn), page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
           for (const r of pg.rows) if (r.type === t.name && !(t.name === type && r.id === dropId)) relink.push({ type: t.name, id: r.id, field: lf.name, version: r.version });
           cursor = pg.next_cursor;
         } while (cursor);
@@ -906,8 +927,9 @@ export function createRecords(cfg) {
         for (const x of relink) {
           // a record linking through two fields shows up twice: take its version from the store each time
           const cur = await store.get(x.type, x.id);
-          const upd = await api.update(chain, x.type, x.id, { [x.field]: { urn: keepUrn } }, cur.version);
-          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, upd.version));
+          const lf = defs.find((/** @type {any} */ t) => t.name === x.type).fields.find((/** @type {any} */ g) => g.name === x.field);
+          const upd = await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, cur.data[x.field], dropUrn, keepUrn) }, cur.version);
+          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, upd.data[x.field], keepUrn, dropUrn) }, upd.version));
           done.push({ type: x.type, id: x.id, field: x.field });
         }
         let kept = keep;
@@ -945,8 +967,10 @@ export function createRecords(cfg) {
       for (const x of m.relinked) {
         let cur;
         try { cur = await store.get(x.type, x.id); } catch { continue; }
-        if (!cur || cur.deleted_at || !cur.data[x.field] || cur.data[x.field].urn !== keepUrn) continue;
-        await api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, cur.version); relinked++;
+        const v = cur && !cur.deleted_at ? cur.data[x.field] : null;
+        if (!v || !(Array.isArray(v) ? v.some((/** @type {any} */ y) => y && y.urn === keepUrn) : v.urn === keepUrn)) continue;
+        const ldefs = await store.types(); const lf = ldefs.find((/** @type {any} */ t) => t.name === x.type)?.fields.find((/** @type {any} */ g) => g.name === x.field);
+        await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf || {}, v, keepUrn, dropUrn) }, cur.version); relinked++;
       }
       log.append(chain, { type: "records.unmerged", sv: 1, subject: keepUrn, corr: mergeId, data: { type: m.type, keep: m.keep, drop: m.drop, relinked, edited_since: edited } }, { decision: dk.decision });
       return { keep: await api.get(chain, m.type, m.keep), restored: restored.urn, relinked, edited_since: edited };
@@ -991,6 +1015,14 @@ export function createRecords(cfg) {
       return { rows: p.rows.map((/** @type {any} */ r) => hold(t, r)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
     },
 
+    /** The named inverses of every link, by the type they appear on: `{ contact: [{ name: "leads", label: "Leads", from_type: "lead", from_field: "contact", many: false }] }`. Read like the definitions. */
+    async inverses(chain) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      await gate(chain, "records.read", `vyre://${space}/definition/types`);
+      let defs; try { defs = await store.types(); } catch (e) { throw mapError(e); }
+      return Object.fromEntries([...inversesOf(defs)].map(([k, v]) => [k, v]));
+    },
+
     /** Everything that links to this record (the reverse of a link field), any type, newest first within a type; only rows the caller may read. At most `limit` rows in all (default 50, at most 200). */
     async linked(chain, target, o = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
@@ -1002,13 +1034,15 @@ export function createRecords(cfg) {
       let defs;
       try { defs = await store.types(); } catch (e) { throw mapError(e); }
       const rows = []; let truncated = false;
+      const inverses = inversesOf(defs);
       for (const t of defs) {
         if (o.type !== undefined && t.name !== o.type) continue;
         for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === parts[3] || x.to === undefined) && (o.field === undefined || x.name === o.field))) {
           let cursor;
           for (let pages = 0; pages < 20 && !truncated; pages++) {
-            const p = await api.query(chain, t.name, { filter: { field: lf.name, op: "eq", value: { urn: target } }, page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
-            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, record: r }); }
+            const p = await api.query(chain, t.name, { filter: linkFilter(lf, target), page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
+            const inv = (inverses.get(parts[3]) || []).find((/** @type {any} */ i) => i.from_type === t.name && i.from_field === lf.name);
+            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
             if (!p.next_cursor) break;
             cursor = p.next_cursor;
           }

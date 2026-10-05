@@ -2,10 +2,13 @@
 // Kernel type definitions and values <-> Twenty metadata and rows. Pure, no network.
 //
 // Twenty has no stage rules, no sealed values and no polymorphic links, so those are kept as plain
-// fields (a select, a JSON reference, text) and enforced by the gateway (spec 5.4). A reference to a
-// record is the urn as text, never a Twenty relation, so any store can hold it and nothing depends on
-// Twenty's joins. A sealed field holds the SealedRefValue the kernel gives it (reference and flags),
-// never a value.
+// fields (a select, a JSON reference, text) and enforced by the gateway (spec 5.4). A link to a TYPE (`to`)
+// is a real Twenty RELATION: a single link is a MANY_TO_ONE field with its named inverse (ONE_TO_MANY) on the
+// target, held in the `<field>Id` column, and a `many` link is a hidden junction object (Twenty has no native
+// many-to-many), read and written by the store. A link to ANY record (no `to`) stays the urn as text: a
+// relation needs one target. The gateway owns the rules and the ids; the ids are Twenty's own row ids, so a
+// link is the target's id and the urn is rebuilt from it. A sealed field holds the SealedRefValue the kernel
+// gives it (reference and flags), never a value.
 
 import { checkValue, isSealedRef } from "../../kernel/store/values.js";
 
@@ -36,7 +39,7 @@ export const uniqueFields = (p) => p.fields.filter((f) => f.def.unique === true)
 
 /**
  * @typedef {{ vyre: string, kind: string, twenty: string, type: string, def: any, options?: { value: string, label: string, position: number, color: string }[],
- *   settings?: any, isTitle: boolean, sealed: boolean }} FieldPlan
+ *   settings?: any, isTitle: boolean, sealed: boolean, column?: string, rel?: { to: string, many: boolean, space: string, inverseLabel: string } }} FieldPlan
  * @typedef {{ vyre: string, singular: string, plural: string, label: string, icon: string, def: any, fields: FieldPlan[],
  *   byVyre: Map<string, FieldPlan>, byTwenty: Map<string, FieldPlan>, title: string | null }} TypePlan
  */
@@ -62,7 +65,7 @@ function twentyKind(f) {
 /** @param {string} n */
 function plural(n) { return /(s|x|z|ch|sh)$/.test(n) ? n + "es" : /[^aeiou]y$/.test(n) ? n.slice(0, -1) + "ies" : n + "s"; }
 
-/** @param {any} def a kernel TypeDefinition @param {{ plural?: string }} [hint] @returns {TypePlan} */
+/** @param {any} def a kernel TypeDefinition @param {{ plural?: string, space?: string, inverseLabels?: Map<string, string> }} [hint] `space` is the Space's id: a link's urn is rebuilt from the target's row id and it @returns {TypePlan} */
 export function planType(def, hint = {}) {
   if (!def || typeof def.name !== "string" || !/^[a-z][a-z0-9_-]*$/.test(def.name)) throw new PlanError("invalid", "A type name is lowercase letters, digits, hyphens and underscores");
   let singular = safe(camel(def.name));
@@ -77,18 +80,22 @@ export function planType(def, hint = {}) {
     const isTitle = f.name === title;
     const tw = isTitle ? "name" : safe(camel(f.name));
     if (!isTitle && SYSTEM_FIELDS.has(tw)) throw new PlanError("invalid", `Field "${f.name}" of ${def.name} collides with a name Twenty uses on every object`);
-    const k = isTitle ? { type: "TEXT" } : twentyKind(f);
+    // a link to a type is a relation (or, for a list, a junction); a link to any record, and every other kind, is a plain column
+    const rel = !isTitle && f.kind === "link" && typeof f.to === "string" && f.to ? { to: f.to, many: f.many === true, space: hint.space ?? "", inverseLabel: String(f.inverse && f.inverse.label ? f.inverse.label : hint.inverseLabels?.get(`${def.name}.${f.name}`) ?? `${def.label ?? def.name} ${f.label ?? f.name}`) } : null;
+    const k = rel ? { type: rel.many ? "JUNCTION" : "RELATION" } : isTitle ? { type: "TEXT" } : twentyKind(f);
+    if (rel && !rel.space) throw new PlanError("invalid", `${def.name}.${f.name} is a link: the plan needs the Space's id`);
     if (k.options) { const vals = k.options.map((o) => o.value); if (new Set(vals).size !== vals.length || vals.some((v) => !v)) throw new PlanError("invalid", `The options of ${def.name}.${f.name} are not distinct once written as Twenty values`); }
-    fields.push({ vyre: f.name, kind: f.kind, twenty: tw, type: k.type, def: f, options: k.options, settings: k.settings, isTitle, sealed: f.kind === "sealed" });
+    fields.push({ vyre: f.name, kind: f.kind, twenty: tw, type: k.type, def: f, options: k.options, settings: k.settings, isTitle, sealed: f.kind === "sealed", ...(rel ? { rel, ...(rel.many ? {} : { column: `${tw}Id` }) } : {}) });
   }
   const byTwenty = new Map(fields.map((f) => [f.twenty, f]));
   if (byTwenty.size !== fields.length) throw new PlanError("invalid", `Two fields of ${def.name} map to the same Twenty name`);
+  for (const f of fields) if (f.column && (byTwenty.has(f.column) || SYSTEM_FIELDS.has(f.column))) throw new PlanError("invalid", `The link ${def.name}.${f.vyre} would use the column ${f.column}, which another field of ${def.name} already has`);
   return { vyre: def.name, singular, plural: pl, label: def.label ?? def.name, icon: def.icon ?? "IconBox", def, fields, byVyre: new Map(fields.map((f) => [f.vyre, f])), byTwenty, title };
 }
 
 /** The selection set. @param {TypePlan} p */
 export function selection(p) {
-  return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...(uniqueFields(p).length ? [HELD_FIELD] : []), ...p.fields.map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.twenty))].join(" ");
+  return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...(uniqueFields(p).length ? [HELD_FIELD] : []), ...p.fields.filter((f) => f.type !== "JUNCTION").map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.type === "RELATION" ? /** @type {string} */ (f.column) : f.twenty))].join(" ");
 }
 
 /**
@@ -140,10 +147,25 @@ export function fromTwenty(f, v) {
   }
 }
 
+/** The row id a link value names, checked against the Space and the link's target type. @param {FieldPlan} f @param {any} v */
+export function idOfLink(f, v) {
+  const rel = /** @type {NonNullable<FieldPlan["rel"]>} */ (f.rel);
+  const parts = v && typeof v.urn === "string" ? v.urn.split("/") : [];
+  if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== rel.space || parts[3] !== rel.to || !/^[0-9a-f-]{36}$/.test(parts[4])) throw new PlanError("invalid", `${f.vyre} must name a ${rel.to} of this Space`);
+  return parts[4];
+}
+/** The urn of the row a link's column holds. @param {FieldPlan} f @param {string} id */
+export const urnOfLink = (f, id) => { const rel = /** @type {NonNullable<FieldPlan["rel"]>} */ (f.rel); return `vyre://${rel.space}/${rel.to}/${id}`; };
+
 /** @param {TypePlan} p @param {Record<string, any>} patch null clears a field @returns {Record<string, any>} */
 export function toInput(p, patch) {
   /** @type {Record<string, any>} */ const out = {};
-  for (const [k, v] of Object.entries(patch)) { const f = /** @type {FieldPlan} */ (p.byVyre.get(k)); out[f.twenty] = toTwenty(f, v); }
+  for (const [k, v] of Object.entries(patch)) {
+    const f = /** @type {FieldPlan} */ (p.byVyre.get(k));
+    if (f.type === "JUNCTION") continue; // a list link is written by the store, row by row in its junction
+    if (f.type === "RELATION") { out[/** @type {string} */ (f.column)] = v === null || v === undefined ? null : idOfLink(f, v); continue; }
+    out[f.twenty] = toTwenty(f, v);
+  }
   return out;
 }
 
@@ -152,7 +174,11 @@ export function fromRow(p, row) {
   // a removed record shows the unique values it held
   if (row.deletedAt && row[HELD_FIELD] && typeof row[HELD_FIELD] === "object") row = { ...row, ...row[HELD_FIELD] };
   /** @type {Record<string, any>} */ const data = {};
-  for (const f of p.fields) { const v = fromTwenty(f, row[f.twenty]); if (v !== undefined) data[f.vyre] = v; }
+  for (const f of p.fields) {
+    if (f.type === "RELATION") { const id = row[/** @type {string} */ (f.column)]; if (id) data[f.vyre] = { urn: urnOfLink(f, id) }; continue; }
+    if (f.type === "JUNCTION") { const l = row.__many && row.__many[f.vyre]; if (Array.isArray(l) && l.length) data[f.vyre] = l.map((/** @type {string} */ id) => ({ urn: urnOfLink(f, id) })); continue; }
+    const v = fromTwenty(f, row[f.twenty]); if (v !== undefined) data[f.vyre] = v;
+  }
   const rec = { type: p.vyre, id: row.id, version: row[VERSION_FIELD] == null ? 1 : Number(row[VERSION_FIELD]), data, created_at: Date.parse(row.createdAt), updated_at: Date.parse(row.updatedAt), ...(row.deletedAt ? { deleted_at: Date.parse(row.deletedAt) } : {}) };
   return /** @type {any} */ (rec);
 }
@@ -176,6 +202,18 @@ export function toFilter(p, f) {
   const fp = p.byVyre.get(f.field);
   if (!fp) throw new PlanError("unknown_field", `${p.vyre} has no field ${f.field}`);
   if (fp.sealed) throw new PlanError("invalid", `${p.vyre}.${f.field} is sealed and cannot be filtered`);
+  if (fp.type === "JUNCTION") throw new PlanError("invalid", `${p.vyre}.${f.field} is a list of links: the store answers a filter on it from its junction`);
+  if (fp.type === "RELATION") {
+    const c = /** @type {string} */ (fp.column);
+    const idOf = (/** @type {any} */ x) => idOfLink(fp, x);
+    if (f.op === "is_null") return { [c]: { is: "NULL" } };
+    if (f.op === "eq" || f.op === "ne") {
+      if (f.value === null || f.value === undefined) return { [c]: { is: f.op === "eq" ? "NULL" : "NOT_NULL" } };
+      return { [c]: { [f.op === "eq" ? "eq" : "neq"]: idOf(f.value) } };
+    }
+    if (f.op === "in") { if (!Array.isArray(f.value)) throw new PlanError("invalid", "in takes a list"); return { [c]: { in: f.value.map(idOf) } }; }
+    throw new PlanError("invalid", `${fp.kind} fields support eq, ne, in and is_null only`);
+  }
   const t = fp.twenty;
   const one = (/** @type {any} */ x) => toTwenty(fp, x);
   if (f.op === "is_null") return fp.type === "CURRENCY" ? { [t]: { amountMicros: { is: "NULL" } } } : fp.type === "RAW_JSON" ? { [t]: { is: "NULL" } } : { [t]: { is: "NULL" } };
@@ -210,7 +248,8 @@ export function toOrderBy(p, sort) {
     if (s.field === "version") { out.push({ [VERSION_FIELD]: dir }); continue; }
     const f = p.byVyre.get(s.field);
     if (!f) throw new PlanError("unknown_field", `${p.vyre} has no field ${s.field}`);
-    if (f.sealed || f.type === "RAW_JSON" || f.type === "MULTI_SELECT") throw new PlanError("invalid", `${p.vyre}.${s.field} cannot be sorted`);
+    if (f.sealed || f.type === "RAW_JSON" || f.type === "MULTI_SELECT" || f.type === "JUNCTION") throw new PlanError("invalid", `${p.vyre}.${s.field} cannot be sorted`);
+    if (f.type === "RELATION") { out.push({ [/** @type {string} */ (f.column)]: dir }); continue; }
     out.push({ [f.twenty]: f.type === "CURRENCY" ? { amountMicros: dir } : dir });
   }
   if (!out.some((o) => "id" in o)) out.push({ id: "AscNullsFirst" });

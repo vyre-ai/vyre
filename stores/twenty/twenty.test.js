@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { conformance, CONTACT } from "../../kernel/conformance/suite.js";
+import { conformance, CONTACT, SUITE_SPACE } from "../../kernel/conformance/suite.js";
 import { mintUuid } from "../../kernel/core/ids.js";
 import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
@@ -22,7 +22,7 @@ after(async () => { await fake.stop(); for (const d of dirs) fs.rmSync(d, { recu
 async function boot({ dir = tmp(), secret = crypto.randomBytes(16).toString("hex"), keep = false } = {}) {
   if (!keep) fake.reset();
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
-  const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
+  const store = createTwentyStore({ client, space: SUITE_SPACE, dir, webhookSecret: secret, graceMs: 0 });
   fake.deliver = async (payload, headers, raw) => { await store.handleWebhook(Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), raw); };
   return { store, client, dir, secret };
 }
@@ -168,4 +168,59 @@ test("attr_filter: a member's list and totals are filtered inside Twenty by the 
   b.store.mirrorReady.delete("contact");
   await assert.rejects(() => b.store.query("contact", { attr_filter: { urn_prefix: prefix, any: [{ project: "p1" }] }, page: { limit: 5 } }), { code: "unsupported" });
   void a1; void a2;
+});
+
+// ---- links as relations (plan item 9) --------------------------------------------------------------
+const LEAD_OLD = { name: "lead", label: "Lead", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "contact", kind: "link", label: "Contact" }] };
+const LEAD_NEW = { name: "lead", label: "Lead", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "contact", kind: "link", label: "Contact", to: "contact", inverse: { name: "leads", label: "Leads" } }] };
+const cu = (id) => `vyre://${SUITE_SPACE}/contact/${id}`;
+
+test("twenty: a link to a type is a Twenty relation (the join column and the inverse on the target), a link to any record stays text, and a list link has a junction object", async () => {
+  const b = await boot();
+  const t = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "client", kind: "link", label: "Client", to: "contact", inverse: { name: "matters", label: "Matters" } }, { name: "about", kind: "link", label: "About" }, { name: "parties", kind: "link", label: "Parties", to: "contact", many: true, inverse: { name: "matters_parties", label: "Matters (Parties)" } }] };
+  await b.store.define({ add_types: [CONTACT, t] });
+  const f = (obj) => fake.objects.get(obj).fields;
+  assert.equal(f("matter").get("client").type, "RELATION");
+  assert.equal(f("matter").get("clientId").type, "UUID", "the join column");
+  assert.equal(f("contact").get("matters").type, "RELATION", "the named inverse is on the target");
+  assert.equal(f("matter").get("about").type, "TEXT", "a link to any record stays text");
+  assert.equal(f("matter").has("parties"), false, "a list link is no column on the record");
+  const jn = fake.objects.get("vyreLinkMatterParties");
+  assert.ok(jn && jn.fields.get("fromRec").type === "RELATION" && jn.fields.get("toRec").type === "RELATION", "the junction object");
+  const c = await b.store.create("contact", mintUuid(), { name: "Jane" });
+  const m = await b.store.create("matter", mintUuid(), { title: "x", client: { urn: cu(c.id) }, about: { urn: cu(c.id) }, parties: [{ urn: cu(c.id) }] });
+  assert.equal(fake.rows.get("matter").get(m.id).clientId, c.id, "the column holds the target's row id, not a urn");
+  assert.equal(fake.rows.get("vyreLinkMatterParties").size, 1);
+  assert.deepEqual((await b.store.get("matter", m.id)).data.parties, [{ urn: cu(c.id) }]);
+  // a link to a record that is not there is refused (the relation's foreign key), and a urn of another Space or type never gets that far
+  await assert.rejects(() => b.store.create("matter", mintUuid(), { title: "y", client: { urn: cu(mintUuid()) } }), { code: "invalid", message: /does not exist/ });
+  await assert.rejects(() => b.store.create("matter", mintUuid(), { title: "y", client: { urn: `vyre://spc_other/contact/${c.id}` } }), { code: "invalid" });
+  // destroying a record for good takes its links out of the junctions
+  await b.store.destroy("contact", c.id);
+  assert.equal(fake.rows.get("vyreLinkMatterParties").size, 0);
+});
+
+test("twenty: links stored as urn text move onto relations when the type is defined with a target: carried over, a dangling urn counted, the text field gone, and nothing reads as an outside edit", async () => {
+  const b = await boot();
+  await b.store.define({ add_types: [CONTACT, LEAD_OLD] });
+  const c1 = await b.store.create("contact", mintUuid(), { name: "A" }), c2 = await b.store.create("contact", mintUuid(), { name: "B" });
+  const l1 = await b.store.create("lead", mintUuid(), { title: "1", contact: { urn: cu(c1.id) } });
+  const l2 = await b.store.create("lead", mintUuid(), { title: "2", contact: { urn: cu(c2.id) } });
+  const dangling = await b.store.create("lead", mintUuid(), { title: "3", contact: { urn: cu(mintUuid()) } });
+  const none = await b.store.create("lead", mintUuid(), { title: "4" });
+  await b.store.remove("lead", l2.id, 1);
+  const changesBefore = (await b.store.changes(null, 1000)).entries.length;
+  const r = await b.store.define({ change_types: [LEAD_NEW] });
+  assert.ok(r.changes.some((x) => /moved links lead\.contact to a relation \(2 carried over, 1 named a record that is gone\)/.test(x)), r.changes.join("; "));
+  const lead = fake.objects.get("lead").fields;
+  assert.equal(lead.get("contact").type, "RELATION"); assert.equal(lead.has("contactOld"), false, "the text field is dropped");
+  assert.deepEqual((await b.store.get("lead", l1.id)).data.contact, { urn: cu(c1.id) });
+  assert.deepEqual((await b.store.get("lead", dangling.id)).data.contact, undefined);
+  assert.deepEqual((await b.store.get("lead", none.id)).data.contact, undefined);
+  assert.deepEqual((await b.store.get("lead", l2.id, { include_deleted: true })).data.contact, { urn: cu(c2.id) }, "a removed record's link is carried too");
+  assert.deepEqual((await b.store.query("lead", { filter: { field: "contact", op: "eq", value: { urn: cu(c1.id) } }, page: { limit: 10 } })).rows.map((x) => x.id), [l1.id]);
+  assert.equal((await b.store.changes(null, 1000)).entries.length, changesBefore, "the move is not an edit: no row got a new version or a change line");
+  assert.equal((await b.store.get("lead", l1.id)).version, 1);
+  // run again: nothing to do
+  assert.equal((await b.store.upgradeLinks()).applied, false);
 });

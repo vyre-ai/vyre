@@ -126,6 +126,8 @@ export function createStoreFor(cfg) {
     const store = createTwentyStore({ space: name, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     const tc = Date.now(); await store.define({ add_types: [...CORE_TYPES] }); log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
+    // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
+    { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name }), { mode: 0o600 });
     log(`store for ${space}: Twenty ready`);

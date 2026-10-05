@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel,stores): links are real relations (plan item 9). A link to a type gets a named inverse shown on the other record and may be a list (`many`); the gateway checks that the target is a live record of its type; Twenty holds a link as a RELATION field (a list through a hidden junction object) and the built-in store as before, and the conformance suite (revision 6) holds them to the same answers. Links stored as urn text move onto relations when a Space's store opens, without changing any record's version.
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
