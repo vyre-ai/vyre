@@ -8586,6 +8586,7 @@ Say something in a group chat (a stream session with several people and assistan
   - `mode` "steer" or "queue"
   - `name` string
   - `people` list of any
+  - `reply_to` string
   - `surface` string
   - `text` string
   - `to` list of string

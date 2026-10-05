@@ -317,6 +317,22 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   };
   const sessionOf = (/** @type {any} */ i) => { const s = String(i.chat || ""); if (!ID.test(s)) throw fail("bad_input", "chat must be a chat id"); return s; };
 
+  /**
+   * What a reply quotes: the message it answers, read from this chat's own log (never from the caller), as { message, author, text }. A person's message gives its text; an assistant's gives what it said, whole
+   * messages joined. The text is the first lines, cut to 140 characters. A private message (enc) cannot be quoted, and one the log no longer holds is refused: nothing is made up. @param {string} grp @param {string} id
+   */
+  function quoteOf(grp, id) {
+    const fr = logs.get(grp).read(0);
+    const mine = fr.filter(f => f.data && f.data.message === id && (f.type === "chat.user-message" || f.type === "chat.text-delta" || f.type === "chat.text-done"));
+    if (!mine.length) throw fail("not_found", "that message is not in this chat");
+    const first = mine.find(f => f.author) || mine[0];
+    const um = mine.filter(f => f.type === "chat.user-message").pop();
+    if (um && um.data.enc !== undefined) throw fail("bad_input", "a private message cannot be quoted");
+    const text = um ? String(um.data.text || "") : mine.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => String(f.data.text || "")).join("");
+    const flat = text.replace(/\s+/g, " ").trim();
+    return { message: id, author: String(first.author || ""), text: flat.length > 140 ? `${flat.slice(0, 139)}…` : flat };
+  }
+
   // ---- live presence: who is typing, and what an assistant is doing (ephemeral frames, never logged or replayed) ----------------------------------------------------------------------
 
   /** @type {Map<string, ReturnType<typeof presenceFor>>} */ const presences = new Map();
@@ -819,6 +835,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const slot = g.bots.get(who);
         if (slot) { slot.kind = "run"; save(slot); g.dflt = who; }
       }
+      // a quoted reply (WhatsApp-style, same timeline): the quote is read from this chat's log; the model is told what it answers
+      const quote = typeof i.reply_to === "string" && /^[^\s]{1,300}$/.test(i.reply_to) ? quoteOf(grp, i.reply_to) : null;
+      if (i.reply_to !== undefined && !quote) throw fail("bad_input", "reply_to is a message id");
       const parts = participants(g);
       const mentions = mentionedIn({ participants: parts, text, mentions: i.mentions });
       /** @type {string[]} */ let to;
@@ -848,7 +867,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         kid = String((await append(mine.token, { text })).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
-      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}) }, { author, message });
+      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}) }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));
@@ -857,7 +876,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const surface = typeof i.surface === "string" ? i.surface : "deck";
       const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text, asker: author, answer: a.message, surface, mode };
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text, asker: author, answer: a.message, surface, mode };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
         q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode);
         return row;

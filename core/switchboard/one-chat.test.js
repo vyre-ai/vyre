@@ -362,3 +362,37 @@ test("a message sent in the chat while its run works joins the running turn (ste
   assert.equal((await owner("threads.chat-stop", { chat, slot: "model:claude/nonesuch#9" })).error.code, "not_found");
   await until(async () => seen.some(p => p.state === "idle" && p.who.startsWith("model:")), "the slot's line to clear when the turn ends");
 });
+
+test("a quoted reply stays in the chat's timeline: the frame carries reply_to and a short quote the box fills from the log, the model is told what it answers, and a message that is not in the chat is refused", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const owner = kernelCaller(d, root);
+  const chat = (await owner("work.chat.create", { title: "Quotes" })).data.chat;
+  const logs = d.registry.modules.get("stream").handle.logs;
+  assert.ok((await owner("stream.send", { chat, text: "hello there" })).data);
+  await until(async () => logs.get(chat).read(0).some(f => f.type === "chat.text-done"), "the first reply", 60_000);
+  const reply = logs.get(chat).read(0).find(f => f.type === "chat.text-done");
+  assert.equal((await owner("stream.send", { chat, text: "and why?", reply_to: "nonesuch-message" })).error.code, "not_found");
+  const sent = await owner("stream.send", { chat, text: "and why?", reply_to: reply.data.message });
+  assert.ok(sent.data, JSON.stringify(sent.error));
+  const frame = logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and why?").pop();
+  assert.equal(frame.data.reply_to, reply.data.message);
+  assert.deepEqual(frame.data.quote, { message: reply.data.message, author: reply.author, text: "echo: hello there" });
+  assert.match(reply.author, /^model:/);
+  // the model got the quote as context; the person's own words stay as typed in the chat
+  const thread = (await owner("work.chat.get", { chat })).data.slots[0].thread;
+  await until(async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.sent" && /Replying to .*: "echo: hello there"\s+and why\?/.test(String(e.payload.text))), "the run to be told what it answers", 30_000);
+  // quoting a person's own message works too
+  const mine = logs.get(chat).read(0).find(f => f.type === "chat.user-message" && f.data.text === "hello there");
+  const again = await owner("stream.send", { chat, text: "I mean the first one", reply_to: mine.data.message });
+  assert.ok(again.data, JSON.stringify(again.error));
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "I mean the first one").pop().data.quote.text, "hello there");
+});
