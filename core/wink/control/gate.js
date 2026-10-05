@@ -19,6 +19,9 @@
 //                      connections. Budgets are per address, never one global budget an outsider can spend.
 //   reactive block     reportLog(line) takes Headscale's own log; an address that keeps failing is blocked.
 //   no banner          no Server header, no version, no Node text; every refusal is the same bytes.
+//   public ingress     with `ingress` set (the public gate only) two more things, by exact shape, reach two loopback listeners of this box and nothing else:
+//                      POST /hooks/<route> (a signed webhook, 256 KB at most, its signature checked at the home by core/hooks) and GET|HEAD /s/<token> (a public
+//                      share link, core/artifacts/share-server.js). No query, no upgrade, no other path or method: the same 404 bytes as everything else.
 //
 // It holds no secret except its own TLS key, runs under its own uid (gate-main.js drops privileges
 // after binding), and talks to Headscale on a loopback port.
@@ -67,6 +70,15 @@ function inList(ip, list) {
   return false;
 }
 
+/** The two public ingress shapes. Exact: no decoding, no query, no normalisation. */
+const HOOK_PATH = /^\/hooks\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const SHARE_PATH = /^\/s\/[A-Za-z0-9_-]{22,64}\/?$/;
+const HOOK_TYPES = new Set(["application/json", "application/x-www-form-urlencoded"]);
+export const INGRESS_BODY_LIMIT = 256 * 1024;
+/** Per address, per window: a public link or a webhook sender never needs more. */
+const INGRESS_PER_WINDOW = 120;
+const HOP = /^(connection|keep-alive|upgrade|te|trailer|transfer-encoding|proxy-.*|host)$/i;
+
 const SPOOF = /^(x-forwarded-.*|forwarded|true-client-ip|x-real-ip|cf-connecting-ip|x-client-ip|x-cluster-client-ip|fastly-client-ip|via|proxy-.*|x-original-.*)$/i;
 
 /**
@@ -90,6 +102,7 @@ export function parseHeadscaleLog(line) {
  *   upstream: { host?: string, port: number, tls?: boolean, pin?: string },
  *   derp?: boolean,
  *   forwarder?: { trust: string[], header: string },
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404)
  *   limits?: Partial<{ maxHeaderBytes: number, headersMs: number, requestMs: number, idleMs: number, upgradedIdleMs: number,
  *     handshakeMs: number, maxBodyBytes: number, windowMs: number, upgradesPerWindow: number, maxConcurrentUpgrades: number,
  *     maxConcurrentDerp: number, maxConnsPerAddr: number, maxConns: number, failThreshold: number, failWindowMs: number, blockMs: number }>,
@@ -158,6 +171,54 @@ export function createGate(o) {
     if (derpOn && p === "/derp" && upgrade && m === "GET" && up === "derp" && !query) return "derp";
     if (derpOn && p === "/derp/probe" && !upgrade && (m === "GET" || m === "HEAD") && !query) return "probe";
     return null;
+  }
+
+  /** Which public ingress shape a plain request is, or null. Exact match on the raw path; a hook needs a declared body of the right size and type, a share link has none. @param {import("node:http").IncomingMessage} req @returns {"hooks"|"share"|null} */
+  function ingressKind(req) {
+    if (!o.ingress) return null;
+    const url = String(req.url || "");
+    if (url.includes("?") || req.headers.upgrade || req.headers["transfer-encoding"] || req.headers.expect) return null;
+    const m = req.method, cl = req.headers["content-length"];
+    if (HOOK_PATH.test(url) && url.length <= 7 + 40 && m === "POST") {
+      const n = /^\d{1,7}$/.test(String(cl)) ? Number(cl) : -1;
+      const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+      return n >= 0 && n <= INGRESS_BODY_LIMIT && HOOK_TYPES.has(type) ? "hooks" : null;
+    }
+    if (SHARE_PATH.test(url) && (m === "GET" || m === "HEAD")) return cl === undefined || cl === "0" ? "share" : null;
+    return null;
+  }
+
+  /** Carry one ingress request to its loopback listener and the answer back. The head is the client's minus every spoofable and hop-by-hop header, plus the real address. */
+  async function ingress(/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res, /** @type {"hooks"|"share"} */ kind, /** @type {string} */ addr) {
+    const sock = req.socket, k = addrKey(addr), t = now();
+    const w = (windows.get("i:" + k) || []).filter(x => x > t - L.windowMs);
+    if (w.length >= INGRESS_PER_WINDOW) { stats.limited++; emit({ type: "limit", addr: k, what: "ingress" }); req.resume(); refuse(sock, TOO_MANY); return; }
+    w.push(t); windows.set("i:" + k, w);
+    let port = null;
+    try { port = await o.ingress[kind](); } catch { port = null; }
+    if (!Number.isInteger(port) || /** @type {number} */ (port) < 1) { stats.notFound++; emit({ type: "notfound", addr: k }); req.resume(); refuse(sock, NOT_FOUND); return; }
+    /** @type {Record<string, string>} */ const head = {};
+    const raw = req.rawHeaders;
+    for (let i = 0; i < raw.length; i += 2) {
+      const n = raw[i], low = n.toLowerCase();
+      if (SPOOF.test(low) || HOP.test(low) || (fwd && low === fwd.header)) continue;
+      head[n] = head[n] === undefined ? raw[i + 1] : head[n] + ", " + raw[i + 1];
+    }
+    head["X-Forwarded-For"] = addr; head["X-Real-IP"] = addr; head["Connection"] = "close";
+    stats.forwarded++;
+    const up = http.request({ host: "127.0.0.1", port: /** @type {number} */ (port), method: req.method, path: req.url, headers: head, agent: false, timeout: 20_000 }, ures => {
+      const h = { ...ures.headers };
+      for (const n of Object.keys(h)) if (HOP.test(n)) delete h[n];
+      delete h.date; delete h.server;
+      res.writeHead(ures.statusCode || 502, h);
+      ures.pipe(res);
+      ures.on("error", () => res.destroy());
+      res.on("close", () => ures.destroy());
+    });
+    up.on("timeout", () => up.destroy());
+    up.on("error", () => { stats.timeouts++; if (!res.headersSent) refuse(sock, UNAVAILABLE); else sock.destroy(); });
+    req.on("aborted", () => up.destroy());
+    if (kind === "hooks") req.pipe(up); else up.end();
   }
 
   /** The request head for the upstream: the client's headers minus every spoofable one, plus ours. */
@@ -233,6 +294,8 @@ export function createGate(o) {
     const kind = classify(req, false);
     const cl = Number(req.headers["content-length"] || 0);
     if (isBlocked(addr)) { stats.blocked++; sock.destroy(); return; }
+    const ing = kind ? null : ingressKind(req);
+    if (ing) { ingress(req, res, ing, addr).catch(() => { try { sock.destroy(); } catch { /* gone */ } }); return; }
     if (!kind || req.headers["transfer-encoding"] || cl > L.maxBodyBytes || req.headers.upgrade) {
       stats.notFound++; emit({ type: "notfound", addr: addrKey(addr) });
       refuse(sock, NOT_FOUND); return;

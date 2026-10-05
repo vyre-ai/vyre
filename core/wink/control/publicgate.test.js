@@ -141,3 +141,33 @@ test("the staging and test-CA choices", async () => {
   assert.equal(w2.issued[0].directory, "https://localhost:14000/dir");
   await g2.stop();
 });
+
+test("public ingress: the gate gets the two loopback ports, and the origin links use appears only once the name points here, and goes with the gate", async () => {
+  const w = world();
+  const ingress = { hooks: () => 7310, share: () => 7311 };
+  const told = /** @type {(string | null)[]} */ ([]);
+  let reachable = false;
+  const g = w.mk({ ingress, onIngress: (/** @type {string | null} */ b) => told.push(b), reachable: () => reachable });
+  await g.start();
+  assert.equal(w.gates[0].o.ingress, ingress, "the TLS gate was given the ingress ports");
+  assert.equal(g.ingressBase(), null, "the gate is up but the name has not been published: no origin yet");
+  assert.deepEqual(told, []);
+  reachable = true;
+  await g.reachChanged();
+  assert.equal(g.ingressBase(), "https://alex.vyre.run:7443");
+  assert.deepEqual(told, ["https://alex.vyre.run:7443"]);
+  await g.reachChanged();
+  assert.equal(told.length, 1, "told once");
+  await g.stop();
+  assert.deepEqual(told, ["https://alex.vyre.run:7443", null]);
+  assert.equal(g.ingressBase(), null);
+});
+
+test("public ingress: a gate with no ingress never has an origin and passes nothing to the TLS gate", async () => {
+  const w = world();
+  const g = w.mk({ publish: true });
+  await g.start();
+  assert.equal(w.gates[0].o.ingress, undefined);
+  assert.equal(g.ingressBase(), null);
+  await g.stop();
+});

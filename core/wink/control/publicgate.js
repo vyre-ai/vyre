@@ -35,6 +35,8 @@ const DAY = 86_400_000;
  *   upstream: { port: number },                 the Headscale the loopback gate already fronts
  *   listen?: { host?: string, port?: number },  default 0.0.0.0 and config port
  *   acme?: "production" | "staging" | string,   a name from acme.DIRECTORIES or a directory URL (a test CA)
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   public webhooks and share links (control/gate.js): the loopback ports to carry them to
+ *   onIngress?: (base: string | null) => void,   told the https origin links and webhooks use when it appears (the gate is up and the name points here) and null when it goes
  *   reachable?: () => boolean,                  has the outside check proved the port answers
  *   publish?: boolean,                          publish the address without waiting for the outside check (the person's word: this box is directly on the internet)
  *   log?: (m: string) => void,
@@ -84,9 +86,18 @@ export function createPublicGate(o) {
     const name = o.name();
     if (!name || !gate || published === name) return;
     if (!(o.publish === true || (o.reachable && o.reachable()))) return;
-    try { await o.directory.publish(name); published = name; log(`wink net: ${name}.${domain} points at this box`); }
+    try { await o.directory.publish(name); published = name; log(`wink net: ${name}.${domain} points at this box`); told(); }
     catch (e) { log(`wink net: could not publish the address: ${/** @type {Error} */ (e).message}`); }
   }
+
+  /** Tell the owner of the public links the origin they use, once, whenever it changes. */
+  let toldBase = /** @type {string | null} */ (null);
+  const told = () => {
+    const b = o.ingress && gate && fqdn && at && published ? `https://${fqdn}:${at.port}` : null;
+    if (b === toldBase) return;
+    toldBase = b;
+    try { if (o.onIngress) o.onIngress(b); } catch { /* a listener never breaks the gate */ }
+  };
 
   async function start() {
     if (stopped) return status();
@@ -97,7 +108,7 @@ export function createPublicGate(o) {
       const c = await ensureCert(name, fqdn);
       expires = c.expires;
       if (!gate) {
-        gate = D.createGate({ listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port },
+        gate = D.createGate({ listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port }, ...(o.ingress ? { ingress: o.ingress } : {}),
           onEvent: (/** @type {any} */ e) => { if (e && e.type !== "accept") log(`public gate: ${e.type}${e.addr ? " " + e.addr : ""}`); } });
         at = await gate.listen();
       } else if (c.renewed) gate.setTls({ cert: c.cert, key: c.key });
@@ -123,7 +134,7 @@ export function createPublicGate(o) {
     return {
       state: st.state, why: st.why, since: st.since,
       name: fqdn, port: at ? at.port : null, expires: expires || null,
-      pin: gate && gate.pin ? gate.pin : null, published: Boolean(published),
+      pin: gate && gate.pin ? gate.pin : null, published: Boolean(published), ingress: Boolean(o.ingress),
     };
   }
 
@@ -131,11 +142,13 @@ export function createPublicGate(o) {
     start, status,
     /** The reach helper has a new answer: publish now if the port just proved reachable. */
     reachChanged() { return publishIfReady(); },
+    /** The https origin public links and webhooks use (https://<name>.vyre.run:<port>), or null until the gate is up with a certificate AND the name points here. */
+    ingressBase() { return o.ingress && gate && fqdn && at && published ? `https://${fqdn}:${at.port}` : null; },
     /** The address devices dial, or null while there is none (no name, no certificate yet). */
     controlUrl() { return gate && fqdn && at ? `https://${fqdn}:${at.port}` : null; },
     pin() { return gate && gate.pin ? gate.pin : null; },
     port() { return at ? at.port : null; },
-    async stop() { stopped = true; if (timer) clearTimeout(timer); set("stopped"); if (gate) { const g = gate; gate = null; await g.close(); } },
+    async stop() { stopped = true; if (timer) clearTimeout(timer); set("stopped"); if (gate) { const g = gate; gate = null; await g.close(); } told(); },
   };
 }
 

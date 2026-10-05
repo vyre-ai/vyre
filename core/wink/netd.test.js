@@ -195,7 +195,7 @@ function fakePublic(/** @type {{ published?: boolean, state?: string }} */ { pub
     const g = { o, started: false, stopped: false,
       async start() { g.started = true; return g.status(); },
       status: () => ({ state: o.name() ? state : "no-name", why: o.name() ? null : "this box has no name yet", name: "alex.vyre.run", port: 7443, expires: 1, pin: "sha256/abc", published }),
-      controlUrl: () => "https://alex.vyre.run:7443", pin: () => "sha256/abc", reachChanged: async () => {}, async stop() { g.stopped = true; } };
+      controlUrl: () => "https://alex.vyre.run:7443", ingressBase: () => (o.ingress && published && state === "up" ? "https://alex.vyre.run:7443" : null), pin: () => "sha256/abc", reachChanged: async () => {}, async stop() { g.stopped = true; } };
     made.push(g); return g;
   };
   return { made, createPublicGate };
@@ -269,4 +269,34 @@ test("public gate: claiming a name restarts the network so the address follows i
   await n.nameChanged();
   assert.equal(n.status().controlUrl, "https://alex.vyre.run:7443");
   await n.stop();
+});
+
+test("public ingress: netd hands the gate the two loopback ports and reports the origin links use, in plain states", async () => {
+  const ports = { hooks: () => 7310, share: () => 7311 };
+  const told = /** @type {any[]} */ ([]);
+  const f = fakes(), p = fakePublic({ published: false });
+  const n = createNetd(base(f, { name: () => "alex", directory: dirStub, ingress: ports, onIngress: (/** @type {any} */ b) => told.push(b), deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  assert.equal(p.made[0].o.ingress, ports);
+  assert.equal(typeof p.made[0].o.onIngress, "function");
+  p.made[0].o.onIngress("https://alex.vyre.run:7443");
+  assert.deepEqual(told, ["https://alex.vyre.run:7443"]);
+  const waiting = n.ingress();
+  assert.equal(waiting.state, "waiting"); assert.equal(waiting.base, null); assert.match(String(waiting.why), /does not point at it yet/);
+  await n.stop();
+  const f2 = fakes(), p2 = fakePublic({ published: true });
+  const up = createNetd(base(f2, { name: () => "alex", directory: dirStub, ingress: ports, deps: { ...f2.deps, createPublicGate: p2.createPublicGate } }));
+  await up.start();
+  assert.deepEqual(up.ingress(), { state: "up", base: "https://alex.vyre.run:7443" });
+  await up.stop();
+  const f3 = fakes();
+  const none = createNetd(base(f3, { name: () => null, directory: dirStub, ingress: ports, deps: { ...f3.deps, createPublicGate: fakePublic().createPublicGate } }));
+  await none.start();
+  assert.equal(none.ingress().state, "no-name");
+  await none.stop();
+  const f4 = fakes();
+  const unwired = createNetd(base(f4, { name: () => "alex", directory: dirStub, deps: { ...f4.deps, createPublicGate: fakePublic().createPublicGate } }));
+  await unwired.start();
+  assert.equal(unwired.ingress().state, "off");
+  await unwired.stop();
 });

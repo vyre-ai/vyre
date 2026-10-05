@@ -72,6 +72,8 @@ export function findBinaries(env = process.env) {
  *   name?: () => string | null,                     this box's claimed name ("alex" for alex.vyre.run), for the public gate; none means a loopback-only network
  *   directory?: { acme(token: string): Promise<any>, acmeClear(): Promise<any>, publish(): Promise<any> },   the name directory's DNS calls for this box (names.directory.*)
  *   domain?: string,                                the name's zone (default vyre.run)
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   the loopback ports of the hooks listener and the share server: the public gate carries webhooks and share links to them
+ *   onIngress?: (base: string | null) => void,      the public https origin for links and webhooks appeared (or went)
  *   publicGate?: boolean,                           false keeps the network loopback-only whatever the name
  *   certDeps?: any,                                 test seam for the public gate ({ deps: { createGate, certs, acme, waitDns } })
  *   gatePort?: number,                              a fixed port for the gate behind a configured control address (config wink.gatePort; a router forward or a test names it); default a free one
@@ -137,7 +139,7 @@ export function createNetd(o) {
     if (!publicUrl && o.directory && o.publicGate !== false) {
       pub = D.createPublicGate({
         name: () => (o.name ? o.name() : null), domain: o.domain, dir: path.join(dir, "certs"), directory: o.directory || { acme: async () => { throw new Error("no directory"); }, acmeClear: async () => {}, publish: async () => {} },
-        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}),
+        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}),
         reachable: reachNow, log, ...(o.certDeps || {}),
       });
       // started in the background below: a certificate can take a minute, and the network does not wait for it
@@ -246,6 +248,16 @@ export function createNetd(o) {
       await teardown(); hs = gate = reach = pub = null; host = null; set("starting");
       starting = attempt();
       return starting;
+    },
+    /** The public origin for webhooks and share links, in the words `wink.network.status` carries: up (with the base), no-name, getting-cert, failed, off. */
+    ingress() {
+      if (o.ingress === undefined) return { state: "off", base: null, why: "public links are not wired on this box" };
+      const ps = pub ? pub.status() : null;
+      if (!ps) return { state: "off", base: null, why: o.controlUrl ? "this box is reached through a configured address, not a public gate" : "no public gate" };
+      const base = pub.ingressBase();
+      if (base) return { state: "up", base };
+      if (ps.state === "up") return { state: "waiting", base: null, why: "the gate is up but this box's name does not point at it yet (the outside check has not reached it, or it is behind a router that does not forward the port)" };
+      return { state: ps.state, base: null, ...(ps.why ? { why: ps.why } : {}) };
     },
     /** The node host (status, whois, join, leave, acceptRelay): always present once start() has been called. */
     host: () => host,

@@ -18,6 +18,7 @@
 //   spaces    { spec(space): SpaceSpec | null, name?(space): string }   what a join needs to know about a space (control address, one-time key)
 //   clock     () => { skewMs: number | null }   how far this clock is from the relay's
 //   relayPing () => Promise<number | null>      a round trip to the relay in ms
+//   ingress   () => { state, base, why? }   the public address for webhooks and share links (the public gate, core/wink/control/publicgate.js)
 //   otherVpn  () => Promise<boolean>            another VPN of the person's own runs here: join then stays relay-only (core/network/other-vpn.js)
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -33,7 +34,7 @@ function networkModule(meta, what) {
 }
 
 /**
- * @param {any} ctx @param {{ host?: any, storage?: { status: (o?: any) => Promise<any> }, identity?: any, spaces?: any, clock?: () => any, relayPing?: () => Promise<number | null>, otherVpn?: () => Promise<boolean>, now?: () => number, pingMs?: number }} [deps]
+ * @param {any} ctx @param {{ host?: any, storage?: { status: (o?: any) => Promise<any> }, identity?: any, spaces?: any, clock?: () => any, relayPing?: () => Promise<number | null>, otherVpn?: () => Promise<boolean>, ingress?: () => { state: string, base: string | null, why?: string }, now?: () => number, pingMs?: number }} [deps]
  */
 export function createNetwork(ctx, deps = {}) {
   const now = deps.now || Date.now;
@@ -92,6 +93,7 @@ export function createNetwork(ctx, deps = {}) {
         ...(d.storage && typeof d.storage.capacity === "number" ? { capacity: d.storage.capacity, used: d.storage.used || 0, free: Math.max(0, d.storage.capacity - (d.storage.used || 0)) } : {}) })),
       clock: { skewMs: clock && typeof clock.skewMs === "number" ? clock.skewMs : null },
       otherVpn: Boolean(vpn),
+      ingress: (() => { try { return deps.ingress ? deps.ingress() : { state: "unknown", base: null }; } catch { return { state: "unknown", base: null }; } })(),
     };
   }
 
