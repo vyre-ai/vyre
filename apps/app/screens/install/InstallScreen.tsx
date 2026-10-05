@@ -82,7 +82,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const router = useRouter();
   const first = !start;
   // Each device offers only what it can do: a phone holds the key and connects, a Mac can host Vyre, a browser holds nothing (DESIGN-first-run-per-platform).
-  const dk = deviceKind(Platform.OS, !!shell() && !shell()?.boxless);
+  const dk = deviceKind(Platform.OS, !!shell());
   const canClaim = MOCK || !claimBlocked();
   const [step, setStep] = useState(start === "connect" && dk === "web" && !canClaim ? "browser" : start ? startStep(start) : firstStep(dk, canClaim));
   // A Mac's first run chooses where Vyre runs before the space is named; set when it did.
