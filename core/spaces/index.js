@@ -19,6 +19,7 @@
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
+import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -1322,6 +1323,53 @@ export default {
       if (chosen && typeof chosen.space === "string" && cloud.some(c => c.id === chosen.space)) return chosen.space;
       return cloud.length ? cloud[0].id : null;
     };
+    // ---- the team server's per-member object storage (lib/spaces/member-storage.js): ciphertext a member keeps on a space this server hosts, for their own personal items and identity home. The caller
+    // is the member themself (the chain's one person, a member of that space); each call reaches only that person's own folder. The space's owner sets the cap. ----
+    const storage = createMemberStorage({ dir: root });
+    const MAX_OBJECT = 8 * 1024 * 1024;
+    /** @param {string} space @param {any} meta @param {boolean} [owner] @returns {Promise<{ person: string, role: string }>} */
+    const storageCaller = async (space, meta, owner = false) => {
+      if (!K || !K.spaces || typeof K.spaces.hosts !== "function" || K.spaces.hosts(String(space)) !== true) throw refuse("This server does not host that space.", "not_found");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person) throw refuse("Only a person can use their storage.", "forbidden");
+      const m = await K.membership(person, String(space)).catch(() => null);
+      if (!m || m.member !== true) throw refuse("You are not a member of that space.", "forbidden");
+      if (owner && m.role !== "owner") throw refuse("Only an owner can set a storage cap.", "forbidden");
+      return { person, role: String(m.role) };
+    };
+    const decode = (/** @type {any} */ v) => { if (typeof v !== "string" || v.length > Math.ceil(MAX_OBJECT * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(v)) throw refuse("An object is base64 text of at most 8 MB.", "bad_input"); return Buffer.from(v, "base64"); };
+    const wrapStorage = (/** @type {() => any} */ f) => { try { return f(); } catch (e) { const c = /** @type {any} */ (e).code; if (c === "over_cap") throw refuse("Your storage on this server is full.", "over_cap"); if (c === "bad_input") throw refuse(String(/** @type {Error} */ (e).message), "bad_input"); throw e; } };
+    tool("spaces.storage.put", "Keep an object (ciphertext, base64) in your own storage on a space this server hosts. Refused once your storage reaches the cap the owner set.", obj({ space: str, name: str, data: str }, ["space", "name", "data"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.put(i.space, person, i.name, decode(i.data)));
+    });
+    tool("spaces.storage.put-if", "Keep an object only if it is still what you last saw: `expected` is its sha256 in hex, or null when it should not exist yet. Answers { ok, sha256 }, with the sha256 that is there now.", obj({ space: str, name: str, data: str, expected: { type: ["string", "null"] } }, ["space", "name", "data", "expected"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.putIf(i.space, person, i.name, decode(i.data), i.expected));
+    });
+    tool("spaces.storage.get", "Read one of your objects: { data (base64), sha256 }, or null when it is not there.", obj({ space: str, name: str }, ["space", "name"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      const r = wrapStorage(() => storage.get(i.space, person, i.name));
+      return r ? { data: r.data.toString("base64"), sha256: r.sha256 } : null;
+    });
+    tool("spaces.storage.list", "The names of your objects under a prefix, one level.", obj({ space: str, prefix: str }, ["space"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return { names: wrapStorage(() => storage.list(i.space, person, i.prefix || "")) };
+    });
+    tool("spaces.storage.delete", "Delete one of your objects.", obj({ space: str, name: str }, ["space", "name"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.delete(i.space, person, i.name));
+    });
+    tool("spaces.storage.usage", "How much of your storage on this space you have used, and the cap.", obj({ space: str }, ["space"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return storage.usage(i.space, person);
+    });
+    tool("spaces.storage.set-cap", "As an owner: set the storage cap in bytes (0 for none) for one member, or for everyone with person \"*\".", obj({ space: str, person: str, bytes: { type: "number" } }, ["space", "person", "bytes"]), async (i, meta) => {
+      await storageCaller(i.space, meta, true);
+      return wrapStorage(() => storage.setCap(i.space, i.person, i.bytes));
+    });
+
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
       if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");

@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
@@ -1379,5 +1380,36 @@ test("a fresh home: the person's own space is listed with a label, a display nam
     const r = await d.ok("spaces.tier", {}, "module:planner");
     assert.deepEqual([r.tier, r.personal_host], [tier, host]);
   }
+  void w;
+});
+
+test("spaces.storage.*: a member keeps ciphertext in their own folder on a hosted space, putIf is compare-and-set, a stranger and a non-owner cap are refused", async t => {
+  const w = world(t);
+  const HOME = "spc_hhhhhhhhhhhh", OWNER = "per_" + "o".repeat(26), MEM = "per_" + "m".repeat(26), OUT = "per_" + "x".repeat(26);
+  const roles = { [OWNER]: "owner", [MEM]: "member" };
+  const kernelFor = () => ({
+    space: HOME, owner: OWNER, membership: async (/** @type {string} */ p) => (roles[p] ? { member: true, role: roles[p] } : { member: false }),
+    chain: async (/** @type {any} */ meta) => ({ hops: [{ actor: { kind: "person", id: meta.as } }] }), spaces: { hosts: (/** @type {string} */ id) => id === HOME, list: () => [HOME] }, for: () => { throw new Error("n/a"); },
+  });
+  const d = await device(t, { kernelFor });
+  const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
+  const as = (/** @type {string} */ p) => ({ as: p });
+  const put = await d.ok("spaces.storage.put", { space: HOME, name: "personal/a", data: b64("cipher-1") }, "cli", as(MEM));
+  const sha = (/** @type {string} */ s) => createHash("sha256").update(s).digest("hex");
+  assert.equal(put.sha256, sha("cipher-1"));
+  assert.equal(Buffer.from((await d.ok("spaces.storage.get", { space: HOME, name: "personal/a" }, "cli", as(MEM))).data, "base64").toString(), "cipher-1");
+  assert.equal(await d.ok("spaces.storage.get", { space: HOME, name: "personal/a" }, "cli", as(OWNER)), null, "the owner has a folder of their own, not the member's");
+  const stale = await d.ok("spaces.storage.put-if", { space: HOME, name: "personal/a", data: b64("v2"), expected: sha("other") }, "cli", as(MEM));
+  assert.deepEqual(stale, { ok: false, sha256: sha("cipher-1") });
+  assert.equal((await d.ok("spaces.storage.put-if", { space: HOME, name: "personal/a", data: b64("v2"), expected: sha("cipher-1") }, "cli", as(MEM))).ok, true);
+  assert.deepEqual((await d.ok("spaces.storage.list", { space: HOME, prefix: "personal" }, "cli", as(MEM))).names, ["personal/a"]);
+  assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "x", data: b64("y") }, "cli", as(OUT))).error?.code, "forbidden", "a stranger has no storage here");
+  assert.equal((await d.call("spaces.storage.put", { space: "spc_zzzzzzzzzzzz", name: "x", data: b64("y") }, "cli", as(MEM))).error?.code, "not_found");
+  assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "../x", data: b64("y") }, "cli", as(MEM))).error?.code, "bad_input");
+  assert.equal((await d.call("spaces.storage.set-cap", { space: HOME, person: MEM, bytes: 4 }, "cli", as(MEM))).error?.code, "forbidden", "a member cannot set their own cap");
+  await d.ok("spaces.storage.set-cap", { space: HOME, person: MEM, bytes: 2 }, "cli", as(OWNER));
+  assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "more", data: b64("zz") }, "cli", as(MEM))).error?.code, "over_cap");
+  assert.deepEqual(await d.ok("spaces.storage.delete", { space: HOME, name: "personal/a" }, "cli", as(MEM)), { deleted: true });
+  assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
 });

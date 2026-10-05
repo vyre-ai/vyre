@@ -94,6 +94,34 @@
     "reach": "person"
    },
    {
+    "name": "spaces.storage.put", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.put-if", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.get", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.list", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.delete", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.usage", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.set-cap", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.get", "effect": "read",
     "reach": "person"
    },
