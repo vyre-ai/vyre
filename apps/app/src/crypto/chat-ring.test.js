@@ -3,7 +3,8 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { jwkOfAgree, holdersFor, newChatRing, lendChatKey } from "./chat-ring.js";
-import { b64, ecdhFrom, fingerprint, openBundle, openRing, pointOf } from "./ring.js";
+import { b64, ecdhFrom, fingerprint, pointOf } from "../../../../lib/keywrap.js";
+import { openBundle, openRing } from "../../../../lib/chat-keys.js";
 
 const subtle = globalThis.crypto.subtle;
 async function device() {

@@ -1,7 +1,8 @@
 // @ts-check
 // The chat-key operations a device makes against the box (team/0.3/DESIGN-chat-keys.md, "Wired end to end"): make the ring for a new chat, and lend the key to the server so it can open the chat's files for
-// the participants. The ring math is ring.js; this is the calls around it. `call(tool, input)` is the app's one tool call and throws with the box's words. A chat made with no ring stays in the clear.
-import { b64, bundleFor, createRing, openRing, unb64, fingerprint } from "./ring.js";
+// the participants. The ring math is lib/keywrap.js and lib/chat-keys.js (noble, the same files the server runs); this is the calls around it. `call(tool, input)` is the app's one tool call and throws with the box's words. A chat made with no ring stays in the clear.
+import { b64, createRing, openRing, unb64, fingerprint } from "../../../../lib/keywrap.js";
+import { bundleFor } from "../../../../lib/chat-keys.js";
 
 /** The P-256 public JWK of a raw uncompressed point (an identity entry's `agree`, base64url). @param {string} agree @returns {{ kty: "EC", crv: "P-256", x: string, y: string } | null} */
 export function jwkOfAgree(agree) {

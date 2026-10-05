@@ -1,7 +1,13 @@
 // This device's key-agreement (ECDH P-256) key, the one other devices wrap a chat key to. One interface for every platform: getAgreeKey(). A browser keeps a non-extractable WebCrypto key in IndexedDB; a phone or
 // Mac answers through native-core's hook (the Secure Enclave key, ECDH is what that key does besides sign), which is not built into the app yet, so there it answers null and chats stay in the clear.
 // The device's public point rides its identity list entry as `agree` (kernel/identity/chain.js), which is how a participant finds it.
-import { fingerprint, ecdhFrom, b64, type Ecdh } from "./ring.js";
+import { fingerprint, b64, type Ecdh } from "../../../../lib/keywrap.js";
+
+/** The device's one private-key step: ECDH with an ephemeral public point inside the keystore, so the key never leaves it. */
+const keystoreEcdh = (priv: CryptoKey): Ecdh => async (epk) => {
+  const pub = await crypto.subtle.importKey("raw", epk as BufferSource, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256));
+};
 
 export type AgreeKey = {
   /** The raw uncompressed P-256 point, base64url: what the identity entry's `agree` holds. */
@@ -40,7 +46,7 @@ export async function agreeKeyOf(pair: CryptoKeyPair): Promise<AgreeKey> {
   const y = Uint8Array.from(atob(jwk.y.replace(/-/g, "+").replace(/_/g, "/").padEnd(44, "=")), (c) => c.charCodeAt(0));
   point.set(x, 1); point.set(y, 33);
   const pub = { kty: "EC" as const, crv: "P-256" as const, x: jwk.x, y: jwk.y };
-  return { point: b64(point), holder: await fingerprint(pub), jwk: pub, ecdh: ecdhFrom(pair.privateKey) };
+  return { point: b64(point), holder: await fingerprint(pub), jwk: pub, ecdh: keystoreEcdh(pair.privateKey) };
 }
 
 /** This device's agree key, made once and kept; null where there is no WebCrypto or no place to keep a key (a phone before native-core's hook, a private window with IndexedDB off). */
