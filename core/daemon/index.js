@@ -398,10 +398,20 @@ async function startLocked(opts, root, p, release) {
     };
     registry.deps.chatFor = async (/** @type {{ thread: string, agent: string | null, agent_kind?: string | null, name?: string | null, project?: string | null }} */ q) => {
       const person = await personChainFor(kernel.id.owner);
-      const a = await kernelAgentOf({ agent: q.agent, rec: { agent_kind: q.agent_kind } });
-      const make = (/** @type {string[]} */ assistants) => kernel.gateway.grants.chats.create(person, { assistants });
-      try { return String((await make(a ? [a] : [])).id); }
-      catch (e) { if (!a) throw e; return String((await make([])).id); }
+      const grants = kernel.gateway.grants;
+      // The person's own assistant is identity-level and private: never a listed participant (its acts are the person's, marked via: "assistant"). Any other agent that runs in a Space is an actor of
+      // that Space; one that is not yet is registered through the kernel's own registration (grants.addActor), which asks whatever the gate asks. A refusal there is the run's chat refusal, never an
+      // owner-only chat that quietly drops the agent.
+      const a = q.agent_kind === "assistant" ? undefined : await kernelAgentOf({ agent: q.agent, rec: { agent_kind: q.agent_kind } });
+      const isAssistant = a === "assistant";
+      const listed = a && !isAssistant ? [a] : [];
+      const make = () => grants.chats.create(person, { assistants: listed });
+      try { return String((await make()).id); }
+      catch (e) {
+        if (!listed.length || !/belongs to the Space/.test(String(e && /** @type {any} */ (e).message))) throw e;
+        await grants.addActor(person, { kind: "agent", id: listed[0], space: kernel.id.space }, {});
+        return String((await make()).id);
+      }
     };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.

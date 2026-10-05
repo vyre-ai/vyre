@@ -61,4 +61,44 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   const again = await d.registry.call("threads.send", { thread: plain.data.id, text: "back", surface: "cli" }, "cli");
   assert.ok(again.data, JSON.stringify(again.error));
   assert.match((await get(plain.data.id)).chat, /^chat_/);
+
+  // a named agent that is not yet an actor of the Space is registered when its run starts, and the chat is the owner plus that agent (never an owner-only chat that drops it)
+  const made = await d.registry.call("agents.create", { name: "kit", projects: "*" }, "cli");
+  assert.ok(made.data, JSON.stringify(made.error));
+  const withKit = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", agent: "kit" }, "cli");
+  assert.ok(withKit.data, JSON.stringify(withKit.error));
+  const kitChat = (await get(withKit.data.id)).chat;
+  assert.match(kitChat, /^chat_/);
+  assert.deepEqual([...grants.chats.read(ownerChain, kitChat).assistants], ["kit"], "the agent is in its chat");
+  assert.deepEqual([...grants.chats.read(ownerChain, kitChat).people], [owner]);
+});
+
+test("the person's own assistant is never a listed participant: its chat is the person's, and its run still has a session in it", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "cli", agent: "juno", agent_kind: "assistant" }, "cli");
+  assert.ok(r.data, JSON.stringify(r.error));
+  const chat = (await d.registry.call("threads.get", { thread: r.data.id, limit: 1 }, "cli")).data.thread.chat;
+  assert.match(chat, /^chat_/);
+  const c = d.kernel.gateway.grants.chats.read(ownerChain, chat);
+  assert.deepEqual([...c.assistants], [], "the assistant is not in the chat's list");
+  // its run holds a kernel session in that chat, as the assistant acting for the person
+  const row = d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(r.data.id);
+  assert.equal(JSON.parse(row.body).chat, chat);
+  // a chat it is not asked into stays closed to it: the assistant reads only chats its person is in
+  const other = d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: "per_stranger", agent: "assistant", session: "sx" });
+  assert.throws(() => d.kernel.gateway.grants.chats.read(other, chat), { code: "not_found" });
+  const mine = d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: owner, agent: "assistant", session: "sy" });
+  assert.equal(d.kernel.gateway.grants.chats.read(mine, chat).id, chat, "acting for its person it reads the person's chat without being listed");
 });
