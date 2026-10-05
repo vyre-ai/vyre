@@ -5,6 +5,8 @@ import { useMembers } from "../spaces/state";
 import { PhoneApprovals } from "../shell/PhoneApprovals";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
 import { useSpaces } from "../shell/state";
+import { PairingCards } from "../pairing/PairingCards";
+import { CreateAssistantCard } from "../assistants/CreateAssistantCard";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
 /** /u/now: Now, a view over tasks. Pull to refresh on a phone; the title collapses into the bar as it scrolls. `?scenario=client-pays` plays "a client pays" on a fresh mock store and ends with the Welcome email waiting for one tap. */
@@ -29,6 +31,8 @@ export default function NowScreen() {
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       {real ? <GapNotice /> : null}
+      {real ? <PairingCards /> : null}
+      {real ? <CreateAssistantCard role={mine} /> : null}
       {real ? <WaitingOnYou /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />
