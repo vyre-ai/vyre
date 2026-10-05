@@ -9,7 +9,7 @@ runs:
     - id: key
       shell: bash
       run: |
-        k=$(cat stores/twenty/provision.js records/core-types.js records/kits/library/* stores/twenty/live/build-golden.mjs stores/twenty/space-store.js 2>/dev/null | sha256sum | cut -c1-24)
+        k=$( { cat stores/twenty/provision.js records/core-types.js stores/twenty/live/build-golden.mjs stores/twenty/space-store.js; find records/kits -type f | sort | xargs cat; } | sha256sum | cut -c1-24)
         echo "k=$k" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@v4
       id: cache
