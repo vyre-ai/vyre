@@ -153,6 +153,8 @@ export async function start(opts = {}) {
   const refused = kernelOffRefusal(kernelOn, opts.packageRoot);
   if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
+  // Where the app's export is served from: the repo's apps/app/dist unless a test points it at its own folder, so no test depends on what a build left behind.
+  const appDir = opts.appDir || APP_DIST;
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
@@ -214,7 +216,7 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, kernelOf: () => kernel }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, appDir, kernelOf: () => kernel }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => fail(res, e));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -541,7 +543,7 @@ async function startLocked(opts, root, p, release) {
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn(), { log }));
   /** @type {ReturnType<typeof watchForList> | null} */ let releaseWatch = null;
-  const server = http.createServer((req, res) => route(req, res, { finishing: () => (releaseWatch ? releaseWatch.state() : null), registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => route(req, res, { finishing: () => (releaseWatch ? releaseWatch.state() : null), registry, events, cfg, started, streams, root, inflight, drain, people, appDir, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -974,7 +976,7 @@ function loginFrom(tty) {
   });
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, appDir = APP_DIST, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -1423,15 +1425,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       res.writeHead(301, { location: to, "cache-control": "no-cache" });
       return res.end();
     }
-    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
+    return serveApp(res, url.pathname, { dir: appDir, csp: webHeaders(cfg)["content-security-policy"] });
   }
   // The pre-app pages live in web/ (plain pages the app signs in through): the owner wizard, the device and passkey pages, sign-in and the signed release files.
   // A file web/ does not hold falls through to the app.
   if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
   // With config app.root (on by default) the app answers every other page address, from an export built for the root (npm run export:web:root; precache.json names the base).
   if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname)) {
-    if (appBase(APP_DIST) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/; build it for the root with npm run export:web:root" } });
-    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
+    if (appBase(appDir) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/; build it for the root with npm run export:web:root" } });
+    return serveApp(res, url.pathname, { dir: appDir, csp: webHeaders(cfg)["content-security-policy"] });
   }
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

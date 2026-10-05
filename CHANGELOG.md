@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- test(daemon): start() takes `appDir` (default apps/app/dist), and the app.root and pre-app address tests give the daemon their own folder, so they no longer pass or fail by what a build left in apps/app/dist.
 - feat(app): the Assign to picker lists the task's project teammates under "On this project": the task's `project` link (a vyre:// address, from platform2's task.project) gives the Project record id, team.list reads that project, and a task with no project behaves as before (taskProjectId, projectActorIds, useProjectActors).
 - refactor(app): the Team tab, the Teammates tab and the Assign picker key teammates by the Project record's id, as the team.* tools now take it (cleanup's work/cleanup-team d45d3b8df; the box refuses a short name). A project with no slug has a team; projectSlug is gone; the Assistants page names each project through work.project.ref. Needs that branch on the box side: team.list, team.add, team.retire and the other team.* tools with a `project` input now want the id or the vyre:// address; team.default.get and team.default.set take the id too.
 

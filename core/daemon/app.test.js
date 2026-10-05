@@ -80,7 +80,9 @@ test("app: no dist on this machine is no_app", t => {
 test("app: with config app.root off, vyred serves the app at /app and nothing answers /", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: false } }));
-  const d = await start({ root, log: () => {} });
+  // The daemon serves from this test's own folder, never from whatever apps/app/dist a build left on the machine.
+  const appDir = dist(t);
+  const d = await start({ root, appDir, log: () => {} });
   t.after(() => d.stop());
   const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
     http.get({ socketPath: socketPath(root), path: p }, res => {
@@ -90,8 +92,8 @@ test("app: with config app.root off, vyred serves the app at /app and nothing an
   const a = /** @type {any} */ (await hit("/app"));
   assert.deepEqual([a.status, a.headers.location], [301, "/app/"]);
   const b = /** @type {any} */ (await hit("/app/now"));
-  if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.equal(b.status, 200);
-  else assert.equal(JSON.parse(b.body).error.code, "no_app");
+  assert.equal(b.status, 200);
+  assert.match(b.body, /<title>Vyre<\/title>/);
   const other = /** @type {any} */ (await hit("/now"));
   assert.equal(other.status, 404, "there is no other web app to answer a page address");
 });
@@ -99,7 +101,9 @@ test("app: with config app.root off, vyred serves the app at /app and nothing an
 test("app: with config app.root (the default), /app/* is a 301 to the same path under / instead of serving the app", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: true } }));
-  const d = await start({ root, log: () => {} });
+  // An export built for the root, in this test's own folder (never apps/app/dist).
+  const appDir = dist(t, { build: "b1", base: "", files: ["/index.html"] });
+  const d = await start({ root, appDir, log: () => {} });
   t.after(() => d.stop());
   const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
     http.get({ socketPath: socketPath(root), path: p }, res => {
@@ -113,8 +117,8 @@ test("app: with config app.root (the default), /app/* is a 301 to the same path 
   const c = /** @type {any} */ (await hit("/app/now?tab=chat"));
   assert.deepEqual([c.status, c.headers.location], [301, "/now?tab=chat"], "a deeper path and its query survive the redirect");
   const page = /** @type {any} */ (await hit("/now"));
-  if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.notEqual(page.status, 301, "the app answers a page address at /");
-  else assert.equal(JSON.parse(page.body).error.code, "no_app", "the app answers a page address at /, here it is not built");
+  assert.equal(page.status, 200, "the app answers a page address at /");
+  assert.match(page.body, /<title>Vyre<\/title>/);
 
   // The redirect must never become protocol-relative ("//host/path" is scheme-relative, so a
   // browser reading Location: //evil.example leaves the box entirely for it).

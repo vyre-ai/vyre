@@ -44,7 +44,8 @@ for (const root of [false, true]) {
   test(`web: over the box's own socket every pre-app address answers, with app.root ${root}`, async t => {
     const home = tempHome(t);
     fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ transcripts: [], ...(root ? { app: { root: true } } : {}) }));
-    const d = await start({ root: home, log: () => {} });
+    // No export anywhere near the box: what answers must be web/, whatever apps/app/dist holds on this machine.
+    const d = await start({ root: home, appDir: path.join(home, "no-app-here"), log: () => {} });
     t.after(() => d.stop());
     const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
       http.get({ socketPath: paths(home).socket, path: p }, r => { let b = ""; r.on("data", c => { b += c; }); r.on("end", () => resolve({ status: r.statusCode, type: r.headers["content-type"], body: b })); }).on("error", reject);
