@@ -88,6 +88,13 @@ export function boxStream(session: string): BoxStream {
     const id = typeof d.id === "string" ? d.id : typeof d.thread === "string" ? d.thread : undefined;
     return { ok: true, thread: id };
   };
+  // The per-run controls (edit, retry, branch) address the chat's run by its thread, which work.chat.get names in the chat's slots.
+  const onRun = async (fn: (thread: string) => Done): Done => {
+    const got = await call<{ slots?: { thread?: string }[] }>("work.chat.get", { chat: session });
+    const thread = got.data?.slots?.find((x) => typeof x.thread === "string")?.thread;
+    if (!thread) return { ok: false, reason: "This chat has not started yet." };
+    return fn(thread);
+  };
   const note = async (tool: string, input: Record<string, unknown>) => {
     const r = await write(tool, input);
     return r.error ? reason(r.error) : null;
@@ -98,7 +105,8 @@ export function boxStream(session: string): BoxStream {
     viewer: () => viewer,
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
-    sendText: (text, o) => note("threads.send", { thread: session, text, surface: SURFACE, uuid: newUuid(), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8) } : {}) }),
+    // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
+    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
@@ -113,9 +121,9 @@ export function boxStream(session: string): BoxStream {
     reactTo: (message, emoji, on = true) => note("stream.react", { chat: session, message, emoji, on }),
     pinMessage: (message, on = true) => note("stream.pin", { chat: session, message, on }),
     markReadTo: (upto) => note("stream.mark-read", { chat: session, upto }),
-    editRetry: (message, text) => done("threads.edit-retry", { thread: session, message, text, surface: SURFACE }),
-    retry: (message) => done("threads.retry", { thread: session, message, surface: SURFACE }),
-    branch: (at) => done("threads.branch", { thread: session, at, surface: SURFACE }),
+    editRetry: (message, text) => onRun((thread) => done("threads.edit-retry", { thread, message, text, surface: SURFACE })),
+    retry: (message) => onRun((thread) => done("threads.retry", { thread, message, surface: SURFACE })),
+    branch: (at) => onRun((thread) => done("threads.branch", { thread, at, surface: SURFACE })),
     // StreamSource's own, for callers that hold only that shape: fire and forget.
     send(text) { void this.sendText(text); },
     answer(ask, decision) { void this.answerAsk(ask, decision); },

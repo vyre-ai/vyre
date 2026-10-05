@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): found by walking a real chat end to end on the one-chat box (scripts/app-walk-chat.mjs, now carrying the stream's WebSocket): a message goes in with stream.send { chat } (the first one starts the run) instead of threads.send; edit, retry, branch, queue and send-now address the chat's run by the thread work.chat.get names; a real chat says You and the chat's own assistant (Claude, Codex, Grok), never the sample names alex and juno; names the stream does not carry come from work.chat.get and the actors; a join with no name and an id for a name makes no line.
+
 - feat(app): Settings lets a person with more than one Cloud space choose where their Personal items (reminders, notes, to-dos) are kept (spaces.tier answers the choices and the current one; spaces.personal-host.set saves).
 
 - feat(app): every time shown goes through lib/time (src/time/show.js): task and event times, agent usage, flow runs, Drive and kit dates, artifact activity, lock times, account dates, and a record's history, all in the viewer's own zone; a test fails if a screen formats a time by hand. A Contact record says "It is 9:41 pm PT where they are" from the Contact's time_zone. A time that belongs to a space with a zone also says the space's time once windows adds the zone.

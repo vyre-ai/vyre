@@ -16,3 +16,18 @@ export function membersFrom(got, actors, me) {
     ...agents.filter((/** @type {unknown} */ n) => typeof n === "string").map((/** @type {string} */ n) => ({ id: `agent:${n}`, name: n, family: /** @type {"assistant"} */ ("assistant") })),
   ];
 }
+
+/** The thread of the chat's run, for the per-run controls (queue, send now, edit, retry): the first slot work.chat.get names, or null while no run has started. @param {any} got */
+export function runThreadOf(got) {
+  const slots = Array.isArray(got?.slots) ? got.slots : [];
+  const s = slots.find((/** @type {any} */ x) => x && typeof x.thread === "string" && x.thread);
+  return s ? s.thread : null;
+}
+
+const PROVIDER_WORD = { claude: "Claude", codex: "Codex", grok: "Grok" };
+
+/** The names of the chat's model slots, keyed by slot id: "Claude", "Codex", "Grok" (the model is the engine's business, not the person's). @param {any} got work.chat.get's answer @returns {{ id: string, name: string }[]} */
+export function slotNames(got) {
+  const slots = Array.isArray(got?.slots) ? got.slots : [];
+  return slots.filter((/** @type {any} */ x) => x && typeof x.slot === "string").map((/** @type {any} */ x) => ({ id: x.slot, name: /** @type {Record<string, string>} */ (PROVIDER_WORD)[String(x.provider)] ?? "Assistant" }));
+}

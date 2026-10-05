@@ -5,7 +5,7 @@
 
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Icon, SwipeActions, Text, useUiTheme } from "@vyre/ui";
+import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
@@ -188,6 +188,8 @@ function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
 /** Who wrote this row. Without an author on the frame (a one-to-one over the old stream) it is the person or the assistant of the chat. */
 function whoOf(store: ChatStore, k: string): { name: string; family: "person" | "assistant" | "model"; sub: string | null } {
   if (store.group.author(k.slice(2))?.author) return store.group.label(k);
+  // The sample names (alex, juno) belong to the sample world only: a real chat says You and the chat's own assistant.
+  if (!allowsMock()) return k.startsWith("u:") ? { name: "You", family: "person", sub: null } : { name: store.group.assistantName(), family: "assistant", sub: null };
   return k.startsWith("u:") ? { name: PERSON, family: "person", sub: null } : { name: ASSISTANT, family: "assistant", sub: null };
 }
 

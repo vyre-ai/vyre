@@ -338,3 +338,11 @@ test("a message the person's assistant sent for them keeps via, so it can be mar
   f.apply({ ...fr("user-message", { message: "s2", text: "thanks", state: "sent" }), author: "person:alex" });
   assert.equal(f.item(f.rows[1].key)?.via, undefined);
 });
+
+test("a join with no name whose id is a person's or a model slot's id makes no line", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("participant-joined", { who: "person:per_i44k7pe25e3f3xrmtetxjgmixa" }));
+  f.apply(gf("participant-joined", { who: "model:claude/default#694682" }));
+  assert.equal(f.rows.filter((r) => r.kind === "notice").length, 0);
+});

@@ -38,6 +38,8 @@ export type ChatStore = {
   /** The group side: authors, presence, reactions, pins, threads, the read marker, fan-out sets (group.js). */
   readonly group: ReturnType<typeof createGroup>;
   subscribeGroup(f: () => void): () => void;
+  /** Teach the chat names a frame did not carry (who is in it, the model slots). */
+  learnNames(list: { id: string; name: string }[]): void;
   /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
   sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */
@@ -214,6 +216,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     },
     group,
     subscribeGroup(f) { groupSubs.add(f); return () => void groupSubs.delete(f); },
+    learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
       const a = withActions(source);
