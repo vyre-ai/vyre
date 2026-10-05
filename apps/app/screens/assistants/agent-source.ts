@@ -13,6 +13,8 @@ export function agentSource(call: Call) {
       const d = await ask<any>("agents.list");
       return (Array.isArray(d) ? d : d?.agents || []).find((x: AgentFull) => x.name === name) ?? null;
     },
+    /** The box's one model list (sessions.models.get aliases). */
+    models: async (): Promise<unknown> => (await ask<any>("sessions.models.get"))?.aliases,
     projects: async () => projectsOf(await ask("projects.list")),
     setJob: (name: string, instructions: string) => ask("agents.update", { name, instructions: instructions.trim() }),
     setModel: (name: string, model: string, effort: string) => ask("agents.update", { name, model, effort }),

@@ -56,7 +56,7 @@ test("shots: a shown file that is gone fails", t => {
   fs.rmSync(path.join(root, "web/css/deck.css"));
   const p = checkShots({ root });
   assert.equal(p.length, 1);
-  assert.match(p[0].problem, /shows deck\/css\/deck\.css, which no longer exists/);
+  assert.match(p[0].problem, /shows web\/css\/deck\.css, which no longer exists/);
 });
 
 test("shots: a PNG under a shots/ folder that shots.json does not list fails", t => {
@@ -107,7 +107,7 @@ test("shots: the record is deterministic and hashes contents", t => {
   const a = entryFor(root, ["deck/views/now.js", "web/css/deck.css"]);
   const b = entryFor(root, ["web/css/deck.css", "deck/views/now.js", "web/css/deck.css"]);
   assert.deepEqual(a, b);
-  assert.deepEqual(Object.keys(a.shows), ["web/css/deck.css", "deck/views/now.js"]);
+  assert.deepEqual(Object.keys(a.shows), ["deck/views/now.js", "web/css/deck.css"]);
   const text = manifestText({ "docs/z.png": a, "docs/a.png": b });
   assert.ok(text.indexOf("docs/a.png") < text.indexOf("docs/z.png"));
   assert.equal(text, manifestText(JSON.parse(text)));

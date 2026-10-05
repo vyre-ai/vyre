@@ -136,13 +136,16 @@ function Usage({ name }: { name: string }) {
 }
 
 function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, e: string) => void }) {
-  const [model, setModel] = useState(a.model || modelsFor(a.model)[1].id);
+  const [aliases, setAliases] = useState<unknown>(undefined);
+  useEffect(() => { void agent.models().then(setAliases).catch(() => {}); }, []);
+  const rows = modelsFor(a.model, aliases);
+  const [model, setModel] = useState(a.model || "");
   const [effort, setEffort] = useState(a.effort || "medium");
   const save = (m: string, e: string) => agent.setModel(a.name, m, e).then(() => { onSaved(m, e); showToast("Saved."); }).catch((x) => showToast(say(x)));
   return (
     <Sec title="Model">
       <Card className="gap-s3">
-        <Select label={`${a.name}'s model`} value={model} options={modelsFor(a.model).map((m) => [m.id, m.name])} onChange={(m) => { setModel(m); void save(m, effort); }} />
+        <Select label={`${a.name}'s model`} value={model || rows[0]?.id || ""} options={rows.map((m) => [m.id, m.name])} onChange={(m) => { setModel(m); void save(m, effort); }} />
         <Segmented label="Effort" value={effort} options={EFFORT as [string, string][]} onChange={(e) => { setEffort(e); void save(model, e); }} />
         <Text size="caption" tone="label">{`${a.name} answers every question. Memory gives ${a.name} the relevant facts, with where they came from, as context. It never answers instead.`}</Text>
       </Card>
