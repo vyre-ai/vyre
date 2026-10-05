@@ -35,3 +35,22 @@ export function assertDaemonHost(o) {
   const r = daemonHost(o);
   if (!r.ok) throw Object.assign(new Error(r.why), { code: "test_host" });
 }
+
+export const WINDOWS_HOME_REFUSAL = "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.";
+
+/**
+ * A home on Windows needs its own sealing service (separate identity, DPAPI or TPM key, pipe ACL): 0.3.0. Until then vyred refuses to start there with one plain line.
+ * A development build with VYRE_KERNEL_FILE_KEY=1 (the CI socket-ACL job) and a daemon given its own sealer are let through; a packaged build never is.
+ * @param {{ platform?: string, env?: Record<string, string | undefined>, packaged?: boolean, sealer?: unknown }} o
+ */
+export function windowsHome({ platform = HOST_PLATFORM, env = process.env, packaged = true, sealer = null } = {}) {
+  if (platform !== "win32" || sealer) return { ok: true };
+  if (!packaged && env.VYRE_KERNEL_FILE_KEY === "1") return { ok: true };
+  return { ok: false, why: WINDOWS_HOME_REFUSAL };
+}
+
+/** Throw the refusal when a home would start on Windows. @param {Parameters<typeof windowsHome>[0]} o */
+export function assertNotWindowsHome(o) {
+  const r = windowsHome(o);
+  if (!r.ok) throw Object.assign(new Error(r.why), { code: "windows_home" });
+}

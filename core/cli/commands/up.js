@@ -10,6 +10,8 @@
 // backup {file, bytes, included} · restore {restored} · name {address, phase, owner?, why?} and
 // name check {name, valid, available, address?, why?} · owner {owner}. Only `vyre name` has verbs.
 
+import { windowsHome } from "../../daemon/host-guard.js";
+import { isPackaged } from "../../../kernel/devbuild.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -103,6 +105,7 @@ export async function waitFor(version, ms = 15_000, commit = null) {
  * installed, since this process still holds the old code and the old version number.
  */
 export async function bring(role, mineOf = build) {
+  { const w = windowsHome({ packaged: isPackaged() }); if (!w.ok) return { ok: false, note: w.why }; } // no home on Windows until 0.3.0
   const h = await health();
   // A release is stamped with its commit (build.json). An upgrade that keeps the version number
   // still changes the commit, and the vyred started before it runs the old code: that one is

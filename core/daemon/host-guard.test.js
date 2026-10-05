@@ -36,3 +36,16 @@ test("a person's own vyred is never touched", () => {
   assert.equal(daemonHost({ ...MAC, root: "/Users/alex/.vyre", env: {} }).ok, true, "a normal home outside the temp folder, no test marker");
   assert.equal(daemonHost({ ...MAC, root: "/Users/alex/vyre-home", env: {} }).ok, true);
 });
+
+import { windowsHome, assertNotWindowsHome, WINDOWS_HOME_REFUSAL } from "./host-guard.js";
+
+test("a home on Windows is refused with one plain line; a dev file key and an own sealer are let through; other OSes are untouched", () => {
+  assert.equal(WINDOWS_HOME_REFUSAL, "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.");
+  assert.deepEqual(windowsHome({ platform: "win32", env: {}, packaged: true }), { ok: false, why: WINDOWS_HOME_REFUSAL });
+  assert.equal(windowsHome({ platform: "win32", env: { VYRE_KERNEL_FILE_KEY: "1" }, packaged: true }).ok, false, "a packaged build never takes the file key");
+  assert.equal(windowsHome({ platform: "win32", env: { VYRE_KERNEL_FILE_KEY: "1" }, packaged: false }).ok, true);
+  assert.equal(windowsHome({ platform: "win32", env: {}, packaged: false }).ok, false);
+  assert.equal(windowsHome({ platform: "win32", env: {}, packaged: true, sealer: {} }).ok, true);
+  for (const platform of ["darwin", "linux"]) assert.equal(windowsHome({ platform, env: {}, packaged: true }).ok, true);
+  assert.throws(() => assertNotWindowsHome({ platform: "win32", env: {}, packaged: true }), e => e.message === WINDOWS_HOME_REFUSAL && e.code === "windows_home");
+});
