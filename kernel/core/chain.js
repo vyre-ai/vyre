@@ -110,7 +110,7 @@ export function createChainBuilder(cfg) {
         if (typeof f.model !== "string" || !/^[a-z0-9][a-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*#[0-9]{1,6}$/.test(f.model)) return refuse("a model slot names provider/model#n");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
-        return make([hop("person", who, "session", { session: f.session }), hop("agent", `model:${f.model}`, "session", { session: f.session })], base(), { delegated: true, model: f.model, ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", `model:${f.model}`, "session", { session: f.session })], base(), { delegated: true, model: f.model, ...(typeof f.project === "string" && f.project ? { project: f.project } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "invitee": {
         // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite

@@ -210,6 +210,8 @@ export function createAuthorizer(cfg) {
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
       const attrs = (cfg.attrs && cfg.attrs(resource)) || {};
       if (attrs.space !== undefined && attrs.space !== cfg.space) return deny("wrong_space");
+      // A model slot is the person's authority narrowed to its chat's Project: another Project's resource is not its to read or touch, whatever the person holds. A resource that belongs to no Project is judged as before.
+      if (typeof chain.project === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "agent" && String(x.actor.id).startsWith("model:")) && attrs.project !== undefined && attrs.project !== chain.project) return deny("outside_project");
       // A session's lines are its person's own (reviewer-2's KW-1): reading one needs the session's owner attribute to name the person asking, whatever role or `*/*` grant they hold. A session
       // with no owner attribute is read by nobody (fail closed), so a capture that does not say whose session it is leaks nothing. The Space's owner reads their own, like anyone.
       const segs = segments(resource);
