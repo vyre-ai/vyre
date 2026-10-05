@@ -1597,7 +1597,7 @@ export default {
       try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
-    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. `toName` and `pin` (My Cloud's published name and the pinned version of its list) and `server` (the paired server's device id) let it ask My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str }, ["to", "plan_hash"]), async (i, meta) => {
+    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. My Cloud's name, the pinned version of its list and the paired server are worked out from the space this device made (override with `toName`, `pin`, `server`). It asks My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str }, ["to", "plan_hash"]), async (i, meta) => {
       const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
       const ports = await upgradePorts(String(i.to));
       let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
@@ -1618,14 +1618,18 @@ export default {
       } else if (ports.chats && (ports.chats.items || []).length) report.notMoved.push({ what: "chats: history", why: "no paired server to bring it back on" });
       // My Cloud says what it holds, signed with its own key; only that lets this space point there and freeze
       let receipt = null;
-      const pin = parsePin(i.pin);
-      if (report.notMoved.length === 0 && server && pin && typeof i.toName === "string" && i.toName) {
+      // My Cloud is an ordinary space on the person's own server: its name and the pinned version of its list are this device's own (it made the space), so nothing needs to be typed
+      const toRow = spaces.get(String(i.to));
+      const toName = typeof i.toName === "string" && i.toName ? i.toName : (toRow ? toRow.name : "");
+      const kept = await chainOf(String(i.to));
+      const pin = parsePin(i.pin) || (kept && kept.pin) || null;
+      if (report.notMoved.length === 0 && server && pin && toName) {
         try {
           receipt = await remoteCall(server, "spaces.upgrade.receipt", { space: String(i.to), upgrade_id: started.upgrade_id, from: K.space, objects: plan.objects.map((/** @type {any} */ o) => ({ type: o.type, id: o.id, keys: o.keys })) }, meta);
         } catch (e) { notes.push({ what: "My Cloud's receipt", why: String(/** @type {Error} */ (e).message).slice(0, 120) }); }
       } else if (report.notMoved.length === 0) notes.push({ what: "My Cloud's receipt", why: "not asked for: this needs My Cloud's published name, the pin and the paired server" });
       const ctxKey = `${K.space}/${String(i.to)}/${started.upgrade_id}`;
-      if (pin && typeof i.toName === "string") moveContext.set(ctxKey, { name: String(i.toName), pin });
+      if (pin && toName) moveContext.set(ctxKey, { name: String(toName), pin });
       let fin;
       try { fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete && report.notMoved.length === 0, ...(receipt ? { receipt } : {}) }); }
       finally { moveContext.delete(ctxKey); }

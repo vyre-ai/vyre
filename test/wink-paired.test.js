@@ -1120,3 +1120,67 @@ test("typed pair on the kernel, over the relay as the app calls: the paired sess
   const defHttp = await http("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }] }] } });
   assert.equal(defHttp.data && defHttp.data.applied, true, JSON.stringify(defHttp));
 });
+
+test("the My Cloud upgrade end to end: a space made on the person's server has a published key, My Cloud signs the receipt, it verifies, and only then does Personal freeze and point there", async t => {
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { tmp } = await import("../kernel/seal/testing.js");
+  const { softwareKey } = await import("../core/spaces/presence-signer.js");
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
+  // the server's kernel runs on a real sealing process that takes software keys (a development build)
+  const sealDir = tmp("m1-invite-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ident = await standinIdentity(t);
+  // M1's own device key (the file its Wink module offers in every pairing hello): pairing it as the owner's computer is what enrols it in the home's sealing process
+  const devKey = deviceKey(path.join(ident.home, "wink-keys.json.device"));
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, kind: "computer", presenceStorage: "software", devKey, kernelDoor: { usesKernelChain: true, ledgerKey: () => Buffer.alloc(32, 7).toString("base64") } });
+  const server = f.w.d;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  // M1: a computer with the SAME identity the server is owned by (the identity file is copied in, so its device key and id are the claimed ones)
+  const droot = ident.home;
+  fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "m1", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const { hooks: spacesHooks } = await import("../core/spaces/index.js");
+  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  spacesHooks.sessionFor = async () => links.sessionFor("srv");
+  t.after(() => { spacesHooks.sessionFor = null; spacesHooks.buildRoot = undefined; });
+  t.after(() => device.stop());
+  const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
+  device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", ident.id, ident.id);
+  const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
+  const made = await dcall("spaces.create", { name: "mycloudup", displayName: "My Cloud", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!made.error && made.data.status === "done", JSON.stringify(made).slice(0, 300));
+  const id = made.data.space;
+  assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
+  // the hosted space has its key from creation, and the directory names it with that key
+  const home = device.kernel.id.space;
+  const resolved = await dcall("spaces.resolve", { name: "mycloudup" });
+  assert.ok(!resolved.error && resolved.data.id, JSON.stringify(resolved).slice(0, 200));
+  // Personal records on this device's own home kernel
+  const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "body", kind: "text", label: "Body" }] };
+  assert.ok(!(await dcall("records.define", { space: home, diff: { add_types: [NOTE] } })).error);
+  const ids = [];
+  for (const n of ["one", "two", "three"]) { const r = await dcall("records.create", { space: home, type: "note", data: { title: n, body: `body ${n}` } }); assert.ok(!r.error, JSON.stringify(r.error)); ids.push(r.data.record.id); }
+  const plan = await dcall("spaces.upgrade.plan", { to: id });
+  assert.ok(!plan.error, JSON.stringify(plan.error));
+  assert.equal(plan.data.counts.records.note, 3);
+  // one approval: with none the device is asked for it, bound to this exact plan
+  const asked = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash });
+  assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op, JSON.stringify(asked).slice(0, 300));
+  const { softwareActProof } = await import("../core/spaces/presence-signer.js");
+  const proof = softwareActProof(path.join(droot, "wink-keys.json.device"), ident.id, asked.data.request);
+  const hdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify(proof)).toString("base64url") };
+  const done = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash }, hdr);
+  assert.ok(!done.error, JSON.stringify(done.error));
+  assert.deepEqual([done.data.upgraded, done.data.moved.records, done.data.notMoved], [true, { note: 3 }, []]);
+  // My Cloud's signed receipt verified against the space's published key, so Personal froze and points there
+  assert.equal(done.data.frozen, true, JSON.stringify(done.data));
+  const row = (await dcall("spaces.list")).data.find(x => x.id === home);
+  assert.equal(row && row.upgraded_to, id);
+  // the records are on the server, in the hosted space
+  for (const rid of ids) { const g = await dcall("records.get", { space: id, type: "note", id: rid }); assert.ok(!g.error && g.data.record.data.title, JSON.stringify(g.error)); }
+  const late = await dcall("records.create", { space: home, type: "note", data: { title: "late" } });
+  assert.equal(late.error && late.error.code, "moved", "Personal takes no new records");
+});
