@@ -58,7 +58,7 @@ exit 0`,
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
      // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
   const env = {
-    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "", VYRE_RUNTIME: "colima",
+    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
   };
@@ -424,103 +424,6 @@ test("install-mac-server.sh: --dry-run in system mode prints the plan and change
   assert.match(r.stdout, /one sudo/);
   assert.deepEqual(fs.readdirSync(m.home), []);
   assert.ok(!/^sudo /m.test(m.calls()));
-});
-
-/** A Mac for the runtime tests: a fake Apple `container` package (a file the checksum covers), a fake pkgutil that reports the signature and unpacks it, system mode off. */
-function runtimeMac(/** @type {import("node:test").TestContext} */ t, /** @type {{ team?: string, major?: string, arch?: string, version?: string }} */ o = {}) {
-  const m = mac(t);
-  const pkg = path.join(m.base, "container.pkg");
-  const body = "fake apple container package\n";
-  fs.writeFileSync(pkg, body);
-  const sum = crypto.createHash("sha256").update(body).digest("hex");
-  const ver = o.version || "1.5.0";
-  fs.writeFileSync(path.join(m.base, "bin", "pkgutil"), `#!/bin/sh
-echo "pkgutil $*" >>"${m.base}/calls.log"
-case "$1" in
-  --check-signature) printf 'Package "container.pkg":\\n   Status: signed by a developer certificate issued by Apple for distribution\\n   Certificate Chain:\\n    1. Developer ID Installer: Apple Inc. - Containerization (${o.team || "UPBK2H6LZM"})\\n' ;;
-  --expand-full) mkdir -p "$3/Payload/bin" "$3/Payload/libexec/container/plugins"
-    printf '#!/bin/sh\\necho "container CLI version ${ver} (build: release)"\\n' >"$3/Payload/bin/container"; chmod 755 "$3/Payload/bin/container" ;;
-esac
-exit 0
-`, { mode: 0o755 });
-  const env = { ...m.env, VYRE_RUNTIME: "auto", VYRE_UNAME_M: o.arch || "arm64", VYRE_MACOS_VERSION: o.major || "26.0",
-    VYRE_PKGUTIL: path.join(m.base, "bin", "pkgutil"), VYRE_CONTAINER_URL: `file://${pkg}`, VYRE_CONTAINER_SHA256: sum };
-  const runtime = () => JSON.parse(fs.readFileSync(path.join(env.VYRE_HOME, "runtime.json"), "utf8"));
-  return { ...m, env, runtime, plist: path.join(env.VYRE_LAUNCHAGENTS, "run.vyre.container.plist"), cli: path.join(env.VYRE_SERVER_DIR, "container", "bin", "container") };
-}
-
-test("install-mac-server.sh: macOS 26 on Apple silicon unpacks Apple's container into the account's folder, starts it at login, and records it as the runtime for Twenty", t => {
-  const m = runtimeMac(t);
-  const r = run({ ...m.env, VYRE_CODE: CODE }, ["--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(fs.existsSync(m.cli) && fs.statSync(m.cli).mode & 0o111, "the CLI is unpacked and executable");
-  assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "container", "libexec", "container", "plugins")));
-  const plist = fs.readFileSync(m.plist, "utf8");
-  for (const piece of [`<string>${m.cli}</string>`, "<string>system</string><string>start</string>", `<string>--install-root</string><string>${m.env.VYRE_SERVER_DIR}/container</string>`, `<string>--app-root</string><string>${m.env.VYRE_HOME}/runtime/container</string>`, "--enable-kernel-install", "<key>RunAtLoad</key><true/>"]) assert.ok(plist.includes(piece), piece);
-  assert.match(m.calls(), /pkgutil --check-signature .*container\.pkg/);
-  assert.ok(!/pkgutil .*(--install|installer)/.test(m.calls()) && !/^sudo /m.test(m.calls()), "unpacked, never installed, and no root");
-  assert.match(m.calls(), /launchctl bootstrap gui\/\d+ .*run\.vyre\.container\.plist/);
-  const rt = m.runtime();
-  assert.equal(rt.records.kind, "container");
-  assert.equal(rt.records.version, "1.5.0");
-  assert.equal(rt.records.cli, m.cli);
-  assert.equal(rt.records.app_root, `${m.env.VYRE_HOME}/runtime/container`);
-  assert.equal(rt.computers.kind, "colima", "agents' computers still speak the Docker API");
-  assert.ok(!/Docker Desktop/i.test(r.stdout + r.stderr));
-});
-
-test("install-mac-server.sh: an older macOS, an Intel Mac, or VYRE_RUNTIME=colima keeps Colima as the runtime and installs nothing from Apple", t => {
-  for (const o of [{ major: "15.6" }, { arch: "x86_64" }, { env: { VYRE_RUNTIME: "colima" } }]) {
-    const m = runtimeMac(t, o);
-    const r = run({ ...m.env, ...(o.env || {}), VYRE_CODE: CODE }, ["--from", m.src]);
-    assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "container")) && !fs.existsSync(m.plist), JSON.stringify(o));
-    assert.ok(!/pkgutil|container\.pkg/.test(m.calls()), JSON.stringify(o));
-    assert.equal(m.runtime().records.kind, "colima", JSON.stringify(o));
-  }
-});
-
-test("install-mac-server.sh: a package with the wrong checksum, the wrong signer or the wrong version installs nothing and says Colima is the runtime", t => {
-  for (const [what, o, env] of /** @type {[string, any, any][]} */ ([["checksum", {}, { VYRE_CONTAINER_SHA256: "0".repeat(64) }], ["signer", { team: "ABCDE12345" }, {}], ["version", { version: "0.9.0" }, {}]])) {
-    const m = runtimeMac(t, o);
-    const r = run({ ...m.env, ...env, VYRE_CODE: CODE }, ["--from", m.src]);
-    assert.equal(r.status, 0, what + r.stderr + r.stdout);
-    assert.match(r.stdout + r.stderr, /Colima is this Mac's runtime/, what);
-    assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "container")) && !fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "container.new")) && !fs.existsSync(m.plist), what);
-    assert.equal(m.runtime().records.kind, "colima", what);
-  }
-});
-
-// Only on a macOS 26 hosted runner (mac-runtime.yml sets VYRE_REAL_CONTAINER_PKG=1): the real pinned package, the real pkgutil, the installer's own pins. The services are
-// not started (launchctl is the fake): a hosted runner cannot run a virtual machine.
-test("install-mac-server.sh: the real pinned Apple container package checks out (sum, Apple signature, layout, version) and unpacks", { skip: process.env.VYRE_REAL_CONTAINER_PKG !== "1" && "set VYRE_REAL_CONTAINER_PKG=1 on a macOS 26 hosted runner" }, t => {
-  const m = runtimeMac(t);
-  const env = { ...m.env, VYRE_CODE: CODE };
-  for (const k of ["VYRE_PKGUTIL", "VYRE_CONTAINER_URL", "VYRE_CONTAINER_SHA256", "VYRE_UNAME_M", "VYRE_MACOS_VERSION"]) delete /** @type {any} */ (env)[k];
-  env.PATH = `${path.join(m.base, "bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`;
-  fs.rmSync(path.join(m.base, "bin", "pkgutil"));
-  const r = run(env, ["--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(!/Colima is this Mac's runtime/.test(r.stdout + r.stderr), r.stdout + r.stderr);
-  assert.equal(m.runtime().records.kind, "container");
-  const v = spawnSync(m.cli, ["--version"], { encoding: "utf8" });
-  assert.match(v.stdout + v.stderr, /1\.5\.0/);
-});
-
-test("install-mac-server.sh: --dry-run says what the runtime would be, and --uninstall stops and removes Apple's container", t => {
-  const m = runtimeMac(t);
-  let r = run({ ...m.env, VYRE_CODE: CODE }, ["--dry-run", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /would install Apple's container 1\.5\.0/);
-  assert.ok(!fs.existsSync(m.plist) && !fs.existsSync(m.env.VYRE_SERVER_DIR));
-  r = run({ ...m.env, VYRE_CODE: CODE }, ["--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(fs.existsSync(m.plist));
-  r = run({ ...m.env }, ["--uninstall", "--yes"]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(m.calls(), /launchctl bootout gui\/\d+\/run\.vyre\.container/);
-  assert.ok(!fs.existsSync(m.plist) && !fs.existsSync(m.env.VYRE_SERVER_DIR));
-  assert.ok(fs.existsSync(path.join(m.env.VYRE_HOME, "runtime", "container")), "the runtime's data (Twenty) is the person's and stays unless --purge");
 });
 
 test("install-mac-server.sh: a box-url file beside the script is the release source (the rc channel); the environment beats it; a link that is not https is ignored", t => {
