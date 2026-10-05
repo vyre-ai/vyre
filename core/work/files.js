@@ -66,20 +66,20 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
       if (have) {
         if (have.data.sha256 === sha) return { path: have.data.path, record: have, created: false, version: 0 };
         // a new version of the same thing (an artifact edited): the same path, a new Drive version, the record follows
-        const head = (await kernel.drive.history(chain(), have.data.path)).at(-1);
-        const put = await kernel.drive.put(chain(), have.data.path, f.bytes, { base: head ? head.ver : null });
-        const rec = await kernel.records.update(chain(), FILE, have.id, { sha256: sha, size: f.bytes.length, ...(f.mime ? { mime: f.mime } : {}) }, have.version);
+        // (the service chain may write a chat's folder but never read it, so the version we wrote last is kept on the record, not asked of the Drive)
+        const put = await kernel.drive.put(chain(), have.data.path, f.bytes, { base: Number.isInteger(have.data.drive_version) ? have.data.drive_version : null });
+        const rec = await kernel.records.update(chain(), FILE, have.id, { sha256: sha, size: f.bytes.length, drive_version: put.version, ...(f.mime ? { mime: f.mime } : {}) }, have.version);
         return { path: have.data.path, record: rec, created: false, version: put.version };
       }
       const name = await freeName(folder, safeName(f.name));
       const path = `${folder}/${name}`;
       const put = await kernel.drive.put(chain(), path, f.bytes, { base: null });
       const rec = await kernel.records.create(chain(), FILE, {
-        name, path, kind: f.kind, size: f.bytes.length, sha256: sha, key, thread: String(f.thread), ...(f.mime ? { mime: String(f.mime).slice(0, 100) } : {}), ...(f.source ? { source: String(f.source).slice(0, 200) } : {}),
+        name, path, kind: f.kind, size: f.bytes.length, sha256: sha, drive_version: put.version, key, thread: String(f.thread), ...(f.mime ? { mime: String(f.mime).slice(0, 100) } : {}), ...(f.source ? { source: String(f.source).slice(0, 200) } : {}),
         ...(f.artifact ? { artifact: String(f.artifact) } : {}), project: { urn: ctx.project.urn }, chat: { urn: ctx.rec.urn },
       });
       return { path, record: rec, created: true, version: put.version };
-    } catch (e) { log(`project files: could not save ${String(f && f.name).slice(0, 60)} for ${String(f && f.thread).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
+    } catch (e) { log(`project files: could not save ${String(f && f.name).slice(0, 60)} for ${String(f && f.thread).slice(0, 8)}: ${/** @type {Error} */ (e).message}${process.env.DEBUGFILES ? " " + String(/** @type {Error} */ (e).stack).split("\n").slice(1, 6).join(" | ") : ""}`); return null; }
   }
 
   /** A name not yet used in a folder: "a.png", then "a (2).png". @param {string} folder @param {string} name */

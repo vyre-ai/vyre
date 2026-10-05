@@ -327,6 +327,11 @@
               "label": "Hash"
             },
             {
+              "name": "drive_version",
+              "kind": "number",
+              "label": "Drive version last written"
+            },
+            {
               "name": "source",
               "kind": "text",
               "label": "Made by (provider and tool)"

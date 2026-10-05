@@ -216,6 +216,7 @@ export const PROJECT_FILE = {
     text("mime", "Type"),
     f("number", "size", "Size in bytes"),
     text("sha256", "Hash"),
+    f("number", "drive_version", "Drive version last written"),
     text("source", "Made by (provider and tool)"),
     f("link", "project", "Project", { to: "project" }),
     f("link", "chat", "Chat", { to: "chat-record" }),
