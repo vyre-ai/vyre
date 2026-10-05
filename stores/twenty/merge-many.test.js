@@ -46,8 +46,7 @@ for (const kind of ["sqlite", "twenty"]) {
     const m1 = await r.create(chain, "matter", { title: "one", contacts: [{ urn: b.urn }] });
     const m2 = await r.create(chain, "matter", { title: "two", contacts: [{ urn: b.urn }, { urn: c.urn }] });
     const m3 = await r.create(chain, "matter", { title: "three", contacts: [{ urn: a.urn }, { urn: b.urn }] });
-    if (process.env.DBG) { await r.remove(chain, "contact", b.id, b.version).catch(() => {}); const g = await r.get(chain, "matter", m1.id); console.log("AFTER DROP REMOVED m1", JSON.stringify(g && g.data), g && g.version); await r.restore(chain, "contact", b.id); console.log("AFTER RESTORE m1", JSON.stringify((await r.get(chain, "matter", m1.id)).data)); }
-    const res = await r.merge(chain, "contact", a.id, b.id).catch(e => { console.log("MERGE FAIL", kind, e.code, e.message, e.stack.split("\n").slice(1,4).join(" | ")); throw e; });
+    const res = await r.merge(chain, "contact", a.id, b.id);
     assert.equal(res.relinked, 3);
     const urns = async m => (await r.get(chain, "matter", m.id)).data.contacts.map(x => x.urn).sort();
     assert.deepEqual(await urns(m1), [a.urn], "m1 after merge");
