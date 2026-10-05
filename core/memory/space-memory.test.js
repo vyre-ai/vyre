@@ -85,7 +85,7 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   assert.deepEqual(ns.data, { to: null, last: null, state: "none" }, JSON.stringify(ns));
   assert.equal((await none.call("memory.backup.run", {}, "deck", await none.session("per_alex"), surface("deck"))).code, "not_found");
   const items = [{ kind: "file", name: "northwind/node_modules/x/index.js", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/debug.log", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/.git/HEAD", size: 5, mtime: 1, text: "keep!" }, { kind: "rows", name: "rows/chats.jsonl", size: 40, mtime: Date.now() - 1000, text: '{"chat":"Harlow billing question"}' }];
-  const w = await world(t, undefined, { memory: { backup: { to: "Acme Team", home: path.join(dir, "server"), identity: "alex", holder: "laptop", device: path.join(dir, "device.json") } } }, () => items);
+  const w = await world(t, undefined, { memory: { identity: { id: "alex", home: path.join(dir, "server"), name: "Acme Team", server: "Acme Team", deviceKey: path.join(dir, "device.json") } } }, () => items);
   const tok = await w.session("per_alex");
   const run = await w.call("memory.backup.run", {}, "deck", tok, surface("deck"));
   assert.equal(run.error, undefined, JSON.stringify(run));
@@ -93,6 +93,7 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   assert.equal(run.data.uploaded, 2);
   const st = (await w.call("memory.backup.status", {}, "deck", tok, surface("deck"))).data;
   assert.equal(st.to, "Acme Team");
+  assert.ok(fs.existsSync(path.join(dir, "server", "backup", "alex", "ring.json")), "beside the identity home, in the same storage");
   assert.equal(st.state, "ok");
   assert.ok(st.last > 0);
   const walk = d => fs.readdirSync(d).flatMap(n => { const p = path.join(d, n); return fs.statSync(p).isDirectory() ? walk(p) : [fs.readFileSync(p, "latin1")]; });

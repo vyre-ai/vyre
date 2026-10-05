@@ -34,6 +34,7 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
 import { Backup, noBackup } from "./backup/index.js";
+import { fingerprint as fingerprintOf } from "../../lib/keywrap.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
@@ -1195,17 +1196,18 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       run: async (input, extra = {}) => { const { api, chain } = await spaceMemory(extra); return factOut(await api.retire(chain, String(input.id))); },
     });
-    // ---- the Basic backup (backup/index.js, team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats, ciphertext on a team server they belong to. `memory.backup` in config.json names it:
-    // { to: the team Space's name, home: where its storage is (a folder here; the gateway's storage in life), identity, holder, device: the file holding this device's private key }. With none there is no
-    // backup, and the status says so. What to back up comes from `projects.backup.sources` (the projects' folders and the device's row files, which flows and chat answer): { items: [{ kind: "file"|"rows",
-    // name, size, mtime, path | text }] }. Every hour while there are changes.
-    const bkCfg = ctx.config.memory && ctx.config.memory.backup;
+    // ---- the Basic backup (backup/index.js, team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats, ciphertext on a team server they belong to. It has no store and no key of its own: it
+    // lives beside the identity home in the SAME server storage (`memory.identity.home`, under backup/<identity>/ where the home is under identity/<identity>/) and opens with the device key the identity
+    // home unlocks with (`memory.identity.deviceKey`). With no identity home there is no team server, so no backup, and the status says so. `memory.backup` only tunes it: { every_ms, max_bytes } or false to turn it off.
+    // What to back up comes from `projects.backup.sources` (flows' folders, chat's rows): { items: [{ kind: "file"|"rows", name, size, mtime, path | text }] }. Every hour while there are changes.
+    const bkCfg = idCfg && idCfg.id && idCfg.home && idCfg.deviceKey && !(ctx.config.memory && ctx.config.memory.backup === false) ? { ...idCfg, ...((ctx.config.memory && ctx.config.memory.backup) || {}) } : null;
     /** @type {Promise<Backup>|null} */ let bkOpen = null;
     const backupOf = () => bkOpen || (bkOpen = (async () => {
-      const be = new FileBackend(String(bkCfg.home), String(bkCfg.to || "the team server"));
-      const dev = JSON.parse(fs.readFileSync(String(bkCfg.device), "utf8"));
-      try { return await Backup.open({ backend: be, identity: String(bkCfg.identity), holder: String(bkCfg.holder), privateJwk: dev.privateJwk }); }
-      catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; return Backup.create({ backend: be, identity: String(bkCfg.identity), devices: { [String(bkCfg.holder)]: dev.publicJwk } }); }
+      const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
+      const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8"));
+      const holder = fingerprintOf(dev.publicJwk);
+      try { return await Backup.open({ backend: be, identity: String(bkCfg.id), holder, privateJwk: dev.privateJwk }); }
+      catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; return Backup.create({ backend: be, identity: String(bkCfg.id), devices: { [holder]: dev.publicJwk } }); }
     })().catch(e => { bkOpen = null; throw e; }));
     const bkItems = async () => {
       const r = await ctx.call("projects.backup.sources", {}).catch(() => null);
@@ -1223,17 +1225,17 @@ export default {
       input: { type: "object", properties: {} },
       run: async (_i, extra = {}) => {
         if (!reader(extra.caller)) throw denied("the backup status is the person's own");
-        if (!bkCfg || !bkCfg.home) return noBackup();
-        try { return await (await backupOf()).status(await bkItems(), String(bkCfg.to || "") || null); } catch { return { to: String(bkCfg.to || "") || null, last: null, state: "behind" }; }
+        if (!bkCfg) return noBackup();
+        try { return await (await backupOf()).status(await bkItems(), String(bkCfg.server || bkCfg.name || "") || null); } catch { return { to: String(bkCfg.server || bkCfg.name || "") || null, last: null, state: "behind" }; }
       },
     });
     ctx.tool("memory.backup.run", {
       effect: "write",
       description: "Back up now: upload what the team server lacks, then write the next manifest. Returns { rev, uploaded, reused, items, bytes }. Runs by itself every hour while there are changes.",
       input: { type: "object", properties: {} },
-      run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg || !bkCfg.home) throw Object.assign(new Error("there is no team server to back up to"), { code: "not_found" }); return bkRun(); },
+      run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg) throw Object.assign(new Error("there is no team server to back up to"), { code: "not_found" }); return bkRun(); },
     });
-    const bkTimer = bkCfg && bkCfg.home ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
+    const bkTimer = bkCfg ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
     if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
     // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
     // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
