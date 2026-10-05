@@ -215,16 +215,21 @@ test("connectors: who may use a connection is shown in the catalog and changed o
   assert.match((await w.cli("connectors.scope", { name: "fakevendor", scope: "everyone" })).error.message, /scope is/);
 });
 
-test("connectors: shipped declarations are listed for anyone; only a person makes a credential from one, and the vault then holds a connector with its ops and outward flags", async t => {
+test("connectors: shipped declarations are listed for the person; only a person makes a credential from one, and the vault then holds a connector with its ops and outward flags", async t => {
   const w = await world(t, url => [fakevendor(url)]);
-  const list = (await w.mcpCall("connectors.declared", {})).data.connectors;
+  // what is connected is the person's: a model session with no proof of its own, a guest and an anonymous caller get nothing
+  for (const who of ["mcp", "anonymous", "tailnet-guest:x"]) {
+    assert.ok((await w.d.registry.call("connectors.declared", {}, who)).error, `${who} gets no list of what is connected`);
+    assert.ok((await w.d.registry.call("connectors.logging", { connector: "gmail", address: "a@b.test", project: "p" }, who)).error, `${who} gets no logging recipe`);
+  }
+  const list = (await w.cli("connectors.declared", {})).data.connectors;
   assert.deepEqual(list.map(c => c.id).sort(), ["gmail", "google-calendar", "stripe"]);
   const gmail = list.find(c => c.id === "gmail");
   assert.equal(gmail.installed, false);
   assert.equal(gmail.ops.find(o => o.name === "drafts.create").outward, false, "a draft is not outward");
   assert.equal(gmail.ops.find(o => o.name === "messages.send").outward, true);
   assert.deepEqual(gmail.polls.map(p => p.name), ["mail.recent"]);
-  assert.equal((await w.mcpCall("connectors.declared", { id: "nope" })).error.code, "not_found");
+  assert.equal((await w.cli("connectors.declared", { id: "nope" })).error.code, "not_found");
 
   // a model never makes a credential
   assert.equal((await w.mcpCall("connectors.declare", { id: "stripe", secret: "sk_test_x" })).error.code, "denied");
@@ -239,7 +244,7 @@ test("connectors: shipped declarations are listed for anyone; only a person make
   const made = await w.cli("connectors.declare", { id: "stripe", secret: SECRET });
   assert.equal(made.data?.name, "stripe", JSON.stringify(made));
   assert.deepEqual(made.data.outward.sort(), ["customers.create", "refunds.create"]);
-  assert.equal((await w.mcpCall("connectors.declared", { id: "stripe" })).data.connectors[0].installed, true);
+  assert.equal((await w.cli("connectors.declared", { id: "stripe" })).data.connectors[0].installed, true);
   // the vault has it as a connector: the catalog the lease module reads carries the declaration's extras, never the key or the host
   const cat = (await w.d.registry.call("vault.service.catalog", {}, "module:leases")).data.connectors;
   assert.deepEqual(cat.stripe.idempotency, { header: "Idempotency-Key" });
@@ -256,7 +261,7 @@ test("connectors: the logging recipe gives a watcher the watchers module accepts
   const work = path.join(w.root, "work", "harlow-legal"); fs.mkdirSync(work, { recursive: true });
   assert.ok(!(await w.cli("projects.create", { name: "Harlow Legal", home: work })).error);
   // no Google account is connected yet: there is nothing to read the mailbox with
-  assert.equal((await w.mcpCall("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).error?.code, "not_found");
+  assert.equal((await w.cli("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).error?.code, "not_found");
   assert.equal((await w.cli("connectors.declared", { id: "gmail" })).data.connectors[0].installed, false);
   // a Google account connected to the google module (a service account in the vault, the fake Google as its base)
   const fake = await startFakeGoogle(t);
@@ -264,9 +269,9 @@ test("connectors: the logging recipe gives a watcher the watchers module accepts
   assert.equal((await w.cli("vault.grant", { name: "work-google", module: "google" })).data.grant.status, "active");
   assert.ok((await w.cli("google.add", { name: "work", email: "alex@harlow.test", auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
   assert.deepEqual((await w.cli("connectors.declared", { id: "gmail" })).data.connectors[0].accounts, ["work"]);
-  const r = (await w.mcpCall("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).data;
+  const r = (await w.cli("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).data;
   assert.deepEqual(r.watcher, { kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: "alex@harlow.test" } });
-  assert.equal((await w.mcpCall("connectors.logging", { connector: "gmail", address: "alex@harlow.test", project: "harlow-legal", google: "nobody" })).error?.code, "not_found");
+  assert.equal((await w.cli("connectors.logging", { connector: "gmail", address: "alex@harlow.test", project: "harlow-legal", google: "nobody" })).error?.code, "not_found");
   assert.equal(r.name, "gmail-alex-harlow-test"); assert.equal(r.flow.trigger.watcher, r.name);
   const { checkFlow } = await import("../../kernel/flows/schema.js");
   assert.deepEqual(checkFlow(r.flow), []);
