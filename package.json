@@ -52,6 +52,8 @@
     "modules",
     "names/worker/id-messages.js",
     "stores",
+    "wink/forwarder",
+    "!wink/forwarder/**/*_test.go",
     "records",
     "box",
     "apps/app/dist",

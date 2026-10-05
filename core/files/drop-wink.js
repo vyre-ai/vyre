@@ -14,7 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
 import * as config from "../config/index.js";
-import { CHUNK, newDropKey, sender, receiver } from "./drop-seal.js";
+import { CHUNK, sender, receiver } from "./drop-seal.js";
 import { createDropStore } from "./drop-store.js";
 
 /** The box's inbox when config files.inbox is not set: inside /work, the box's default root. */
@@ -35,10 +35,19 @@ const str = { type: "string" };
 export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   const log = (/** @type {string} */ m) => { try { ctx.log(m); } catch { /* no log */ } };
   const emit = (/** @type {string} */ t, /** @type {any} */ p) => { try { ctx.events.emit(t, p); } catch (e) { log(`${t} was not announced: ${/** @type {Error} */ (e).message}`); } };
-  /** A drop key is sealed to only when the identity's own list vouches for it: the signature on it is by a device of this person's identity. A key the server alone vouches for is refused. @param {{ pub: string, eid: string, sig: string }} k */
-  const vouched = async k => {
-    const r = /** @type {any} */ (await ctx.call("wink.identity.check", { pub: k.pub, eid: k.eid, sig: k.sig }).catch(() => null));
-    if (!(r && r.data && r.data.ok)) throw fail("not_verified", "that computer's key for receiving files is not vouched for by your identity, so nothing was sent");
+  /** The key to seal to, from the person's identity list and nowhere else: the key-agreement point of the receiving entry. A computer the list does not carry, or one with no such key, gets nothing sent. @param {string} eid */
+  const agreeOf = async eid => {
+    // a computer knows its own identity; a server knows whose it is from the pairing that made it theirs
+    const me = /** @type {any} */ (await ctx.call("spaces.identity.id", {}).catch(() => null));
+    const own = role === "box" ? /** @type {any} */ (await ctx.call("wink.server.owner", {}).catch(() => null)) : null;
+    const person = (me && me.data && me.data.id) || (own && own.data && /^per_/.test(String(own.data.identity)) ? String(own.data.identity) : null);
+    if (!person) throw fail("not_ready", "this computer has no identity yet");
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.devices.read", { person }).catch((/** @type {any} */ e) => ({ error: { code: e && e.code, message: e && e.message } })));
+    if (r && r.error) throw fail("not_verified", `your identity list could not be read (${String(r.error.code || "failed")}), so nothing was sent`);
+    const list = r && r.data && Array.isArray(r.data.devices) ? r.data.devices : [];
+    const e = list.find((/** @type {any} */ d) => d && d.device === eid && typeof d.agree === "string");
+    if (!e) throw fail("not_verified", `that computer is not on your identity list with a key for receiving files (the list has ${list.length} with keys), so nothing was sent`);
+    return String(e.agree);
   };
   const dropCfg = () => (ctx.config && ctx.config.files && ctx.config.files.drop) || {};
   const inboxPath = () => path.resolve(String(cfg.inbox || (role === "box" ? INBOX : macInbox())));
@@ -54,11 +63,11 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     const known = async (/** @type {string} */ id) => (await devices()).find(d => d.id === id && d.kind !== "web") || null;
     const t = (/** @type {string} */ name, /** @type {any} */ input, /** @type {(i: any, meta: any) => any} */ run) => ctx.tool(name, { description: `VyreDrop on the server: ${name.split(".").pop()}. Called by the person's own paired computers over their connection to this server.`, input, run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => run(i || {}, meta) });
 
-    t("files.drop.register", obj({ pub: str, eid: str, sig: str }, ["pub", "eid", "sig"]), (i, meta) => { st.register(caller(meta), String(i.pub), { eid: String(i.eid), sig: String(i.sig) }); return { registered: true }; });
+    t("files.drop.register", obj({ eid: str }, ["eid"]), (i, meta) => { st.register(caller(meta), String(i.eid)); return { registered: true }; });
     t("files.drop.unregister", obj(), (_i, meta) => { st.unregister(caller(meta)); return { registered: false }; });
     t("files.drop.targets", obj(), async (_i, meta) => {
       const me = caller(meta);
-      return { devices: (await devices()).filter(d => d.id !== me && d.kind !== "web").map(d => ({ id: d.id, name: d.name, kind: d.kind, online: Boolean(d.online), ready: Boolean(st.keyOf(d.id)), ...(st.keyOf(d.id) ? { pub: st.keyOf(d.id)?.pub, eid: st.keyOf(d.id)?.eid, sig: st.keyOf(d.id)?.sig } : {}) })) };
+      return { devices: (await devices()).filter(d => d.id !== me && d.kind !== "web").map(d => ({ id: d.id, name: d.name, kind: d.kind, online: Boolean(d.online), ready: Boolean(st.keyOf(d.id)), ...(st.keyOf(d.id) ? { eid: st.keyOf(d.id)?.eid } : {}) })) };
     });
     t("files.drop.begin", obj({ id: str, to: str, total: { type: "number" }, size: { type: "number" }, eph: str }, ["id", "to", "total", "size", "eph"]), async (i, meta) => {
       const me = caller(meta);
@@ -94,10 +103,9 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
         const to = (await devices()).find(d => (d.id === i.device || d.name === i.device) && d.kind !== "web");
         if (!to) throw fail("not_found", `no paired computer called "${i.device}"`);
         const k = st.keyOf(to.id); if (!k) throw fail("not_ready", `"${to.name}" has not turned receiving on`);
-        await vouched(k);
-        const pub = k.pub;
+        const point = await agreeOf(k.eid);
         const id = crypto.randomBytes(15).toString("hex");
-        const sealed = await sealFile(safe.real, id, pub);
+        const sealed = await sealFile(safe.real, id, point, k.eid);
         st.begin({ id, from: "server", to: to.id, total: sealed.total, size: s.size, eph: sealed.eph });
         let n = 0; for (const blob of sealed.chunks()) st.put(id, "server", n++, blob);
         st.finish(id, "server"); void offer(to.id, id);
@@ -111,9 +119,21 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   }
 
   // ---------------------------------------------------------------- a computer's half
-  const keyFile = () => path.join(ctx.paths.root, "drop-key.json");
-  /** @returns {{ pub: string, priv: string } | null} */
-  const readKey = () => { try { return JSON.parse(fs.readFileSync(keyFile(), "utf8")); } catch { return null; } };
+  /** This computer's own entry on the person's identity list, the one whose key-agreement key opens what is sealed to it. */
+  const ownEid = async () => {
+    // the modules-only read of the identity (spaces.identity.status is the person's, and a module is refused it with the gates on)
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.id", {}).catch(() => null));
+    const eid = r && r.data && typeof r.data.id === "string" && typeof r.data.eid === "string" ? r.data.eid : null;
+    if (!eid) throw fail("not_ready", "this computer has no identity yet");
+    return eid;
+  };
+  /** This computer's key-agreement step, in the identity module: the wrap and its associated data go in and only the file key comes back (the private key and the shared secret never leave it). @param {any} wrap @param {string} aad */
+  const unwrap = async (wrap, aad) => {
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.unwrap-drop", { wrap, aad }));
+    if (!r || !r.data || typeof r.data.key !== "string") throw fail("not_ready", "this computer has no key for receiving files yet");
+    return new Uint8Array(Buffer.from(r.data.key, "base64url"));
+  };
+
   const home = async () => {
     const r = /** @type {any} */ (await ctx.call("wink.home.id", {}).catch(() => null));
     const sid = r && r.data && r.data.device;
@@ -133,10 +153,10 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
       const all = t.devices || [];
       const to = i.to ? all.find((/** @type {any} */ d) => d.id === i.to || d.name === i.to) : (all.filter((/** @type {any} */ d) => d.ready).length === 1 ? all.find((/** @type {any} */ d) => d.ready) : null);
       if (!to) throw fail(i.to ? "not_found" : "ambiguous", i.to ? `none of your other computers is called "${i.to}"` : all.length ? `say which computer: ${all.map((/** @type {any} */ d) => `${d.name}${d.ready ? "" : " (not receiving)"}`).join(", ")}` : "you have no other computer paired to your server");
-      if (!to.ready || !to.pub || !to.eid || !to.sig) throw fail("not_ready", `"${to.name}" has not turned receiving on (files.receive on, on that computer)`);
-      await vouched({ pub: String(to.pub), eid: String(to.eid), sig: String(to.sig) });
+      if (!to.ready || !to.eid) throw fail("not_ready", `"${to.name}" has not turned receiving on (files.receive on, on that computer)`);
+      const point = await agreeOf(String(to.eid));
       const id = crypto.randomBytes(15).toString("hex");
-      const sealed = await sealFile(safe.real, id, String(to.pub));
+      const sealed = await sealFile(safe.real, id, point, String(to.eid));
       await h.call("files.drop.begin", { id, to: to.id, total: sealed.total, size: s.size, eph: sealed.eph });
       try {
         let n = 0; for (const blob of sealed.chunks()) await h.call("files.drop.put", { id, index: n++, b64: blob.toString("base64") });
@@ -166,10 +186,10 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   /** Take one drop: open every chunk, check the whole, write it into the inbox, tell the server it is taken. @param {string} id */
   async function pull(id) {
     const dir = prepare(); if (!dir) return;
-    const key = readKey(); if (!key) return;
+    const eid = await ownEid();
     const h = await home();
     const m = await h.call("files.drop.meta", { id });
-    const open = receiver(id, m.eph, key.priv);
+    const open = await receiver(id, m.eph, unwrap, eid);
     const head = JSON.parse(open.open(0, m.total, Buffer.from((await h.call("files.drop.get", { id, index: 0 })).b64, "base64")).toString("utf8"));
     const name = landing(dir, head.name);
     const tmp = path.join(dir, `.${crypto.randomBytes(6).toString("hex")}.part`);
@@ -196,16 +216,14 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   async function ready() {
     if (!on) return;
     try {
-      let key = readKey(); if (!key) { key = newDropKey(); fs.writeFileSync(keyFile(), JSON.stringify(key), { mode: 0o600 }); }
+      const eid = await ownEid();
       const h = await home();
-      const vouch = /** @type {any} */ (await ctx.call("wink.identity.sign", { pub: key.pub }));
-      if (!vouch || !vouch.data) throw fail("not_ready", "this computer has no identity yet");
-      await h.call("files.drop.register", { pub: key.pub, eid: String(vouch.data.eid), sig: String(vouch.data.sig) });
+      await h.call("files.drop.register", { eid });
       await takeAll();
-    } catch (e) { if (!on) return; retry = setTimeout(() => { retry = null; ready().catch(() => {}); }, RETRY); retry.unref(); }
+    } catch (e) { if (!on) return; log(`receiving is not registered with the server yet (${String(/** @type {any} */ (e).code || "failed")}: ${String(/** @type {Error} */ (e).message).slice(0, 120)}); trying again in a minute`); retry = setTimeout(() => { retry = null; ready().catch(() => {}); }, RETRY); retry.unref(); }
   }
   ctx.tool("files.receive", {
-    description: "Turn on or off whether this computer takes in files your other computers send it with files.send. Off by default. Turning it on makes this computer's own key for it and tells your server, which holds a file for it until it is on.",
+    description: "Turn on or off whether this computer takes in files your other computers send it with files.send. Off by default. Turning it on tells your server which key on your identity list opens them; it holds a file for it until it is on.",
     input: obj({ on: { type: "boolean" } }, ["on"]),
     callers: ["cli", "local", "deck", "capsule"],
     run: async (/** @type {any} */ i) => {
@@ -229,13 +247,13 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
 
 /**
  * Seal a file for a computer: the ephemeral key to hand the receiver, how many chunks, and the chunks themselves in order (chunk 0 is the header).
- * @param {string} file @param {string} id @param {string} toPub
+ * @param {string} file @param {string} id @param {string} toPoint the receiving entry's key-agreement point @param {string} toEid
  */
-async function sealFile(file, id, toPub) {
+async function sealFile(file, id, toPoint, toEid) {
   const s = fs.statSync(file);
   const h = crypto.createHash("sha256"); await new Promise((res, rej) => fs.createReadStream(file).on("data", d => h.update(d)).on("end", res).on("error", rej));
   const total = 1 + Math.ceil(s.size / CHUNK);
-  const sealer = sender(id, toPub);
+  const sealer = sender(id, toPoint, toEid);
   const header = Buffer.from(JSON.stringify({ name: path.basename(file), size: s.size, sha256: h.digest("hex"), mtime: Math.floor(s.mtimeMs) }));
   return {
     eph: sealer.eph, total,
@@ -247,4 +265,4 @@ async function sealFile(file, id, toPub) {
     },
   };
 }
-export { sealFile, receiver, newDropKey, config, inside, obj };
+export { sealFile, receiver, config, inside, obj };
