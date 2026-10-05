@@ -14,7 +14,7 @@ import { tempHome } from "../../test/helpers.js";
 
 const SPACE = "spc_harlow000001";
 
-async function rig(t, { ask = false } = {}) {
+async function rig(t, { ask = false, fullWindow = false } = {}) {
   const google = fakeGoogle({ mailbox: "alex@harlow.test" });
   const w = await world();
   t.after(() => w.stopListening());
@@ -37,6 +37,11 @@ async function rig(t, { ask = false } = {}) {
     return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
   };
   const root = tempHome(t);
+  if (fullWindow) { // the declared 600 per minute are all used up, until a moment from now
+    const fsm = await import("node:fs");
+    fsm.mkdirSync(`${root}/calendar-sync`, { recursive: true });
+    fsm.writeFileSync(`${root}/calendar-sync/${SPACE}.google-home.json`, JSON.stringify({ sent_at: Array.from({ length: 600 }, () => Date.now() - 59_700) }));
+  }
   const sync = createCalendarSyncHost({ root, log: () => {}, everyMs: 3_600_000, firstMs: 3_600_000 });
   t.after(() => sync.stop());
   const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
@@ -270,4 +275,20 @@ test("an approved write that has to wait is not lost: a 429 after the yes keeps 
   assert.equal((await events())[0].data.calendar, "google-home");
   await h.runNow();
   assert.equal(google.events.size, 1, "once");
+});
+
+test("a full rate window is noticed before the yes is spent: the approval waits unspent, and when the window opens the write goes out once with it", async t => {
+  const { google, w, h, sent, checked, tasks, owner } = await rig(t, { ask: true, fullWindow: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  w.kernel.completeTask(ts[0].id, { outcome: "approved" });
+  for (let i = 0; i < 10; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.equal(sent.length, 0, "the window is full: nothing is sent");
+  assert.deepEqual(checked, [], "and the yes has not been spent");
+  await new Promise(r => setTimeout(r, 450));
+  await h.runNow();
+  assert.equal(google.events.size, 1, "the window opened and it went out");
+  assert.deepEqual(checked, [ts[0].id], "with the one yes, spent once");
+  assert.equal(sent.length, 1);
 });
