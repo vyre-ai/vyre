@@ -35,6 +35,8 @@ export function vaultSource(call: Call) {
     unlockReal: (passphrase: string) => ask<unknown>("vault.unlock", { passphrase }),
     /** Add an item: a person's own call, the box asks for presence on this exact save. The value goes to the box and is not kept here. */
     putReal: (input: Record<string, unknown>) => ask<unknown>("vault.put", input),
+    /** Let a module (or one of its watchers) use an item: a person's own call, the box asks presence on this exact grant. The module never sees the value. */
+    grantReal: (input: Record<string, unknown>) => ask<{ grant?: { status?: string } }>("vault.grant", input),
     /** Taking access away is always allowed: no proof asked. */
     async revokeReal(name: string, module: string): Promise<void> {
       const [mod, watcher] = module.split("/");
