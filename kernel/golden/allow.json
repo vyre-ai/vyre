@@ -968,14 +968,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether each storage device is there"
  },
  {
-  "tool": "work.engineer.revise",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): edits the Engineer's proposed definition, which is checked again and gets its own card"
- },
- {
-  "tool": "work.engineer.talk",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): talks to the Engineer, which only admins can do; explain reads a definition back"
- },
- {
   "tool": "work.project.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.project.rename opened to a model or a module in f990f0d36 (4 Oct 2026); the body decides: guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
  },
