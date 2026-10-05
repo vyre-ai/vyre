@@ -572,7 +572,7 @@ export default {
       callers: ["module"],
       run: async ({ name }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent") throw Object.assign(new Error("agents.uid is the projects and plugin-agent modules'"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:work") throw Object.assign(new Error("agents.uid is the projects, plugin-agent and work modules'"), { code: "denied" });
         return { uid: must(String(name).toLowerCase()).uid };
       },
     });

@@ -42,9 +42,15 @@ test("a 0.2.x home upgrades: its access rows are kept, nothing is granted, one N
   assert.ok(item.id);
   assert.match(String(item.note || item.title), /northwind \(1\)|Restore who could see your projects/, "the item lists what waits");
   assert.equal((await d.kernel.gateway.ask.needsYou(owner)).filter((/** @type {any} */ x) => /Restore who could see/.test(x.title)).length, 1);
-  // 4. the person restores: the grant is made, the revoke stays revoked, the rows are cleared
-  const r = await call("projects.access.restore", {});
-  assert.ok(!r.error, JSON.stringify(r));
-  assert.equal((await call("projects.access.check", { project: "northwind", agent: "kit" })).data.granted, true);
-  assert.equal((await call("projects.access.pending", {})).data.pending, 0);
+  // 4. ONE yes: the owner approves the item, and the Work service carries out exactly that act, once, as them
+  const row = await d.kernel.gateway.ask.get(owner, item.id);
+  assert.equal(row.state, "needs-check", "the item waits on the owner's check");
+  await d.kernel.gateway.ask.decide(owner, item.id, { outcome: "approved", proof: { method: "stand-in" } });
+  await until(async () => (await call("projects.access.check", { project: "northwind", agent: "kit" })).data.granted === true, "the grant");
+  assert.equal((await call("projects.access.check", { project: "northwind", agent: "other" })).data.granted, false, "what was revoked stays revoked");
+  await until(async () => (await call("projects.access.pending", {})).data.pending === 0, "the old rows to clear");
+  // 5. a replay is refused: the approval was spent by the act
+  const doer = d.kernel.chains.forModule({ module: "work", approver: owner });
+  const replay = await d.kernel.gateway.authorize({ chain: doer, action: "projects.access.restore", resource: `vyre://${d.kernel.id.space}/project/*`, approval: item.id, bind: "x" });
+  assert.notEqual(replay.effect, "allow", "the approval cannot be used again");
 });

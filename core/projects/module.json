@@ -103,6 +103,12 @@
         "effect": "read"
       },
       {
+        "name": "projects.access.clear-legacy",
+        "summary": "clear the old access rows after they were carried into grants (the work module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "projects.access.pending",
         "reach": "anyone",
         "effect": "read"

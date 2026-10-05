@@ -7,6 +7,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import crypto from "node:crypto";
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
@@ -31,6 +32,7 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
+    /** @type {any} */ let raiseRestoreFn = null, restoreAsFn = null;
     /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
@@ -109,10 +111,15 @@ export default {
       hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
+        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); else if (e && e.type === "task.approved" && restoreAsFn) { const id = String(e.subject || "").split("/").pop() || ""; try { await restoreAsFn(id); } catch (err) { ctx.log(`work: the restore did not run: ${/** @type {Error} */ (err).message}`); } } }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
-      // An upgraded box with agent project access from before reach became a kernel grant: ONE Needs-you item, once, so the person restores it (projects.access.restore, their own call). Nothing is
-      // granted by the upgrade itself, so until then every agent is denied.
+      // An upgraded box with agent project access from before reach became a kernel grant: ONE Needs-you item, once, and the owner's yes does the restoring. The item is a held act for the single action
+      // `projects.access.restore` on the Space's project resource: approving it gives the Work service that one act, once, and `restoreAs` makes the project.reach grants inside it as the approver. The
+      // upgrade itself grants nothing, so until the yes every agent is denied.
+      const RESTORE = "projects.access.restore";
+      const restoreResource = () => `vyre://${kernelOf().space}/project/*`;
+      /** @param {any} data the pending answer @returns {string} */
+      const restoreBind = (data) => crypto.createHash("sha256").update(JSON.stringify((data && data.rows ? data.rows : []).map((/** @type {any} */ r) => [r.project, r.agent, r.status]).sort())).digest("base64url");
       const raiseRestore = async () => {
         try {
           const r = await ctx.call("projects.access.pending", {});
@@ -120,18 +127,60 @@ export default {
           const per = r && r.data && r.data.by_project ? Object.entries(r.data.by_project).map(([p, c]) => `${p} (${c})`).join(", ") : "";
           if (!n) return;
           const dbh = ctx.store.db;
-          dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
+          dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT)");
           if (dbh.prepare("SELECT 1 FROM work_flags WHERE key = 'access-restore'").get()) return;
           const k = kernelOf();
           const general = await hubOf().generalProject();
-          await k.ask.request(k.serviceChain("work"), {
+          const doer = k.serviceChain("work");
+          const bind = restoreBind(r.data);
+          const task = await k.ask.request(doer, {
             title: "Restore who could see your projects", record: general.urn,
-            doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
-            note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project${per ? `: ${per}` : ""}. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
-          });
-          dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
-        } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
+            doer: { kind: "service", id: "work", space: k.space }, checker: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "flow_step",
+            form: { kind: "held_act", flow: "work", run: "access-restore", step: "restore", action: RESTORE, resource: restoreResource(), bind, why: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project${per ? `: ${per}` : ""}. Your yes gives them back that access (what you had revoked stays revoked). Until then every agent is denied.` },
+          }, { idem: "work-access-restore" });
+          // the Work service has done its part (it has nothing to ask): the item now waits on the owner's check
+          try { await k.ask.start(doer, task.id); } catch { /* already started */ }
+          try { await k.ask.complete(doer, task.id, { answer: "yes", reason: "restore" }); } catch { /* already completed */ }
+          dbh.prepare("INSERT INTO work_flags (key, at, v) VALUES ('access-restore', ?, ?)").run(Date.now(), String(task.id));
+        } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
+      /** The owner said yes: the Work service carries out exactly the approved act, once (the approval is spent by this very authorize), and the grants are made as the person who approved. @param {string} taskId */
+      const restoreAs = async (taskId) => {
+        const k = kernelOf();
+        const dbh = ctx.store.db;
+        const row = /** @type {any} */ (dbh.prepare("SELECT v FROM work_flags WHERE key = 'access-restore'").get());
+        if (!row || String(row.v) !== taskId) return { done: false, why: "not the restore item" };
+        const approval = k.ask.approvalFor(taskId);
+        if (!approval) return { done: false, why: "not approved" };
+        const pending = await ctx.call("projects.access.pending", {});
+        const bind = restoreBind(pending && pending.data);
+        const asked = await k.authorize({ chain: k.serviceChain("work"), action: RESTORE, resource: restoreResource(), approval: taskId, bind });
+        if (asked.effect !== "allow") return { done: false, why: `refused: ${asked.reason}` };
+        const chain = approval.approver_chain;
+        const rows = /** @type {any[]} */ ((pending && pending.data && pending.data.rows) || []);
+        const agents = ((await ctx.call("agents.list", {})).data || []).filter((/** @type {any} */ a) => a.kind !== "assistant");
+        const own = new Set(rows.filter(r => r.agent && r.agent !== "(every agent)").map(r => `${r.project}\u0000${String(r.agent).toLowerCase()}`));
+        let restored = 0;
+        /** @param {string} project @param {string} name */
+        const grant = async (project, name) => {
+          const u = await ctx.call("agents.uid", { name: name.toLowerCase() });
+          const uid = u && u.data ? String(u.data.uid) : null;
+          const rec = await hubOf().ensureProject(project);
+          if (!uid || !rec) return;
+          const actor = { kind: "agent", id: uid, space: k.space };
+          try { await k.grants.addActor(chain, actor, {}); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "conflict" && c !== "exists") throw e; }
+          await k.grants.create(chain, { subject: { kind: "actor", actor }, actions: ["project.reach"], resource: { prefix: rec.urn }, source: "projects:reach", reason: "restored after the update" });
+          restored++;
+        };
+        for (const r of rows) {
+          if (r.status !== "granted") continue;
+          if (r.agent && r.agent !== "(every agent)") await grant(String(r.project), String(r.agent));
+          else for (const a of agents) if (!own.has(`${r.project}\u0000${String(a.name).toLowerCase()}`)) await grant(String(r.project), String(a.name));
+        }
+        await ctx.call("projects.access.clear-legacy", {});
+        return { done: true, restored };
+      };
+      raiseRestoreFn = raiseRestore; restoreAsFn = restoreAs;
       const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
       // every Space has a General project, made with it
       void hubOf().generalProject().catch(() => {});

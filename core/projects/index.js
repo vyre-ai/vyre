@@ -373,6 +373,16 @@ export default {
     // neither the migration nor a start can make one. `granted` rows become grants (an agent by its stable id); an explicit revoke is never re-granted; a row with no agent was the project's default
     // for any agent with no row of its own. Afterwards the holding table is emptied.
     const legacyRows = () => { try { return /** @type {any[]} */ (ctx.store.db.prepare("SELECT project, agent, status FROM projects_access_legacy").all()); } catch { return []; } };
+    ctx.tool("projects.access.clear-legacy", {
+      description: "Clear the old access rows once they were carried into grants. The work module's own, after the owner's approved restore.",
+      input: { type: "object", properties: {} },
+      callers: ["module"],
+      run: async (_i, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:work") throw refuse("projects.access.clear-legacy is the work module's", "denied");
+        try { ctx.store.db.exec("DELETE FROM projects_access_legacy"); } catch { /* no table */ }
+        return { cleared: true };
+      },
+    });
     ctx.tool("projects.access.pending", {
       description: "What agents could reach before reach became a kernel grant, still waiting for your approval to carry over: { rows, grants }. Read only.",
       input: { type: "object", properties: {} },
