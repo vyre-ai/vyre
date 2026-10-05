@@ -11,7 +11,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - feat(app): Planner at /u/planner (the Deck's planner view, ported): type to add (alarm 7am, todo ..., note ...) with a line showing what the box read before it goes in, today's agenda, the next alarms, open todos and notes, Done and Delete, and a banner with Done and Snooze for anything ringing (planner.fired and planner.acked). Listed under Settings, More places (screens/planner; 7 tests).
 
-- feat(app): Settings, Connections at /u/settings/connections (the Deck's connections.js, ported): MCP servers (Test with per-tool Read, Held or Off, Restart, Remove), Google accounts (Test shows each scope granted or refused, Remove) and GitHub accounts (device-code sign-in followed by github.connected and github.connect-failed, a pasted token that is never echoed back, Disconnect). Not yet: adding an MCP server or a Google account, and the connectors catalog (7 tests).
 
 - feat(app): Settings has Spending limits (spend.summary, spend.raise: a daily cap per provider, No cap) and Standing permissions (gate.said.list, add, revoke: what Vyre may send, post or pay without asking, Take back in one tap, a payment or a blanket allow asks for the person's proof). The Deck's settings-spend and settings-permissions, ported (screens/settings/limits-*.ts, LimitsScreens.tsx, routes /u/settings/spend and /u/settings/permissions; 4 tests).
 
