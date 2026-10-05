@@ -117,6 +117,8 @@ export default {
         return { result, component: toComponent(String(input.tool), normal, { types }) };
       },
     });
+    /** The named assistant a chain acts as (its last hop), or null: project memory is read for an agent. @param {any} chain */
+    const agentOf = chain => { const h = chain && chain.hops && chain.hops[chain.hops.length - 1]; return h && h.actor && h.actor.kind === "agent" ? String(h.actor.id) : null; };
     // The Space's own context budget (a Space setting kept with its Flows; an owner or admin sets it through flows.budget { context_tokens }); 1,200 when there is no Flows assembly.
     const spaceContextTokens = async (/** @type {any} */ k, /** @type {any} */ chain) => { try { const h = ctx.flowsHost && ctx.flowsHost.get(k.space); const b = h && await h.flows.tools["flows.budget"](chain, {}); return b && b.context_tokens || 1200; } catch { return 1200; } };
     ctx.tool("work.situation", {
@@ -136,7 +138,7 @@ export default {
           if (asked === undefined && t && t.form && Number.isFinite(t.form.context_tokens)) asked = t.form.context_tokens;
         }
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await spaceContextTokens(k, chain)))) } : false });
+        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), memory: agentOf(chain) ? async (/** @type {string} */ slug) => { const r = await ctx.call("memory.brief", { project: slug, agent: agentOf(chain) }); const d = r && (r.data !== undefined ? r.data : r); return d && typeof d.text === "string" ? d.text : null; } : null, context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await spaceContextTokens(k, chain)))) } : false });
       },
     });
 

@@ -163,10 +163,11 @@ export const PARTICIPANT = {
  * key every text column that names a project holds; `drive_path` and `memory_scope` are addresses the kernel writes at create; `repo` is a git remote (a local path lives with the computer, not here).
  */
 export const PROJECT = {
-  name: "project", label: "Project", icon: "IconFolder",
+  name: "project", label: "Project", icon: "IconFolder", kind: "project",
   fields: [
     text("name", "Name", { required: true }),
-    text("slug", "Short name used in addresses", { required: true, unique: true }),
+    // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
+    text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived"]),
     f("link", "client", "Client"),
     text("drive_path", "Drive folder"),

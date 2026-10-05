@@ -60,13 +60,18 @@ export function createHub({ kernel, call, summarize, now = Date.now, log = () =>
   }
 
   /** @param {any} p the thread.started payload ({ thread, name, cwd, project, agent, provider, model, auth, purpose, ... }) */
-  async function onStarted(p) {
+  async function onStarted(p0) {
+    // the switchboard says `thread`, the Harness's SessionStart hook (a terminal session) says `session` and knows only the folder
+    let p = p0 && typeof p0.thread !== "string" && typeof p0.session === "string" ? { ...p0, thread: p0.session } : p0;
     if (!p || typeof p.thread !== "string") return null;
     try {
+      if (!p.project && typeof p.cwd === "string" && call) { try { const r = await call("projects.of", { cwd: p.cwd }); const hit = r && (r.data !== undefined ? r.data : r); if (hit && typeof hit.slug === "string") p = { ...p, project: hit.slug, name: p.name || undefined }; } catch { /* a session outside every project */ } }
       const have = await find(SUMMARY, "thread", p.thread);
       if (have) {
-        // a resumed session is the same record, working again
-        return kernel.records.update(chain(), SUMMARY, have.id, { status: "working", ended: null }, have.version);
+        // a resumed session, or the second of two events for one (the switchboard and the Harness hook): the same record, working, with what it did not know before filled in
+        const proj0 = !have.data.project && p.project ? await ensureProject(String(p.project)).catch(() => null) : null;
+        const fill = { status: "working", ended: null, ...(proj0 ? { project: { urn: proj0.urn } } : {}), ...(!have.data.model && p.model ? { model: String(p.model) } : {}), ...(!have.data.provider && p.provider ? { provider: String(p.provider) } : {}), ...(!have.data.agents && p.agent ? { agents: String(p.agent) } : {}), ...(p.name && (!have.data.title || /^(Session| session)$|session$/.test(have.data.title)) ? { title: String(p.name).slice(0, 120) } : {}) };
+        return kernel.records.update(chain(), SUMMARY, have.id, fill, have.version);
       }
       const proj = p.project ? await ensureProject(String(p.project)).catch(() => null) : null;
       let acct = null;
@@ -80,11 +85,12 @@ export function createHub({ kernel, call, summarize, now = Date.now, log = () =>
   }
 
   /** @param {any} p the thread.stopped payload ({ thread, code, reason }) */
-  async function onStopped(p) {
+  async function onStopped(p0) {
+    const p = p0 && typeof p0.thread !== "string" && typeof p0.session === "string" ? { ...p0, thread: p0.session } : p0;
     if (!p || typeof p.thread !== "string") return null;
     try {
       const have = await find(SUMMARY, "thread", p.thread);
-      if (!have) return null;
+      if (!have || have.data.status !== "working") return null; // closed already (the switchboard and the terminal hook can both say it)
       let t = null;
       if (call) { try { const r = await call("threads.get", { id: p.thread }); t = r && (r.data || r); } catch { /* the facts we have */ } }
       const reason = String(p.reason || "");

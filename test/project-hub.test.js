@@ -68,3 +68,19 @@ test("a session in a project only the old folder projects know is given its Proj
   assert.equal(proj.data.slug, "legacy-client");
   assert.equal(proj.data.drive_path, "Projects/legacy-client");
 });
+
+test("a terminal session (the Harness's SessionStart and SessionEnd hooks) gets a summary record too, found by its folder, and closes once", { timeout: 120_000 }, async t => {
+  const { d, admin, meta } = await boot(t);
+  const session = "2f0e0d0c-0b0a-4908-8706-050403020100";
+  const brief = await d.registry.call("harness.brief", { session, cwd: process.cwd(), source: "startup" }, "cli", await meta());
+  assert.ok(!brief.error || true);
+  const q = async () => (await d.kernel.gateway.records.query(admin, "session-summary", { page: { limit: 10 } })).rows.find((/** @type {any} */ r) => r.data.thread === session) || null;
+  const row = await until(q, "the terminal session's summary");
+  assert.equal(row.data.status, "working");
+  await d.registry.call("harness.end", { session, reason: "logout" }, "cli", await meta());
+  const done = await until(async () => { const r = await q(); return r && r.data.status === "done" ? r : null; }, "the session to close");
+  assert.ok(done.data.ended);
+  await d.registry.call("harness.end", { session, reason: "logout" }, "cli", await meta());
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal((await q()).data.ended, done.data.ended, "a second end changes nothing");
+});

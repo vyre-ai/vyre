@@ -129,6 +129,7 @@
           "name": "project",
           "label": "Project",
           "icon": "IconFolder",
+          "kind": "project",
           "fields": [
             {
               "name": "name",
@@ -140,7 +141,6 @@
               "name": "slug",
               "kind": "text",
               "label": "Short name used in addresses",
-              "required": true,
               "unique": true
             },
             {
