@@ -1,85 +1,11 @@
 {
   "kind": "kit",
   "sdk": 1,
-  "id": "base",
+  "id": "law-firm",
   "version": 1,
-  "label": "Base",
-  "description": "The objects any business starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, and a Project with stages.",
+  "label": "Law firm",
+  "description": "For a law firm: practice area on leads, appointments, clients and projects, and a Project that follows its own stages by practice area (personal injury and estate planning to start), with the accident date, trust name and hearing date shown and required only where they apply. Install the base Kit first.",
   "types": [
-    {
-      "name": "contact",
-      "label": "Contact",
-      "icon": "IconUser",
-      "fields": [
-        {
-          "name": "name",
-          "kind": "text",
-          "label": "Name",
-          "required": true
-        },
-        {
-          "name": "email",
-          "kind": "text",
-          "label": "Email",
-          "unique": true
-        },
-        {
-          "name": "phone",
-          "kind": "text",
-          "label": "Phone",
-          "unique": true
-        },
-        {
-          "name": "other_emails",
-          "kind": "emails",
-          "label": "Other emails"
-        },
-        {
-          "name": "other_phones",
-          "kind": "phones",
-          "label": "Other phones"
-        },
-        {
-          "name": "job_title",
-          "kind": "text",
-          "label": "Job title"
-        },
-        {
-          "name": "time_zone",
-          "kind": "text",
-          "label": "Time zone"
-        },
-        {
-          "name": "organization",
-          "kind": "link",
-          "label": "Organization",
-          "to": "organization"
-        },
-        {
-          "name": "address",
-          "kind": "address",
-          "label": "Address"
-        },
-        {
-          "name": "notes",
-          "kind": "rich_text",
-          "label": "Notes"
-        },
-        {
-          "name": "source",
-          "kind": "choice",
-          "label": "How they found us",
-          "options": [
-            "Website",
-            "Referral",
-            "Ad",
-            "Event",
-            "Phone",
-            "Other"
-          ]
-        }
-      ]
-    },
     {
       "name": "lead",
       "label": "Lead",
@@ -91,6 +17,20 @@
           "label": "Contact",
           "required": true,
           "to": "contact"
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
         },
         {
           "name": "source",
@@ -182,9 +122,25 @@
           "kind": "choice",
           "label": "Kind",
           "options": [
+            "Consultation",
             "Meeting",
             "Follow-up",
+            "Signing",
             "Call",
+            "Other"
+          ]
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
             "Other"
           ]
         },
@@ -250,6 +206,20 @@
           "to": "contact"
         },
         {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
           "name": "since",
           "kind": "date",
           "label": "Client since"
@@ -280,58 +250,6 @@
         "link": "contact",
         "ended": [
           "Closed"
-        ]
-      }
-    },
-    {
-      "name": "subscriber",
-      "label": "Subscriber",
-      "icon": "IconMailOpened",
-      "fields": [
-        {
-          "name": "contact",
-          "kind": "link",
-          "label": "Contact",
-          "required": true,
-          "to": "contact"
-        },
-        {
-          "name": "list",
-          "kind": "choice",
-          "label": "List",
-          "options": [
-            "Newsletter",
-            "Updates",
-            "Events"
-          ]
-        },
-        {
-          "name": "source",
-          "kind": "text",
-          "label": "Where they signed up"
-        },
-        {
-          "name": "stage",
-          "kind": "stage",
-          "label": "Stage",
-          "options": [
-            "Subscribed",
-            "Unsubscribed"
-          ]
-        }
-      ],
-      "stages": [
-        {
-          "name": "Subscribed"
-        },
-        {
-          "name": "Unsubscribed"
-        }
-      ],
-      "role": {
-        "link": "contact",
-        "ended": [
-          "Unsubscribed"
         ]
       }
     },
@@ -389,6 +307,20 @@
           "label": "Archived"
         },
         {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
           "name": "owner",
           "kind": "actor",
           "label": "Owner"
@@ -399,6 +331,25 @@
           "label": "Due"
         },
         {
+          "name": "accident_date",
+          "kind": "date",
+          "label": "Accident date",
+          "required_if": "practice_area == \"Personal Injury\"",
+          "visible_if": "practice_area == \"Personal Injury\""
+        },
+        {
+          "name": "trust_name",
+          "kind": "text",
+          "label": "Trust or plan name",
+          "visible_if": "practice_area == \"Estate Planning\""
+        },
+        {
+          "name": "hearing_date",
+          "kind": "date",
+          "label": "Next hearing",
+          "visible_if": "practice_area == \"Family Law\" or practice_area == \"Criminal Defense\""
+        },
+        {
           "name": "stage",
           "kind": "stage",
           "label": "Stage",
@@ -406,7 +357,16 @@
             "New",
             "Active",
             "Review",
-            "Done"
+            "Done",
+            "Intake",
+            "Treating",
+            "Demand",
+            "Negotiation",
+            "Settled",
+            "Closed",
+            "Drafting",
+            "Signing",
+            "Funding"
           ]
         }
       ],
@@ -423,6 +383,58 @@
         {
           "name": "Done"
         }
+      ],
+      "stage_sets": [
+        {
+          "name": "personal_injury",
+          "when": "practice_area == \"Personal Injury\"",
+          "stages": [
+            {
+              "name": "Intake"
+            },
+            {
+              "name": "Treating"
+            },
+            {
+              "name": "Demand"
+            },
+            {
+              "name": "Negotiation",
+              "enter_if": "not empty(accident_date)"
+            },
+            {
+              "name": "Settled"
+            },
+            {
+              "name": "Closed"
+            }
+          ]
+        },
+        {
+          "name": "estate_planning",
+          "when": "practice_area == \"Estate Planning\"",
+          "stages": [
+            {
+              "name": "Intake"
+            },
+            {
+              "name": "Drafting"
+            },
+            {
+              "name": "Review"
+            },
+            {
+              "name": "Signing",
+              "enter_if": "not empty(trust_name)"
+            },
+            {
+              "name": "Funding"
+            },
+            {
+              "name": "Closed"
+            }
+          ]
+        }
       ]
     }
   ],
@@ -438,6 +450,7 @@
       "groupBy": "stage",
       "columns": [
         "contact",
+        "practice_area",
         "source"
       ]
     },
@@ -456,6 +469,7 @@
       "label": "Clients",
       "columns": [
         "contact",
+        "practice_area",
         "stage",
         "since"
       ],
@@ -473,8 +487,20 @@
       "columns": [
         "name",
         "client",
+        "practice_area",
         "owner",
         "due"
+      ]
+    },
+    {
+      "name": "leads_by_area",
+      "type": "board",
+      "of": "lead",
+      "label": "Leads by practice area",
+      "groupBy": "practice_area",
+      "columns": [
+        "contact",
+        "source"
       ]
     }
   ],
