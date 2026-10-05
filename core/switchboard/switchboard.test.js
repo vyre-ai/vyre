@@ -1328,10 +1328,10 @@ test("sessions: claude is known by its command line, since node 24 names its mai
   for (const args of ["MainThread", "node /usr/local/bin/vyre", "/usr/bin/python3 claude.py", "bash -c claude", ""]) assert.equal(claudeCommand(args), false, args);
 });
 
-test("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
+test("queue: a person's words are queued for a terminal-busy session, the owner's paired phone included; a model's are refused", async () => {
   const { queuesFor } = await import("./index.js");
   for (const c of ["deck", "capsule", "cli", "local", "device:nw3b43olz4rzbzfe"]) assert.equal(queuesFor(c), true, c);
-  for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "agent:kit", "cli agent:kit", "device:"]) assert.equal(queuesFor(c), false, c);
+  for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "agent:kit", "cli agent:kit"]) assert.equal(queuesFor(c), false, c);
 });
 
 test("projectRules: Claude Code's addRules suggestions keep their rules; a mode becomes a rule for the whole tool", () => {
@@ -1513,23 +1513,17 @@ test("surfaceFor: identity comes from the verified caller, never from the surfac
   const { surfaceFor } = await import("./index.js");
   const owner = "Owner@Example";
   // The owner's own devices.
-  assert.equal(surfaceFor({}, "device:sglwyckbiq7ahkl6", owner), "deck", "the login equals the recorded owner (case aside)");
   assert.equal(surfaceFor({ surface: "capsule" }, "device:sglwyckbiq7ahkl6", owner), "capsule");
-  assert.equal(surfaceFor({ surface: "device:z6pmyd34b6pffzjl" }, "device:sglwyckbiq7ahkl6", owner), "deck", "the owner cannot be turned into another label by input");
+  assert.equal(surfaceFor({ surface: "device:z6pmyd34b6pffzjl" }, "device:sglwyckbiq7ahkl6", owner), "phone", "the owner cannot be turned into another label by input");
   assert.equal(surfaceFor({}, "device:abcdefghijklmnop", owner), "phone", "a verified paired device");
   assert.equal(surfaceFor({ surface: "glass" }, "device:abcdefghijklmnop", owner), "glass");
   // A person's own socket caller says which of their surfaces.
   assert.equal(surfaceFor({ surface: "deck:2" }, "deck", owner), "deck:2");
   assert.equal(surfaceFor({ surface: "cli:123" }, "cli", owner), "cli:123", "a terminal is its own, contested surface");
   assert.equal(surfaceFor({}, "cli", owner), "cli");
-  // Not the owner: its own label, and never an own surface by claiming one.
-  assert.equal(surfaceFor({}, "device:z6pmyd34b6pffzjl", owner), "device:z6pmyd34b6pffzjl", "another login is another person");
-  assert.equal(surfaceFor({ surface: "deck" }, "device:z6pmyd34b6pffzjl", owner), "via:device:z6pmyd34b6pffzjl");
-  assert.equal(surfaceFor({}, "device:sglwyckbiq7ahkl6", ""), "device:sglwyckbiq7ahkl6", "no recorded owner, so nobody is the owner");
+  // Not a device or a person's socket: its own label, and never an own surface by claiming one.
   assert.equal(surfaceFor({}, "agent:a", owner), "agent:a");
   assert.equal(surfaceFor({ surface: "deck" }, "agent:a", owner), "via:agent:a");
-  assert.equal(surfaceFor({}, "guest:g@x", owner), "guest:g@x");
-  assert.equal(surfaceFor({ surface: "phone" }, "guest:g@x", owner), "via:guest:g@x");
   assert.equal(surfaceFor({ surface: "device:aaaaaaaaaaaaaaaa" }, "mcp", owner), "via:mcp", "a device claimed from input");
   for (const bad of ["deck", "deck:1", "phone", "capsule", "glass", "lumen", "mac", "web", "device:x", "device:z6pmyd34b6pffzjl", "device:sglwyckbiq7ahkl6", "agent:a"]) {
     for (const caller of ["mcp", "harness", "hook", "module:planner", "mcp:agent:kit"]) assert.equal(ownSurface(surfaceFor({ surface: bad }, caller, owner)), false, `${caller} naming ${bad}`);
@@ -1545,8 +1539,6 @@ test("surfaceFor: identity comes from the verified caller, never from the surfac
     assert.equal(surfaceFor({}, caller, owner), caller, "no name asked: its own label");
     assert.equal(surfaceFor({ surface: caller }, caller, owner), caller, "its own label asked: itself");
   }
-  // Not by prefix: a login that merely starts like the owner's is another person.
-  assert.equal(surfaceFor({}, "device:nf3wuwlnzjhouh2x", owner), "device:nf3wuwlnzjhouh2x");
   // The computers module names the person's screen it already checked; no other module does.
   assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:computers", owner), "glass:laptop");
   assert.equal(surfaceFor({ surface: "cli:123" }, "module:computers", owner), "via:module:computers");
