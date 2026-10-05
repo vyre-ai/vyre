@@ -394,6 +394,7 @@ test("the carry's two answer shapes are read alike, and a carry that skips the f
   const oldChat = [...s2.a.rows.values()].find(r => r.type === "chat");
   /** @type {any} */ (s2.a).carry = async () => ({ carried: [], skipped: [{ path: p2, chat: oldChat.id }] });
   removed.length = 0;
-  await assert.rejects(() => runMove({ from: s2.a, to: s2.b, plan: await planMove({ from: s2.a, to: s2.b, project: s2.proj.urn }), ports: { move_id: "mvs2" } }), /** @param {any} e */ e => e.code === "verify_failed" && /skipped the files of a chat/.test(e.message));
+  const plan2 = await planMove({ from: s2.a, to: s2.b, project: s2.proj.urn });
+  await assert.rejects(() => runMove({ from: s2.a, to: s2.b, plan: plan2, ports: { move_id: "mvs2" } }), /** @param {any} e */ e => e.code === "verify_failed" && /skipped the files of a chat/.test(e.message));
   assert.deepEqual(removed, [], "nothing was removed from the old Space");
 });
