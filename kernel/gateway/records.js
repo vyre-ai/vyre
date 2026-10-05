@@ -1244,10 +1244,10 @@ export function createRecords(cfg) {
   }
   return Object.freeze({
     ...api,
-    async create(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts = {}) { return type === "task" && cfg.taskRecords ? taskCreate(chain, data) : api.create(chain, type, data, opts); },
-    async update(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {any} */ base, /** @type {any} */ opts = {}) { return type === "task" && cfg.taskRecords ? taskUpdate(chain, id, patch, base) : api.update(chain, type, id, patch, base, opts); },
+    async create(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts = {}) { return type === "task" && cfg.tasks ? taskCreate(chain, data) : api.create(chain, type, data, opts); },
+    async update(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {any} */ base, /** @type {any} */ opts = {}) { return type === "task" && cfg.tasks ? taskUpdate(chain, id, patch, base) : api.update(chain, type, id, patch, base, opts); },
     async remove(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ base, /** @type {any} */ opts = {}) {
-      if (type === "task" && cfg.taskRecords) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
+      if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {

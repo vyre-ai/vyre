@@ -13,6 +13,8 @@ export const TASK_TYPE = Object.freeze({
     { name: "note", kind: "rich_text", label: "Note" },
     { name: "due", kind: "datetime", label: "Due" },
     { name: "status", kind: "choice", label: "Status", options: [...TASK_STATUSES], required: true, owned_by: "kernel" },
+    { name: "stage", kind: "text", label: "Stage", owned_by: "kernel" },
+    { name: "record", kind: "text", label: "Concerns (a record)", owned_by: "kernel" },
     { name: "parent", kind: "text", label: "Parent task (id)" },
     { name: "project", kind: "text", label: "Project (a Project record)" },
     { name: "contact", kind: "text", label: "Contact (a Contact record)" },

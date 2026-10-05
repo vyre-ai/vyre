@@ -14,7 +14,7 @@ const proofFor = (action, input, resource) => ({ op: `grant.${action.split(".")[
 const FACTS = { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" };
 
 async function boot(over = {}) {
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, tasksAsRecords: true, ...over });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...over });
   const owner = k.chains.fromFacts(FACTS);
   return { k, owner, R: k.gateway.records, T: k.tasks };
 }
@@ -92,23 +92,43 @@ test("task records: the move onto records is idempotent, keyed by the task id, a
   const store = createMemoryStore({});
   const kept = new Map();
   const texts = { get: (/** @type {string} */ id) => kept.get(id), set: (/** @type {string} */ id, /** @type {any} */ v) => { kept.set(id, v); }, drop: (/** @type {string} */ id) => { kept.delete(id); }, all: () => [...kept] };
-  const before = await boot({ log, store, texts, tasksAsRecords: false });
+  const before = await boot({ log, store, texts });
   const ids = [];
   for (let i = 0; i < 4; i++) ids.push((await before.T.request(before.owner, spec({ title: `Old task ${i}` }))).id);
-  // Turned on, with a store that fails on the third record: the move stops part way.
+  // A home from before tasks were records: the tasks are in the log and the text store (words included), and there is no record for any of them.
+  for (const [i, id] of ids.entries()) { await store.destroy("task", id); kept.set(id, { ...(kept.get(id) || {}), title: `Old task ${i}`, note: "use the new template" }); }
+  assert.equal((await store.query("task", { page: { limit: 50 } })).rows.length, 0);
+  // Started again, with a store that fails on the third record: the move stops part way.
   let creates = 0;
   const flaky = new Proxy(store, { get: (t, p) => (p === "create" ? async (...a) => { if (a[0] === "task" && ++creates === 3) throw new Error("crash"); return t.create(...a); } : t[p]) });
-  await assert.rejects(() => boot({ log, store: flaky, texts, tasksAsRecords: true }), /crash/);
-  const part = (await store.query("task", { page: { limit: 50 } })).rows.length;
-  assert.equal(part, 2, "two were made before the crash");
-  const again = await boot({ log, store, texts, tasksAsRecords: true });
+  await assert.rejects(() => boot({ log, store: flaky, texts }), /crash/);
+  assert.equal((await store.query("task", { page: { limit: 50 } })).rows.length, 2, "two were made before the crash");
+  const again = await boot({ log, store, texts });
   const rows = (await store.query("task", { page: { limit: 50 } })).rows;
   assert.equal(rows.length, 4, "the next run made the other two and no duplicates");
   assert.deepEqual(rows.map(r => r.id).sort(), [...ids].sort());
-  assert.deepEqual(rows.map(r => r.data.title).sort(), ["Old task 0", "Old task 1", "Old task 2", "Old task 3"], "the words came from the task");
-  const third = await boot({ log, store, texts, tasksAsRecords: true });
+  assert.deepEqual(rows.map(r => r.data.title).sort(), ["Old task 0", "Old task 1", "Old task 2", "Old task 3"], "the words came from the old text store");
+  await boot({ log, store, texts });
   assert.equal((await store.query("task", { page: { limit: 50 } })).rows.length, 4, "a third run changes nothing");
   assert.equal(log.read({ type: "tasks.migrated" }).length, 1, "the crashed run wrote none, the run that finished it wrote one");
   assert.equal((await again.T.get(again.owner, ids[0])).title, "Old task 0");
-  void third;
+});
+
+test("task records: the stage and the record a task concerns are kernel-owned fields on the record, and forgetting a record clears the words of its tasks", async () => {
+  const { k, owner, R, T } = await boot();
+  const t = await T.request(owner, spec({ stage: "intake", record: `vyre://${SPACE}/contact/c1`, title: "Collect Jane Doe's ID", note: "ssn 123-45-6789" }));
+  const rec = await R.get(owner, "task", t.id);
+  assert.deepEqual([rec.data.stage, rec.data.record], ["intake", `vyre://${SPACE}/contact/c1`]);
+  await assert.rejects(() => R.update(owner, "task", t.id, { stage: "done" }, rec.version), { code: "field_not_allowed" });
+  await assert.rejects(() => R.update(owner, "task", t.id, { record: "vyre://x/y/z" }, rec.version), { code: "field_not_allowed" });
+  const cleared = await T.scrubTexts({ record: `vyre://${SPACE}/contact/c1` });
+  assert.equal(cleared.cleared, 1);
+  const after = await R.get(owner, "task", t.id);
+  assert.equal(after.data.title, "(the text of this task was removed)");
+  assert.ok(!after.data.note, "the note is gone from the record");
+  // A value that moved into a sealed field is found in the record's words too.
+  const u = await T.request(owner, spec({ title: "Call about 123-45-6789 today" }));
+  assert.equal((await T.scrubTexts({ values: ["123-45-6789"] })).cleared, 1);
+  assert.equal((await R.get(owner, "task", u.id)).data.title, "(the text of this task was removed)");
+  void k;
 });

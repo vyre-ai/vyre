@@ -36,9 +36,7 @@ import { TASK_TYPE } from "./tasks/type.js";
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
-export async function createKernel(cfg0) {
-  // Tasks as records: asked for by the caller, or for a whole test run by VYRE_TASKS_RECORDS=1 (the proof that nothing else notices).
-  const cfg = cfg0.tasksAsRecords === undefined && process.env.VYRE_TASKS_RECORDS === "1" ? { ...cfg0, tasksAsRecords: true } : cfg0;
+export async function createKernel(cfg) {
   const clock = cfg.clock || Date.now;
   const log = cfg.log || createEventLog({ space: cfg.space, clock });
   const store = cfg.store || createMemoryStore({ clock });
@@ -88,19 +86,20 @@ export async function createKernel(cfg0) {
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
     // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
-    // With `tasksAsRecords` a task's person-facing fields are a `task` record of the Space's store (DESIGN-tasks-records); without it nothing about tasks changes.
-    ...(cfg.tasksAsRecords ? { records: store } : {}),
+    // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
+    records: store,
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
-  if (cfg.tasksAsRecords) { await store.define({ add_types: [TASK_TYPE] }); await tasks.migrate(); }
+  await store.define({ add_types: [TASK_TYPE] });
+  await tasks.migrate();
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   gateway = createGateway({
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
-    kitApply, taskRecords: Boolean(cfg.tasksAsRecords), waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
+    kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),

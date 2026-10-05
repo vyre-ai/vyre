@@ -27,7 +27,7 @@ if (!URL_ || !KEY_FILE) {
     const k = await newKernel(store, more);
     await prepareKernel(k);
     // The Twenty outlives a run: what an earlier one left is cleared, so this one reads only its own (the types are defined first so the store can be asked).
-    await store.define({ add_types: [...PLANNER_TYPES, ...(more.tasksAsRecords ? [TASK_TYPE] : [])] });
+    await store.define({ add_types: [...PLANNER_TYPES, TASK_TYPE] });
     for (const type of ["reminder", "note", "planner_firing", "planner_state", "event", "task"]) {
       for (;;) {
         const page = await store.query(type, { page: { limit: 100 } }).catch(() => ({ rows: [] }));
@@ -87,7 +87,7 @@ if (!URL_ || !KEY_FILE) {
   });
 
   test("live: a Task is a record in Twenty: made, edited, moved and read back, with the kernel keeping the authority", { timeout: 300_000 }, async () => {
-    const k = await kernel({ tasksAsRecords: true });
+    const k = await kernel();
     const owner = k.chains.fromFacts(FACTS), R = k.gateway.records, T = k.tasks;
     const t = await T.request(owner, { title: "Send the engagement letter", doer: { kind: "person", id: "per_owner", space: "spc_aaaaaaaaaaaa" }, output: { kind: "note" }, note: "use the new template", due: T0 + 3 * HOUR, fields: { priority: 2, list: "clients" } });
     const rec = await R.get(owner, "task", t.id);
