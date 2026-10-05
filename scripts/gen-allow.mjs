@@ -62,7 +62,7 @@ export const OPEN_NOTES = Object.freeze({
   "chrome.voice": "carries the person's live speech to the Chrome panel while an agent works",
   "computers.handback.status": "reads after how many idle minutes a take-over hands the keyboard back",
   "computers.rename": "renames an agent's computer, the person's own label for it",
-  "files.mentions.search": "file names on the box's VyreDrive shares matching a # query, names only",
+  "files.mentions.search": "file names in the Space's Drive matching a # query, under the caller's own grants, names only",
   "files.receive": "turns on or off whether the Mac takes in files the box delivers, the receive switch",
   "github.mcp.sync": "makes sure each connected GitHub account has GitHub's hosted MCP server in the hub, using a token already in the vault",
   "github.project": "makes a new project from a repo by cloning it into the projects folder",

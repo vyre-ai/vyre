@@ -4,7 +4,6 @@
   "core/artifacts/index.js": 1,
   "core/computers/index.js": 1,
   "core/files/dirs.js": 1,
-  "core/files/mentions.js": 1,
   "core/files/space-drive.js": 1,
   "core/link/box.js": 1,
   "core/link/mac.js": 2,

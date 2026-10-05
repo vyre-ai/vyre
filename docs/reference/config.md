@@ -106,15 +106,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DECK_FIXTURES` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
-| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
-| `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
-| `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
-| `VYRE_EGRESS_GATE_STATUS` | Not described yet. | `core/computers/egress.js` |
-| `VYRE_EGRESS_GATE_STATUS_PORT` | Not described yet. | `core/computers/egressgate.js` |
-| `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
-| `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
-| `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_FINISH_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
@@ -203,10 +195,9 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
-| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
+| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
-| `VYRE_PROXY_PAC` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js`, `core/team/team-fixture.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
@@ -219,7 +210,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
+| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_PAIR_NO_PROOF` | Not described yet. | `core/wink/pairing.js` |

@@ -291,18 +291,15 @@ Vyre checks what it can.
 
 | Feature | What it gives you | Vyre support |
 | --- | --- | --- |
-| [VyreDrive](#vyredrive-the-box-folders-on-your-mac) (built on Tailscale's Taildrive) | the box's project folders in Finder | built, read-only unless you make a share writable |
 | [Taildrop](#taildrop-send-files-to-the-box) | send a file from the Mac or phone to the box | built |
 | [Tailscale SSH](#tailscale-ssh-for-vyre-box-add) | `vyre box add` without SSH keys | built |
 | [Tailnet Lock](#tailnet-lock) | only devices you sign may join | built (Vyre reads it; you turn it on) |
-| [Egress through your Mac](#glass-egress-through-your-mac-exit-node) | chosen sites see your home address, not the server's | built, tested on a test tailnet only; renewal without expiry in progress |
 | [Vault grants](#vault-passes-authorized-by-the-policy) | the policy must also cover a vault pass | built |
 | [Guests](#guests-from-another-tailnet) | someone from another tailnet lists your threads | built |
-| [Agent nodes](#a-tailnet-node-for-each-agent) | each agent's computer is its own tailnet device | not live yet |
 | [Webhooks through Funnel](#webhooks-through-funnel) | signed webhooks from the internet | built |
 
 Most of these have not yet been tried on a real tailnet. If one does not behave as written, the
-policy form is the likely cause; `vyre call files.drive.audit`, `vyre hooks status` and the other
+policy form is the likely cause; `vyre hooks status` and the other
 checks below say what they see.
 
 ### Edit the policy file
@@ -335,73 +332,6 @@ a tag. Vyre does not tag the box for you. To tag it:
 Tagging the box removes its user and turns off its key expiry. The box keeps serving the owner
 it already has (`vyre owner`). Tailscale's docs say Taildrop does not reach tagged devices; see
 [Taildrop](#taildrop-send-files-to-the-box).
-
-### VyreDrive: the box folders on your Mac
-
-Optional, off by default. Vyre support: built, read-only unless you make one share writable.
-
-VyreDrive (built on Tailscale's Taildrive) puts the box's folders on your Mac. The box shares only
-named folders (`projects` and `glass-files` by default, config
-`files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and Lumen
-open box files in place. Taildrive is in alpha at Tailscale.
-
-1. Add to the policy:
-
-   ```json
-   {
-     "tagOwners": { "tag:vyre-box": ["alex@example.com"] },
-     "hosts": { "alex-mac": "100.64.0.7" },
-     "nodeAttrs": [
-       { "target": ["tag:vyre-box"], "attr": ["drive:share"] },
-       { "target": ["alex@example.com"], "attr": ["drive:access"] }
-     ],
-     "grants": [
-       { "src": ["alex-mac"], "dst": ["tag:vyre-box"],
-         "app": { "tailscale.com/cap/drive": [{ "shares": ["projects", "glass-files"], "access": "ro" }] } }
-     ]
-   }
-   ```
-
-   `src` is the Mac alone. With `alex@example.com` there, every device of yours, the phone too,
-   would get the shares.
-
-2. Share a folder and check who can reach it, on the box:
-
-   ```sh
-   vyre call --tty files.drive.share '{"name":"projects"}'
-   vyre call files.drive.audit
-   ```
-
-   Sharing needs your presence (`--tty` asks for a code). A folder with a `.env`, a key or a
-   `secrets` folder anywhere inside it is refused (`unsafe_share`, with what was found), and so
-   is a checkout whose `.git/config` holds a token in a remote URL or an `Authorization` header.
-   The check skips `node_modules`, `dist`, `.next`, `target`, `venv`, `.venv` and `.git/objects`.
-   The audit lists any device besides a paired Mac that the policy lets in, and any shared folder a
-   secret has landed in since.
-
-3. Mount it on the Mac:
-
-   ```sh
-   vyre call files.drive.mount '{"share":"projects"}'
-   ```
-
-To edit box files from Finder: `"access": "rw"` in the grant, then make that one share
-read-write, from the box's terminal, Lumen or your paired Mac. It asks for no proof, since
-the share already exists; an agent or a guest is refused:
-
-```sh
-vyre call files.drive.access '{"name":"projects","mode":"rw"}'
-```
-
-Its answer says when the container's mount must change as well: `VYRE_DRIVE_ACCESS=rw` in
-`/srv/vyre/.env`, then `docker compose up -d` in `/srv/vyre`. Unmount and mount the share on the
-Mac to pick up the change. Every other share stays read-only.
-
-> [!WHY] Why read-only, and why named folders?
-> Tailscale serves the files itself, from its own container, which runs as root. Read-only keeps
-> it from ever changing a project. And a share serves every file under its folder, `.env` files
-> included, without Vyre's file guard in the way, so Vyre shares only folders you name and
-> audits who can reach them.
 
 ### Taildrop: send files to the box
 
@@ -478,59 +408,6 @@ The admin console can build the same command: [Device management](https://login.
 **Enable Tailnet Lock**. From then on, sign each new device from a signing device with
 `tailscale lock sign`.
 
-### Glass egress through your Mac (exit node)
-
-Optional, off by default. Vyre support: built and tested on a test tailnet, not yet with a real
-Tailscale account. The installer does not copy `box/compose.egress.yml` to `/srv/vyre`; you copy it. Renewal with an
-OAuth client, so the key never expires, is in progress; today it takes an auth key, which expires.
-
-Some sites refuse or question a datacenter address. You can list sites whose traffic from an
-agent's Chrome leaves through your Mac instead. Only those sites go that way, and when the Mac is
-off the tailnet they fail rather than fall back to the server's address.
-
-1. On the Mac: the Tailscale menu, **Exit Node**, **Run Exit Node**.
-2. In [Machines](https://login.tailscale.com/admin/machines), open `alex-mac`'s menu, choose
-   **Edit route settings**, and tick **Use as exit node**.
-3. Add to the policy:
-
-   ```json
-   {
-     "tagOwners": { "tag:vyre-egress": ["alex@example.com"] },
-     "grants": [ { "src": ["tag:vyre-egress"], "dst": ["autogroup:internet"], "ip": ["*"] } ]
-   }
-   ```
-
-4. In [Keys](https://login.tailscale.com/admin/settings/keys), press **Generate auth key**. Turn
-   on **Reusable**, **Ephemeral** and **Pre-approved**, and under **Tags** choose
-   `tag:vyre-egress`. Copy the key.
-5. On the box, copy `box/compose.egress.yml` from the Vyre release into `/srv/vyre`. In
-   `/srv/vyre/.env` (not `vyre.env`, which Claude sessions can read), add the key and the Mac,
-   add `compose.egress.yml` to the `COMPOSE_FILE` line already there, and make sure the
-   `computers` profile is on:
-
-   ```sh
-   VYRE_EGRESS_AUTHKEY=tskey-auth-...
-   VYRE_EGRESS_EXIT_NODE=alex-mac
-   COMPOSE_FILE=compose.yml:compose.egress.yml
-   COMPOSE_PROFILES=computers
-   ```
-
-6. Start it and choose the sites:
-
-   ```sh
-   cd /srv/vyre && docker compose up -d
-   vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'
-   ```
-
-A change applies to each agent computer the next time it starts. When the auth key expires, make
-a new one and repeat steps 4 and 6. Use a reusable key: a single-use key is spent on the first
-start, and the sidecar never comes back after a restart.
-
-> [!WARNING] Keep the Mac offering the exit node
-> If the Mac stays on the tailnet but stops offering itself as an exit node (you turn off
-> **Run Exit Node**, or the route is unapproved in Machines), the listed sites go out directly,
-> from the server's address, with no error. Vyre does not catch this yet.
-
 ### Vault passes authorized by the policy
 
 Optional, off by default. Vyre support: built.
@@ -586,32 +463,6 @@ alone. Every other tool answers as if it did not exist, and a guest can never ap
    vyre call --tty network.guests.enable '{"on":true}'
    vyre call network.guests.check
    ```
-
-### A tailnet node for each agent
-
-Optional, off by default. Vyre support: not live yet. The switch exists and the key handling is
-written, but the agent computer image cannot run its tailnet side safely until an image change
-lands, so turning it on reports the problem and sends nothing. The steps, for when it does:
-
-1. Add to the policy, and remove any allow-all rule with `"src": ["*"]`, which covers tags too:
-
-   ```json
-   {
-     "tagOwners": { "tag:vyre-agent": ["alex@example.com"] },
-     "grants": [ { "src": ["tag:vyre-agent"], "dst": ["tag:vyre-box"], "ip": ["tcp:443"] } ]
-   }
-   ```
-
-2. In [Keys](https://login.tailscale.com/admin/settings/keys), press **Generate auth key**, with
-   **Reusable**, **Ephemeral** and **Pre-approved** on and the tag `tag:vyre-agent`.
-3. Store it and let the computers module use it:
-
-   ```sh
-   vyre vault put tailscale-agent-authkey
-   vyre vault grant tailscale-agent-authkey computers
-   ```
-
-4. Turn it on: `vyre call --tty computers.tailnet.set '{"enabled":true}'`.
 
 ### Webhooks through Funnel
 

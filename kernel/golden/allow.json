@@ -89,7 +89,7 @@
  },
  {
   "tool": "files.mentions.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names in the Space's Drive matching a # query, under the caller's own grants, names only"
  },
  {
   "tool": "files.receive",
