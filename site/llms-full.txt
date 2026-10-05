@@ -19,7 +19,7 @@ Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Lice
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line from https://vyre.run/setup/. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by `vyre capsule install`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
-- Phone: the Deck installed to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
+- Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install

@@ -32,3 +32,27 @@ test("no Deck in the docs people read: the Vyre app replaced it", () => {
   }
   assert.deepEqual(hits, [], `write "the Vyre app" instead of the Deck:\n${hits.join("\n")}`);
 });
+
+// The public site too: the generator and every page it writes. Exempt: the 0.2.2 release note (history, it names what that release changed),
+// the site's own changelog, and the setup page's scripts, whose comments name the box's old passkey page.
+const SITE_EXEMPT = [/^site\/CHANGELOG\.md$/, /^site\/setup\//];
+const HISTORY = /'0\.2\.2':/;
+
+/** @param {string} dir @param {string[]} out */
+function walkSite(dir, out) {
+  for (const e of fs.readdirSync(path.join(REPO, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) walkSite(rel, out);
+    else if (/\.(html|md|txt|xml|json)$/.test(e.name)) out.push(rel);
+  }
+  return out;
+}
+
+test("no Deck on the public site: the generator and every page say the Vyre app", () => {
+  const hits = [];
+  const files = ["scripts/gen-site.mjs", ...walkSite("site", [])].filter(f => !SITE_EXEMPT.some(r => r.test(f)));
+  for (const rel of files) {
+    fs.readFileSync(path.join(REPO, rel), "utf8").split("\n").forEach((l, i) => { if (WORD.test(l) && !HISTORY.test(l)) hits.push(`${rel}:${i + 1}: ${l.trim().slice(0, 80)}`); });
+  }
+  assert.deepEqual(hits, [], `write "the Vyre app" instead of the Deck:\n${hits.join("\n")}`);
+});

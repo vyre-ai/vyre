@@ -15,7 +15,7 @@ Current release: 0.2.9. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Mac: Vyre Lumen](https://vyre.run/mac/): Option-Space ask window, built on your Mac
 - [Windows: Vyre Lumen](https://vyre.run/windows/): tray app with an Alt+Space panel
 - [Linux server](https://vyre.run/linux/): where Vyre runs
-- [Phone](https://vyre.run/phone/): the Deck installed to the Home Screen
+- [Phone](https://vyre.run/phone/): the Vyre web app added to the Home Screen
 
 ## Machine-readable
 - [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full
