@@ -199,3 +199,6 @@ export async function openSealedStore(cfg) {
   if (typeof b.flush === "function") await b.flush();   // a store made here (the key file, first types) goes up now
   return s;
 }
+
+/** The folders of a person's sealed store on a server whose listing is one level deep (`spaces.storage.list`): the store's own folder and its two children, for RemoteBackend's `prefixes`. @param {string} identity */
+export const sealedPrefixes = identity => [`${dir(identity)}`, `${dir(identity)}/rec`, `${dir(identity)}/chg`];
