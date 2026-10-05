@@ -62,9 +62,10 @@ export async function planMove({ from, to, project, client = "leave" }) {
   let chatFiles = 0, chatBytes = 0;
   if (folder && from.drive && typeof from.drive.survey === "function") { try { const sv = await from.drive.survey(from.chain, folder); chatFiles = sv.files; chatBytes = sv.bytes; } catch { /* not an owner or admin here: the plan shows only what the mover reads */ } }
   /** @type {string[]} */ const blockers = [];
-  if (chatFiles && !(typeof from.carry === "function" && to.drive)) blockers.push("this kernel cannot carry a chat's sealed files between Spaces yet");
+  if (chatFiles && to.remote !== true && !(typeof from.carry === "function" && to.drive)) blockers.push("this kernel cannot carry a chat's sealed files between Spaces yet");
   if (truncated || found.size >= MAX_RECORDS) blockers.push("the project has more linked records than one move carries");
-  if (files.length && !to.drive) blockers.push("the target Space has no Drive to receive the files");
+  // a target on another server is not readable from here: it checks its own Drive and types when it receives the move (project-move-remote.js)
+  if (files.length && !to.drive && to.remote !== true) blockers.push("the target Space has no Drive to receive the files");
   const types = to.types ? new Set((await to.types(to.chain)).map((/** @type {any} */ t) => t.name)) : null;
   // a type the target lacks is installed under the same approval (`to.install`), so it is part of the plan and the hash, not a blocker; without an installer it still blocks
   const install = types ? Object.keys(byType).filter(t => !types.has(t)).sort() : [];
