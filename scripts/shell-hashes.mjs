@@ -21,7 +21,7 @@ const SKIP_DIR = new Set(["test", "fixtures", "node_modules"]);
 const CODE = /\.(m?js|css|html)$/;
 // Served from the repo root, not deck/ (core/daemon/index.js): the resilience files, the avatar rule, and the relay client's browser closure.
 const ROOT_FILES = ["core/resilience/backoff.js", "core/resilience/sse.js", "core/resilience/stream.js", "core/resilience/outbox.js", "core/resilience/web.js",
-  "lib/avatar-seed/index.js", ...["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"].map((n) => `relay/client/${n}.js`)];
+  "lib/avatar-seed/index.js", "lib/wink-code/geometry.js", "lib/wink-code/payload.js", "lib/wink-code/rs.js", "lib/wink-code/vyrecode2.js", "lib/wink-code/identity.js", ...["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"].map((n) => `relay/client/${n}.js`)];
 
 /** @param {string} dir @param {string} base @returns {string[]} paths relative to base */
 function walk(dir, base) {

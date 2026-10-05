@@ -18,6 +18,8 @@
       { "name": "records.create", "effect": "write", "reach": "person" },
       { "name": "records.update", "effect": "write", "reach": "person" },
       { "name": "records.linked", "effect": "read", "reach": "person" },
+      { "name": "records.roles", "effect": "read", "reach": "person" },
+      { "name": "records.holders", "effect": "read", "reach": "person" },
       { "name": "records.kits.library", "effect": "read", "reach": "person" },
       { "name": "records.kits.get", "effect": "read", "reach": "person" },
       { "name": "records.forget", "effect": "write", "reach": "person" },

@@ -2,6 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
+import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
 import { isChain, hasKind } from "../core/chain.js";
@@ -11,6 +12,7 @@ import { createAggregator } from "../store/query.js";
 import { exprNames } from "../expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
+import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../expr/conditions.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
@@ -238,6 +240,21 @@ export function createRecords(cfg) {
       }
     }
   }
+  /** Each link in `input` must name a live record of the type it links to (a link with no target type: any live record of this Space). Nothing is read for a field that is not being set. @param {any[]} fields @param {any} input */
+  async function checkLinkTargets(fields, input) {
+    for (const f of fields) {
+      if (f.kind !== "link" || !input || !Object.prototype.hasOwnProperty.call(input, f.name)) continue;
+      const v = input[f.name];
+      if (v === null || v === undefined) continue;
+      for (const x of (f.many === true ? (Array.isArray(v) ? v : []) : [v])) {
+        const parts = x && typeof x.urn === "string" ? x.urn.split("/") : [];
+        if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", `${f.name} must name a record of this Space`);
+        if (f.to && parts[3] !== f.to) throw new KernelError("bad_input", `${f.name} links to ${f.to}, not ${parts[3]}`);
+        let there; try { there = await store.get(parts[3], parts[4]); } catch (e) { throw mapError(e); }
+        if (!there || there.deleted_at) throw new KernelError("bad_input", `${f.name} links to a ${parts[3]} that does not exist`);
+      }
+    }
+  }
   const COMPUTED_KINDS = new Set(["number", "text", "boolean", "date", "datetime"]);
   const OVER_FNS = new Set(["count", "sum", "min", "max", "avg"]);
   /** A computed field names its kind, and either an expression over this type's other fields or a total over the records that link to it. */
@@ -267,6 +284,69 @@ export function createRecords(cfg) {
           const meas = o.field ? other.fields.find((/** @type {any} */ x) => x.name === o.field.split(".")[0]) : null;
           if (o.field && !meas) throw bad(`${o.type} has no field ${o.field}`);
           if (meas && (meas.kind === "sealed" || meas.computed)) throw bad(`${o.field} cannot be measured`);
+        }
+      }
+    }
+  }
+  const VIEW_TYPES = new Set(["list", "board", "calendar", "page", "dashboard"]);
+  const VIEW_KEYS = new Set(["name", "type", "label", "groupBy", "dateField", "columns", "filter", "sort"]);
+  /**
+   * Conditional fields (visible_if, required_if), stage entry conditions (enter_if), stage sets and stored views: the expressions parse, they read this type's own stored
+   * fields (never a sealed one), and a stage set is picked by the record's other fields, never by its stage.
+   */
+  async function checkShape(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
+      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}: ${why}`);
+      const fields = t.fields || [];
+      const sf = fields.find((/** @type {any} */ x) => x.kind === "stage");
+      /** Parse `src` and check every name it reads. @param {string} what @param {unknown} src @param {string[]} [not] names it may not read */
+      const reads = (what, src, not = []) => {
+        if (typeof src !== "string" || !src.length) throw bad(`${what} is an expression`);
+        let tree; try { tree = parseComputed(src); } catch (e) { if (e instanceof KernelError) throw e; throw bad(`${what}: ${String(/** @type {any} */ (e).message)}`); }
+        for (const n of exprNames(tree)) {
+          const g = fields.find((/** @type {any} */ x) => x.name === n);
+          if (!g) throw bad(`${what} names ${n}, which is not a field of ${t.name}`);
+          if (g.kind === "sealed") throw bad(`${what} names ${n}, which is sealed`);
+          if (not.includes(n)) throw bad(`${what} cannot name ${n}`);
+        }
+      };
+      for (const f of fields) {
+        if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
+        if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
+        if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);
+      }
+      const sets = t.stage_sets;
+      if (sets !== undefined) {
+        if (!Array.isArray(sets) || !sf) throw bad("stage_sets need a stage field and a list of sets");
+        const seen = new Set();
+        for (const set of sets) {
+          if (!set || typeof set.name !== "string" || !Array.isArray(set.stages) || !set.stages.length) throw bad("a stage set has a name, a when and stages");
+          if (seen.has(set.name)) throw bad(`two stage sets are named ${set.name}`); seen.add(set.name);
+          reads(`stage set ${set.name}.when`, set.when, [sf.name]);
+        }
+      }
+      // With stage sets, the stage field must offer every stage any set can put a record in (a definition without sets is as it always was).
+      if (sf && sets) {
+        const names = stageNamesOf(t);
+        if (!Array.isArray(sf.options) || !names.every((/** @type {string} */ n) => sf.options.includes(n))) throw bad("the stage field's options must include every stage of the default stages and of every stage set");
+      }
+      for (const st of [...(t.stages || []), ...(sets || []).flatMap((/** @type {any} */ x) => x.stages)]) if (st.enter_if !== undefined) reads(`stage ${st.name}.enter_if`, st.enter_if, sf ? [sf.name] : []);
+      if (t.views !== undefined) {
+        if (!Array.isArray(t.views) || t.views.length > 30) throw bad("views is a list of up to 30 views");
+        const names = new Set();
+        for (const v of t.views) {
+          if (!v || typeof v !== "object" || typeof v.name !== "string" || !TYPE_NAME.test(v.name)) throw bad("a view has a name");
+          if (names.has(v.name)) throw bad(`two views are named ${v.name}`); names.add(v.name);
+          for (const k of Object.keys(v)) if (!VIEW_KEYS.has(k)) throw bad(`view ${v.name}: unknown key ${k}`);
+          if (!VIEW_TYPES.has(v.type)) throw bad(`view ${v.name}: type is one of ${[...VIEW_TYPES].join(", ")}`);
+          const field = (/** @type {string} */ n) => fields.find((/** @type {any} */ x) => x.name === n);
+          if (v.groupBy !== undefined && !["stage", "choice"].includes((field(v.groupBy) || {}).kind)) throw bad(`view ${v.name}: groupBy is a stage or choice field`);
+          if (v.type === "board" && v.groupBy === undefined) throw bad(`view ${v.name}: a board needs groupBy`);
+          if (v.dateField !== undefined && !["date", "datetime"].includes((field(v.dateField) || {}).kind)) throw bad(`view ${v.name}: dateField is a date field`);
+          if (v.type === "calendar" && v.dateField === undefined) throw bad(`view ${v.name}: a calendar needs dateField`);
+          if (v.columns !== undefined && (!Array.isArray(v.columns) || v.columns.length > 40 || !v.columns.every((/** @type {string} */ c) => field(c)))) throw bad(`view ${v.name}: columns are fields of ${t.name}`);
+          if (v.sort !== undefined && (!v.sort || !field(v.sort.field) || (v.sort.dir !== undefined && !["asc", "desc"].includes(v.sort.dir)))) throw bad(`view ${v.name}: sort is { field, dir }`);
+          if (v.filter !== undefined) reads(`view ${v.name}.filter`, v.filter);
         }
       }
     }
@@ -371,15 +451,22 @@ export function createRecords(cfg) {
     let defs;
     try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the stage rules were not checked"); }
     const def = defs.find((/** @type {any} */ t) => t.name === type);
-    if (!def || !((def.rules && def.rules.length) || (def.stages && def.stages.length))) return {};
+    if (!def || !((def.rules && def.rules.length) || (def.stages && def.stages.length) || (def.stage_sets && def.stage_sets.length))) return {};
     const sf = def.fields.find((/** @type {any} */ f) => f.kind === "stage");
     const from = sf && beforeData ? beforeData[sf.name] : undefined, to = sf ? merged[sf.name] : undefined;
+    const expr = exprFn(); // null switches it off (the fail-closed test)
+    const sets = (def.stage_sets || []).length > 0;
+    if (sets && !expr) throw new KernelError("unavailable", "this type has stage sets and no evaluator is wired, so the change was refused");
+    // The stages this record follows now (its stage set, or the default stages), and the ones it followed before the write.
+    const active = sets ? stagesFor(def, merged, /** @type {any} */ (expr)).stages : (def.stages || []);
+    const was = sets && beforeData ? stagesFor(def, beforeData, /** @type {any} */ (expr)).stages : active;
+    // A record cannot sit in a stage its stage set does not have, whether it moved or the field that picks the set changed.
+    if (sets && to !== undefined && to !== null && !active.some((/** @type {any} */ s) => s.name === to)) throw new KernelError("stage_not_in_set", `${to} is not a stage this ${type} follows now: move it to one of ${active.map((/** @type {any} */ s) => s.name).join(", ")}`);
     const moved = !sf || from !== to;
     if (!moved) return {};
+    const order = sf ? { [sf.name]: active.map((/** @type {any} */ s) => s.name) } : {};
     if ((def.rules || []).length) {
-      const expr = cfg.expr === undefined ? defaultExpr : cfg.expr; // null switches it off (the fail-closed test)
       if (!expr) throw new KernelError("unavailable", "this type has rules and no rule evaluator is wired, so the change was refused");
-      const order = sf ? { [sf.name]: (def.stages || []).map((/** @type {any} */ s) => s.name) } : {};
       for (const r of def.rules) {
         let ok = false;
         try { ok = expr.evalExpr(expr.parseExpr(r.require), { values: merged, stageOrder: order }) === true; } catch { ok = false; }
@@ -387,7 +474,7 @@ export function createRecords(cfg) {
       }
     }
     if (sf && from !== undefined && from !== null && from !== to) {
-      const stage = (def.stages || []).find((/** @type {any} */ s) => s.name === from);
+      const stage = was.find((/** @type {any} */ s) => s.name === from);
       const need = ((stage && stage.tasks) || []).filter((/** @type {any} */ t) => t.required);
       if (need.length) {
         if (!cfg.stageTasks) throw new KernelError("unavailable", "this stage has required tasks and tasks are not wired, so the change was refused");
@@ -396,11 +483,40 @@ export function createRecords(cfg) {
         if (open.length) throw new KernelError("stage_tasks_open", `${from} still has required tasks: ${open.map((/** @type {any} */ t) => t.title).join(", ")}`);
       }
     }
-    const entering = (def.stages || []).find((/** @type {any} */ s) => s.name === to);
+    const entering = active.find((/** @type {any} */ s) => s.name === to);
+    // A stage's entry condition: the record, as it would be after this write, has to satisfy it.
+    if (entering && typeof entering.enter_if === "string") {
+      if (!expr) throw new KernelError("unavailable", "this stage has an entry condition and no evaluator is wired, so the change was refused");
+      if (!holds(entering.enter_if, merged, expr, order)) throw new KernelError("stage_entry_refused", `${type} cannot enter ${to}: ${entering.enter_if} does not hold`);
+    }
     return to !== undefined && to !== null ? { entered: { stage: String(to), templates: (entering && entering.tasks) || [] } } : {};
   }
 
-  /** Shape a stored row for the caller: checked, labelled, and with sealed values as placeholders when a model is in the chain. */
+  /**
+   * Conditional fields: a field whose visible_if is false takes no new value; a visible field whose required_if is true must hold one. Judged on the record as it
+   * would be after the write. A create is judged whole; an update only on the fields it touches or whose condition reads a field it touches, so a record that
+   * predates a condition can still be changed in other ways.
+   */
+  async function conditionGate(/** @type {string} */ type, /** @type {any} */ beforeData, /** @type {any} */ merged, /** @type {any} */ input, /** @type {boolean} */ creating) {
+    let defs;
+    try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the field conditions were not checked"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    const conds = def ? (def.fields || []).filter((/** @type {any} */ f) => f.visible_if !== undefined || f.required_if !== undefined) : [];
+    if (!conds.length) return;
+    const ex = exprFn();
+    if (!ex) throw new KernelError("unavailable", "this type has field conditions and no evaluator is wired, so the change was refused");
+    const touched = new Set(Object.keys(input || {}));
+    const sf = def.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    const order = sf ? { [sf.name]: stageNamesOf(def) } : {};
+    for (const f of conds) {
+      const st = fieldState(f, merged || {}, /** @type {any} */ (ex), order);
+      if (!st.visible && touched.has(f.name) && !isEmpty(input[f.name])) throw new KernelError("field_not_shown", `${f.name} is not shown for this ${type}: it applies only when ${f.visible_if}`);
+      if (!st.required || !isEmpty((merged || {})[f.name])) continue;
+      const reads = new Set([f.name, ...[f.required_if, f.visible_if].filter((/** @type {any} */ x) => typeof x === "string").flatMap((/** @type {string} */ x) => { try { return [...exprNames(parseComputed(x))]; } catch { return []; } })]);
+      if (creating || [...reads].some((n) => touched.has(n))) throw new KernelError("field_required", `${f.name} is required${f.required_if ? ` when ${f.required_if}` : ""}`);
+    }
+  }
+
   function shape(/** @type {any} */ chain, /** @type {any} */ r, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ lim, /** @type {{ allow: Set<string> | null, hidden: Set<string> } | undefined} */ room = undefined) {
     const u = urn(r.type, r.id);
     const known = index.get(u);
@@ -416,7 +532,7 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
-  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = []) {
+  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
@@ -430,6 +546,7 @@ export function createRecords(cfg) {
       if (made !== `${last.kind}:${last.id}` && role !== "owner" && role !== "admin") throw new KernelError("not_allowed", `only whoever made this ${type} or an admin changes it`);
     }
     const lim = await limitsOf(chain, type, d);
+    /** @type {any[]} */ let linkFields = [];
     if (op === "create" || op === "update") {
       refuseOutside(lim.allow, input);
       // a removed field takes no new values (its data is kept, and a person can bring the field back)
@@ -438,13 +555,19 @@ export function createRecords(cfg) {
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
+      linkFields = fields;
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);
       for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
     }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
+    // a list link may be changed by adding and removing entries (`{ contacts: { add: [{ urn }], remove: [{ urn }] } }`): worked out against the stored list, so the check and the store see the whole list
+    if (op === "update" && hooks.expand) input = await hooks.expand(before);
+    // a link names live records of its type: the gateway checks, so every store holds only links that stand
+    if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
     let stage = {};
+    if (op === "create" || op === "update") await conditionGate(type, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input), input, op === "create");
     if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
@@ -538,9 +661,14 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      checkKinds(diff); await checkRoles(diff);
+      // A Basic (device) install holds only the fixed personal types: a custom type needs a Cloud space.
+      if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("cloud_required", cfg.basic.refusal);
+      checkKinds(diff); await checkRoles(diff); await checkShape(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
+      // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
+      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
+        diff = withInverses(diff, known); }
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
@@ -773,7 +901,32 @@ export function createRecords(cfg) {
       return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
-      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id), undefined, opts.redact || []));
+      const cell = { patch };
+      const expand = async (/** @type {any} */ before) => {
+        const objs = Object.entries(patch || {}).filter(([, v]) => v && typeof v === "object" && !Array.isArray(v) && v.urn === undefined);
+        if (!objs.length) return patch;
+        let defs; try { defs = await store.types(); } catch (e) { throw mapError(e); }
+        const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
+        // only a list link takes the add and remove form: another object value (a money amount, an address) is its own value
+        const lists = objs.filter(([k]) => { const f = fields.find((/** @type {any} */ x) => x.name === k); return f && f.kind === "link" && (f.many === true || f.to !== undefined); });
+        if (!lists.length) return patch;
+        const out = { ...patch };
+        for (const [k, v] of lists) {
+          const f = fields.find((/** @type {any} */ x) => x.name === k);
+          if (!f || f.kind !== "link" || f.many !== true) throw new KernelError("bad_input", `${k} is not a list link: it takes a value, not add and remove`);
+          if (Object.keys(v).some(x => x !== "add" && x !== "remove")) throw new KernelError("bad_input", `${k}: add and remove are the only keys`);
+          const has = (/** @type {any} */ l) => Array.isArray(l) && l.every((/** @type {any} */ x) => x && typeof x.urn === "string");
+          if ((v.add !== undefined && !has(v.add)) || (v.remove !== undefined && !has(v.remove))) throw new KernelError("bad_input", `${k}: add and remove are lists of references`);
+          const drop = new Set((v.remove || []).map((/** @type {any} */ x) => x.urn));
+          const list = [];
+          const seen = new Set();
+          for (const x of [...((before && before.data && Array.isArray(before.data[k])) ? before.data[k] : []), ...(v.add || [])]) if (!drop.has(x.urn) && !seen.has(x.urn)) { seen.add(x.urn); list.push({ urn: x.urn }); }
+          out[k] = list;
+        }
+        cell.patch = out;
+        return out;
+      };
+      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, cell.patch, base), () => store.get(type, id), undefined, opts.redact || [], { expand }));
     },
     async remove(chain, type, id, base, opts = {}) {
       return idem.once(chain, "remove", opts.idem, { type, id, base }, () => write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id)));
@@ -892,7 +1045,7 @@ export function createRecords(cfg) {
         let cursor;
         do {
           let pg;
-          try { pg = await store.query(t.name, { filter: { field: lf.name, op: "eq", value: { urn: dropUrn } }, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+          try { pg = await store.query(t.name, { filter: linkFilter(lf, dropUrn), page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
           for (const r of pg.rows) if (r.type === t.name && !(t.name === type && r.id === dropId)) relink.push({ type: t.name, id: r.id, field: lf.name, version: r.version });
           cursor = pg.next_cursor;
         } while (cursor);
@@ -906,8 +1059,9 @@ export function createRecords(cfg) {
         for (const x of relink) {
           // a record linking through two fields shows up twice: take its version from the store each time
           const cur = await store.get(x.type, x.id);
-          const upd = await api.update(chain, x.type, x.id, { [x.field]: { urn: keepUrn } }, cur.version);
-          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, upd.version));
+          const lf = defs.find((/** @type {any} */ t) => t.name === x.type).fields.find((/** @type {any} */ g) => g.name === x.field);
+          const upd = await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, cur.data[x.field], dropUrn, keepUrn) }, cur.version);
+          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, upd.data[x.field], keepUrn, dropUrn) }, upd.version));
           done.push({ type: x.type, id: x.id, field: x.field });
         }
         let kept = keep;
@@ -945,8 +1099,10 @@ export function createRecords(cfg) {
       for (const x of m.relinked) {
         let cur;
         try { cur = await store.get(x.type, x.id); } catch { continue; }
-        if (!cur || cur.deleted_at || !cur.data[x.field] || cur.data[x.field].urn !== keepUrn) continue;
-        await api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, cur.version); relinked++;
+        const v = cur && !cur.deleted_at ? cur.data[x.field] : null;
+        if (!v || !(Array.isArray(v) ? v.some((/** @type {any} */ y) => y && y.urn === keepUrn) : v.urn === keepUrn)) continue;
+        const ldefs = await store.types(); const lf = ldefs.find((/** @type {any} */ t) => t.name === x.type)?.fields.find((/** @type {any} */ g) => g.name === x.field);
+        await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf || {}, v, keepUrn, dropUrn) }, cur.version); relinked++;
       }
       log.append(chain, { type: "records.unmerged", sv: 1, subject: keepUrn, corr: mergeId, data: { type: m.type, keep: m.keep, drop: m.drop, relinked, edited_since: edited } }, { decision: dk.decision });
       return { keep: await api.get(chain, m.type, m.keep), restored: restored.urn, relinked, edited_since: edited };
@@ -991,6 +1147,14 @@ export function createRecords(cfg) {
       return { rows: p.rows.map((/** @type {any} */ r) => hold(t, r)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
     },
 
+    /** The named inverses of every link, by the type they appear on: `{ contact: [{ name: "leads", label: "Leads", from_type: "lead", from_field: "contact", many: false }] }`. Read like the definitions. */
+    async inverses(chain) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      await gate(chain, "records.read", `vyre://${space}/definition/types`);
+      let defs; try { defs = await store.types(); } catch (e) { throw mapError(e); }
+      return Object.fromEntries([...inversesOf(defs)].map(([k, v]) => [k, v]));
+    },
+
     /** Everything that links to this record (the reverse of a link field), any type, newest first within a type; only rows the caller may read. At most `limit` rows in all (default 50, at most 200). */
     async linked(chain, target, o = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
@@ -1002,13 +1166,15 @@ export function createRecords(cfg) {
       let defs;
       try { defs = await store.types(); } catch (e) { throw mapError(e); }
       const rows = []; let truncated = false;
+      const inverses = inversesOf(defs);
       for (const t of defs) {
         if (o.type !== undefined && t.name !== o.type) continue;
         for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === parts[3] || x.to === undefined) && (o.field === undefined || x.name === o.field))) {
           let cursor;
           for (let pages = 0; pages < 20 && !truncated; pages++) {
-            const p = await api.query(chain, t.name, { filter: { field: lf.name, op: "eq", value: { urn: target } }, page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
-            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, record: r }); }
+            const p = await api.query(chain, t.name, { filter: linkFilter(lf, target), page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
+            const inv = (inverses.get(parts[3]) || []).find((/** @type {any} */ i) => i.from_type === t.name && i.from_field === lf.name);
+            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
             if (!p.next_cursor) break;
             cursor = p.next_cursor;
           }

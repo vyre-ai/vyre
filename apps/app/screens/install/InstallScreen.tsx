@@ -26,7 +26,7 @@ import { payloadOf } from "../devices/real.js";
 import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, makeServerSpace, STORE_ASK, storeAsked, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, makeServerSpace, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -98,7 +98,6 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
   const [wrong, setWrong] = useState("");
-  const [storeAsk, setStoreAsk] = useState(false);
   const [session, setSession] = useState<PairingSession | null>(null);
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
@@ -158,12 +157,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     setStep(macFlow ? "addphone" : AFTER_HOME);
   };
   // The real box makes the space first (spaces.create), then setup carries on. A failure stays on the step with the box's words.
-  const makeReal = async (w: "server" | "vps" | "here", acceptBuiltinStore = false) => {
-    setBusy(true); setWrong(""); setStoreAsk(false);
+  const makeReal = async (w: "server" | "vps" | "here") => {
+    setBusy(true); setWrong("");
     try {
       // On a server this device is paired to, the device makes the space itself and the directory claim follows (claimServerSpace); a browser says "Make this space in Vyre on your phone".
       if (w === "server" && (await readIdentity().catch(() => null))) {
-        const id = await makeServerSpace(spaceSt.slug, sn, acceptBuiltinStore);
+        const id = await makeServerSpace(spaceSt.slug, sn);
         setSpaceId(id);
         make(w);
         return;
@@ -173,7 +172,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       if (r.state !== "done") { setWrong(r.say || "Setting up the space did not finish."); if (r.id) setSpaceId(r.id); return; }
       setSpaceId(r.id);
       make(w);
-    } catch (e) { if (storeAsked(e)) setStoreAsk(true); else setWrong(said(e)); } finally { setBusy(false); }
+    } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
@@ -472,7 +471,6 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     const to = pairToOptions(name, `${spaceSt.slug}.vyre.run`).find(([id]) => id === pairTo)?.[1] ?? "";
     body = (
       <Page title="Pair your server" sub={two ? (session.kind === "watch" ? "Say yes on the server only if it shows the same three words as below." : "The server shows who is asking and the same three words. Confirm only if they match.") : "The server printed a QR code and a long code. Scan the QR, or paste the long code."}>
-        {storeAsk ? <View className="gap-s2"><Banner tone="warn">{STORE_ASK}</Banner><Button kind="primary" label="Create" onPress={() => void makeReal("server", true)} /><Button kind="ghost" label="Cancel" onPress={() => setStoreAsk(false)} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <View className="gap-s2">
           <Text size="caption" strong tone="label">Your server</Text>
@@ -512,7 +510,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "members") {
     body = (
       <Page title="Who is in it?" sub="Invite people now, or later from Spaces and members. You are the owner.">
-        <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "alex" }} size={40} />} title={name || "alex"} sub="Owner, this device" />
+        <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "You" }} size={40} />} title={name || "You"} sub="Owner, this device" />
         {MOCK ? <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" /> : <Text tone="muted">Invites are made in Spaces and members, where you choose each person's role.</Text>}
         <View className="flex-row gap-s2">
           {MOCK ? <>
@@ -579,7 +577,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title="Join a space" sub="Scan the invite, or open its link.">
         <View className="w-ring self-center"><Ring seed={6} /></View>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="harlow.vyre.run/join/..." />
+        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="Paste the invite link" />
         {MOCK ? null : <TypeCode redeem={redeemInvite} onDone={(t) => { if (!t.invite) { setWrong("The code worked but gave no invitation."); return; } const l = t.invite.link; setLink(l); setBusy(true); setWrong(""); previewInvite(l).then((p) => { setInvite(inviteFrom(p, l)); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false)); }} />}
         <View className="flex-row gap-s2">
           <Button kind="primary" label="Open invite" disabled={!MOCK && (busy || !link.trim())} onPress={() => {
