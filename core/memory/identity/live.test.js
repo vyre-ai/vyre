@@ -14,6 +14,9 @@ import { call } from "../../daemon/client.js";
 import { tempHome } from "../../../test/helpers.js";
 import { newDeviceKey } from "../../../lib/keywrap.js";
 import { Phone } from "./home.js";
+import { relocate } from "./live.js";
+import { DatabaseSync } from "node:sqlite";
+import { MIGRATIONS } from "../schema.js";
 import { configureYes } from "../../../lib/one-yes.js";
 
 const FACT = "I live in Lisbon and I use Postgres.";
@@ -185,4 +188,16 @@ test("a server without a sealed home behaves as it always did", async t => {
   assert.equal((await d.registry.call("memory.identity.unlock.begin", {}, "cli")).error?.code, "not_found");
   assert.equal((await d.registry.call("memory.remember", { text: FACT }, "cli")).error, undefined);
   assert.match(JSON.stringify((await d.registry.call("memory.profile", {}, "cli")).data), /Lisbon/);
+});
+
+test("while the identity memory is open SQLite keeps its temporary storage in memory too, so a sort or a temporary table never spills a fact to a file", async t => {
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || "/tmp"), "vyre-temp-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const db = new DatabaseSync(path.join(dir, "vyre.db"));
+  db.exec("CREATE TABLE _migrations (id INTEGER PRIMARY KEY)");
+  for (const m of MIGRATIONS) db.exec(m);
+  assert.equal(db.prepare("PRAGMA temp_store").get().temp_store, 0, "by default SQLite may use a file");
+  relocate(db);
+  assert.equal(db.prepare("PRAGMA temp_store").get().temp_store, 2, "MEMORY once the identity tables live in memory");
+  db.close();
 });

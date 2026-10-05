@@ -1,13 +1,14 @@
 // @ts-check
-// The Basic backup (team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats (the device's row files and the projects' folders) kept as ciphertext on a team server they belong to.
+// The Personal backup (team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats (the device's row files and the projects' folders) kept as ciphertext on a team server they belong to.
 //
-// One backup key (BK), a key ring `backup:<identity>` made with lib/keywrap.js (wrapped to each of the person's device keys, and to their recovery code). Files are cut into chunks of up to 4 MiB; a chunk's
+// One backup key (BK), sealed under the person's identity memory key (the IMK of core/memory/identity), which every device of theirs and their recovery code already wrap: so every device in the
+// identity's list opens the backup, a device added to the identity home opens it at once, and the recovery code restores it onto a new device, with no second ring to keep in step. Files are cut into chunks of up to 4 MiB; a chunk's
 // id is an HMAC of its plaintext under a key derived from BK, so an unchanged chunk keeps its id (incremental) and the server cannot confirm that it holds a known file; each chunk is AES-256-GCM under BK,
 // bound to its id. A manifest lists every item and is written LAST, in one put, so an interrupted run leaves the previous manifest the newest and the chunks already up are skipped by the next run (resumable).
 // The server (any backend with put/get/list/delete) sees ciphertext, names of random ids, sizes and times of runs: never a file name or a byte of content.
 
 import crypto from "node:crypto";
-import { newRing, ringKey, ringAdd, wrapWithCode, unwrapWithCode, seal, open, fingerprint, sha256 } from "../../../lib/keywrap.js";
+import { newKey, seal, open, sha256 } from "../../../lib/keywrap.js";
 
 export const CHUNK = 4 * 1024 * 1024;
 /** Manifests kept after a successful run. */
@@ -19,7 +20,7 @@ const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new E
 const dir = (/** @type {string} */ id) => `backup/${id}`;
 const aadChunk = (/** @type {string} */ id, /** @type {string} */ cid) => `vyre-backup/${id}/chunk/${cid}`;
 const aadManifest = (/** @type {string} */ id, /** @type {number} */ rev) => `vyre-backup/${id}/manifest/${rev}`;
-const aadCode = (/** @type {string} */ id) => `vyre-backup/${id}/recovery`;
+const aadKey = (/** @type {string} */ id) => `vyre-backup/${id}/key`;
 const rev = (/** @type {number} */ n) => String(n).padStart(10, "0");
 const text = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
 const json = (/** @type {Buffer|null} */ b) => (b ? JSON.parse(b.toString("utf8")) : null);
@@ -32,33 +33,35 @@ const json = (/** @type {Buffer|null} */ b) => (b ? JSON.parse(b.toString("utf8"
  */
 
 export class Backup {
-  /** @param {{ backend: Backend, identity: string, key: Buffer, ring: any, clock?: () => number }} o */
-  constructor(o) { this.backend = o.backend; this.id = o.identity; this.key = o.key; this.ring = o.ring; this.clock = o.clock || Date.now; this.idKey = Buffer.from(crypto.hkdfSync("sha256", o.key, Buffer.alloc(0), Buffer.from("vyre-backup-chunk-id"), 32)); /** @type {string|null} */ this.lastError = null; }
+  /** @param {{ backend: Backend, identity: string, key: Buffer, clock?: () => number }} o */
+  constructor(o) { this.backend = o.backend; this.id = o.identity; this.key = o.key; this.clock = o.clock || Date.now; this.idKey = Buffer.from(crypto.hkdfSync("sha256", o.key, Buffer.alloc(0), Buffer.from("vyre-backup-chunk-id"), 32)); /** @type {string|null} */ this.lastError = null; /** @type {Promise<any>|null} */ this.running = null; this.me = crypto.randomBytes(8).toString("hex"); }
 
-  /** The first backup of an identity on a server: a new key wrapped to every device key and to the recovery code. @param {{ backend: Backend, identity: string, devices: Record<string, any>, recoveryCode?: string, clock?: () => number }} o */
+  /** The first backup of an identity on a server: a new key sealed under the identity memory key. @param {{ backend: Backend, identity: string, imk: Buffer, clock?: () => number }} o */
   static async create(o) {
     if (await o.backend.get(`${dir(o.identity)}/ring.json`)) throw bad("a backup already exists for this identity here", "conflict");
-    const { key, ring } = newRing(`backup:${o.identity}`, o.devices);
-    const file = { v: 1, ring, ...(o.recoveryCode ? { recovery: wrapWithCode(key, o.recoveryCode, aadCode(o.identity)) } : {}) };
-    await o.backend.put(`${dir(o.identity)}/ring.json`, text(file));
-    return new Backup({ ...o, key, ring });
+    const key = newKey();
+    await o.backend.put(`${dir(o.identity)}/ring.json`, text({ v: 2, box: seal(key, o.imk, aadKey(o.identity)) }));
+    return new Backup({ ...o, key });
   }
 
-  /** Open an existing backup with a device key (no prompt on the person's own device) or the recovery code. @param {{ backend: Backend, identity: string, holder?: string, privateJwk?: any, recoveryCode?: string, clock?: () => number }} o */
+  /** Open an existing backup with the identity memory key (a device's key or the recovery code open the identity home, which gives it). @param {{ backend: Backend, identity: string, imk: Buffer, clock?: () => number }} o */
   static async open(o) {
     const file = json(await o.backend.get(`${dir(o.identity)}/ring.json`));
     if (!file) throw bad("no backup for this identity on this server", "not_found");
-    const key = o.recoveryCode
-      ? (() => { if (!file.recovery) throw bad("this backup has no recovery code", "denied"); return unwrapWithCode(file.recovery, o.recoveryCode, aadCode(o.identity)); })()
-      : ringKey(file.ring, String(o.holder), o.privateJwk);
-    return new Backup({ ...o, key, ring: file.ring });
+    let key;
+    try { key = open(file.box, o.imk, aadKey(o.identity)); } catch { throw bad("this identity memory key does not open the backup", "denied"); }
+    return new Backup({ ...o, key });
   }
 
-  /** Let another device of the same person read the backup: done from one that holds the key. @param {string} holder @param {any} publicJwk */
-  async addDevice(holder, publicJwk) {
-    this.ring = ringAdd(this.ring, this.key, { [holder]: publicJwk });
-    const file = json(await this.backend.get(`${dir(this.id)}/ring.json`));
-    await this.backend.put(`${dir(this.id)}/ring.json`, text({ ...file, ring: this.ring }));
+  /** One run per identity at a time: here (a second call while one runs gets the same run) and across devices (a lease on the server, so a run never trims chunks another is uploading). */
+  async #lease() {
+    const name = `${dir(this.id)}/lock.json`, now = this.clock();
+    const held = json(await this.backend.get(name));
+    if (held && held.by !== this.me && held.until > now) throw bad("a backup of this identity is already running", "busy");
+    await this.backend.put(name, text({ by: this.me, until: now + 15 * 60 * 1000 }));
+    const back = json(await this.backend.get(name));
+    if (!back || back.by !== this.me) throw bad("a backup of this identity is already running", "busy");
+    return async () => { const cur = json(await this.backend.get(name)); if (cur && cur.by === this.me) await this.backend.delete(name); };
   }
 
   /** @returns {Promise<Manifest|null>} the newest manifest, opened */
@@ -76,7 +79,16 @@ export class Backup {
    * @param {Item[]} items
    * @returns {Promise<{ rev: number, uploaded: number, reused: number, items: number, bytes: number }>}
    */
-  async run(items) {
+  run(items) {
+    if (this.running) return this.running;
+    const p = this.#run(items).finally(() => { this.running = null; });
+    this.running = p;
+    return p;
+  }
+
+  /** @param {Item[]} items */
+  async #run(items) {
+    const release = await this.#lease();
     try {
       const prev = await this.latest();
       const had = new Map((prev ? prev.items : []).map(e => [`${e.kind}:${e.name}`, e]));
@@ -97,6 +109,9 @@ export class Backup {
         }
         out.push({ kind: it.kind, name: it.name, size: data.length, mtime: it.mtime, hash: sha256(data), chunks });
       }
+      // The manifest goes last, and only when every chunk it names is on the server: a chunk that is not (it was lost, or another run trimmed it) fails the run and the next one uploads it again.
+      const there = new Set((await this.backend.list(`${dir(this.id)}/chunks`)).map((/** @type {string} */ n) => n.split("/").pop()));
+      for (const e of out) for (const c of e.chunks) if (!there.has(c)) throw bad(`a chunk of ${e.kind === "file" ? "a file" : "a row file"} is not on the server: the next run uploads it again`, "unavailable");
       const n = (prev ? prev.rev : 0) + 1;
       /** @type {Manifest} */ const m = { v: 1, rev: n, at: this.clock(), items: out };
       await this.backend.put(`${dir(this.id)}/manifests/${rev(n)}.json`, text(seal(text(m), this.key, aadManifest(this.id, n))));
@@ -104,6 +119,7 @@ export class Backup {
       this.lastError = null;
       return { rev: n, uploaded, reused, items: out.length, bytes };
     } catch (e) { this.lastError = String(/** @type {Error} */ (e).message); throw e; }
+    finally { await release().catch(() => {}); }
   }
 
   /** Keep the last KEEP manifests and every chunk they name; the rest go. @param {number} n */
@@ -162,4 +178,3 @@ export class Backup {
 
 /** The status when there is no team server to back up to. */
 export const noBackup = () => ({ to: null, last: null, state: /** @type {const} */ ("none") });
-export { fingerprint };

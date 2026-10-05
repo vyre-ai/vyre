@@ -65,3 +65,24 @@ test("room move: refused without the kernel's event for this move, project and p
   assert.equal(slugOf("vyre://s/project/northwind", []), "northwind");
   assert.equal(slugOf(PROJECT, [{ slug: "nw", id: "0190c3f2-1111-4abc-8def-000000000001" }]), "nw");
 });
+
+test("room move: a write between export and forget does not wedge the move; a digest that does not match is refused", () => {
+  const m = world();
+  const e1 = run(m);
+  assert.throws(() => m.dst.import({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, package: e1.package, digest: "0".repeat(64) }), /does not match the digest/);
+  const r1 = m.dst.import({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, package: e1.package, digest: e1.digest });
+  // the project changes before forget: a new fact is filed
+  m.a.prepare(`INSERT INTO memory_writes (id, kind, text, from_kind, from_name, untrusted, state, at, updated) VALUES ('w9','note','Late note','agent','kit',0,'live',9,9)`).run();
+  m.a.prepare("INSERT INTO memory_write_links (write, project, state, at) VALUES ('w9','northwind','live',9)").run();
+  assert.throws(() => m.src.forget({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, slug: "northwind", receipt: r1 }), /changed since/);
+  // export and import again, as the error says: the new package replaces the rows and gives a new receipt
+  const o = m.dst.offer({ move_id: MOVE, plan_hash: PLAN, project: PROJECT });
+  const e2 = m.src.export({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, slug: "northwind", to_key: o.to_key });
+  assert.notEqual(e2.digest, e1.digest);
+  const r2 = m.dst.import({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, package: e2.package, digest: e2.digest });
+  assert.equal(r2.digest, e2.digest);
+  assert.equal(m.b.prepare("SELECT COUNT(*) n FROM memory_writes WHERE id = 'w9'").get().n, 1, "the late note arrived");
+  assert.equal(m.dst.import({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, package: e2.package }).digest, e2.digest, "the same package again is the same receipt");
+  const gone = m.src.forget({ move_id: MOVE, plan_hash: PLAN, project: PROJECT, slug: "northwind", receipt: r2 });
+  assert.equal(gone.forgotten.writes, 3);
+});

@@ -35,7 +35,6 @@ import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
 import { Backup, noBackup } from "./backup/index.js";
 import { usageOf } from "../../kernel/store/sealed.js";
-import { fingerprint as fingerprintOf } from "../../lib/keywrap.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
@@ -1162,12 +1161,12 @@ export default {
     const moveOf = { type: "object", required: ["move_id", "plan_hash", "project"], properties: { move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } } };
     const mover = (/** @type {any} */ extra, /** @type {string} */ what) => { if (!reader(extra.caller)) throw denied(`${what} is the person's own act, run by the move`); };
     const roomTool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {(i: any, slug: (r: string) => Promise<string>) => any} */ run) =>
-      ctx.tool(name, { effect: "write", description, input, run: async (i, extra = {}) => { mover(extra, name); const slug = async (/** @type {string} */ r) => slugOf(r, await projectList().catch(() => [])); return run(i, slug); } });
+      ctx.tool(name, { effect: "write", callers: ["module"], description, input, run: async (i, extra = {}) => { mover(extra, name); const slug = async (/** @type {string} */ r) => slugOf(r, await projectList().catch(() => [])); return run(i, slug); } });
     roomTool("memory.room.offer", "Target side of a project memory move: makes a one-use key for this move and returns its public half (to_key); the private half stays in this process's memory. Refused unless this Space's log holds project.move_in for the move.", moveOf, i => moves.offer(i));
     roomTool("memory.room.export", "Source side: reads the project's portable memory (writes, decisions, corrections) and seals it to the target's to_key. Returns { counts, digest, package }; only ciphertext leaves. Refused unless this Space's log holds project.move_started for the move. The graph is derived and is not carried.",
       { ...moveOf, required: [...moveOf.required, "to_key"], properties: { ...moveOf.properties, to_key: { type: "object" } } }, async (i, slug) => moves.export({ ...i, slug: await slug(i.project) }));
     roomTool("memory.room.import", "Target side: opens the package with the move's key, writes the rows under the target project in one transaction (a repeat is a no-op) and returns the receipt { move_id, project, plan_hash, space, slug, digest, counts, at }. `into` names the target project when its slug differs.",
-      { ...moveOf, required: [...moveOf.required, "package"], properties: { ...moveOf.properties, package: { type: "object" }, into: { type: "string" } } }, async (i, slug) => moves.import({ ...i, ...(i.into ? { slug: await slug(i.into) } : {}) }));
+      { ...moveOf, required: [...moveOf.required, "package"], properties: { ...moveOf.properties, package: { type: "object" }, digest: { type: "string", description: "the digest export returned: the package must match it" }, into: { type: "string" } } }, async (i, slug) => moves.import({ ...i, ...(i.into ? { slug: await slug(i.into) } : {}) }));
     roomTool("memory.room.forget", "Source side, after the target imported: needs the receipt; refuses if the project's memory changed since the export; removes the moved rows for good and leaves moved_to. Returns { forgotten: counts, moved_to }.",
       { ...moveOf, required: [...moveOf.required, "receipt"], properties: { ...moveOf.properties, receipt: { type: "object" } } }, async (i, slug) => moves.forget({ ...i, slug: await slug(i.project) }));
     // ---- the Space layer's own memory (the kernel's memory.file / memory.read / memory.retire, kernel/gateway/memory.js): thin doors over the gateway. Who may file, read or retire is a grant on the caller's
@@ -1197,18 +1196,25 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       run: async (input, extra = {}) => { const { api, chain } = await spaceMemory(extra); return factOut(await api.retire(chain, String(input.id))); },
     });
-    // ---- the Basic backup (backup/index.js, team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats, ciphertext on a team server they belong to. It has no store and no key of its own: it
+    // ---- the Personal backup (backup/index.js, team/0.3/DESIGN-basic-backup.md): a person's personal projects and chats, ciphertext on a team server they belong to. It has no store and no key of its own: it
     // lives beside the identity home in the SAME server storage (`memory.identity.home`, under backup/<identity>/ where the home is under identity/<identity>/) and opens with the device key the identity
     // home unlocks with (`memory.identity.deviceKey`). With no identity home there is no team server, so no backup, and the status says so. `memory.backup` only tunes it: { every_ms, max_bytes } or false to turn it off.
     // What to back up comes from `projects.backup.sources` (flows' folders, chat's rows): { items: [{ kind: "file"|"rows", name, size, mtime, path | text }] }. Every hour while there are changes.
     const bkCfg = idCfg && idCfg.id && idCfg.home && idCfg.deviceKey && !(ctx.config.memory && ctx.config.memory.backup === false) ? { ...idCfg, ...((ctx.config.memory && ctx.config.memory.backup) || {}) } : null;
     /** @type {Promise<Backup>|null} */ let bkOpen = null;
+    // The backup key is sealed under the identity memory key, which this device's key unwraps from the identity home with no prompt: every device in the identity's list opens the backup, one added to the
+    // home opens it at once, and the recovery code restores it onto a new device. The home has to be enrolled first (the person's own act); until then there is nothing to back up to.
     const backupOf = () => bkOpen || (bkOpen = (async () => {
+      if (!identity || !identity.home.exists()) throw Object.assign(new Error("the encrypted home is not set up yet"), { code: "not_found" });
       const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
       const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8"));
-      const holder = fingerprintOf(dev.publicJwk);
-      try { return await Backup.open({ backend: be, identity: String(bkCfg.id), holder, privateJwk: dev.privateJwk }); }
-      catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; return Backup.create({ backend: be, identity: String(bkCfg.id), devices: { [holder]: dev.publicJwk } }); }
+      const lease = identity.home.unlockWithDevice(dev);
+      const imk = Buffer.from(lease.key());
+      lease.lock();
+      try {
+        try { return await Backup.open({ backend: be, identity: String(bkCfg.id), imk }); }
+        catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; return await Backup.create({ backend: be, identity: String(bkCfg.id), imk }); }
+      } finally { imk.fill(0); }
     })().catch(e => { bkOpen = null; throw e; }));
     const bkItems = async () => {
       const r = await ctx.call("projects.backup.sources", {}).catch(() => null);
@@ -1227,7 +1233,7 @@ export default {
       run: async (_i, extra = {}) => {
         if (!reader(extra.caller)) throw denied("the backup status is the person's own");
         if (!bkCfg) return noBackup();
-        try { return await (await backupOf()).status(await bkItems(), String(bkCfg.server || bkCfg.name || "") || null); } catch { return { to: String(bkCfg.server || bkCfg.name || "") || null, last: null, state: "behind" }; }
+        try { return await (await backupOf()).status(await bkItems(), String(bkCfg.server || bkCfg.name || "") || null); } catch (e) { const to = String(bkCfg.server || bkCfg.name || "") || null; return /** @type {any} */ (e).code === "not_found" ? { to, last: null, state: "none" } : { to, last: null, state: "behind" }; }
       },
     });
     ctx.tool("memory.backup.run", {
@@ -1235,6 +1241,29 @@ export default {
       description: "Back up now: upload what the team server lacks, then write the next manifest. Returns { rev, uploaded, reused, items, bytes }. Runs by itself every hour while there are changes.",
       input: { type: "object", properties: {} },
       run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg) throw Object.assign(new Error("there is no team server to back up to"), { code: "not_found" }); return bkRun(); },
+    });
+    ctx.tool("memory.backup.restore", {
+      effect: "write",
+      description: "Bring the encrypted backup back onto this device: every file and row file in the newest backup is rebuilt from its chunks, checked by hash, and written under `to` (default: a new folder in this home's restore folder), each at its own relative path. This device's key opens it; on a new device with no key yet, pass the recovery code. Returns { rev, restored, missing: [{ name, why }], to }. A missing or damaged chunk is named, never skipped.",
+      input: { type: "object", properties: { to: { type: "string" }, recovery_code: { type: "string" } } },
+      run: async (input, extra = {}) => {
+        if (!reader(extra.caller)) throw denied("restoring the backup is the person's own act");
+        if (!bkCfg || !identity) throw Object.assign(new Error("there is no team server to restore from"), { code: "not_found" });
+        const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
+        let imk;
+        if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code)).key());
+        else { const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8")); const l = identity.home.unlockWithDevice(dev); imk = Buffer.from(l.key()); l.lock(); }
+        try {
+          const b = await Backup.open({ backend: be, identity: String(bkCfg.id), imk });
+          const to = path.resolve(String(input.to || path.join(String(ctx.paths?.root || "."), "restore", String(Date.now()))));
+          const res = await b.restore(async (e, bytes) => {
+            const f = path.resolve(to, e.name);
+            if (f !== to && !f.startsWith(to + path.sep)) throw Object.assign(new Error("a backed-up name leaves the restore folder"), { code: "bad_input" });
+            fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, bytes); try { fs.utimesSync(f, new Date(e.mtime), new Date(e.mtime)); } catch { /* the time is a nicety */ }
+          });
+          return { ...res, to };
+        } finally { imk.fill(0); }
+      },
     });
     const bkTimer = bkCfg ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
     if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
@@ -1278,7 +1307,9 @@ export default {
       run: async (input, extra = {}) => {
         if (!identity) throw noIdentity();
         if (!reader(extra.caller)) throw denied("sealing the identity memory is the person's own act");
-        return identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
+        const r = identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
+        ctx.events.emit("memory.sealed", { kept: r.kept });   // about.md must stop carrying the person's facts in the clear
+        return r;
       },
     });
     ctx.tool("memory.identity.grant", {

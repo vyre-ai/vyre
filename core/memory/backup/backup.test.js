@@ -1,4 +1,4 @@
-// The Basic backup: ciphertext only on the server, incremental, resumable, restorable from the recovery code, and the status the app reads.
+// The Personal backup: ciphertext only on the server, incremental, resumable, restorable from the recovery code, and the status the app reads.
 import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { Backup, noBackup, CHUNK, FRESH_MS } from "./index.js";
 import { FileBackend } from "../identity/home.js";
+import { newKey } from "../../../lib/keywrap.js";
+import { IdentityHome } from "../identity/home.js";
 import { newDeviceKey } from "../../../lib/keywrap.js";
 
 const HOUR = 60 * 60 * 1000;
@@ -17,9 +19,9 @@ const everything = dir => { const out = []; const walk = d => { for (const n of 
 
 test("backup: the server holds ciphertext only; a second run uploads only what changed; the newest manifest restores everything", async t => {
   const server = new FileBackend(tmp(t));
-  const dev = newDeviceKey();
+  const imk = newKey();
   let now = 10 * HOUR;
-  const b = await Backup.create({ backend: server, identity: "me", devices: { phone: dev.publicJwk }, recoveryCode: "correct horse battery", clock: () => now });
+  const b = await Backup.create({ backend: server, identity: "me", imk, clock: () => now });
   const big = Buffer.alloc(CHUNK + 100, 7).toString("latin1");
   const items = [rows("rows/projects.jsonl", '{"name":"Northwind Bakery books"}\n'), file("northwind/ledger.txt", "Dana Reyes owes 4,200"), file("northwind/big.bin", big)];
   const r1 = await b.run(items);
@@ -33,8 +35,8 @@ test("backup: the server holds ciphertext only; a second run uploads only what c
   assert.equal(r2.rev, 2);
   assert.equal(r2.reused, 2);
   assert.equal(r2.uploaded, 1, "only the changed file's chunk goes up");
-  // restore on a new device after recovery, from the code alone
-  const fresh = await Backup.open({ backend: server, identity: "me", recoveryCode: "correct horse battery" });
+  // restore: whoever holds the identity memory key (a device's key or the recovery code open the home that gives it)
+  const fresh = await Backup.open({ backend: server, identity: "me", imk });
   const got = new Map();
   const res = await fresh.restore((e, bytes) => got.set(e.name, bytes.toString("latin1")));
   assert.equal(res.rev, 2);
@@ -42,19 +44,66 @@ test("backup: the server holds ciphertext only; a second run uploads only what c
   assert.equal(got.get("northwind/ledger.txt"), "Dana Reyes owes 0");
   assert.equal(got.get("northwind/big.bin"), big);
   assert.equal(got.get("rows/projects.jsonl"), '{"name":"Northwind Bakery books"}\n');
-  await assert.rejects(() => Backup.open({ backend: server, identity: "me", recoveryCode: "wrong" }), /cannot open/);
-  // a device key opens it with no prompt; one that was never added cannot
-  assert.ok(await Backup.open({ backend: server, identity: "me", holder: "phone", privateJwk: dev.privateJwk }));
-  const stranger = newDeviceKey();
-  await assert.rejects(() => Backup.open({ backend: server, identity: "me", holder: "laptop", privateJwk: stranger.privateJwk }), /holds no wrap/);
-  await b.addDevice("laptop", stranger.publicJwk);
-  assert.ok(await Backup.open({ backend: server, identity: "me", holder: "laptop", privateJwk: stranger.privateJwk }));
+  await assert.rejects(() => Backup.open({ backend: server, identity: "me", imk: newKey() }), /does not open/);
+});
+
+test("backup: every device in the identity's list opens it, a device added later opens it at once, and the recovery code restores it onto a new device", async t => {
+  const server = new FileBackend(tmp(t));
+  const phone = newDeviceKey(), laptop = newDeviceKey(), fresh = newDeviceKey();
+  const home = new IdentityHome({ id: "me", backend: server });
+  const lease = home.create({ devices: [{ label: "phone", publicJwk: phone.publicJwk }], recoveryCode: "correct horse battery" });
+  const imkOf = l => Buffer.from(l.key());
+  const onPhone = await Backup.create({ backend: server, identity: "me", imk: imkOf(home.unlockWithDevice(phone)) });
+  await onPhone.run([file("a.txt", "from the phone")]);
+  // a second device is added to the identity home: it opens the backup and backs up too, with no second ring to keep in step
+  home.addDevice(lease, { label: "laptop", publicJwk: laptop.publicJwk });
+  const onLaptop = await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithDevice(laptop)) });
+  assert.equal((await onLaptop.run([file("a.txt", "from the phone"), file("b.txt", "from the laptop")])).rev, 2);
+  // a device that was never added is refused by the home itself
+  assert.throws(() => home.unlockWithDevice(fresh), { code: "unknown_key" });
+  // everything is lost but the code: a new device restores from it
+  const got = new Map();
+  const restored = await (await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithCode("correct horse battery")) })).restore((e, bytes) => got.set(e.name, bytes.toString()));
+  assert.deepEqual([...got.keys()].sort(), ["a.txt", "b.txt"]);
+  assert.equal(restored.missing.length, 0);
+  assert.throws(() => home.unlockWithCode("wrong words"), /cannot open/);
+});
+
+test("backup: two runs at once do not lose data (one run at a time, here and across devices), and the manifest is written only when every chunk is on the server", async t => {
+  const server = new FileBackend(tmp(t));
+  const imk = newKey();
+  const a = await Backup.create({ backend: server, identity: "me", imk });
+  const b = await Backup.open({ backend: server, identity: "me", imk });
+  const items = [file("one.txt", "1"), file("two.txt", "22"), file("three.txt", "333")];
+  // the same instance: a second call while one runs gets the same run
+  const first = a.run(items), second = a.run(items);
+  assert.equal(first, second, "the same run");
+  const [r1, r2] = await Promise.all([first, second]);
+  assert.equal(r1.rev, r2.rev);
+  // another device holds the lease: this one is refused as busy and trims nothing under it
+  server.put("backup/me/lock.json", JSON.stringify({ by: "another-device", until: Date.now() + 60_000 }));
+  await assert.rejects(() => a.run([...items, file("four.txt", "4444")]), /already running/);
+  server.delete("backup/me/lock.json");
+  const r3 = await a.run([...items, file("four.txt", "4444")]);
+  assert.equal(r3.rev, 2);
+  const res = await (await Backup.open({ backend: server, identity: "me", imk })).restore(() => {});
+  assert.deepEqual(res.missing, []);
+  assert.equal(res.restored, 4);
+  // the lease is released: the other device may run now
+  assert.equal((await b.run(items)).rev, 3);
+  // a chunk lost from the server before the manifest is written fails the run instead of writing a manifest that names it
+  const realPut = server.put.bind(server);
+  server.put = (name, bytes) => { realPut(name, bytes); if (name.includes("/chunks/")) server.delete(name); };
+  await assert.rejects(() => a.run([file("new.txt", "x", 9999)]), /not on the server/);
+  server.put = realPut;
+  assert.equal((await a.latest()).rev, 3, "no manifest was written");
+  assert.equal((await a.run([file("new.txt", "x", 9999)])).rev, 4, "the next run uploads it again");
 });
 
 test("backup: an interrupted run leaves the last manifest newest and the next run skips what is already up; retention keeps three; a damaged chunk is named", async t => {
   const server = new FileBackend(tmp(t));
-  const dev = newDeviceKey();
-  const b = await Backup.create({ backend: server, identity: "me", devices: { phone: dev.publicJwk } });
+  const imk = newKey();
+  const b = await Backup.create({ backend: server, identity: "me", imk });
   await b.run([file("a.txt", "one")]);
   // the second run dies after uploading the first of two new items, before the manifest
   let died = false;
@@ -74,16 +123,15 @@ test("backup: an interrupted run leaves the last manifest newest and the next ru
   // damage a chunk the newest manifest names
   const m = await b.latest();
   fs.writeFileSync(server.path(`backup/me/chunks/${m.items[0].chunks[0]}`), "{}");
-  const res = await (await Backup.open({ backend: server, identity: "me", holder: "phone", privateJwk: dev.privateJwk })).restore(() => {});
+  const res = await (await Backup.open({ backend: server, identity: "me", imk })).restore(() => {});
   assert.equal(res.missing.length, 1);
   assert.match(res.missing[0].why, /damaged/);
 });
 
 test("backup status: ok while nothing older than an hour is missing, behind when it is, none with no team", async t => {
   const server = new FileBackend(tmp(t));
-  const dev = newDeviceKey();
   let now = 100 * HOUR;
-  const b = await Backup.create({ backend: server, identity: "me", devices: { phone: dev.publicJwk }, clock: () => now });
+  const b = await Backup.create({ backend: server, identity: "me", imk: newKey(), clock: () => now });
   const a = file("a.txt", "one", now - 3 * HOUR);
   assert.equal((await b.status([a], "Acme")).state, "behind", "an old file never backed up");
   await b.run([a]);

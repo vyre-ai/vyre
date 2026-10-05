@@ -87,6 +87,9 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   const items = [{ kind: "file", name: "northwind/node_modules/x/index.js", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/debug.log", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/.git/HEAD", size: 5, mtime: 1, text: "keep!" }, { kind: "rows", name: "rows/chats.jsonl", size: 40, mtime: Date.now() - 1000, text: '{"chat":"Harlow billing question"}' }];
   const w = await world(t, undefined, { memory: { identity: { id: "alex", home: path.join(dir, "server"), name: "Acme Team", server: "Acme Team", deviceKey: path.join(dir, "device.json") } } }, () => items);
   const tok = await w.session("per_alex");
+  // not enrolled yet: nothing to back up to, and the status says so
+  assert.equal((await w.call("memory.backup.status", {}, "deck", tok, surface("deck"))).data.state, "none");
+  assert.equal((await w.call("memory.identity.enroll", { devices: [{ label: "laptop", publicJwk: dev.publicJwk }], recovery_code: "correct horse battery" }, "deck", tok, surface("deck"))).error, undefined);
   const run = await w.call("memory.backup.run", {}, "deck", tok, surface("deck"));
   assert.equal(run.error, undefined, JSON.stringify(run));
   assert.equal(run.data.items, 2, "dependency folders and logs are never sent; .git is kept");
@@ -99,6 +102,13 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   const walk = d => fs.readdirSync(d).flatMap(n => { const p = path.join(d, n); return fs.statSync(p).isDirectory() ? walk(p) : [fs.readFileSync(p, "latin1")]; });
   assert.ok(!walk(path.join(dir, "server")).join("").includes("Harlow"), "ciphertext only on the server");
   assert.equal((await w.call("memory.backup.status", {}, "mcp:agent:kit")).code, "denied", "an agent does not read the backup status");
+  // restore onto a new device, from the recovery code alone, into a folder of the person's choosing
+  const out = path.join(dir, "restored");
+  const rest = await w.call("memory.backup.restore", { to: out, recovery_code: "correct horse battery" }, "deck", tok, surface("deck"));
+  assert.equal(rest.error, undefined, JSON.stringify(rest));
+  assert.equal(rest.data.restored, 2);
+  assert.equal(fs.readFileSync(path.join(out, "northwind/.git/HEAD"), "utf8"), "keep!");
+  assert.match(fs.readFileSync(path.join(out, "rows/chats.jsonl"), "utf8"), /Harlow billing question/);
 });
 
 test("memory.personal: the status counts the sealed records while locked, and the owner's cap is read back", async t => {

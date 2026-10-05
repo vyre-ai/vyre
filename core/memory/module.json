@@ -111,11 +111,12 @@
       { "name": "memory.personal.status", "reach": "person", "effect": "read" },
       { "name": "memory.personal.set-cap", "reach": "person", "effect": "write" },
       { "name": "memory.backup.status", "reach": "person", "effect": "read" },
+      { "name": "memory.backup.restore", "reach": "person", "effect": "write" },
       { "name": "memory.backup.run", "reach": "person", "effect": "write" },
-      { "name": "memory.room.offer", "reach": "person", "effect": "write", "crossSpace": "project.move_in" },
-      { "name": "memory.room.export", "reach": "person", "effect": "write" },
-      { "name": "memory.room.import", "reach": "person", "effect": "write", "crossSpace": "project.move_in" },
-      { "name": "memory.room.forget", "reach": "person", "effect": "write" },
+      { "name": "memory.room.offer", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.export", "reach": "modules", "effect": "write" },
+      { "name": "memory.room.import", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.forget", "reach": "modules", "effect": "write" },
       { "name": "memory.identity.status", "reach": "anyone", "effect": "read" },
       { "name": "memory.identity.enroll", "reach": "person", "effect": "write" },
       { "name": "memory.identity.grant", "reach": "anyone", "effect": "write" },
@@ -216,7 +217,7 @@
       "memory.forgot",
       "memory.written",
       "memory.site-learned",
-      "memory.graph-grew", "memory.unlock-asked"
+      "memory.graph-grew", "memory.unlock-asked", "memory.sealed"
     ]
   },
   "shows": {

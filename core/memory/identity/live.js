@@ -63,6 +63,8 @@ export function clearTables(db) {
  * @param {import("node:sqlite").DatabaseSync} db
  */
 export function relocate(db) {
+  // SQLite never spills a sort or a temporary table to a file while the identity memory is open: temp storage stays in memory too.
+  db.exec("PRAGMA temp_store = MEMORY");
   if (!attached(db)) db.exec(`ATTACH DATABASE ':memory:' AS ${SCHEMA}`);
   // The tables' definitions come from the memory migrations themselves, run in a scratch database: once they are dropped from the file there is nowhere else to read them, and a restart must
   // find them. (A future migration that alters one of these tables must alter it where it lives: the in-memory schema, made from the migrations as they stand.)

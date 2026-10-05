@@ -8,7 +8,8 @@
 // move with flows' own receipt. Four calls, in order:
 //   offer   (target)  makes a one-use P-256 key for this move and returns its public half. The private half lives in this process's memory only and lapses with the move's hour.
 //   export  (source)  reads the project's memory and seals it to that key: nothing but ciphertext leaves, and the receipt-to-be (a digest of the plain package) rides in the clear.
-//   import  (target)  opens it, checks the digest, writes the rows under the target project (one transaction, idempotent), and returns the receipt.
+//   import  (target)  opens it, checks the digest (the one export returned, when passed), writes the rows under the target project (one transaction), and returns the receipt. The same package again is a no-op
+//                     with the same receipt; a NEWER export of a project that changed since (a write between export and forget) replaces the rows and gives a new receipt, so a move never wedges.
 //   forget  (source)  needs the receipt; recomputes the digest of what is still there (a project that changed since export is refused, nothing is lost unseen), removes the rows for good and leaves
 //                     a `moved_to` marker (memory_moves) so a later read says where the memory went.
 
@@ -40,7 +41,7 @@ const canon = v => Array.isArray(v) ? `[${v.map(canon).join(",")}]` : v && typeo
 export function createMoves(d) {
   const clock = d.clock || Date.now;
   const db = d.db;
-  /** move_id to { key, at } for offers held in memory only. @type {Map<string, { privateJwk: any, at: number, project: string, plan_hash: string }>} */
+  /** move_id to { key, at } for offers held in memory only. @type {Map<string, { privateJwk: any, publicJwk: any, at: number, project: string, plan_hash: string }>} */
   const offers = new Map();
 
   /** The kernel's event for this move in this Space's own log, or a refusal. @param {"project.move_started"|"project.move_in"} type @param {{ move_id: string, plan_hash: string, project: string }} i */
@@ -68,8 +69,11 @@ export function createMoves(d) {
     offer(i) {
       proof("project.move_in", i);
       for (const [k, v] of offers) if (clock() - v.at > HOUR) offers.delete(k);
+      // The key stays for the move's hour, so a project that changed before forget can be exported and imported again to the same key.
+      const held = offers.get(i.move_id);
+      if (held && held.project === i.project && held.plan_hash === i.plan_hash) return { move_id: i.move_id, to_key: held.publicJwk };
       const k = newDeviceKey();
-      offers.set(i.move_id, { privateJwk: k.privateJwk, at: clock(), project: i.project, plan_hash: i.plan_hash });
+      offers.set(i.move_id, { privateJwk: k.privateJwk, publicJwk: k.publicJwk, at: clock(), project: i.project, plan_hash: i.plan_hash });
       return { move_id: i.move_id, to_key: k.publicJwk };
     },
 
@@ -85,36 +89,40 @@ export function createMoves(d) {
       return { move_id: i.move_id, counts: counts(plain), digest, package: { v: 1, wrap: wrapForDevice(key, i.to_key, aad), box: seal(Buffer.from(body, "utf8"), key, aad) } };
     },
 
-    /** Target side. @param {{ move_id: string, plan_hash: string, project: string, slug?: string, package: any }} i */
+    /** Target side. @param {{ move_id: string, plan_hash: string, project: string, slug?: string, package: any, digest?: string }} i */
     import(i) {
       proof("project.move_in", i);
-      const done = db.prepare("SELECT receipt FROM memory_moves WHERE move_id = ? AND side = 'in'").get(i.move_id);
-      if (done) return JSON.parse(done.receipt);
       const o = offers.get(i.move_id);
+      const done = db.prepare("SELECT receipt FROM memory_moves WHERE move_id = ? AND side = 'in'").get(i.move_id);
+      if (!o && done) { const r = JSON.parse(done.receipt); if (!i.digest || i.digest === r.digest) return r; }
       if (!o || o.project !== i.project || o.plan_hash !== i.plan_hash) throw bad("no offer is held for this move: ask memory.room.offer again", "not_found");
       const aad = `room-move:${i.move_id}:${i.plan_hash}`;
       let body;
       try { body = JSON.parse(Buffer.from(open(i.package.box, unwrapWithDevice(i.package.wrap, o.privateJwk, aad), aad)).toString("utf8")); } catch { throw bad("the package does not open with this move's key"); }
       const digest = sha256(canon(body));
+      if (i.digest && i.digest !== digest) throw bad("the package does not match the digest export returned");
+      if (done && JSON.parse(done.receipt).digest === digest) return JSON.parse(done.receipt);
       if (body.project !== i.project) throw bad("the package is for another project");
       const slug = i.slug || body.slug;
-      // The rows say the project they belong to; here that is the target's slug. Ids are kept (a re-import is a no-op).
+      // The rows say the project they belong to; here that is the target's slug. A package of a newer export replaces what an earlier one wrote (same ids), so a project that changed
+      // between export and forget is exported and imported again and the move finishes.
       db.exec("SAVEPOINT room_in");
       try {
-        const w = db.prepare(`INSERT OR IGNORE INTO memory_writes (id, kind, text, subject, source_ref, from_kind, from_name, provider, thread, seq, untrusted, state, at, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        const w = db.prepare(`INSERT OR REPLACE INTO memory_writes (id, kind, text, subject, source_ref, from_kind, from_name, provider, thread, seq, untrusted, state, at, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
         for (const r of body.writes) w.run(r.id, r.kind, r.text, r.subject ?? null, r.source_ref ?? null, r.from_kind, r.from_name, r.provider ?? null, r.thread ?? null, r.seq ?? null, r.untrusted, r.state, r.at, r.updated);
         const l = db.prepare("INSERT OR IGNORE INTO memory_write_links (write, project, state, at) VALUES (?,?, 'live', ?)");
+        const have = new Set(body.links.map((/** @type {any} */ x) => x.write));
         for (const x of body.links) l.run(x.write, slug, x.at);
-        const dc = db.prepare(`INSERT OR IGNORE INTO memory_decisions (id, session, seq, project, cwd, topic, label, value, display, statement, revert, decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+        for (const r of db.prepare("SELECT write FROM memory_write_links WHERE project = ? AND state = 'live'").all(slug)) if (!have.has(r.write)) db.prepare("UPDATE memory_write_links SET state = 'forgotten' WHERE write = ? AND project = ?").run(r.write, slug);
+        const dc = db.prepare(`INSERT OR REPLACE INTO memory_decisions (id, session, seq, project, cwd, topic, label, value, display, statement, revert, decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
         for (const r of body.decisions) dc.run(r.id, r.session, r.seq, slug, r.cwd, r.topic, r.label, r.value, r.display, r.statement, r.revert, r.decided_at);
         const c = db.prepare(`INSERT INTO memory_corrections (action, src, rel, dst, object, at, scope, note, who, created, undone) SELECT ?,?,?,?,?,?,?,?,?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM memory_corrections WHERE scope = ? AND action = ? AND src = ? AND IFNULL(rel,'') = IFNULL(?,'') AND IFNULL(dst,'') = IFNULL(?,'') AND created = ?)`);
         for (const r of body.corrections) c.run(r.action, r.src, r.rel ?? null, r.dst ?? null, r.object ?? null, r.at ?? null, slug, r.note ?? null, r.who ?? null, r.created, slug, r.action, r.src, r.rel ?? null, r.dst ?? null, r.created);
         const f = db.prepare(`INSERT INTO memory_decision_fixes (fix, at, project, topic, action, value, display, statement, source, undone) SELECT 0,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM memory_decision_fixes WHERE project = ? AND at = ? AND topic = ? AND action = ?)`);
         for (const r of body.fixes) f.run(r.at, slug, r.topic, r.action, r.value ?? null, r.display ?? null, r.statement ?? null, r.source ?? null, r.undone ?? null, slug, r.at, r.topic, r.action);
         const receipt = { v: 1, move_id: i.move_id, project: i.project, plan_hash: i.plan_hash, space: d.space, slug, digest, counts: counts(body), at: clock(), derived: "the graph is derived again here from the sessions that arrive with the project" };
-        db.prepare("INSERT INTO memory_moves (move_id, side, project, other, receipt, at) VALUES (?, 'in', ?, ?, ?, ?)").run(i.move_id, i.project, null, JSON.stringify(receipt), clock());
+        db.prepare("INSERT OR REPLACE INTO memory_moves (move_id, side, project, other, receipt, at) VALUES (?, 'in', ?, ?, ?, ?)").run(i.move_id, i.project, null, JSON.stringify(receipt), clock());
         db.exec("RELEASE room_in");
-        offers.delete(i.move_id);
         return receipt;
       } catch (e) { db.exec("ROLLBACK TO room_in"); db.exec("RELEASE room_in"); throw e; }
     },
