@@ -1,3 +1,24 @@
+    /**
+     * See `resealPortFor` (lib/spaces/upgrade.js): the sealed-value transfer through platform's seal ops. EX-1: the target's wrapping key is taken only from a signed answer (`spaces.upgrade.wrap-key`, run
+     * in My Cloud's home) whose signature checks against the Space's PUBLISHED key under the pin, so a courier cannot swap in a key of its own; with no server, name or pin to check against there is no port at all.
+     */
+    const resealPort = async (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval, /** @type {any} */ i, /** @type {any} */ meta) => {
+      const to = String(i && i.to);
+      const row = spaces.get(to), kept = await chainOf(to);
+      const name = typeof (i && i.toName) === "string" && i.toName ? String(i.toName) : (row ? String(row.name || "") : "");
+      const pin = parsePin(i && i.pin) || (kept && kept.pin) || null;
+      const server = typeof (i && i.server) === "string" && i.server ? i.server : await serverOf(to);
+      if (!name || !pin || !server) return null;
+      const attest = async () => {
+        const r = await remoteCall(server, "spaces.upgrade.wrap-key", { space: to }, meta);
+        const b = r && r.body;
+        if (!b || b.v !== 1 || b.space !== to || typeof b.wrap_key !== "string" || typeof r.pub !== "string" || typeof r.sig !== "string") throw refuse("My Cloud did not answer with a signed key. Nothing was moved.", "unverified_target");
+        const published = await publishedKeyOf(to, { name, pin });
+        if (!published || published !== r.pub || !(await verifySigned(r.pub, UPGRADE_WRAPKEY_TAG, b, r.sig))) throw refuse(`The key My Cloud gave is not signed by ${name}'s published key. Nothing was moved.`, "unverified_target");
+        return b.wrap_key;
+      };
+      return resealPortFor({ local: sides.local, remote: sides.remote, sealing: sides.sealing, plan_hash, approval, attest, targetName: name, requireAttest: true });
+    };
 // @ts-check
 // spaces: identity, spaces, members and invites for Vyre 0.3 (team/0.3/DESIGN-spaces-first.md). This file is the wiring: the rules live in
 // lib/spaces/ (members, invites, homes, home-unit, vps, authz), the names client is core/names/ids.js, and everything here is
@@ -1402,7 +1423,7 @@ export default {
     // ---- moving a project to a Space on ANOTHER home (kernel/gateway/moves.js, reviewer-3's team/0.3/reviews/remote-move-design.md). The mover's own device is the courier between the two homes; each side
     // signs only what its own log says, with its Space key (the one whose public half is the Space's published `rootPublic`), and the other side checks that signature against the DIRECTORY's key for
     // that Space id, resolved under the pin the mover's device holds (RM-6), never against a key it is handed. ----
-    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1", MOVE_UPGRADE_RECEIPT_TAG = "vyre-upgrade-receipt-v1";
+    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1", MOVE_UPGRADE_RECEIPT_TAG = "vyre-upgrade-receipt-v1", UPGRADE_WRAPKEY_TAG = "vyre-upgrade-wrapkey-v1";
     const EVIDENCE_KEYS = ["v", "from", "to", "project", "plan_hash", "move_id", "person", "at"];
     const RECEIPT_KEYS = ["v", "move_id", "from", "to", "counts", "files_root", "at"];
     const exactKeys = (/** @type {any} */ o, /** @type {string[]} */ keys) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
@@ -1625,11 +1646,21 @@ export default {
       const body = { v: 1, upgrade_id: String(i.upgrade_id), from: String(i.from), to: space, count: fp.count, objects_root: fp.root, at: now() };
       return { body, ...(await signMove(space, MOVE_UPGRADE_RECEIPT_TAG, body)) };
     });
+    tool("spaces.upgrade.wrap-key", "In MY CLOUD's home: answer this space's sealed-value wrapping key, signed with this space's own key, so the device can check it came from the Space it names before it approves carrying sealed values there.", obj({ space: str }, ["space"]), async (i, meta) => {
+      const space = String(i.space);
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      let chain; try { chain = await K.chainIn(space, meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
+      const h = kernelHandle(space);
+      if (!h || !h.gateway || !h.gateway.seal || typeof h.gateway.seal.wrapKey !== "function") throw refuse("This space cannot receive sealed values yet.", "unavailable");
+      const r = await h.gateway.seal.wrapKey(chain, { record: `vyre://${space}/contact/0190c3f2-1111-4abc-8def-000000000000` });
+      const body = { v: 1, space, wrap_key: String(r.key), at: now() };
+      return { body, ...(await signMove(space, UPGRADE_WRAPKEY_TAG, body)) };
+    });
     tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
       const sides = await upgradeSides(i.to, meta);
       const { local, remote } = sides;
       const ports = await upgradePorts(String(i.to));
-      { const rp = resealPort(sides, "", {}); if (rp) ports.reseal = rp; }
+      { const rp = await resealPort(sides, "", {}, i, meta); if (rp) ports.reseal = rp; }
       try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
@@ -1638,7 +1669,7 @@ export default {
       const { local, remote, gateway, proof } = sides;
       const ports = await upgradePorts(String(i.to));
       const approval = { proof: i.approve_proof };
-      const rp = resealPort(sides, String(i.plan_hash), approval);
+      const rp = await resealPort(sides, String(i.plan_hash), approval, i, meta);
       if (rp) ports.reseal = rp;
       let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
       if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
