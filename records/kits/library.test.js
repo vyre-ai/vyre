@@ -48,6 +48,5 @@ test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Pro
   }
   assert.equal(t("project").kind, "project");
   // the Project is the core Project (name, client as the Contact, owner, due, stage): its stages by practice area belong to the Law firm Kit, not the base
-  assert.equal(t("project").fields.find((f) => f.name === "accident_date").required_if, 'practice_area == "Personal Injury"');
   assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);
 });
