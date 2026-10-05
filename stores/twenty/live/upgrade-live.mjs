@@ -38,7 +38,8 @@ try {
   const leads = [];
   for (let i = 0; i < N; i++) leads.push((await local.records.create(local.chain, "lead", { title: `Lead ${i}`, contact: { urn: `vyre://${PERSONAL}/contact/${ids[i]}` }, referrers: [{ urn: `vyre://${PERSONAL}/contact/${ids[(i + 1) % N]}` }] })).id);
   lap(`personal filled: ${N} contacts, ${N} leads`);
-  const plan = await planUpgrade({ local, to: CLOUD });
+  const plan = await planUpgrade({ local, remote, to: CLOUD });
+  console.log("PLAN extend:", JSON.stringify(plan.extend));
   const started = await pk.gateway.upgrade.start(local.chain, { to: CLOUD, plan_hash: plan.hash }, { presence: { payload_hash: "x", nonce: "n" } }).catch((e) => ({ refused: e.code }));
   console.log("start without a real approval:", JSON.stringify(started));
   const t1 = Date.now();

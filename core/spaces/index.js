@@ -1543,15 +1543,15 @@ export default {
       };
     };
     tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
-      const { local } = await upgradeSides(i.to, meta);
+      const { local, remote } = await upgradeSides(i.to, meta);
       const ports = await upgradePorts();
-      try { const p = await planUpgrade({ local, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
+      try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
     tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. Afterwards this space points to My Cloud.", obj({ to: str, plan_hash: str }, ["to", "plan_hash"]), async (i, meta) => {
       const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
       const ports = await upgradePorts();
-      let plan; try { plan = await planUpgrade({ local, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
+      let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
       if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
       if (plan.blockers.length) throw refuse(`This cannot start yet: ${plan.blockers.join("; ")}`, "blocked");
       let started;
