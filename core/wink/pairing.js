@@ -311,9 +311,12 @@ export function createPairing(o) {
     if (!d || d.removed) return { ok: false, reason: "no such device" };
     if (d.kind !== "computer") return { ok: false, reason: "only a computer lends its compute to a space's work" };
     if (!d.offers.compute) return { ok: false, reason: "this computer is not offering compute" };
-    const personal = q.space === d.identity;
+    // The personal space is the identity's own (the stand-in key of a build with no kernel) or the home's Space (the kernel's id); the member of the home's Space is its owner.
+    const home = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : null;
+    const personal = q.space === d.identity || (home !== null && q.space === home);
+    const member = personal && home !== null && q.space === home && typeof ctx.kernel.owner === "string" ? ctx.kernel.owner : d.identity;
     if (!personal && !(await directory.memberships(d.identity)).some(m => m.space === q.space)) return { ok: false, reason: "its owner is not a member of that space" };
-    const row = (await compute.get(q.space, q.device, { member: d.identity, device_key: d.nodeKey || undefined })) || { space_allows: 0, member_accepts: 0 };
+    const row = (await compute.get(q.space, q.device, { member, device_key: d.nodeKey || undefined })) || { space_allows: 0, member_accepts: 0 };
     if (!personal && !row.space_allows) return { ok: false, reason: "the space has not allowed work on members' computers" };
     if (!row.member_accepts) return { ok: false, reason: "its owner has not accepted work for this space" };
     return { ok: true };

@@ -9,12 +9,11 @@
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
-import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
+import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst, classReach, PERSON_FREE } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
 const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space: SPACE });
@@ -65,9 +64,9 @@ export function createLegacyGates(cfg) {
         allowed = !(from && from.dir && def.module !== (from.manifest && from.manifest.name) && !reg.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules"));
         break;
       }
-      case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
+      case "outward": allowed = !((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, c)) || isPerson(c); break; // the registry holds only the older kind words here; the plain mark `outward: true` is the one-yes moment's and keeps its own held flow
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
-      case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
+      case "callers": allowed = (callerAllowed(def.callers, c, tool, () => reg.declaredSetupTools()) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
       case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
       case "session": {
         allowed = true;
@@ -107,9 +106,9 @@ export function createLegacyGates(cfg) {
       const chain = chainOf(caller, meta);
       const cls = flags(tool, def, input);
       if (!door && String(caller).startsWith("module:") && (await ask("declared", chain, tool, cls)).effect !== "allow") return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
-      if ((await ask("outward", chain, tool, cls)).effect !== "allow") return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+      if ((await ask("outward", chain, tool, cls)).effect !== "allow") return (typeof reg.outwardRefusal === "function" ? await reg.outwardRefusal({ tool, def, caller, input, meta }) : null) || { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       if ((await ask("visible", chain, tool, cls)).effect !== "allow") return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if ((await ask("callers", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if ((await ask("callers", chain, tool, cls)).effect !== "allow") return ["web", "setup"].includes(callerKind(caller)) && classReach(caller, tool, () => reg.declaredSetupTools()) === false ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
       const s = await ask("session", chain, tool, cls);
       if (s.effect !== "allow") return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };

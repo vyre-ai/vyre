@@ -133,7 +133,7 @@ function oven(/** @type {string} */ root, { slow = false } = {}) {
   const dir = path.join(root, "modules", "oven");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "oven", version: "0.1.0", roles: ["box", "local"],
-    does: { tools: ["oven.check", "oven.presets", "oven.chip.get", "oven.chip.set"] }, settings: [
+    does: { tools: [{ name: "oven.check", reach: "modules" }, "oven.presets", "oven.chip.get", "oven.chip.set"] }, settings: [
       { key: "oven.look", group: "appearance", label: "Look", type: "enum", enum: ["crust", "crumb"], default: "crust", levels: ["account", "device"], apply: "live" },
       { key: "oven.recipe", group: "appearance", label: "Recipe", type: "string", default: "sourdough", levels: ["account", "device"], apply: "live",
         check: { tool: "oven.check" }, choicesFrom: { tool: "oven.presets", read: "presets" } },

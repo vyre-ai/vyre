@@ -1448,8 +1448,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(gone.error, undefined, JSON.stringify(gone));
     assert.ok((await w.tool("threads.get", { thread: th.id })).error, "the thread is gone");
     assert.equal(rows("sessions_openrouter"), 0, "its stored conversation went with it");
-    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE thread = ?").get(th.id).n, 0);
-    assert.ok(db.prepare("SELECT 1 FROM events WHERE type = 'thread.deleted'").get(), "thread.deleted was said");
+    assert.equal(w.d.events.ofThread(th.id).length, 0);
+    assert.ok(w.d.events.since(0, { type: "thread.deleted" }).length, "thread.deleted was said");
     assert.ok((await w.tool("threads.delete", { thread: th.id })).error, "a second delete finds nothing");
   });
 

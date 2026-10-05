@@ -16,7 +16,7 @@ import { core as coreHolder, inputHash } from "../presence/index.js";
 import { discover, Registry } from "../modules/index.js";
 import { startForwarder } from "../vault/forward.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { TEST_KDF } from "../vault/testing.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";

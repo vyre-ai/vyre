@@ -1,8 +1,7 @@
 // @ts-check
 // grants: the grant table Wink writes, in the shape of the kernel contract (kernel/contracts/grant.d.ts, contract 6.2): a grant lives where
 // the thing it protects lives, is never widened (a wider one is a new grant), and every create and revoke writes an event. When the kernel
-// is wired into the registry (`ctx.kernel.grants`, platform), this module hands the same GrantInput to it and keeps no table of its own;
-// until then the grants live in one table of this box's store with exactly the contract's fields, so nothing changes when the kernel arrives.
+// takes over device grants, they move to it; today the kernel's grants store takes chains and other actions (its `create(chain, input)`), not this module's `create(input, issuer)`, so these grants live in one table of this box's store with exactly the contract's fields, so nothing changes when the kernel arrives.
 
 import crypto from "node:crypto";
 
@@ -56,7 +55,6 @@ export function createGrants({ ctx, space: spaceOf, now = Date.now }) {
     /** @param {any} input a GrantInput @param {any} issuer an Actor */
     async create(input, issuer) {
       checkGrantInput(input);
-      if (ctx.kernel && ctx.kernel.grants) return ctx.kernel.grants.create(issuer, input);
       const t = now();
       /** @type {any} */
       const g = { id: timeId("gr_", t), space: spaceOf(), subject: input.subject, actions: [...input.actions], action_set_version: 1, resource: input.resource,
@@ -68,7 +66,6 @@ export function createGrants({ ctx, space: spaceOf, now = Date.now }) {
     },
     /** @param {string} id @param {string} reason */
     async revoke(id, reason) {
-      if (ctx.kernel && ctx.kernel.grants) return ctx.kernel.grants.revoke(id, reason);
       const g = row(db.prepare("SELECT body FROM wink_grants WHERE id = ?").get(String(id)));
       if (!g) throw Object.assign(new Error("no such grant"), { code: "not_found" });
       if (g.status === "revoked") return g;
@@ -80,7 +77,6 @@ export function createGrants({ ctx, space: spaceOf, now = Date.now }) {
     },
     /** @param {{ subject?: any, resource_prefix?: string, status?: "active" | "revoked", source?: string }} [f] */
     async list(f = {}) {
-      if (ctx.kernel && ctx.kernel.grants) return ctx.kernel.grants.list(f);
       const rows = db.prepare("SELECT body FROM wink_grants ORDER BY created_at, id").all().map(row);
       return rows.filter((/** @type {any} */ g) => (!f.status || g.status === f.status) && (!f.source || g.source.startsWith(f.source))
         && (!f.resource_prefix || g.resource.prefix.startsWith(f.resource_prefix)) && (!f.subject || subjectKey(g.subject) === subjectKey(f.subject)));

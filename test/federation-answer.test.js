@@ -191,7 +191,7 @@ test("federation answer: an ask that approves a floor tool needs a fresh proof o
 
   // Signed by the box without a fresh proof (as a changed box would), the Mac still refuses.
   for (const presence of [undefined, "session"]) {
-    const r = await w.boxCall("link.macs.call", { tool: "threads.answer", as: "person", by: { caller: "deck", ...(presence ? { presence } : {}) }, input: { ask, decision: "allow", surface: "deck" } }, "module:test");
+    const r = await w.boxCall("link.macs.call", { tool: "threads.answer", as: "person", by: { caller: "deck", ...(presence ? { presence } : {}) }, input: { ask, decision: "allow", surface: "deck" } }, "module:test", { origin: "deck" }); // a module acting for the person (the origin names the person's surface), as the Switchboard relays an answer
     assert.equal(r.data[0].ok, false);
     assert.equal(r.data[0].error.code, "denied");
     assert.match(r.data[0].error.message, /fresh proof of presence/);

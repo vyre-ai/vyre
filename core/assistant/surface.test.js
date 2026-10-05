@@ -11,7 +11,7 @@ import { diffLines, seedOf } from "./index.js";
 import { handoffPush } from "./handoff.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const G = "globalThis.__w";

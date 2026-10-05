@@ -65,6 +65,38 @@ export function createSealing(cfg) {
       return shown;
     },
 
+    /**
+     * Moving sealed values to a Space on another server (the Personal to My Cloud upgrade; ADR 0047 addendum). The sealing processes do the work and the plaintext stays inside them: `wrapKey` and `import`
+     * run at the TARGET (a remote kernel client reaches them over the wire), `exportApprove` and `export` at the source, on the person's own device.
+     */
+    async wrapKey(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.put", i.record);
+      return run(() => sealer.api.wrapKey({ chain }));
+    },
+    /** The person's one approval for a whole move: the proof is over the upgrade, the target's key and every sealed reference it will carry. */
+    async exportApprove(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.export", i.record);
+      // The log line comes first: an approval or an export that cannot be recorded does not happen (nothing has left the sealing process when the line is written).
+      try { cfg.log.append(chain, { type: "field.export_approved", sv: 1, subject: i.record, data: { plan_hash: i.plan_hash, count: Array.isArray(i.refs) ? new Set(i.refs).size : 0 }, vis: "owner", red: "internal" }); } catch { throw new KernelError("unavailable", "this approval could not be logged, so nothing was approved"); }
+      return run(() => sealer.api.exportApprove({ chain, plan_hash: i.plan_hash, target_key: i.target_key, refs: i.refs, proof: i.proof }));
+    },
+    /** One sealed value, wrapped to the target's key: under a recorded move approval (`plan_hash`, a ref on its list, once) or the person's own proof. Logged before the process is asked (which field, never the value), so an export that cannot be recorded never leaves it. */
+    async export(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.export", i.record);
+      try { cfg.log.append(chain, { type: "field.exported", sv: 1, subject: i.record, data: { ref: i.ref, field: i.field, ...(i.plan_hash ? { plan_hash: i.plan_hash } : {}) }, vis: "owner", red: "internal" }); } catch { throw new KernelError("unavailable", "this export could not be logged, so nothing was moved"); }
+      const out = await run(() => sealer.api.export({ chain, ref: i.ref, target_key: i.target_key, record: i.record, to_record: i.to_record, field: i.field, proof: i.proof, plan_hash: i.plan_hash }));
+      return { blob: out.blob };
+    },
+    /** The target stores a wrapped value as a new sealed value of the record, answering the reference the record then holds. */
+    async import(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.put", i.record);
+      return run(() => sealer.api.import({ chain, blob: i.blob, record: i.record, field: i.field }));
+    },
+
     /** Merge a sealed value into a template for a verified destination. The call names only the approval; everything else is looked up. */
     async use(chain, i) {
       mustChain(chain); mustRecord(i.record);

@@ -240,9 +240,9 @@ async function until(fn, what, ms = 8000) {
  * A vyred in a temp home. `vault` is items to put in the real vault (name to a fake value), each
  * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
  */
-async function boot(t, { vault, ungranted = [], probe, modules = [], legacy = false } = {}) {
-  // legacy: the test reads the caller's label (a tailnet owner label, an agent key over the home socket), which only a kernel-off daemon honours; with the kernel on the person and the session come from the kernel's chain (covered by kernel-turn.test.js and person-label.test.js).
-  if (legacy) { const was = process.env.VYRE_KERNEL; process.env.VYRE_KERNEL = "0"; t.after(() => { if (was === undefined) delete process.env.VYRE_KERNEL; else process.env.VYRE_KERNEL = was; }); }
+async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
+  // A session in a temp home takes the development sandbox opt-out: with the kernel on it is confined by bwrap, which hides the fake claude's files and the home's socket.
+  { const was = process.env.VYRE_SESSION_SANDBOX_OFF; process.env.VYRE_SESSION_SANDBOX_OFF = "1"; t.after(() => { if (was === undefined) delete process.env.VYRE_SESSION_SANDBOX_OFF; else process.env.VYRE_SESSION_SANDBOX_OFF = was; }); }
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise a
   // real ENOTEMPTY race (found under the full suite at concurrency 4, 2026-09-28, in the sibling
@@ -323,7 +323,7 @@ function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.random
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
-  const w = await boot(t, { legacy: true });
+  const w = await boot(t);
   const { root, work, tool, launches, d } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
@@ -399,18 +399,21 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
   // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
-  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true });
+  // With the kernel on the owner's device is the facts the listener proves (a paired app row), not the label.
+  d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('aaaaaaaaaaaaaaaa', 'phone', 'p', 1, 'app', 0, NULL)").run();
+  const ownerFacts = { kind: "device", device_key_id: "aaaaaaaaaaaaaaaa", person: d.kernel.id.owner, path: "wink", session: "ps1" };
+  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true, kernelFacts: ownerFacts, peer: { login: "owner@example", node: "phone", stableId: "aaaaaaaaaaaaaaaa" } });
   assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone");
   // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
   const asBob = (name, input) => d.registry.call(name, input, "tailnet:bob@example", { person: true });
   assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
   const took = (await asBob("threads.lease", { thread: id })).data;
-  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "deck"], "the keyboard moved to the other person");
+  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "phone"], "the keyboard moved to the other person");
   assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
   const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
   assert.deepEqual([locked.sent, locked.holder], [false, "tailnet:bob@example"]);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone", "the owner takes it back");
   assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
   // A module (or any non-person caller) naming the holder's surface does not join it: a live terminal's name and the link's name each still contest.
@@ -420,7 +423,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     const jr = await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held }); const joined = jr.data || assert.fail(JSON.stringify(jr));
     assert.deepEqual([joined.sent, joined.holder], [false, held], `a module naming ${held} is refused while it holds the keyboard`);
   }
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone", "the owner takes it back");
   // A surface name in a call is not an identity: a person's socket caller saying "tailnet:owner@example" is just another label, which contests.
   assert.equal((await tool("threads.send", { thread: id, text: "claimed", surface: "tailnet:owner@example" })).data.sent, false);
   assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);
@@ -447,7 +450,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
 
 test("switchboard: a finished turn's partial text is pruned after the grace; the done text stays", async t => {
   const was = process.env.VYRE_TEXT_PRUNE_MS;
-  process.env.VYRE_TEXT_PRUNE_MS = "200";
+  process.env.VYRE_TEXT_PRUNE_MS = "1500"; // long enough that reading the deltas inside the grace is not a race with the log
   t.after(() => { if (was === undefined) delete process.env.VYRE_TEXT_PRUNE_MS; else process.env.VYRE_TEXT_PRUNE_MS = was; });
   const { root, work, tool } = await boot(t);
   const s = sse(root);
@@ -536,7 +539,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
-  const { root, tool, launches } = await boot(t, { legacy: true, vault: { "setup-token": "fake-setup-value", "api-key": "fake-api-value" } });
+  const { root, tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value", "api-key": "fake-api-value" } });
   const s = sse(root);
   t.after(() => s.close());
 
@@ -597,11 +600,8 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   try { assert.match((await tool("threads.list", {}, "mcp:agent:juno")).error.message, /no thread of that agent is running with this key/); }
   finally { if (was === undefined) delete process.env.VYRE_AGENT_KEY; else process.env.VYRE_AGENT_KEY = was; }
   assert.ok(!JSON.stringify(launches()).includes("VYRE_AGENT_KEY"));
-  // From inside scout's thread, its key under a name that is not an agent: a visible 403, not "the user".
-  for (const as of ["local", "cli", "deck"]) {
-    const forged = (await tool("agents.ask", { agent: "scout", text: `forge ${as} threads.list` })).data.text;
-    assert.match(forged, /^403 .*carries an agent's key, so it must name that agent/, as);
-  }
+  // (Forging a person's label from inside an agent's thread is the kernel's to refuse: a session's calls arrive on its own socket with the facts the daemon measured, and test/person-label-hygiene, the model-label and
+  // kernel-turn tests hold that; the old "403 carries an agent's key" message was the label rule's.)
 
   assert.equal((await tool("agents.threads", { agent: "scout" })).data.length, 1);
   const stopped = (await tool("agents.stop", { agent: "scout" })).data;

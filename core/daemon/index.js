@@ -19,9 +19,9 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged, PKG_ROOT, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
@@ -148,10 +148,6 @@ export function moduleRoots(root) {
  *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
-  // A packaged build starts only with the kernel on (MA-5): refused before the home, the lock or the store is touched. A development checkout starts as it always has.
-  const kernelOn = kernelWanted(opts, process.env, opts.packageRoot);
-  const refused = kernelOffRefusal(kernelOn, opts.packageRoot);
-  if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
@@ -246,8 +242,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (opts.kernel === undefined && process.env.VYRE_KERNEL === "0" && isPackaged(opts.packageRoot)) log(KERNEL_FLAG_IGNORED);
-  if (kernelWanted(opts, process.env, opts.packageRoot)) {
+  {   // the kernel is always on: there is no other mode
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
@@ -267,12 +262,16 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const { moduleActionPort } = await import("./module-actions.js");
+    const flowsHost = createFlowsHost({ log, callAction: moduleActionPort({ registry, owner: () => kernel.id.owner }), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }) });
     registry.deps.flowsHost = flowsHost;
+    // Every tool's static gates, its presence requirement and its asked requirement are decided by the kernel's one check (`authorize`) over the compiled rules (kernel/retrofit/gates.js; the golden set proves it changes no decision), not by the registry's inline predicates.
+    const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+    registry.deps.gates = createLegacyGates({ registry });
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
     registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
@@ -370,6 +369,45 @@ async function startLocked(opts, root, p, release) {
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
+    // The event bus becomes an adapter over the kernel's log: from here every event is a log entry and its id a log position (what was emitted before the boot moves in).
+    events.attach(kernel.log, (/** @type {string} */ name) => kernel.gateway.serviceChain(name), kernel.id.space);
+    // The narrow verbs an added module declared under needs.kernel (`records`: types it may make, read and change; `files`: folders of the Space's Drive it may write into): the module becomes a service
+    // of the Space with exactly those grants (the kernel's own install grants, the machinery a built-in module's needs.kernel uses), acts as itself with an EXTERNAL label (what it brings in is never
+    // trusted as the person's own), and has no `define`, no removal and no handle.
+    registry.deps.moduleKernel = {
+      doors: (/** @type {string} */ name, /** @type {{ records?: string[], files?: string[] }} */ want) => {
+        const types = want.records || [], folders = (want.files || []).map(f => String(f).replace(/^\/+|\/+$/g, ""));
+        const grants = [
+          ...(types.length ? types.map(t => ({ prefix: `${t}/*`, actions: ["records.read", "records.create", "records.update"] })) : []),
+          ...folders.map(f => ({ prefix: `file/${f}/*`, actions: ["drive.write"] })),
+        ];
+        const h = kernel.kernelFor({ name, needs: { kernel: { actions: [], grants } } });
+        const chain = () => kernel.chains.appendService(undefined, name, false);
+        const typeOf = (/** @type {string} */ urn) => String(urn).replace(/^vyre:\/\/[^/]+\//, "").split("/")[0];
+        const allowed = new Set(types);
+        const only = (/** @type {string} */ t) => { if (!allowed.has(String(t))) throw Object.assign(new Error(`${name}: ${t} is not a record type its needs.kernel.records lists`), { code: "undeclared" }); return String(t); };
+        const within = (/** @type {string} */ p) => { const q = String(p).replace(/^\/+/, ""); if (!folders.some(f => q === f || q.startsWith(f + "/"))) throw Object.assign(new Error(`${name}: ${q} is not in a folder its needs.kernel.files lists`), { code: "undeclared" }); return q; };
+        return {
+          ...(types.length ? { records: {
+            create: async (/** @type {string} */ type, /** @type {any} */ data) => h.records.create(chain(), only(type), data),
+            get: async (/** @type {string} */ urn) => h.records.get(chain(), only(typeOf(urn)), String(urn).split("/").pop()),
+            list: async (/** @type {string} */ type, /** @type {any} */ o = {}) => { const r = await h.records.query(chain(), only(type), { ...(o.filter ? { filter: o.filter } : {}), page: { limit: Math.min(Math.max(Number(o.limit) || 50, 1), 200) } }); return { rows: r.rows, next_cursor: r.next_cursor || null }; },
+            update: async (/** @type {string} */ urn, /** @type {any} */ patch, /** @type {number} */ base) => h.records.update(chain(), only(typeOf(urn)), String(urn).split("/").pop(), patch, base),
+          } } : {}),
+          ...(folders.length ? { files: {
+            /** Write a text or base64 file as a new version: `{ path, text }` or `{ path, base64 }`, at most 8 MB. */
+            write: async (/** @type {{ path: string, text?: string, base64?: string }} */ f) => {
+              const bytes = f.base64 !== undefined ? new Uint8Array(Buffer.from(String(f.base64), "base64")) : new Uint8Array(Buffer.from(String(f.text ?? ""), "utf8"));
+              if (bytes.length > 8 * 1024 * 1024) throw Object.assign(new Error("a file here is at most 8 MB"), { code: "too_large" });
+              const r = await h.drive.put(chain(), within(f.path), bytes);
+              return { path: within(f.path), version: r.version, size: bytes.length };
+            },
+          } } : {}),
+        };
+      },
+    };
+    // A module's tools marked `flow` become actions of the Space, held by the owner and admins (kernel/index.js registerFlowActions).
+    registry.deps.registerFlowActions = (/** @type {string} */ name, /** @type {any[]} */ defs) => kernel.registerFlowActions(name, defs);
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
     db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
@@ -1120,9 +1158,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const mods = registry.status();
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
     // log, and a guessed cursor past the end drops every live event.
-    const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
+    const last = { id: events.latestId() };
     const b = build();
-    return send(res, 200, { data: { ...(process.env.VYRE_KERNEL === "0" && isPackaged() ? { kernel_note: KERNEL_FLAG_IGNORED } : {}), version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],

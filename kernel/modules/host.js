@@ -30,7 +30,7 @@ export function createModuleHost(cfg) {
     hostsOf: (/** @type {string} */ name) => installed.get(name)?.hosts,
     /**
      * @param {{ name: string, dir: string, entry: string, manifest?: { needs?: { egress?: string[] } } }} m
-     * @param {{ approved_hosts?: string[] }} [o] the hosts the person saw on the install card and approved
+     * @param {{ approved_hosts?: string[], ctx?: (path: string[], args: any[], io: any) => Promise<any> }} [o] the hosts the person saw on the install card and approved, and the host-side answer to a door of the module's ctx
      * @returns {Promise<{ name: string, mode: string }>}
      */
     async install(m, o = {}) {
@@ -50,17 +50,17 @@ export function createModuleHost(cfg) {
       if (hosts.length && !(Array.isArray(o.approved_hosts) && o.approved_hosts.length === hosts.length && hosts.every(h => o.approved_hosts.includes(h)))) throw new KernelError("needs_approval", "the person installing must approve the hosts this module can reach");
       installed.set(m.name, { name: m.name, mode: "sandboxed", dir: m.dir, hosts });
       try {
-        const handle = await cfg.supervisor.start({ name: m.name, dir: m.dir, entry: m.entry });
+        const handle = await cfg.supervisor.start({ name: m.name, dir: m.dir, entry: m.entry, ...(typeof o.ctx === "function" ? { ctx: o.ctx } : {}) });
         installed.set(m.name, { name: m.name, mode: "sandboxed", dir: m.dir, hosts, handle });
       } catch (e) { installed.delete(m.name); note("module.refused", { name: m.name, why: /** @type {any} */ (e).code || "failed" }); throw e; }
       note("module.installed", { name: m.name, mode: "sandboxed", egress_hosts: hosts.length });
       return { name: m.name, mode: "sandboxed" };
     },
     /** Call a sandboxed module's method. A first-party module is called by the registry, not here. */
-    async call(/** @type {string} */ name, /** @type {string} */ method, /** @type {any} */ input) {
+    async call(/** @type {string} */ name, /** @type {string} */ method, /** @type {any} */ input, /** @type {any} */ meta) {
       const r = installed.get(name);
       if (!r || r.mode !== "sandboxed" || !r.handle) throw new KernelError("not_found", "no such sandboxed module");
-      return r.handle.call(method, input);
+      return r.handle.call(method, input, meta);
     },
     async uninstall(/** @type {string} */ name) { const r = installed.get(name); if (r && r.handle) await r.handle.stop(); installed.delete(name); note("module.removed", { name }); },
     list: () => [...installed.values()].map(({ handle: _h, ...x }) => x),

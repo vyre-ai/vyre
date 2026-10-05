@@ -43,6 +43,13 @@ export default {
           network: { origins: hostedOrigins(ctx.config.network) } };
       },
     });
+    ctx.tool("system.modules", {
+      effect: "read",
+      description: "The modules on this machine and the slots each shows in the app: { modules: [{ name, version, state, now: [tool, ...] }] }. A module's Now card is a tool named in shows.deck as now:<tool>; the app calls it and draws what it answers.",
+      input: { type: "object", properties: {} },
+      run: async () => ({ modules: ctx.modules.status().map((/** @type {any} */ m) => ({ name: m.name, version: m.version, state: m.state,
+        now: (m.shows && Array.isArray(m.shows.deck) ? m.shows.deck : []).filter((/** @type {any} */ s) => typeof s === "string" && s.startsWith("now:")).map((/** @type {string} */ s) => s.slice(4)) })) }),
+    });
     ctx.tool("system.build", {
       description: "The release's signed record of the web app this daemon serves at /app/: appbuild.json (the sha256 of every file of the build), the signed SHA256SUMS that lists it, and SHA256SUMS.sig. A client (the Mac window) verifies the signature with the release key and the list's own hash, then checks every file it is served. A development build has none.",
       input: { type: "object", properties: {} },
