@@ -28,7 +28,7 @@ const MAX_UPLOADS = 8;
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
- *   caps?: any, fs?: any }} o
+ *   caps?: any, fs?: any, key?: Buffer }} o
  */
 export function createLentHome(o) {
   const lent = new Map();
@@ -50,7 +50,7 @@ export function createLentHome(o) {
     return w;
   };
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
-  const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, authorize: async ({ chain, resource }) => {
+  const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, ...(o.key ? { key: o.key } : {}), authorize: async ({ chain, resource }) => {
     const session = String(resource).split("/checkpoint/")[1] || "";
     try { mine(chain, session); return { effect: "allow" }; } catch { return { effect: "deny" }; }
   } });

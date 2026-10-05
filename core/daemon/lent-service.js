@@ -6,6 +6,7 @@
 import path from "node:path";
 import { createLentHome } from "../runner/lent-home.js";
 import { devSwitch } from "../../kernel/devbuild.js";
+import { derivedKey } from "../../kernel/storage/keys.js";
 
 /** The Space's definition of a member's own session: the agent by name, the provider as the only network, no credential route until the Space maps one (the vault answers per request, never the lender). */
 /** Arguments for the agent, from `VYRE_LENT_AGENT_ARGS` (a JSON list of strings), only on a development build with `VYRE_LENT_AGENT_DEV=1`: how a test starts a one-shot turn. None on any other build. */
@@ -39,7 +40,7 @@ export function lentServiceFor(o) {
       if (subs.has(space)) { try { subs.get(space)?.(); } catch { /* gone */ } }
       subs.set(space, g.grants.offers.onRevoke((/** @type {any} */ info) => { if (info && info.device) o.onRevoke?.(space, info); }));
     }
-    return createLentHome({ space, root: path.join(o.root, "lent", space), offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
+    return createLentHome({ space, root: path.join(o.root, "lent", space), ...(derivedKey(k, `lent-store/${space}`) ? { key: derivedKey(k, `lent-store/${space}`) } : {}), offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
   };
 }
