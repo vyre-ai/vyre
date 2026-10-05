@@ -131,3 +131,8 @@ Fresh archive of work/kernel-on-rc1, kernel on, one process per file on a test b
 - membership.read is one row per membership() call (spaces.list: 1, agents.history: 0 on a repeat); I could not reproduce 8 per read, and kernel/membership.test.js pins "each answered call is an event", so I left it. reads-are-reads still ignores kernel_events.
 - Weakened for the kernel path (reviewer-3): core/mcp/module.test.js checks on_behalf by caller label only; group-live and two switchboard label tests pin VYRE_KERNEL=0.
 - Not mine, red before this work: core/records-tools/records-tools.test.js test 1 (records.define without a stand-in answers something other than needs_presence).
+
+### Federation reds (5 Oct, kernel-on vs older)
+- test/link (2 failing, kernel-on only): fixed. The listener stand-in in test/link-harness.js now carries the facts a real tailnet listener proves (a paired app row with a well-formed id), and the peerprobe home module is trusted by path. 12 of 12.
+- test/federation-send (2 failing, kernel-on only): fixed by the same facts; 8 of 8. test/federation-answer test 2: fixed (peer id longer than eight characters so the device can be enrolled; with the kernel on the Mac sees the surface named by the device, "box:phone"). 
+- test/federation-answer test 6 ("an ask that approves a floor tool needs a fresh proof"): OLDER, red with VYRE_KERNEL=0 too. It calls the internal `link.macs.call` as `module:test`, which the product now refuses (only for the person) and which is no public tool. Owner link/tailnet: rewrite it to reach the Mac's refusal through the box's own threads.answer with a hand-signed assertion.
