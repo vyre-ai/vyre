@@ -49,7 +49,7 @@ unset VYRE_HOME
 | `box/` | the server's Docker stack and host wrapper |
 | `site/` | vyre.run |
 | `scripts/` | install, release, `perf-check`, and the docs tooling |
-| `docs/` | these pages, the spec, ADRs; `docs/work/` holds internal workstream notes that are never published |
+| `docs/` | these pages, the spec, ADRs; `team/archive/work-journals/` holds internal workstream notes that are never published |
 | `test/` | cross-module tests; unit tests sit beside their code as `*.test.js` |
 
 The full tree is [Section 3 of the spec](../architecture/spec.md#3-repository-layout), and the layers are explained in [Architecture](../architecture/index.md).

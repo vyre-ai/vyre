@@ -221,18 +221,18 @@ export class Dense {
    * so nonsense is judged against how spread out ITS scores are, not a constant fitted once at
    * one corpus size. A real question usually has one or a few outlier turns pulling its top
    * score well past its own noise floor; nonsense has no such outlier, so its top score sits
-   * close to its own mean. See floorFor's doc comment and docs/work/recall.md for the numbers
+   * close to its own mean. See floorFor's doc comment and team/archive/work-journals/recall.md for the numbers
    * this was tuned against. The stats are attached to the returned array (non-enumerable, so it
    * still serializes and iterates as a plain hit list) for callers that want to inspect them.
    *
    * `userWeight` scales a user-role turn's score before ranking (1 = no change). It is a soft
    * de-emphasis, not an exclusion: the vector is still in the index and can still win if nothing
-   * else is close, which a hard "assistant only" index (tried and reverted, docs/work/recall.md)
+   * else is close, which a hard "assistant only" index (tried and reverted, team/archive/work-journals/recall.md)
    * could not do without also losing the case where the ONLY near turn is what someone asked in
    * their own words. Real-corpus user turns are disproportionately short commands and pasted
    * errors that add noise to the meaning pool without being answers themselves; down-weighting
    * them recovered most of dense retrieval's real-corpus quality that exclusion did, without the
-   * fictional set's regression (see docs/work/recall.md for both numbers).
+   * fictional set's regression (see team/archive/work-journals/recall.md for both numbers).
    * @param {Float32Array} qv  unit length
    * @param {{ k?: number, floor?: number, z?: number, role?: string, keep?: (cwd: string|null, session: string) => boolean, userWeight?: number }} [opts]
    * @returns {Promise<DenseHit[] & { stats?: { mean: number, std: number, n: number, effectiveFloor: number } }>}

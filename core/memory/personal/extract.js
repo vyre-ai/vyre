@@ -1,6 +1,6 @@
 // @ts-check
 // personal/extract: what one turn says about the user and the people and things in their life
-// (docs/work/memory-iq.md). "my wife Jordan", "her birthday is 14 March", "we moved to Seattle",
+// (team/archive/work-journals/memory-iq.md). "my wife Jordan", "her birthday is 14 March", "we moved to Seattle",
 // "the Volvo needs a service".
 //
 // Pure, like ../extract.js: text in, claims out. No database, no clock, no model. The user's own
@@ -23,7 +23,7 @@
 import { OPENERS, ORG_WORDS } from "../lexicon.js";
 import { ordinary } from "./words.js";
 
-/** Confidence per claim by how it was said (docs/work/memory-iq.md, Confidence). */
+/** Confidence per claim by how it was said (team/archive/work-journals/memory-iq.md, Confidence). */
 export const CONF = { explicit: 0.9, indirect: 0.7, model: 0.75, assistant: 0.35 };
 /** A lowercase word read as a name, or a lowercase place, before anything else confirms it. */
 export const LOWER = 0.45;

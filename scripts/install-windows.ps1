@@ -83,7 +83,7 @@ function Get-VerifiedInstaller {
 
     # Refuse a downgrade (W-B1 fix, mirrors the updater's own rule in plans/windows.md 6.4/9): a
     # release manifest carries its version in SHA256SUMS' own header line, TODO once that format
-    # is settled with integrator/launch. Not implemented in this draft -- see docs/work/windows.md.
+    # is settled with integrator/launch. Not implemented in this draft -- see team/archive/work-journals/windows.md.
 
     return $exePath
 }
@@ -105,7 +105,7 @@ function Remove-VyreWindows {
     # presence path, not just when the KeyCredentialManager fallback shipped -- needs a real box
     # call (device.remove/presence.remove per plans/windows.md 6.6), which needs the app's own
     # pairing-record file read here to know which box to call. Deliberately not guessed at in this
-    # draft; tracked in docs/work/windows.md "Next".
+    # draft; tracked in team/archive/work-journals/windows.md "Next".
     # TODO: remove the vyre:// protocol-handler registry key and the Start-menu shortcut (both are
     # written by the installer .exe itself, once it exists -- this script only removes what IT
     # registers directly, which today is only the scheduled task).
