@@ -213,7 +213,8 @@ test("a Space made from the saved database: its compose file restores it once, s
   assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
   assert.match(g, /\.\/golden\.dump:\/golden\.dump:ro/);
   assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
-  assert.match(g, /crypt\('\$\$ADMIN_PASSWORD'/, "the new password comes from the Space's own env file, never from the saved file");
+  assert.match(g, /printenv ADMIN_PASSWORD/, "the new password comes from the Space's own env file, never from the saved file");
+  assert.ok(!/-c .*ADMIN_PASSWORD|\$\$?ADMIN_PASSWORD/.test(g), "and is read inside psql from its environment, never put on a command line that a process list shows");
   assert.match(g, /DELETE FROM core\.\\"signingKey\\"/, "the saved signing key is dropped: it is sealed with another Space's secrets");
   assert.equal((g.match(/DISABLE_DB_MIGRATIONS: "true"/g) ?? []).length, 2, "the server skips the migration steps as the worker does");
   for (const m of g.matchAll(/^\s+image: (.*)$/gm)) assert.match(m[1], /@sha256:[0-9a-f]{64}/, "every image pinned");
