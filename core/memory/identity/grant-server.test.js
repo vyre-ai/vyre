@@ -7,14 +7,13 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema.js";
-import { migrate } from "../../store/index.js";
 import { tempHome } from "../../../test/helpers.js";
 import { newDeviceKey } from "../../../lib/keywrap.js";
 import { FileBackend, IdentityHome, Phone, newServerKey, askSignedBy } from "./home.js";
 import { IdentityLive } from "./live.js";
 
 const live = (root, name, serverKey, now) => {
-  const db = new DatabaseSync(":memory:"); migrate(db, MIGRATIONS);
+  const db = new DatabaseSync(":memory:"); for (const m of MIGRATIONS) db.exec(m);
   return new IdentityLive({ db, id: "ident_alex", backend: new FileBackend(path.join(root, "home")), serverKey, serverName: name, now, autosaveMs: 3_600_000 });
 };
 
