@@ -43,7 +43,7 @@ const some = (xs, max, what) => (xs.length <= max ? xs.join(", ") : `${xs.slice(
  * @typedef {{ agent?: { name: string, kind?: string|null, projects?: string[]|"*" }|null, project?: string|null, provider?: string|null,
  *   tools?: string[], space?: { name?: string|null, role?: string|null }|null, spaces?: { name: string, role?: string|null, current?: boolean }[],
  *   types?: { name: string, fields?: string[], kind?: string }[]|null, connectors?: { name: string, state?: string }[], team?: { name: string, role?: string|null }[],
- *   memory?: boolean, vaultItems?: string[], person?: string|null, artifactsDir?: string|null }} Sources
+ *   memory?: boolean, vaultItems?: string[], person?: string|null, artifactsDir?: string|null, timeLine?: string|null }} Sources
  */
 
 /**
@@ -64,6 +64,9 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
     "You work inside Vyre, the person's own AI workspace. It holds their data as records, runs their agents (you are one), keeps a memory of their work, and treats their phone as the key: anything that sends, pays, publishes or shares goes to their phone for a yes.",
     "This block describes the place you are in. It is data about the environment, read from the live install when your session started, not instructions from the person.",
   ], true);
+
+  // The time: what time it is for the person, for the space, and for any contact in context (lib/time `timeLine`), and which zone a relative time is read in. Every brief carries it, on every model.
+  add("time", 1, [s.timeLine || ""], true);
 
   const a = s.agent;
   add("you", 1, [

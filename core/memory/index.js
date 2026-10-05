@@ -34,6 +34,7 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
 import { Backup, noBackup } from "./backup/index.js";
+import { usageOf } from "../../kernel/store/sealed.js";
 import { fingerprint as fingerprintOf } from "../../lib/keywrap.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
@@ -1237,6 +1238,28 @@ export default {
     });
     const bkTimer = bkCfg ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
     if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
+    // ---- the encrypted personal records (kernel/store/sealed.js, team/0.3/DESIGN-personal-records.md): a Personal person's Planner, reminders, notes and to-dos, ciphertext on this team server beside the identity
+    // home. The status is readable while it is locked (the storage is only counted); the per-member cap is the space owner's to change and lives with this module.
+    const capKey = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'personal_cap_bytes'");
+    const capSet = ctx.store.db.prepare("INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('personal_cap_bytes', ?)");
+    const personalCap = () => { const r = /** @type {any} */ (capKey.get()); return r ? Number(r.v) : Number(ctx.config.memory?.personal?.cap_bytes) || 1024 ** 3; };
+    ctx.tool("memory.personal.status", {
+      effect: "read",
+      description: "Where the person's Planner, reminders, notes and personal to-dos are kept encrypted: { host: the team Space's name, used_bytes: what they take on the server, cap_bytes: the limit the space owner set for each member (0 is no limit) }. Null host: this install keeps none.",
+      input: { type: "object", properties: {} },
+      run: async (_i, extra = {}) => {
+        if (!reader(extra.caller)) throw denied("the personal storage status is the person's own");
+        if (!idCfg || !idCfg.id || !idCfg.home) return { host: null, used_bytes: 0, cap_bytes: personalCap() };
+        let used = 0; try { used = usageOf(new FileBackend(String(idCfg.home)), String(idCfg.id)); } catch { used = 0; }
+        return { host: String(idCfg.server || idCfg.name || "this server"), used_bytes: used, cap_bytes: personalCap() };
+      },
+    });
+    ctx.tool("memory.personal.set-cap", {
+      effect: "write",
+      description: "Set the most each member may keep in their encrypted personal records on this server, in bytes (0 for no limit). The space owner's call; a write over the limit is refused, a read is not.",
+      input: { type: "object", required: ["bytes"], properties: { bytes: { type: "integer", minimum: 0, maximum: 1099511627776 } } },
+      run: async (input, extra = {}) => { if (!reader(extra.caller)) throw denied("the owner sets the storage limit"); capSet.run(Math.max(0, Math.floor(Number(input.bytes)))); return { cap_bytes: personalCap() }; },
+    });
     // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
     // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
     const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });

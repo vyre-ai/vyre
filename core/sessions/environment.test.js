@@ -192,3 +192,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(r.text.indexOf("You are terse.") > r.text.indexOf("[/Vyre environment]"));
   });
 }
+
+test("environment: every brief carries the time line, in the person's own zone even on a UTC server, with the space's zone and the rule for relative times", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const real = d.registry.call.bind(d.registry);
+  d.registry.call = async (tool, input, caller, meta) => tool === "spaces.brief" ? { data: { spaces: [{ name: "Studio", role: "owner", current: true, zone: "America/Los_Angeles" }] } } : real(tool, input, caller, meta);
+  const NOW = Date.UTC(2026, 9, 5, 16, 41);   // 16:41 UTC, Monday 5 Oct 2026
+  const brief = async i => (await d.registry.call("sessions.environment", { now: NOW, ...i }, "module:vyred")).data.text;
+  const text = await brief({ zone: "Asia/Karachi", contacts: [{ name: "Dana Reyes", zone: "America/New_York" }] });
+  assert.match(text, /Time: it is Mon 5 Oct 2026, 9:41 pm for the person \(Asia\/Karachi\)\./, "the person's real local time, not the server's UTC");
+  assert.match(text, /This space keeps America\/Los_Angeles, where it is Mon 5 Oct 2026, 9:41 am/);
+  assert.match(text, /Dana Reyes is in America\/New_York, where it is 12:41 pm/);
+  assert.match(text, /personal things and in the space's zone for things of the space; when it is unclear, use the space's zone and say both/);
+  // with no device zone the space's is used, and with neither the line still says what it assumed
+  assert.match(await brief({}), /for the person \(America\/Los_Angeles\)/);
+  d.registry.call = real;
+  assert.match(await brief({}), /for the person \(UTC\)/);
+  // the quick answer (Vyre IQ) carries it too
+  const iq = (await d.registry.call("sessions.prompt.compose", { purpose: "capsule", now: NOW, zone: "Asia/Karachi" }, "module:vyred")).data;
+  assert.match(iq.text, /9:41 pm for the person \(Asia\/Karachi\)/);
+});

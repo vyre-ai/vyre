@@ -100,3 +100,24 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   assert.ok(!walk(path.join(dir, "server")).join("").includes("Harlow"), "ciphertext only on the server");
   assert.equal((await w.call("memory.backup.status", {}, "mcp:agent:kit")).code, "denied", "an agent does not read the backup status");
 });
+
+test("memory.personal: the status counts the sealed records while locked, and the owner's cap is read back", async t => {
+  const fs = await import("node:fs"), os = await import("node:os"), { newKey } = await import("../../lib/keywrap.js"), { createSealedStore } = await import("../../kernel/store/sealed.js"), { FileBackend } = await import("./identity/home.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-pst-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const none = await world(t, undefined);
+  assert.deepEqual((await none.call("memory.personal.status", {}, "deck", await none.session("per_alex"), surface("deck"))).data.host, null);
+  const w = await world(t, undefined, { memory: { identity: { id: "alex", home: path.join(dir, "server"), name: "Acme Team", server: "Acme Team" } } });
+  const tok = await w.session("per_alex");
+  const s = createSealedStore({ backend: new FileBackend(path.join(dir, "server")), identity: "alex", imk: newKey(), create: true });
+  await s.store.define({ add_types: [{ name: "note", label: "Note", fields: [{ name: "text", kind: "text", label: "Text" }] }] });
+  await s.store.create("note", "0190c3f2-1111-4abc-8def-000000000001", { text: "dentist" });
+  s.lock();
+  const st = (await w.call("memory.personal.status", {}, "deck", tok, surface("deck"))).data;
+  assert.equal(st.host, "Acme Team");
+  assert.ok(st.used_bytes > 0, "counted from the storage, no key needed");
+  assert.equal(st.cap_bytes, 1024 ** 3);
+  assert.equal((await w.call("memory.personal.set-cap", { bytes: 5000 }, "deck", tok, surface("deck"))).data.cap_bytes, 5000);
+  assert.equal((await w.call("memory.personal.status", {}, "deck", tok, surface("deck"))).data.cap_bytes, 5000);
+  assert.equal((await w.call("memory.personal.status", {}, "mcp:agent:kit")).code, "denied");
+});

@@ -16,6 +16,7 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { environmentOf } from "./environment.js";
+import { timeLine, zoneFrom } from "../../lib/time/index.js";
 import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
@@ -698,10 +699,16 @@ export default {
       // The brief is cut to the asking agent (ENV-1): only the identity-level assistant, or the person's own session, is told of every Space, connector and teammate. Any other agent hears of the current Space,
       // the connectors it holds a tool of, and the teammates only if it may list them; a read that cannot be cut to the agent is dropped.
       const scoped = Boolean(i.agent) && i.agent_kind !== "assistant";
-      const spaces = (sp && Array.isArray(sp.spaces) ? sp.spaces : []).filter((/** @type {any} */ x) => !scoped || x.current).map((/** @type {any} */ x) => ({ name: String(x.name || ""), role: x.role || null, current: Boolean(x.current) })).filter((/** @type {any} */ x) => x.name);
+      const spaces = (sp && Array.isArray(sp.spaces) ? sp.spaces : []).filter((/** @type {any} */ x) => !scoped || x.current).map((/** @type {any} */ x) => ({ name: String(x.name || ""), role: x.role || null, current: Boolean(x.current), zone: typeof x.zone === "string" ? x.zone : null })).filter((/** @type {any} */ x) => x.name);
       const types = ty && Array.isArray(ty.types) ? ty.types.map((/** @type {any} */ t) => ({ name: String(t.name), fields: Array.isArray(t.fields) ? t.fields.map((/** @type {any} */ f) => String(f.name || f)) : [] })) : null;
       const a = (Array.isArray(agent) ? agent : agent && Array.isArray(agent.agents) ? agent.agents : []).find((/** @type {any} */ x) => x && x.name === i.agent);
+      // The person's zone is the device's (the launch's `zone`); the space's is its setting (spaces.brief); an unknown person zone falls back to the space's, then UTC, and the line says so by naming it.
+      const here = spaces.find((/** @type {any} */ x) => x.current);
+      const spaceZone = zoneFrom(i.space_zone || (here && here.zone), "") || null;
+      const personZone = zoneFrom(i.zone, spaceZone || "UTC");
+      const timeText = timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: personZone, space: spaceZone, contacts: Array.isArray(i.contacts) ? i.contacts : [] });
       return environmentOf({
+        timeLine: timeText,
         agent: i.agent ? { name: i.agent, kind: i.agent_kind || null, projects: a && (a.projects === "*" || Array.isArray(a.projects)) ? a.projects : undefined } : null,
         project: i.project || null, provider: i.provider || "claude", tools: names, spaces, space: spaces.find((/** @type {any} */ x) => x.current) || null, types,
         connectors: (Array.isArray(mcp) ? mcp : []).filter((/** @type {any} */ c) => !scoped || names.some(n => n.startsWith(`${c.name}.`) || n.startsWith(`${c.name}_`) || n.startsWith(`mcp__${c.name}__`))).map((/** @type {any} */ c) => ({ name: c.name, state: c.state })),
@@ -711,15 +718,15 @@ export default {
     };
     ctx.tool("sessions.environment", {
       description: "The environment brief an agent starting now is told (what Vyre is, its Space, its records, how to work, approvals, memory, what it can reach), built from live reads and cut to a budget. The same text goes to every model and driver.", internal: true,
-      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, provider: str, artifacts_dir: str } },
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, provider: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => environment(i),
     });
 
     ctx.tool("sessions.prompt.compose", {
       description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
-      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str } },
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => i.purpose === "capsule"
-        ? composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") })
+        ? (r => ({ ...r, text: `${r.text}\n\n${timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: zoneFrom(i.zone, zoneFrom(i.space_zone, "UTC")), space: zoneFrom(i.space_zone, "") || null, contacts: Array.isArray(i.contacts) ? i.contacts : [] })}` }))(composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") }))
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null, environment: (await environment(i)).text, context: i.context || null }),
     });
 
