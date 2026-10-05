@@ -5628,53 +5628,38 @@ After one strong proof (Touch ID, the Capsule, a device key or a passkey), a sec
 
 ### `projects.access.check`
 
-Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.
+Whether a named agent may reach a project's data: deny by default, asked of the kernel (a grant on the project's record or on every project). Returns { granted }.
 
 - Input:
   - `agent` string, required
   - `project` string, required
 - Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
-### `projects.access.clear`
-
-Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: agents' own door alone (module:agents), never any other module, a person or a model.
-
-- Input:
-  - `agent` string, required
-- Callers: `module`
-
 ### `projects.access.grant`
 
-Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list. callers includes "module": agents.create/update and projects.create write this grant internally, as part of the person's own already-gated action (option (a), the lead's decision), never reachable this way by a model, since only the loader itself can set a "module:<name>" caller.
+Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent): a kernel grant of project.reach on the project's record, a person's own act with the kernel's proof. agent left out or empty grants every agent that exists now.
 
 - Input:
   - `project` string, required
   - `agent` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `projects.access.list`
 
-Every grant and revoke on record, for a project or every project, newest first, for the owner to review who can reach what.
+Every project reach grant on record, for a project or every project, for the owner to review who can reach what.
 
 - Input:
   - `project` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
-### `projects.access.migrate`
-
-Bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry, including a projects: "*" agent's every project, for any project projects.access has never recorded a grant or revoke on. Never touches a project once it has any row at all, so a person's own revoke (even a wildcard one that covers every agent) is never undone. The assistant is untouched: its reach is the assistant rule, not a per-project grant. Runs automatically once, on the first start after this version, and is also here as a manual OWNER tool in case agents was not reachable yet at that first start (see projects.access.check's fallback to agents.projects alone when this module cannot be asked).
-
-- Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`
-
 ### `projects.access.revoke`
 
-Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes "module": agents.update revokes internally when a project drops off an agent's own list, and only agents' or this module's own internal calls (module:agents, module:projects), never any other installed module.
+Take an agent's (or, agent left out, every agent's) access to a project away: its kernel grant is revoked, which also takes away anything delegated from it. An agent that held ONE grant on every project keeps every OTHER project as explicit grants. Instant for the person.
 
 - Input:
   - `project` string, required
   - `agent` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `projects.add-threads`
 
@@ -5787,6 +5772,14 @@ Which projects (and their folders) a caller may reach: the one door core/memory,
   - `kind` "facts" or "content"
   - `person` boolean
   - `thread` string
+- Callers: `module`
+
+### `projects.record`
+
+The Project record for a short name: { urn }. Only the agents module asks.
+
+- Input:
+  - `project` string, required
 - Callers: `module`
 
 ### `projects.remove-threads`
@@ -12251,6 +12244,15 @@ Make a Project: one record that holds the work's sessions, Drive folder (Project
   - `repo` string
   - `slug` string
 - Callers: any caller
+
+### `work.project.ensure`
+
+The Project record for a short name (made if there is none): { urn, slug, name }. For the projects module's own use.
+
+- Input:
+  - `slug` string, required
+  - `name` string
+- Callers: `module`
 
 ### `work.project.move`
 

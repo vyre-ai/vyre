@@ -1041,10 +1041,8 @@ generated: scripts/gen-docs-reference
 - `/projects` screen, [explained](../using/deck.md#what-is-on-each-view). 6 mentions: using/deck.md [51](../using/deck.md#what-is-on-each-view), [108](../using/deck.md#follow-and-type-into-a-thread); using/projects-and-threads.md [82](../using/projects-and-threads.md#-is-already-a-project-home), [108](../using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project), [148](../using/projects-and-threads.md#see-a-project-and-its-brief), [243](../using/projects-and-threads.md#which-surface-does-what)
 - `projects` config key, [explained](config.md#configjson). 2 mentions: get-started/tailscale.md [344](../get-started/tailscale.md#vyredrive-the-box-folders-on-your-mac); concepts/box-and-mac.md [31](../concepts/box-and-mac.md#one-process-per-machine)
 - `projects.access.check` tool, [explained](tools.md#projectsaccesscheck). No mentions.
-- `projects.access.clear` tool, [explained](tools.md#projectsaccessclear). No mentions.
 - `projects.access.grant` tool, [explained](tools.md#projectsaccessgrant). 1 mention: concepts/presence.md [34](../concepts/presence.md#which-tools-need-it)
 - `projects.access.list` tool, [explained](tools.md#projectsaccesslist). No mentions.
-- `projects.access.migrate` tool, [explained](tools.md#projectsaccessmigrate). No mentions.
 - `projects.access.revoke` tool, [explained](tools.md#projectsaccessrevoke). No mentions.
 - `projects.add-threads` tool, [explained](tools.md#projectsadd-threads). 3 mentions: using/projects-and-threads.md [109](../using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project), [245](../using/projects-and-threads.md#which-surface-does-what); architecture/spec.md [344](../architecture/spec.md#72-projects)
 - `projects.add-workspace` tool, [explained](tools.md#projectsadd-workspace). 2 mentions: adr/0041-github-everywhere.md [204](../adr/0041-github-everywhere.md#4-a-project-from-a-repo), [227](../adr/0041-github-everywhere.md#4a-adding-a-repo-to-an-existing-project)
@@ -1058,6 +1056,7 @@ generated: scripts/gen-docs-reference
 - `projects.move` config key, [explained](config.md#configjson). 3 mentions: design/cohesion.md [251, 267](../design/cohesion.md#19-a-file-lands-in-the-right-project-and-can-join-one-later); design/projects-map.md [117](../design/projects-map.md#files-and-vyre-drive-owner-projects--files-cohesion-item-19)
 - `projects.of` tool, [explained](tools.md#projectsof). 2 mentions: adr/0007-intelligence.md [29](../adr/0007-intelligence.md#the-problem); adr/0036-one-system.md [63](../adr/0036-one-system.md#2-context-where-the-user-is-now)
 - `projects.reach` tool, [explained](tools.md#projectsreach). 1 mention: MODULES.md [119](../MODULES.md#who-may-call-a-tool-reach)
+- `projects.record` tool, [explained](tools.md#projectsrecord). No mentions.
 - `projects.remove-threads` tool, [explained](tools.md#projectsremove-threads). 3 mentions: using/projects-and-threads.md [109](../using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project), [258](../using/projects-and-threads.md#what-it-will-not-do); architecture/spec.md [344](../architecture/spec.md#72-projects)
 - `projects.rename` tool, [explained](tools.md#projectsrename). No mentions.
 - `projects.threads` tool, [explained](tools.md#projectsthreads). No mentions.
@@ -2657,6 +2656,7 @@ generated: scripts/gen-docs-reference
 - `work.know.search` tool, [explained](tools.md#workknowsearch). No mentions.
 - `work.know.suggestions` tool, [explained](tools.md#workknowsuggestions). No mentions.
 - `work.project.create` tool, [explained](tools.md#workprojectcreate). No mentions.
+- `work.project.ensure` tool, [explained](tools.md#workprojectensure). No mentions.
 - `work.project.move` tool, [explained](tools.md#workprojectmove). No mentions.
 - `work.project.move-plan` tool, [explained](tools.md#workprojectmove-plan). No mentions.
 - `work.project.rename` tool, [explained](tools.md#workprojectrename). No mentions.
