@@ -76,5 +76,12 @@ export function helperRunner(name, o = {}) {
     },
     fetch,
     sleep: o.sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms))),
+    /**
+     * The admin password root made for a Space started from the saved database (the helper's `status/admin-<name>`, readable by this uid only, removed by root after ten minutes), or null when root
+     * did not use the saved database. A server's provisioning asks after the Space is up, and signs in with it once.
+     */
+    async adminPassword() {
+      try { const t = fs.readFileSync(path.join(o.state ?? STATE_DIR, `admin-${name}`), "utf8").trim(); return /^[0-9a-f]{32,128}$/.test(t) ? t : null; } catch { return null; }
+    },
   };
 }

@@ -251,3 +251,25 @@ test("no compose file publishes a Twenty port: not a plain Space, not one made f
   const server = mac.slice(mac.indexOf("\n  server:"), mac.indexOf("\n  worker:"));
   assert.ok(!/ports:/.test(server) && !/\n    ports/.test(mac.slice(mac.indexOf("\n  worker:"), mac.indexOf("\n  proxy:") === -1 ? undefined : mac.indexOf("\n  proxy:"))), "Twenty's own containers publish nothing; only the proxy does");
 });
+
+test("on a server the saved database is root's: nothing is written for it here, the password root left is the one signed in with, and with none left the Space is a plain one", async () => {
+  const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
+  const golden = findGolden({ image: TWENTY_TESTED_REF, dirs: [(() => { fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", state: { "types.json": [{ "def": { name: "contact", fields: [] }, "plural": "contacts" }] } })); return dir; })()] });
+  assert.ok(golden);
+  // root used the saved database and left the password: the Space adopts the saved user
+  const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];
+  const runner = { ...fakeRunner(fake, calls), adminPassword: async () => "ab".repeat(32) };
+  const p = await provisionSpace({ home, space: "harlow", runner, golden });
+  const d = spaceDir(home, "harlow");
+  assert.ok(fake.adopted && !fake.boot.calls.some((c) => c.startsWith("Boot_")), "the saved user signed in; no sign-up");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d, "admin.secret"), "utf8")), { email: "service@golden.vyre.invalid", password: "ab".repeat(32) });
+  assert.ok(!fs.existsSync(path.join(d, "golden.dump")) && !/restore|ADMIN_PASSWORD/.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8") + fs.readFileSync(path.join(d, ".env"), "utf8")), "no dump, no restore step and no password written on this side");
+  assert.ok(fs.existsSync(path.join(d, "state", "types.json")), "the store starts knowing the saved types");
+  assert.equal(fs.readFileSync(p.keyFile, "utf8"), fake.key);
+  // root left nothing: it did not use the saved database, so this is a plain Space
+  const fake2 = await new FakeTwenty().start(); const home2 = tmp();
+  await provisionSpace({ home: home2, space: "northwind", runner: { ...fakeRunner(fake2, []), adminPassword: async () => null }, golden });
+  assert.deepEqual(fake2.boot.calls.slice(0, 3), ["Boot_signUp", "Boot_workspace", "Boot_login"], "a plain bootstrap");
+  assert.ok(!fs.existsSync(path.join(spaceDir(home2, "northwind"), "state", "types.json")), "and no saved types are claimed");
+});

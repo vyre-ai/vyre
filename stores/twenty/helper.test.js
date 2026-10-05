@@ -86,3 +86,14 @@ test("createStoreFor in twenty mode: a machine that cannot run Twenty refuses a 
   await assert.rejects(() => g("spc_mnopqrstuvwx", {}), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("server"));
   assert.equal(fs.existsSync(path.join(home, "kernel", "spaces", "spc_mnopqrstuvwx", "store.json")), false, "nothing was decided or written");
 });
+
+test("helper: the admin password root leaves for a Space is read once it is there, and anything else is none", async () => {
+  const d = mk();
+  const r = helperRunner("spc-abc", d);
+  assert.equal(await r.adminPassword(), null, "nothing left: root did not use the saved database");
+  fs.writeFileSync(path.join(d.state, "admin-spc-abc"), "ab".repeat(32) + "\n");
+  assert.equal(await r.adminPassword(), "ab".repeat(32));
+  fs.writeFileSync(path.join(d.state, "admin-spc-abc"), "not a password; rm -rf\n");
+  assert.equal(await r.adminPassword(), null, "only hex of the right size is a password");
+  assert.equal(await helperRunner("spc-other", d).adminPassword(), null, "and each Space reads only its own");
+});
