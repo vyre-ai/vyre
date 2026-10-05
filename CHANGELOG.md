@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): `moves.carryFiles` skips each file the mover may not read instead of failing the carry (lead's ruling, CHAT.md 24f6690): a chat the mover is not in stays in the source with its people, nothing of it is copied, and the answer is `{ carried: [{ dest, sha256 }], skipped: [{ path, chat? }] }` so the move's report can name those chats. Callers read `.carried`.
+
 - feat(identity): claim a name from a browser with a passkey (0.2.9, gap A29). `claimIdentityWithPasskey` (apps/app/src/identity/claim.js) makes a WebAuthn credential (P-256, user verification required) as the identity's first device and signs the genesis and the claim's record with it; `createPasskeyKey` and `restorePasskeyKey` (apps/app/src/identity/passkey.js) read the attestation with a small CBOR reader, normalise the high-s twin an authenticator may return, and keep only the credential id and public key. A passkey is a full device (unlike a key a page can reach). The directory could verify a passkey's signature on a chain op but not on a name record or an act; `verifyWith` now takes the signing entry (`signing` from `signerKey`) and checks a passkey's assertion as one, in the Worker, the client directory, the audit key, the seal's bindings and spaces. The pinned hash of kernel/identity/chain.js is updated; merging with work/no-labels needs it recomputed.
 - fix(kernel): `moves.carryFiles` authorizes each file, not only its project folder (reviewer-4 C-1): `drive.read` on the source path and `drive.write` on the destination, as the mover. A chat's folders are its participants' alone, so a move or an upgrade by someone who is not in the chat no longer reseals its files.
 

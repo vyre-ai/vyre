@@ -40,7 +40,7 @@ export function createMoves(o) {
     /**
      * @param {any} fromChain the mover's chain in the source Space @param {any} toChain the same person's chain in the target Space
      * @param {{ entries: { path: string, dest: string, sha256: string, size: number }[], move_id: string }} q
-     * @returns {Promise<{ dest: string, sha256: string }[]>}
+     * @returns {Promise<{ carried: { dest: string, sha256: string }[], skipped: { path: string, chat?: string }[] }>} `skipped` names each file the mover may not read (with its chat id when it is a chat's), left in the source
      */
     async carryFiles(fromChain, toChain, q) {
       const who = one(fromChain, "a carry"), whoTo = one(toChain, "a carry");
@@ -60,6 +60,7 @@ export function createMoves(o) {
       if (!upgrade && !(await may(src, fromChain, `Projects/${id}`))) throw new KernelError("not_found", "no such move");
       /** @type {Set<string>} source projects already checked for an upgrade */ const okSrc = new Set();
       /** @type {{ dest: string, sha256: string }[]} */ const out = [];
+      /** @type {{ path: string, chat?: string }[]} */ const skipped = [];
       const ID = /^[A-Za-z0-9_-]{1,64}$/;
       const map = q.chat_map && typeof q.chat_map === "object" ? q.chat_map : null;
       if (map && !Object.entries(map).every(([a, b]) => ID.test(a) && typeof b === "string" && ID.test(b))) throw new KernelError("bad_input", "the chat map names chats by id");
@@ -84,7 +85,8 @@ export function createMoves(o) {
         if ((!upgrade && !e.path.startsWith(`Projects/${id}/`)) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
         // The file itself, not only its project folder: a chat's folders are its participants' alone at the authorizer, so a mover who is not in the chat is refused its files here (a move or an upgrade never reseals them).
         const act = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ p) => (await k.gateway.authorize({ chain, action, resource: `vyre://${chain.space}/file/${p}` })).effect === "allow";
-        if (!(await act(src, fromChain, "drive.read", e.path))) throw new KernelError("not_found", "a file of the move is not yours to move");
+        // A file the mover may not read (a chat they are not in) is skipped, stays in the source and is named in the answer: the move carries only what the mover may read.
+        if (!(await act(src, fromChain, "drive.read", e.path))) { const c = /^Projects\/[^/]+\/chat\/([^/]+)\//.exec(e.path); skipped.push({ path: e.path, ...(c ? { chat: c[1] } : {}) }); continue; }
         if (!(await act(dst, toChain, "drive.write", e.dest))) throw new KernelError("not_found", "that file is not yours to move into");
         const destFolder = e.dest.split("/").slice(0, 2).join("/");
         if (!(await may(dst, toChain, destFolder))) throw new KernelError("not_found", "that folder is not yours to move into");
@@ -99,7 +101,7 @@ export function createMoves(o) {
         if (now.sha256 !== e.sha256) throw new KernelError("unavailable", "a carried file did not arrive intact");
         out.push({ dest: e.dest, sha256: String(now.sha256) });
       }
-      return out;
+      return { carried: out, skipped };
     },
   });
 }

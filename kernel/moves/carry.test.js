@@ -53,7 +53,7 @@ test("a chat folder moves between two Spaces re-sealed: it arrives intact, the h
   const dest = `${b.folder}/note.txt`;
   const entries = [{ path: `${a.folder}/note.txt`, dest, sha256: sha(text), size: Buffer.byteLength(text) }];
   started(a.ada, MOVE);
-  const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE });
+  const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE }).then(r => r.carried);
   assert.deepEqual(out, [{ dest, sha256: sha(text) }]);
   assert.ok(!JSON.stringify(out).includes("SECRET-CARRY-TEXT"), "no byte in the answer");
   // the target's participants read it; the target's owner and a plain member, who are not in the chat, read nothing
@@ -80,7 +80,7 @@ test("carry is resumable and checked: run again it writes nothing twice, a file 
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, `${b.folder}/one.txt`)), "one");
   await assert.rejects(() => b.D.get(b.bob, `${b.folder}/two.txt`), { code: "not_found" }, "the second never arrived");
   // run again with the right entries: the first is not written again (one version), the second arrives
-  const out = await moves.carryFiles(a.ada, b.ada, { entries: [e("one"), e("two")], move_id: MOVE });
+  const out = await moves.carryFiles(a.ada, b.ada, { entries: [e("one"), e("two")], move_id: MOVE }).then(r => r.carried);
   assert.deepEqual(out.map(x => x.sha256), [sha("one"), sha("two")]);
   assert.equal((await b.D.history(b.bob, `${b.folder}/one.txt`)).length, 1, "carried once");
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, `${b.folder}/two.txt`)), "two");
@@ -99,7 +99,7 @@ test("carry runs only for an open move under an owner or admin of both Spaces, f
   for (const bad of [{ ...entries[0], path: "Projects/p2/chat/x/note.txt" }, { ...entries[0], dest: "Other/note.txt" }, { ...entries[0], dest: "Projects/p1/../x/note.txt" }, { ...entries[0], sha256: "zz" }]) {
     await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries: [bad], move_id: MOVE }), { code: "bad_input" }, JSON.stringify(bad));
   }
-  assert.deepEqual(await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE }).then(r => r.length), 1, "and the real one goes");
+  assert.deepEqual(await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE }).then(r => r.carried.length), 1, "and the real one goes");
   // a module that is not the work module is not given the carry at all
   assert.equal(a.k.kernelFor({ name: "records-tools" }).moves, undefined);
 });
@@ -111,7 +111,7 @@ test("without a destination the files land under the target project, and a chat'
   const entries = [{ path: `${a.folder}/note.txt`, sha256: sha("chat note"), size: 9 }, { path: "Projects/p1/retainer.txt", sha256: sha("plain project file"), size: 18 }];
   started(a.ada, MOVE);
   await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: {} }), { code: "bad_input" }, "an unmapped chat is not carried");
-  const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: { [oldChat]: newChat } });
+  const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: { [oldChat]: newChat } }).then(r => r.carried);
   assert.deepEqual(out.map(x => x.dest), [`Projects/p9/chat/${newChat}/note.txt`, "Projects/p9/retainer.txt"]);
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, `Projects/p9/chat/${newChat}/note.txt`)), "chat note");
   await assert.rejects(() => b.D.get(b.dan, `Projects/p9/chat/${newChat}/note.txt`), { code: "not_found" }, "a non-participant reads nothing in the chat");
@@ -133,7 +133,7 @@ test("a Personal to My Cloud upgrade carries files too: space.upgrade_started fo
   await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP }), e => e.code === "not_found", "another person's upgrade is not mine to carry");
   await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP, move_id: MOVE }), e => e.code === "bad_input", "an upgrade and a move are not mixed");
   const UP2 = "44444444-4444-4444-8444-444444444444"; up(a.ada, UP2);
-  const out = await moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP2 });
+  const out = await moves.carryFiles(a.ada, b.ada, { entries, upgrade_id: UP2 }).then(r => r.carried);
   assert.deepEqual(out, [{ dest, sha256: sha(text) }]);
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, dest)), text);
   // a changed file is still refused, and a path outside Projects is not a project's
@@ -141,16 +141,20 @@ test("a Personal to My Cloud upgrade carries files too: space.upgrade_started fo
   await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [{ path: "General/x.txt", dest, sha256: sha(text), size: 1 }], upgrade_id: UP2 }), e => e.code === "bad_input");
 });
 
-test("a file of a chat the mover is not in is refused by name, in a move and in an upgrade: the project folder grant does not reach it", async t => {
+test("a file of a chat the mover is not in is skipped, stays in the source and is named in the answer, in a move and in an upgrade; the readable files still arrive", async t => {
   const { a, b, moves, started } = await world(t);
   const text = "closed chat ".repeat(8), UP = "55555555-5555-4555-8555-555555555555";
   await a.D.put(a.bob, `${a.closed}/secret.txt`, enc(text)); await a.D.put(a.ada, `Projects/p1/plain.txt`, enc("plain"));
   const closedE = { path: `${a.closed}/secret.txt`, dest: `${b.closed}/secret.txt`, sha256: sha(text), size: Buffer.byteLength(text) };
   const plainE = { path: "Projects/p1/plain.txt", dest: "Projects/p1/plain.txt", sha256: sha("plain"), size: 5 };
+  const closedId = a.closed.split("/").pop();
   started(a.ada, MOVE);
-  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [closedE], move_id: MOVE }), e => e.code === "not_found");
-  assert.deepEqual((await moves.carryFiles(a.ada, b.ada, { entries: [plainE], move_id: MOVE })).length, 1, "a project's own file still goes");
+  const r = await moves.carryFiles(a.ada, b.ada, { entries: [closedE, plainE], move_id: MOVE });
+  assert.deepEqual(r.carried, [{ dest: plainE.dest, sha256: sha("plain") }], "the readable file arrives");
+  assert.deepEqual(r.skipped, [{ path: closedE.path, chat: closedId }], "the closed chat is named");
+  await assert.rejects(() => b.D.get(b.bob, closedE.dest), { code: "not_found" }, "nothing of it arrived");
+  assert.equal(new TextDecoder().decode(await a.D.get(a.bob, closedE.path)), text, "it stays in the source");
   a.k.log.append(a.ada, { type: "space.upgrade_started", sv: 1, subject: `vyre://${A}/space/upgrade`, data: { upgrade_id: UP, to: B, plan_hash: "h".repeat(43) } });
-  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [closedE], upgrade_id: UP }), e => e.code === "not_found");
-  await assert.rejects(() => b.D.get(b.bob, closedE.dest), { code: "not_found" }, "nothing arrived");
+  const u = await moves.carryFiles(a.ada, b.ada, { entries: [closedE], upgrade_id: UP });
+  assert.deepEqual([u.carried, u.skipped], [[], [{ path: closedE.path, chat: closedId }]]);
 });
