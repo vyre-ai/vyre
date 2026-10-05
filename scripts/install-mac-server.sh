@@ -29,6 +29,10 @@
 # extracted app for install, the installed tree for uninstall), VYRE_CORE_BASE (default
 # /Library/Application Support/Vyre, where core.json lives), VYRE_NODE_URL / VYRE_NODE_SHA256, the
 # Colima ones below, VYRE_UNAME_S / _M, VYRE_LAUNCHCTL, VYRE_CAFFEINATE, VYRE_SERVER_DIR, VYRE_LAUNCHAGENTS.
+# The headless Linux runtime for Twenty (every space gets one) is Apple's `container` on macOS 26 with Apple silicon, else Colima (VYRE_RUNTIME=auto|container|colima for
+# tests). `container` is a pinned, checksummed, Apple-signed package that is unpacked into the account's own folder (no root, no second password prompt) and started at
+# login by a LaunchAgent; what runs where is written to <VYRE_HOME>/runtime.json for the modules and the app. Colima still serves agents' computers (they speak the
+# Docker API, which `container` does not).
 # Everything lives inside main(), called on the last line, so a piped script is read whole first.
 
 set -eu
@@ -63,6 +67,14 @@ APP=$SERVER_DIR/app
 BIN=$SERVER_DIR/bin
 NODE_DIST=$SERVER_DIR/node-dist
 COLIMA_ARGS=""
+CONTAINER_LABEL=run.vyre.container
+# Apple's `container` (github.com/apple/container). The sum is the one GitHub shows for the asset and the one shasum computed on a macOS 26 runner (mac-runtime.yml);
+# the package is also checked for Apple's Developer ID Installer signature, team UPBK2H6LZM ("Apple Inc. - Containerization"), notarized.
+# VYRE_CONTAINER_URL / _SHA256 / _TEAM, VYRE_PKGUTIL and VYRE_MACOS_VERSION override, for tests.
+CONTAINER_VERSION=1.5.0
+CONTAINER_SHA256_ARM64=a24808cb202318fa1c3bbee0c6c6887fe1225fe899d7b687a0ddd939bd6573f8
+CONTAINER_TEAM=UPBK2H6LZM
+RUNTIME_RECORDS=colima
 
 # Pinned release binaries for the no-Homebrew Colima install. Each sum was read from the release
 # itself and checked against a second source: Colima's colima-Darwin-*.sha256sum files (v0.10.3) and
@@ -394,6 +406,103 @@ setup_colima() {
   step "Colima is running"
 }
 
+# container_eligible: Apple's `container` runs on macOS 26 and newer, on Apple silicon.
+container_eligible() {
+  case "$UNAME_M" in arm64|aarch64) ;; *) return 1 ;; esac
+  v=${VYRE_MACOS_VERSION:-$(sw_vers -productVersion 2>/dev/null || echo 0)}
+  major=${v%%.*}
+  case "$major" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$major" -ge 26 ]
+}
+
+# write_container_plist: a LaunchAgent that starts the `container` services when the person signs in (the services are per account). `system start` returns once they
+# are up, so the job only retries when it fails. The first start fetches the small Linux kernel the containers boot.
+write_container_plist() {
+  p=$AGENTS_DIR/$CONTAINER_LABEL.plist
+  mkdir -p "$AGENTS_DIR" "$VHOME/logs"
+  cat >"$p" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$CONTAINER_LABEL</string>
+  <key>ProgramArguments</key><array>
+    <string>$SERVER_DIR/container/bin/container</string><string>system</string><string>start</string>
+    <string>--install-root</string><string>$SERVER_DIR/container</string>
+    <string>--app-root</string><string>$VHOME/runtime/container</string>
+    <string>--enable-kernel-install</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$SERVER_DIR/container/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>$HOME</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>$VHOME/logs/container.out</string>
+  <key>StandardErrorPath</key><string>$VHOME/logs/container.out</string>
+</dict></plist>
+EOF
+  chmod 644 "$p"
+}
+
+# setup_container: the runtime for Twenty on a Mac that can run Apple's `container`. Never root and never Docker Desktop: the pinned Apple package is downloaded, its sum
+# and Apple signature checked, and it is unpacked (not installed) into SERVER_DIR/container. Anything that does not check out installs nothing and leaves Colima as the
+# runtime, with a plain note.
+setup_container() {
+  RUNTIME_RECORDS=colima
+  pref=${VYRE_RUNTIME:-auto}
+  case "$pref" in auto|container|colima) ;; *) die "VYRE_RUNTIME is auto, container or colima" ;; esac
+  [ "$pref" != colima ] || return 0
+  if [ "$DRY" = 1 ]; then
+    if container_eligible; then say "would install Apple's container $CONTAINER_VERSION (pinned, checksummed, Apple-signed) into $SERVER_DIR/container and start it at login"
+    else say "would use Colima as the runtime: Apple's container needs macOS 26 on Apple silicon"; fi
+    return 0
+  fi
+  container_eligible || { say "  note  Apple's container needs macOS 26 on Apple silicon; Colima is this Mac's runtime"; return 0; }
+  cs=${VYRE_CONTAINER_SHA256-$CONTAINER_SHA256_ARM64}; team=${VYRE_CONTAINER_TEAM:-$CONTAINER_TEAM}
+  cu=${VYRE_CONTAINER_URL:-https://github.com/apple/container/releases/download/$CONTAINER_VERSION/container-$CONTAINER_VERSION-installer-signed.pkg}
+  pk=${VYRE_PKGUTIL:-pkgutil}
+  say "Downloading Apple's container $CONTAINER_VERSION (checked against a pinned checksum and Apple's signature)..."
+  mkdir -p "$TMP/ct"
+  curl -fsSL --retry 2 -o "$TMP/ct/container.pkg" "$cu" || { say "  note  could not download Apple's container; Colima is this Mac's runtime"; return 0; }
+  [ -n "$cs" ] && [ "$(sha256 "$TMP/ct/container.pkg")" = "$cs" ] || { say "  note  Apple's container does not match its pinned checksum; nothing was installed, Colima is this Mac's runtime"; return 0; }
+  "$pk" --check-signature "$TMP/ct/container.pkg" >"$TMP/ct/sig.txt" 2>&1 || { say "  note  Apple's container package is not signed; nothing was installed, Colima is this Mac's runtime"; return 0; }
+  grep -q "($team)" "$TMP/ct/sig.txt" && grep -qi "signed by a developer certificate issued by Apple" "$TMP/ct/sig.txt" \
+    || { say "  note  Apple's container package is not signed by Apple's Containerization team; nothing was installed, Colima is this Mac's runtime"; return 0; }
+  "$pk" --expand-full "$TMP/ct/container.pkg" "$TMP/ct/x" >/dev/null 2>&1 || { say "  note  Apple's container package did not unpack; Colima is this Mac's runtime"; return 0; }
+  [ -x "$TMP/ct/x/Payload/bin/container" ] && [ -d "$TMP/ct/x/Payload/libexec/container/plugins" ] || { say "  note  Apple's container package is not laid out as expected; nothing was installed, Colima is this Mac's runtime"; return 0; }
+  rm -rf "$SERVER_DIR/container.new"; mkdir -p "$SERVER_DIR/container.new"
+  cp -R "$TMP/ct/x/Payload/." "$SERVER_DIR/container.new/" || { rm -rf "$SERVER_DIR/container.new"; say "  note  Apple's container could not be copied; Colima is this Mac's runtime"; return 0; }
+  "$SERVER_DIR/container.new/bin/container" --version 2>&1 | grep -q "$CONTAINER_VERSION" || { rm -rf "$SERVER_DIR/container.new"; say "  note  Apple's container does not report $CONTAINER_VERSION; nothing was installed, Colima is this Mac's runtime"; return 0; }
+  rm -rf "$SERVER_DIR/container"; mv "$SERVER_DIR/container.new" "$SERVER_DIR/container"
+  mkdir -p "$VHOME/runtime/container"
+  write_container_plist
+  uid=$(id -u)
+  "$LAUNCHCTL" bootout "gui/$uid/$CONTAINER_LABEL" >/dev/null 2>&1 || true
+  "$LAUNCHCTL" bootstrap "gui/$uid" "$AGENTS_DIR/$CONTAINER_LABEL.plist" || say "  note  launchctl could not start Apple's container now; it starts when you sign in"
+  RUNTIME_RECORDS=container
+  step "Apple's container $CONTAINER_VERSION is installed in $SERVER_DIR/container and starts when you sign in"
+}
+
+# jstr: a JSON string body from a path (backslash and double quote escaped).
+jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+
+# write_runtime_json: which runtime holds the records store (Twenty per space) and which serves agents' computers, for vyred's modules and the app. Atomic, 0644.
+write_runtime_json() {
+  [ "$DRY" = 1 ] && return 0
+  mkdir -p "$VHOME"
+  t=$VHOME/runtime.json.new
+  dh="unix://$HOME/.colima/default/docker.sock"
+  if [ "$RUNTIME_RECORDS" = container ]; then
+    rec=$(printf '{"kind":"container","version":"%s","cli":"%s","install_root":"%s","app_root":"%s","label":"%s","starts":"at login"}' "$CONTAINER_VERSION" "$(jstr "$SERVER_DIR/container/bin/container")" "$(jstr "$SERVER_DIR/container")" "$(jstr "$VHOME/runtime/container")" "$CONTAINER_LABEL")
+  else
+    rec=$(printf '{"kind":"colima","docker_host":"%s"}' "$(jstr "$dh")")
+  fi
+  printf '{"v":1,"records":%s,"computers":{"kind":"colima","docker_host":"%s"}}\n' "$rec" "$(jstr "$dh")" >"$t"
+  chmod 644 "$t"; mv "$t" "$VHOME/runtime.json"
+}
+
 # setup_gh: the gh CLI. One already on PATH is used; else the pinned release zip (never Homebrew), checked against its
 # sum, into Vyre's own bin. If none works it says so and goes on: GitHub sign-in waits for gh.
 setup_gh() {
@@ -602,7 +711,9 @@ uninstall() {
   [ "$SYSTEM" = 0 ] || system_uninstall "$ok"
   "$LAUNCHCTL" bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   "$LAUNCHCTL" bootout "gui/$(id -u)/$COLIMA_LABEL" >/dev/null 2>&1 || true
-  rm -f "$AGENTS_DIR/$LABEL.plist" "$AGENTS_DIR/$COLIMA_LABEL.plist"
+  "$LAUNCHCTL" bootout "gui/$(id -u)/$CONTAINER_LABEL" >/dev/null 2>&1 || true
+  [ ! -x "$SERVER_DIR/container/bin/container" ] || "$SERVER_DIR/container/bin/container" system stop >/dev/null 2>&1 || true
+  rm -f "$AGENTS_DIR/$LABEL.plist" "$AGENTS_DIR/$COLIMA_LABEL.plist" "$AGENTS_DIR/$CONTAINER_LABEL.plist"
   rm -rf "$SERVER_DIR"
   if [ "$PURGE" = 1 ]; then
     if [ "$ok" = 1 ]; then rm -rf "$VHOME"; say "your data is deleted"; else say "your data is kept in $VHOME"; fi
@@ -635,7 +746,9 @@ main() {
   say "Installing Vyre on this Mac as your server."
   preflight
   install_app
+  setup_container
   setup_colima
+  write_runtime_json
   setup_gh
   write_env
   write_wrapper
