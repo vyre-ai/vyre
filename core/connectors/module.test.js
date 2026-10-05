@@ -280,6 +280,9 @@ test("connectors: the logging recipe gives a watcher the watchers module accepts
   // G-1: nothing is read until the person grants it, for a dry run by a model as for a run
   const ungranted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
   assert.match(JSON.stringify(ungranted), /not granted to this watcher/, "a dry run reads nothing without the grant (the same check whoever runs it): " + JSON.stringify(ungranted).slice(0, 300));
+  // a grant to the watchers module as a whole is not a grant to this watcher (the vault releases only against the exact watcher)
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "watchers" })).data.grant.status, "active");
+  assert.match(JSON.stringify(await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } })), /not granted to this watcher/, "a module-wide grant reads nothing");
   assert.equal((await w.cli("vault.grant", { name: "work-google", module: "watchers", watcher: r.name })).data.grant.status, "active");
   const granted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
   assert.doesNotMatch(JSON.stringify(granted), /not granted to this watcher/, "and with the grant it reads");
