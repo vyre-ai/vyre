@@ -385,7 +385,7 @@ for v in vyre-home vyre-work tailscale-state; do
     --label com.docker.compose.volume=$v vyre_$v
 done
 docker run --rm -i -v vyre_vyre-home:/b/vyre-home -v vyre_vyre-work:/b/vyre-work \
-  -v vyre_tailscale-state:/b/tailscale-state alpine tar xzf - -C /b < vyre-box-backup-2026-09-27.tar.gz
+  -v vyre_tailscale-state:/b/tailscale-state alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc tar xzf - -C /b < vyre-box-backup-2026-09-27.tar.gz
 vyre up
 ```
 
