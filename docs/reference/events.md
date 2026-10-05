@@ -699,7 +699,7 @@ Listens for: `link.unpaired`
 | `vault.emergency-removed` | `person` |
 | `vault.emergency-requested` | `opens`, `person` |
 | `vault.filled` | `name`; sometimes `app`, `device`, `surface`, `what` |
-| `vault.granted` | `module`, `name`; sometimes `project`, `watcher` |
+| `vault.granted` | none; sometimes `description`, `input`, `internal`, `module`, `name`, `project`, `run`, `watcher` |
 | `vault.item-added` | `kind`, `name` |
 | `vault.item-changed` | `kind`, `name`; sometimes `stale` |
 | `vault.item-deleted` | `name` |

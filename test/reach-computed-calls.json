@@ -76,6 +76,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/modules/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "reviewed (windows, 5 Oct): the registry's own relay (`ctx.call(tool, input, { relay: true })`) calls a tool by a computed name only after RELAY_ALLOWED (core/modules/index.js) lists that exact name or prefix for the calling first-party module (spaces to the chat and memory upgrade tools, memory and work to spaces.storage.); anything else is refused before the call. callInSpace calls a tool that declares crossSpace in its manifest."
+  },
   "core/names/index.js": {
    "count": 1,
    "owner": "module's own team",

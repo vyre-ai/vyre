@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { TWENTY_TESTED_REF, isPinnedRef, composeFile, findGolden, tagOfRef, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG } from "./provision.js";
+import { TWENTY_TESTED_REF, isPinnedRef, composeFile, findGolden, tagOfRef, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG, autoProfile, memoryOf, MEMORY_PROFILES } from "./provision.js";
 import { FakeTwenty } from "./testing/fake-twenty.js";
 
 const dirs = [];
@@ -205,6 +205,18 @@ test("PIN-1: a Space whose env file names the Twenty image without a digest is r
   fs.writeFileSync(envFile, fs.readFileSync(envFile, "utf8").replace(/^TWENTY_IMAGE_REF=.*$/m, "TWENTY_IMAGE_REF=twentycrm/twenty:v2.44.0"));
   await assert.rejects(() => provisionSpace({ home, space: "harlow", runner }), /without a digest/);
   await fake.stop();
+});
+
+test("tiny and auto: the machine picks the profile (tiny under about 6 GB), the tiny caps are the tested ones, and a container may spill half its cap into swap only on tiny", () => {
+  assert.deepEqual([autoProfile(3900), autoProfile(6143), autoProfile(6144), autoProfile(16000), autoProfile(0), autoProfile(NaN)], ["tiny", "tiny", "small", "small", "small", "small"]);
+  assert.deepEqual(MEMORY_PROFILES.tiny, { server: 1200, worker: 900, db: 192, redis: 64 });
+  const t = composeFile({ space: "harlow", memory: "auto", totalMb: 4096 });
+  assert.match(t, /mem_limit: 1200m\n    memswap_limit: 1800m/, "tiny may use swap");
+  assert.match(t, /mem_limit: 900m\n    memswap_limit: 1350m/);
+  const s = composeFile({ space: "harlow", memory: "auto", totalMb: 16000 });
+  assert.match(s, /mem_limit: 1536m\n    memswap_limit: 1536m/, "small has none");
+  assert.deepEqual(memoryOf("auto", 4096), MEMORY_PROFILES.tiny);
+
 });
 
 test("a Space made from the saved database: its compose file restores it once, skips the migration steps and puts this Space's own password on the saved user; a plain Space has none of that", () => {
