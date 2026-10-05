@@ -113,10 +113,13 @@ test("moving a Project between two real Spaces: the engine over both gateways, a
   const side = (/** @type {any} */ space, /** @type {any} */ gw, /** @type {any} */ chain) => ({ space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) });
   const from = side(d.kernel.id.space, d.kernel.gateway, admin);
   const to = side(firm.space, firm.gateway, firmAdmin);
-  // the work module's types exist in the home Space only; the firm Space has none, so the plan says so
+  // every Space has the core record types now (the firm Space too), so nothing blocks the plan and the move runs: a new id in the target, the chat's record and both files moved
   const plan = await planMove({ from, to, project: urn });
+  assert.deepEqual(plan.blockers, []);
   assert.equal(plan.counts.files, 2);
-  assert.ok(plan.blockers.some((/** @type {string} */ b) => /no record type/.test(b) || /no Drive/.test(b)), JSON.stringify(plan.blockers));
-  await assert.rejects(() => runMove({ from, to, plan }), /cannot run/);
+  const out = await runMove({ from, to, plan });
+  assert.ok(out.target && out.target !== urn, "a new id in the target Space");
+  assert.deepEqual(out.moved, { records: 1, files: 2 });
+  assert.ok(out.map[urn] === out.target, "the map says where the project went");
   void d;
 });
