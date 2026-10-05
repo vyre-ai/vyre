@@ -52,14 +52,15 @@ async function rig() {
   await D.put(owner, "Clients/A/retainer-plan.txt", enc("plan"));
 
   const db = open(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "privacy-")), "vyre.db"));
-  /** @type {{ chain: any, list: any }} */ const cur = { chain: owner, list: [{ chat: chat.id, project: "p1", open: true }] };
+  /** @type {{ chain: any, list: any }} */ const cur = { chain: owner, list: [{ chat: chat.id, location: `Projects/p1/chat/${chat.id}/` }] };
   const tools = /** @type {Map<string, any>} */ (new Map()), routes = /** @type {Map<string, any>} */ (new Map());
   const ctx = {
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), route: (/** @type {string} */ n, /** @type {any} */ f) => routes.set(n, f),
     store: { db, migrate: (/** @type {string[]} */ steps) => migrate(db, "files", steps) },
-    // work.chat.list as the chat module answers it for the caller; a test can make it name a chat the caller is NOT in, or make the tool vanish, to prove the kernel is what decides
-    call: async (/** @type {string} */ tool) => { if (tool !== "work.chat.list") return {}; if (cur.list === null) throw Object.assign(new Error("no_such_tool"), { code: "no_such_tool" }); return { data: { chats: cur.list } }; },
-    kernel: { space: SPACE, owner: OWNER, for: async () => ({ gateway: k.gateway, surfaces: {} }), chainIn: async () => cur.chain, proofFrom: () => undefined },
+    // the chat records the caller may read (rows with `chat` and `location`, as the work module keeps them); a test can list a chat the caller is NOT in to prove the kernel's own chat read is what decides
+    call: async () => ({}),
+    kernel: { space: SPACE, owner: OWNER, for: async () => ({ gateway: k.gateway, surfaces: {} }), chainIn: async () => cur.chain, proofFrom: () => undefined,
+      records: { query: async () => ({ rows: (cur.list || []).filter(Boolean).map((/** @type {any} */ x) => ({ data: x })) }) }, chats: { read: (/** @type {any} */ chain, /** @type {string} */ id) => g.chats.read(chain, id) } },
   };
   registerSpaceDrive(ctx);
   registerSpaceLinks(ctx);
@@ -167,23 +168,24 @@ test("participant search: a list that names a chat the caller is not in adds not
   const r = await rig();
   for (const [who, name] of [[r.owner, "the owner"], [r.ada, "an admin"], [r.dan, "a project member"]]) {
     r.as(who);
-    r.listing([{ chat: r.chat.id, project: "p1", open: true }]); // a bogus list: the chat module would never say this, the kernel must not care
+    r.listing([{ chat: r.chat.id, location: `Projects/p1/chat/${r.chat.id}/` }]); // a bogus list: the chat module would never say this, the kernel must not care
     const res = await r.run("files.drive.space.search", { q: "retainer" });
     assert.deepEqual(paths(res).filter((/** @type {string} */ p) => p.includes(r.chat.id)), [], `${name} is told no file of the chat even when the list names it`);
     assert.equal(res.results.some((/** @type {any} */ x) => x.chat), false);
   }
-  r.listing([{ chat: r.chat.id, project: "p1", open: true }]);
+  r.listing([{ chat: r.chat.id, location: `Projects/p1/chat/${r.chat.id}/` }]);
   r.as(r.bob);
   assert.equal((await r.run("files.drive.space.search", { q: "retainer-notes" })).results.length, 1, "in the chat: found");
   await r.g.chats.change(r.carol, r.chat.id, { remove_people: [BOB] });
   assert.deepEqual((await r.run("files.drive.space.search", { q: "retainer-notes" })).results, [], "left the chat: gone on the next call, whatever the list says");
 });
 
-test("participant search: a box without work.chat.list, or one that lists a malformed row, searches the Drive root only and never fails", async () => {
+test("participant search: a malformed row, a row for another chat id or a path off the chat folders is skipped, and the Drive root is still searched", async () => {
   const r = await rig();
   r.as(r.owner);
-  r.listing(null);
-  assert.ok(paths(await r.run("files.drive.space.search", { q: "retainer" })).includes("Clients/A/retainer-plan.txt"), "no chat tool: the root is still searched");
-  r.listing([{ chat: "../../etc", project: "p1" }, { chat: r.chat.id, project: "../x" }, null, "x", { chat: r.chat.id, project: "p1", open: false }]);
-  assert.deepEqual(paths(await r.run("files.drive.space.search", { q: "retainer" })).filter((/** @type {string} */ p) => p.startsWith("Projects/")), [], "malformed rows and a chat marked not open are skipped");
+  r.listing([{ chat: "../../etc", location: "Projects/p1/chat/../../etc/" }, { chat: r.chat.id, location: "Projects/../x/chat/" + r.chat.id + "/" }, { chat: r.chat.id, location: `Clients/A/` }, null, "x",
+    { chat: "chat_other1234", location: `Projects/p1/chat/${r.chat.id}/` }, { chat: r.chat.id }]);
+  const res = await r.run("files.drive.space.search", { q: "retainer" });
+  assert.ok(paths(res).includes("Clients/A/retainer-plan.txt"), "the root is still searched");
+  assert.deepEqual(paths(res).filter((/** @type {string} */ p) => p.startsWith("Projects/")), [], "none of those rows led anywhere");
 });

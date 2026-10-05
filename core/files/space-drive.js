@@ -14,20 +14,23 @@ const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
 /**
- * The chats the caller is in, as { project, chat } (work.chat.list: only chats the caller is in, `open` not false). A box without the tool, or one that does not answer, has none to add: search then covers the Drive root only.
- * At most 50. @param {any} ctx @param {any} meta @returns {Promise<{ project: string, chat: string }[]>}
+ * The chats the caller is in, as the folders they live in. This asks the kernel what `work.chat.list` asks it, under the caller's own chain (a module-to-module call would not carry that chain): the chat records the
+ * caller may read, kept only where the kernel's own chat read says the caller is in the chat. A record carries `chat` (the kernel's chat id) and `location` (`Projects/<id>/chat/<chat>/`, where its files are). The list only
+ * says where to look: each folder is read under the caller's chain again by the Drive, so a wrong row gives nothing. At most 50. A Space reached through another machine's kernel has no chat list here.
+ * @param {any} ctx @param {any} d the door's answer @returns {Promise<{ chat: string, chat_dir: string, made_dir: string }[]>}
  */
-async function chatsOf(ctx, meta) {
-  let r;
-  try { r = await ctx.call("work.chat.list", {}, { as: meta && meta.caller }); } catch { return []; }
-  const data = r && r.data !== undefined ? r.data : r;
-  const rows = Array.isArray(data) ? data : data && Array.isArray(data.chats) ? data.chats : data && Array.isArray(data.rows) ? data.rows : [];
+async function chatsOf(ctx, d) {
+  const k = ctx.kernel;
+  if (d.remote || !k || !k.records || typeof k.records.query !== "function" || !k.chats || typeof k.chats.read !== "function") return [];
+  const res = await k.records.query(d.chain, "chat-record", { page: { limit: 500 } });
   const out = [];
-  for (const row of rows) {
-    const x = row && typeof row === "object" ? (row.data && typeof row.data === "object" ? { ...row.data, ...row } : row) : null;
-    if (!x || x.open === false) continue;
-    const chat = String(x.chat ?? x.id ?? "").replace(/^.*\//, ""), project = String(x.project ?? "");
-    if (/^chat_[A-Za-z0-9_-]{4,64}$/.test(chat) && /^[A-Za-z0-9._-]{1,128}$/.test(project)) out.push({ project, chat });
+  for (const r of (res && res.rows) || []) {
+    const x = r && r.data;
+    if (!x) continue;
+    const chat = String(x.chat ?? ""), m = /^(Projects\/[^/]+)\/chat\/(chat_[A-Za-z0-9_-]{4,64})\/$/.exec(String(x.location ?? ""));
+    if (!m || m[2] !== chat) continue;
+    try { k.chats.read(d.chain, chat); } catch { continue; }
+    out.push({ chat, chat_dir: `${m[1]}/chat/${chat}/`, made_dir: `${m[1]}/made/${chat}/` });
     if (out.length >= 50) break;
   }
   return out;
@@ -83,7 +86,7 @@ export function registerSpaceDrive(ctx) {
       return { prefix, entries: r.entries, next: r.next };
     });
 
-  tool("files.drive.space.search", "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Names and paths only, never a word from inside a file. What the caller may not read is the same as not there: a chat's files are its participants' only (kernel/core/folders.js), so a file, a folder name or a path in a chat the caller is not in never comes back, even for its exact name. The chats the caller is in (work.chat.list) are searched too, each folder read under the caller's own chain, and those results name their chat. Answers { q, results: [{ path, name, size?, mtime?, chat? }], more } (at most `limit`, default 30, at most 100).",
+  tool("files.drive.space.search", "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Names and paths only, never a word from inside a file. What the caller may not read is the same as not there: a chat's files are its participants' only (kernel/core/folders.js), so a file, a folder name or a path in a chat the caller is not in never comes back, even for its exact name. The chats the caller is in (the kernel's own chat read, as work.chat.list uses it) are searched too, each folder read under the caller's own chain, and those results name their chat. Answers { q, results: [{ path, name, size?, mtime?, chat? }], more } (at most `limit`, default 30, at most 100).",
     obj({ space: str, q: str, limit: { type: "integer" } }, ["q"]), async (i, d, drive, meta) => {
       const q = String(i.q ?? "").trim().toLowerCase();
       if (q.length < 2 || q.length > 200) throw refuse("type two letters or more to search the Drive", "bad_input");
@@ -114,10 +117,10 @@ export function registerSpaceDrive(ctx) {
       };
       await walk("", null, 20);
       // The chats the caller is in. The list only says where to look: each folder is read under the caller's own chain, so a chat named wrongly (or one the caller left) gives nothing.
-      for (const c of await chatsOf(ctx, meta)) {
+      for (const c of await chatsOf(ctx, d)) {
         if (more && results.length >= limit) break;
-        await walk(`Projects/${c.project}/chat/${c.chat}/`, c.chat, 3);
-        await walk(`Projects/${c.project}/made/${c.chat}/`, c.chat, 3);
+        await walk(c.chat_dir, c.chat, 3);
+        await walk(c.made_dir, c.chat, 3);
       }
       return { q, results, more };
     });
