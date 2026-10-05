@@ -38,6 +38,7 @@
  "core/projects/projects.js": 1,
  "core/recall/index.js": 2,
  "core/recall/schema.js": 1,
+ "core/runner/index.js": 1,
  "core/runner/ownserver.js": 1,
  "core/runner/runner.js": 1,
  "core/runner/sandbox-win.js": 1,
