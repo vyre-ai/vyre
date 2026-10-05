@@ -301,6 +301,7 @@ export function toolEntries(m) {
     if (typeof t.target === "string") extra.target = t.target;
     if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
+    if (t.projectIsRecord === true) extra.projectIsRecord = true;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
     if (TYPES.object(t.flow) && typeof t.flow.risk === "string") extra.flow = { risk: t.flow.risk, ...(typeof t.flow.label === "string" ? { label: t.flow.label } : {}) };

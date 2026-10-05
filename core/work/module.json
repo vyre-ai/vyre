@@ -34,14 +34,18 @@
         "name": "work.project.move-plan",
         "summary": "what moving a Project to another Space would carry, and the hash the person approves",
         "reach": "anyone",
-        "effect": "read"
+        "effect": "read",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.project.move",
         "summary": "move a Project to another Space as a new project there, with one yes",
         "reach": "anyone",
         "effect": "write",
-        "outward": true
+        "outward": true,
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.know.move-export",
@@ -75,16 +79,32 @@
         "effect": "write"
       },
       {
+        "name": "work.team.member",
+        "summary": "put a teammate on a Project's team as a team-member record, or take it off (the teammates module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.ref",
+        "summary": "the Project a record id, address or short name names: its id, address, short name and name",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.project.rename",
         "summary": "rename a Project from Records: its record, Drive folder and project list follow",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.chat.list",
         "summary": "the chats you may see: title, project, who, when, status, where it lives; open on the ones you are in",
         "reach": "anyone",
-        "effect": "read"
+        "effect": "read",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.chat.get",
@@ -114,7 +134,9 @@
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.chat.change",
@@ -132,7 +154,9 @@
         "name": "work.chat.move",
         "summary": "move a chat you are in to another Project",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.situation",
@@ -183,7 +207,9 @@
       {
         "name": "work.know.capture",
         "summary": "keep a session's lines so the Space's memory can answer from what was said; first-party modules only",
-        "reach": "modules"
+        "reach": "modules",
+        "projectArg": "project",
+        "projectIsRecord": true
       },
       {
         "name": "work.know.forget",
@@ -213,6 +239,7 @@
         "records.read",
         "records.create",
         "records.update",
+        "records.remove",
         "events.read",
         "drive.write",
         "grants.list",

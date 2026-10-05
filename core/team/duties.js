@@ -37,8 +37,8 @@ const row = r => { if (!r) return r; const d = { id: String(r.id), teammate: Str
   enabled: Boolean(r.enabled), started: Boolean(r.started), created_by: String(r.created_by), at: Number(r.at) };
   return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d) }; };
 
-/** @param {{ db: any, call: (tool: string, input: any) => Promise<any>, emit: (event: string, payload: any) => void }} deps */
-export function duties({ db, call, emit }) {
+/** @param {{ db: any, call: (tool: string, input: any) => Promise<any>, emit: (event: string, payload: any) => void, slugOf: (project: string) => Promise<string> }} deps slugOf: a project's short name for its record id, which the watchers module still keys by */
+export function duties({ db, call, emit, slugOf }) {
   const get = id => row(db.prepare("SELECT * FROM team_duties WHERE id = ?").get(String(id)));
   const must = id => { const d = get(id); if (!d) throw bad(`no duty ${id}`, "not_found"); return d; };
   /** watchers.* through the contract; a missing tool or a refusal reads as one error with watchers' own words. */
@@ -55,7 +55,7 @@ export function duties({ db, call, emit }) {
     return t;
   };
   const start = async d => {
-    await watchers("watchers.duty.create", { name: d.watcher, project: d.project, owner: { kind: "teammate", teammate: d.teammate },
+    await watchers("watchers.duty.create", { name: d.watcher, project: await slugOf(d.project), owner: { kind: "teammate", teammate: d.teammate },
       when: d.trigger, instruction: d.instruction, act: d.act });
     db.prepare("UPDATE team_duties SET started = 1 WHERE id = ?").run(d.id);
   };

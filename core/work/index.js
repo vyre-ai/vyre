@@ -325,6 +325,35 @@ export default {
         return { urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
+    ctx.tool("work.team.member", {
+      description: "Put a teammate (core/team) on a Project's team as a team-member record, or take it off. For the teammates module's own use.",
+      input: obj({ action: { type: "string", enum: ["add", "remove"] }, project: { type: "string" }, agent: { type: "string" }, role: { type: "string" }, instructions: { type: "string" } }, ["action", "project", "agent"]),
+      callers: ["module"],
+      run: async (input, extra) => {
+        kernelOf();
+        if (String((extra && extra.caller) || "") !== "module:team") throw Object.assign(new Error("work.team.member is the teammates module's"), { code: "denied" });
+        const made = await hubOf().teamMember({ action: input.action === "remove" ? "remove" : "add", project: String(input.project), agent: String(input.agent),
+          ...(typeof input.role === "string" ? { role: input.role } : {}), ...(typeof input.instructions === "string" ? { instructions: input.instructions } : {}) });
+        if (!made) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        return made;
+      },
+    });
+    ctx.tool("work.project.ref", {
+      description: "The Project a reference names (its record id, its address or its short name): { id, urn, slug, name }. Nothing is made, and a Project the caller may not read is not found. A part that holds only a short name asks this for the id before it keys anything by it.",
+      input: obj({ project: { type: "string" } }, ["project"]),
+      // The person's own surfaces and paired devices, and modules: never a model, a hook or an anonymous caller, who would otherwise be told a Project's id and name.
+      callers: ["cli", "local", "deck", "capsule", "device", "module"],
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const rec = await hubOf().projectOf(String(input.project || ""));
+        // The record again under the caller's own chain: what the caller may not read, it does not learn. A first-party module (the teammates, the harness) and the registry itself (module:vyred, turning a projectArg id into a short name) have no person behind them and is
+        // answered from the service's own read; an added module is not answered.
+        const viaModule = String((extra && extra.caller) || "").startsWith("module:");
+        const mine = !rec ? null : viaModule ? ((extra && extra.firstParty) || (extra && extra.caller) === "module:vyred" ? rec : null) : await k.records.get(await chainOf(extra), "project", rec.id).catch(() => null);
+        if (!rec || !mine) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
+      },
+    });
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),

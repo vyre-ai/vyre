@@ -53,6 +53,8 @@ export interface ToolEntry {
   projectArg?: string | string[];
   /** The input field (or fields) holding a folder: mapped to its project, and refused for an agent not granted that project (or for a folder in no project). */
   cwdArg?: string | string[];
+  /** The tool keys by the Project record's id: the registry checks an agent's grant on the short name as usual but hands the tool the id (or address) that was given. */
+  projectIsRecord?: true;
   /** Built in only, for an asked tool: an internal tool of this module that answers { to: [string] }, what one call acts on, so the person's yes binds that thing and not the whole tool. */
   target?: string;
   [experimental: `x-${string}`]: unknown;

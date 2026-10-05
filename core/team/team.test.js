@@ -22,14 +22,14 @@ import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
 // These tests are about the flow around a watcher (the CLI, a hook delivery, a duty), not the wall, and a hosted
 // runner has no bubblewrap profile: use the test seam. Production still fails closed (lib/sandbox/wall.js).
 testHooks.wall = OPEN_WALL;
-import { until, boot, git, GIT_ENV, bootGit, realSession, plantHook, commitOnDesign, setTestCommand } from "./team-fixture.js";
+import { until, boot, git, GIT_ENV, bootGit, realSession, plantHook, commitOnDesign, setTestCommand, recordOf } from "./team-fixture.js";
 
 test("team.add makes a teammate; team.list shows it asleep with an empty queue", async t => {
   const { tool, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design", brief: "visual design and UI copy" });
+  const tm = await tool("team.add", { project: project.record, role: "design", brief: "visual design and UI copy" });
   assert.equal(tm.agent, `design-${project.slug}`);
   assert.equal(tm.state, "asleep");
-  const [row] = await tool("team.list", { project: project.slug });
+  const [row] = await tool("team.list", { project: project.record });
   assert.equal(row.role, "design");
   assert.equal(row.queued, 0);
   assert.equal(row.state, "asleep");
@@ -37,20 +37,20 @@ test("team.add makes a teammate; team.list shows it asleep with an empty queue",
 
 test("team.add is asked: a bare mcp caller, a session and an agent get nothing without the person's words; the person's surface adds", async t => {
   const { tool, root, project, launches } = await boot(t);
-  const bare = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
+  const bare = await call("team.add", { project: project.record, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
   assert.equal(bare.error.code, "not_asked");
   const { session } = await realSession(root, tool, launches, project.slug);
-  const viaSession = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
+  const viaSession = await call("team.add", { project: project.record, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
   assert.equal(viaSession.error.code, "not_asked", "a session cannot add on its own say-so");
-  assert.ok((await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp:agent:kit", timeout: 20_000 })).error);
-  assert.equal((await tool("team.list", { project: project.slug })).length, 0);
-  assert.equal((await tool("team.add", { project: project.slug, role: "design" })).role, "design");
+  assert.ok((await call("team.add", { project: project.record, role: "design" }, { root, caller: "mcp:agent:kit", timeout: 20_000 })).error);
+  assert.equal((await tool("team.list", { project: project.record })).length, 0);
+  assert.equal((await tool("team.add", { project: project.record, role: "design" })).role, "design");
 });
 
 test("a request runs, the teammate closes it with team.done, and the result comes back", async t => {
   const { tool, project } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
-  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+  await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
+  const ask = await tool("team.ask", { to: "design", project: project.record, wait: true,
     text: 'vyre team.done {"result":"Split the form into 4 steps of 3 to 5 fields.","notes":"unchanged","reason":"test"}' });
   assert.equal(ask.state, "done");
   assert.match(ask.result, /4 steps/);
@@ -59,14 +59,14 @@ test("a request runs, the teammate closes it with team.done, and the result come
   assert.equal(status.teammate, `design-${project.slug}`);
   // The request's own state flips to "done" as soon as team.done is called, mid-turn; the
   // teammate itself is not free again (state "idle") until that turn has actually ended.
-  const row = await until(async () => { const [r] = await tool("team.list", { project: project.slug }); return r.state === "idle" ? r : null; }, "the teammate to go idle");
+  const row = await until(async () => { const [r] = await tool("team.list", { project: project.record }); return r.state === "idle" ? r : null; }, "the teammate to go idle");
   assert.equal(row.last_result.request, ask.request);
 });
 
 test("team.fail closes a request as failed, with why", async t => {
   const { tool, project } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "qa" });
-  const ask = await tool("team.ask", { to: "qa", project: project.slug, wait: true,
+  await tool("team.add", { project: project.record, role: "qa" });
+  const ask = await tool("team.ask", { to: "qa", project: project.record, wait: true,
     text: 'vyre team.fail {"reason":"the fixture has no login for this environment"}' });
   assert.equal(ask.state, "failed");
   assert.match(ask.result, /no login/);
@@ -74,9 +74,9 @@ test("team.fail closes a request as failed, with why", async t => {
 
 test("a turn that ends without team.done or team.fail closes the request as failed, not stuck", async t => {
   const { tool, project } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "writer" });
+  await tool("team.add", { project: project.record, role: "writer" });
   // No "vyre team.done ..." line: the fake driver just echoes this back and the turn ends.
-  const ask = await tool("team.ask", { to: "writer", project: project.slug, text: "draft the intake copy" });
+  const ask = await tool("team.ask", { to: "writer", project: project.record, text: "draft the intake copy" });
   const req = await until(async () => { const s = await tool("team.status", { request: ask.request }); return s.state !== "queued" && s.state !== "running" ? s : null; }, "the request to close");
   assert.equal(req.state, "failed");
   assert.match(req.result, /without team\.done or team\.fail/);
@@ -84,9 +84,9 @@ test("a turn that ends without team.done or team.fail closes the request as fail
 
 test("team.done is refused for another teammate's request, and for one that is not running", async t => {
   const { root, tool, project } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "design" });
-  await tool("team.add", { project: project.slug, role: "backend" });
-  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  await tool("team.add", { project: project.record, role: "design" });
+  await tool("team.add", { project: project.record, role: "backend" });
+  const ask = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
   assert.equal(ask.state, "done");
   // Called plainly (no agent key), team.done has no teammate to default to.
   const r = await call("team.done", { request: ask.request, result: "again" }, { root, caller: "mcp", timeout: 20_000 });
@@ -96,16 +96,16 @@ test("team.done is refused for another teammate's request, and for one that is n
 
 test("priority: urgent runs before normal and low queued ahead of it", async t => {
   const { tool, project } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "design" });
+  await tool("team.add", { project: project.record, role: "design" });
   // "subagent-slow ..." holds the fake driver's turn open for ~1.5s (it runs a fake subagent
   // before saying anything back), which holds the first request "running" long enough to queue
   // the second and third behind it and observe their order. It never calls team.done, so it
   // closes on its own as "the turn ended without team.done or team.fail" once it says its piece;
   // that is not what this test is about.
-  const first = await tool("team.ask", { to: "design", project: project.slug, priority: "normal", text: "subagent-slow hold this turn open" });
+  const first = await tool("team.ask", { to: "design", project: project.record, priority: "normal", text: "subagent-slow hold this turn open" });
   await until(async () => (await tool("team.status", { request: first.request })).state === "running", "the first request to be picked");
-  const low = await tool("team.ask", { to: "design", project: project.slug, priority: "low", text: 'vyre team.done {"result":"low","notes":"unchanged","reason":"test"}' });
-  const urgent = await tool("team.ask", { to: "design", project: project.slug, priority: "urgent", text: 'vyre team.done {"result":"urgent","notes":"unchanged","reason":"test"}' });
+  const low = await tool("team.ask", { to: "design", project: project.record, priority: "low", text: 'vyre team.done {"result":"low","notes":"unchanged","reason":"test"}' });
+  const urgent = await tool("team.ask", { to: "design", project: project.record, priority: "urgent", text: 'vyre team.done {"result":"urgent","notes":"unchanged","reason":"test"}' });
   assert.equal(low.state, "queued");
   assert.equal(urgent.state, "queued");
   await until(async () => (await tool("team.status", { request: first.request })).state !== "running", "the first request to finish", 8_000);
@@ -123,7 +123,7 @@ test("priority: urgent runs before normal and low queued ahead of it", async t =
 
 test("notes: team.notes set (a person) writes a version and the project's notes.md; get reads it back", async t => {
   const { tool, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  const tm = await tool("team.add", { project: project.record, role: "design" });
   const first = await tool("team.notes", { action: "set", agent: tm.agent, text: "# design\n\nScope: the intake form." });
   assert.equal(first.versions.length, 1);
   const second = await tool("team.notes", { action: "set", agent: tm.agent, text: "# design\n\nScope: the intake form.\n\nDone: split into 4 steps." });
@@ -141,7 +141,7 @@ test("notes: team.notes set (a person) writes a version and the project's notes.
 
 test("HIGH 2: team.notes part cannot traverse out of the teammate's own notes folder", async t => {
   const { tool, raw, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  const tm = await tool("team.add", { project: project.record, role: "design" });
   const r = await raw("team.notes", { action: "set", agent: tm.agent, part: "../../../../etc/passwd", text: "pwned" });
   assert.ok(r.error);
   assert.equal(r.error.code, "bad_input");
@@ -151,7 +151,7 @@ test("HIGH 2: team.notes part cannot traverse out of the teammate's own notes fo
 
 test("HIGH 2: team.notes part is checked against the teammate's own parts, not just its shape", async t => {
   const { tool, raw, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  const tm = await tool("team.add", { project: project.record, role: "design" });
   // "other" looks like a perfectly fine slug (PART's old shape check would have allowed it), but
   // this teammate has no such part: sharing (ADR 0031 section 3's per-project parts) is not
   // built yet, so nothing but "general" is a real part for any teammate today.
@@ -181,18 +181,19 @@ test("HIGH 3: a result containing the wrapper's own closing tag is never sent as
 });
 
 test("HIGH 1 (core/team's own part, e2e round 3): a bare 'mcp' caller with no thread or agent cannot claim another project through input.project", async t => {
-  const { tool, project: projectA } = await boot(t);
-  await tool("team.add", { project: projectA.slug, role: "backend" });
+  const { tool, project: projectA, root } = await boot(t);
+  await tool("team.add", { project: projectA.record, role: "backend" });
   const projectB = await tool("projects.create", { name: "Northwind Bakery" });
-  const ops = await tool("team.add", { project: projectB.slug, role: "ops" });
+  projectB.record = await recordOf(root, projectB);
+  const ops = await tool("team.add", { project: projectB.record, role: "ops" });
   // After the daemon's fix (a forged cli/local/deck/capsule label from under a Claude session
   // becomes plain "mcp"), the caller here has no thread and no agent: exactly the shape a person
   // surface also has, which is why projectOf must check PERSON.has(callerKind(caller)) and not
   // just "neither a thread nor an agent" before trusting input.project.
-  const forged = JSON.stringify({ to: "ops", project: projectB.slug, text: "planted by a forged project claim" });
-  const ask = await tool("team.ask", { to: "backend", project: projectA.slug, wait: true, text: `bareforge cli team.ask ${forged}` });
+  const forged = JSON.stringify({ to: "ops", project: projectB.record, text: "planted by a forged project claim" });
+  const ask = await tool("team.ask", { to: "backend", project: projectA.record, wait: true, text: `bareforge cli team.ask ${forged}` });
   assert.equal(ask.state, "failed"); // backend's own turn never reaches team.done: it only forges the one call
-  const [opsRow] = await tool("team.list", { project: projectB.slug });
+  const [opsRow] = await tool("team.list", { project: projectB.record });
   assert.equal(opsRow.agent, ops.agent);
   assert.equal(opsRow.queued, 0);
   assert.equal(opsRow.current_request, null);
@@ -203,9 +204,9 @@ test("HIGH 1 (core/team's own part, e2e round 3): a bare 'mcp' caller with no th
 
 test("rotation: a 7-day-old thread is retired; the fresh one carries the teammate's notes and last results forward", async t => {
   const { tool, root, project, launches } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  const tm = await tool("team.add", { project: project.record, role: "design" });
   await tool("team.notes", { action: "set", agent: tm.agent, text: "Scope: the intake form." });
-  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first pass done","notes":"unchanged","reason":"test"}' });
+  const first = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"first pass done","notes":"unchanged","reason":"test"}' });
   assert.equal(first.state, "done");
 
   const db = openStore(paths(root).db);
@@ -216,7 +217,7 @@ test("rotation: a 7-day-old thread is retired; the fresh one carries the teammat
   db.prepare("UPDATE threads_runs SET started_at = ? WHERE id = ?").run(Date.now() - 8 * 24 * 60 * 60 * 1000, before);
   db.close();
 
-  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"after rotation","notes":"unchanged","reason":"test"}' });
+  const second = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"after rotation","notes":"unchanged","reason":"test"}' });
   assert.equal(second.state, "done");
 
   const db2 = openStore(paths(root).db);
@@ -252,13 +253,13 @@ test("rotation's context: notes and results are wrapped, nonce'd, capped, and an
 
 test("rotation: a thread well under the age and turn thresholds is resumed, not retired", async t => {
   const { tool, root, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
-  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first","notes":"unchanged","reason":"test"}' });
+  const tm = await tool("team.add", { project: project.record, role: "design" });
+  const first = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"first","notes":"unchanged","reason":"test"}' });
   assert.equal(first.state, "done");
   const db = openStore(paths(root).db);
   const before = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
   db.close();
-  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"second","notes":"unchanged","reason":"test"}' });
+  const second = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"second","notes":"unchanged","reason":"test"}' });
   assert.equal(second.state, "done");
   const db2 = openStore(paths(root).db);
   const after = /** @type {any} */ (db2.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
@@ -280,7 +281,7 @@ test("rotation: a thread well under the age and turn thresholds is resumed, not 
 
 test("summon: a real session's own thread, bound the way its SessionStart hook would, resolves its project without being told", async t => {
   const { tool, root, project, launches } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
   const { session } = await realSession(root, tool, launches, project.slug);
   const [row] = await tool("team.list", {}, "cli", { session });
   assert.equal(row.agent, `design-${project.slug}`);
@@ -288,7 +289,7 @@ test("summon: a real session's own thread, bound the way its SessionStart hook w
 
 test("summon: that same session can team.ask, and the result posts back into its own thread", async t => {
   const { tool, root, project, launches } = await boot(t);
-  await tool("team.add", { project: project.slug, role: "design" });
+  await tool("team.add", { project: project.record, role: "design" });
   const { session } = await realSession(root, tool, launches, project.slug);
   const ask = await tool("team.ask", { to: "design", wait: true, text: 'vyre team.done {"result":"from a real session","notes":"unchanged","reason":"test"}' }, "cli", { session });
   assert.equal(ask.state, "done");
@@ -299,3 +300,48 @@ test("summon: that same session can team.ask, and the result posts back into its
 
 // --- team.retire (the Deck's handoff card Undo, and the assistant's own tool) ---------------------
 
+
+test("a teammate's project is the Project record's id: its address names the same project, a short name is refused, and the teammate is a team-member record on it", async t => {
+  const { tool, raw, project } = await boot(t);
+  const ref = await tool("work.project.ref", { project: project.slug });
+  assert.equal(ref.id, project.record);
+  assert.equal(ref.urn.endsWith(`/project/${ref.id}`), true);
+  assert.equal((await raw("team.add", { project: project.slug, role: "design" })).error.code, "bad_input", "a short name is not a Project's id");
+  const tm = await tool("team.add", { project: ref.urn, role: "design", brief: "visual design" });
+  assert.equal(tm.project, project.record, "the row holds the id, whichever way the project was named");
+  assert.equal(tm.agent, `design-${project.slug}`, "the agent's name is made once from the short name");
+  assert.deepEqual((await tool("team.list", { project: ref.urn })).map(x => x.role), ["design"]);
+  assert.deepEqual((await tool("team.list", { project: ref.id })).map(x => x.role), ["design"]);
+  // Records' view of the team: one team-member record, linked to the Project
+  const members = async () => (await tool("records.list", { type: "team-member" })).rows.filter(r => r.data && r.data.project && r.data.project.urn === ref.urn);
+  const rows = await until(async () => { const r = await members(); return r.length ? r : null; }, "the team-member record");
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].data.name, rows[0].data.role, rows[0].data.kind], [tm.agent, "design", "assistant"]);
+  await tool("team.retire", { teammate: tm.agent });
+  await until(async () => (await members()).length === 0, "the team-member record to go");
+});
+
+test("one keying scheme: a tool that declares projectArg takes the Project record's id or address as well as the short name, and an id Records does not know is not_found", async t => {
+  const { tool, raw, project } = await boot(t);
+  const ref = await tool("work.project.ref", { project: project.slug });
+  for (const named of [project.record, ref.urn, project.slug]) {
+    const ctxt = await tool("projects.context", { project: named });
+    assert.equal(ctxt.project, project.slug, `projects.context for ${named}`);
+  }
+  const th = await tool("threads.start", { project: project.record, prompt: "hello there" });
+  const got = await tool("threads.get", { thread: th.id });
+  assert.equal(got.thread.project, project.slug, "the thread is in the project the id named");
+  const unknown = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f";
+  assert.equal((await raw("projects.context", { project: unknown })).error.code, "not_found");
+  assert.equal((await raw("threads.start", { project: unknown, prompt: "x" })).error.code, "not_found");
+});
+
+test("work.project.ref answers a person and a first-party module, and nobody else: an anonymous caller, a model and a hook get nothing", async t => {
+  const { tool, raw, project } = await boot(t);
+  assert.equal((await tool("work.project.ref", { project: project.slug })).id, project.record);
+  for (const caller of ["anonymous", "mcp", "harness", "hook"]) {
+    const r = await raw("work.project.ref", { project: project.slug }, caller);
+    assert.ok(r.error && !r.data, `${caller} is refused`);
+  }
+  assert.equal((await raw("work.project.ref", { project: "no-such-project" })).error.code, "not_found");
+});
