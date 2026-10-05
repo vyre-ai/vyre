@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel/placement): node placement is decided by node descriptor records. `kernel/placement` holds the descriptor shape (capabilities, resources, residency, posture, lend policy), its signature by the node's own key (an edited or unsigned record decides nothing), and one scheduler: two-way consent (Space policy and lend policy), capability, resource, residency and posture fit, online, power, awake and CPU and memory ceilings, then locality, the preferred node, load and uptime. It answers with `workload.placed` (and what it passed over) or `workload.refused` with a code and plain reasons. `core/runner/placement.js` no longer has its own rules: it builds this computer and the server as node facts and maps the answer to here, server or wait with the same words as before. The scheduler is named non-base in `kernel/size.test.js` (a decision, never an enforcement).
+- feat(kernel/gateway): `records.reference(chain, type, id)`, the kernel side of `#contact`: one read under the caller's grants, then every sealed part (and any part a group room may not read) is a `{{field:urn#name}}` placeholder in `fields` and `text`, whoever asks, so the AI reasons over the rest and can use the token in an action. A value cannot forge a token (its braces are broken in the text). Declared in `kernel/contracts/gateway.d.ts`.
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
