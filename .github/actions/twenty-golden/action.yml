@@ -1,0 +1,25 @@
+# The saved Twenty database a new Space starts from (stores/twenty/provision.js findGolden): built once per pinned Twenty image and per change to the core types, kept in the Actions cache, and
+# left in stores/twenty/golden so the next `npm pack` (package.json "files") carries it into the image. Needs Docker (every GitHub runner has it) and takes about ten minutes when not cached.
+# Use it before any step that packs the release or the box image.
+name: twenty-golden
+description: Build or restore stores/twenty/golden for the pinned Twenty image
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: |
+        k=$(cat stores/twenty/provision.js records/core-types.js records/kits/library/* stores/twenty/live/build-golden.mjs stores/twenty/space-store.js 2>/dev/null | sha256sum | cut -c1-24)
+        echo "k=$k" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: stores/twenty/golden
+        key: twenty-golden-${{ steps.key.outputs.k }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: node stores/twenty/live/build-golden.mjs stores/twenty/golden
+    - shell: bash
+      run: |
+        ls -l stores/twenty/golden
+        test -s stores/twenty/golden/*.dump
