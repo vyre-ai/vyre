@@ -143,7 +143,7 @@ async function main() {
     // THE RELAY FALLBACK: the direct path dies (the home drops the server's UDP and its TCP to the gate, before connection tracking), the relay is untouched. The link must move to the relay and a call must still
     // cross, run by the home's door as the same server and still limited to the status read; then the direct path comes back and the link prefers it again.
     blockDirect(true, ips);
-    const viaRelay = await until(() => { const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "relay" ? s : null; }, 150_000, "the link to fall back to the relay").catch(() => null);
+    const viaRelay = await until(() => { try { ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 20 }); } catch { /* a call that finds the direct path dead is what moves the link (probes run on demand, never on a timer) */ } const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "relay" ? s : null; }, 150_000, "the link to fall back to the relay").catch(() => null);
     check("direct path blocked: the server's link falls back to the RELAY", Boolean(viaRelay), viaRelay || ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }));
     let relayErr = null;
     const relayCall = await until(() => { try { const r = ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 30 }); relayErr = r.error || null; return r.error ? null : r; } catch (e) { relayErr = String(e.message).slice(0, 300); return null; } }, 90_000, "a call over the relay").catch(() => null);
