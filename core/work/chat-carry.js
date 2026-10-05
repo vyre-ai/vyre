@@ -7,17 +7,18 @@
 /**
  * @param {{ to: { space: string, chain: any, chats: { create(chain: any, o: any): Promise<any>, change(chain: any, id: string, c: any): Promise<any> }, members?: { roleOf(a: any): string | null } },
  *   src: any, newRoot: string }} o src: the old chat-record's data
+ * @param {boolean} [o.moverIn] whether the mover is in the chat in the source, as the kernel says (else the record's people say)
  * @param {string} [o.id] a chat keeps its id when it moves between a person's own Spaces (the upgrade); a project move makes a new one
  * @returns {Promise<{ chat: string, people: string[], agents: string[], former: string[], moverOnly: boolean, skipped?: boolean }>}
  */
-export async function carryChat({ to, src, newRoot, id }) {
+export async function carryChat({ to, src, newRoot, id, moverIn }) {
   const ids = (/** @type {any} */ v) => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
   const mover = String(to.chain && to.chain.hops && to.chain.hops[0] && to.chain.hops[0].actor && to.chain.hops[0].actor.id || "");
   const was = ids(src.people);
   const isMember = (/** @type {string} */ id) => !to.members || to.members.roleOf({ kind: "person", id, space: to.space }) != null;
   // A chat the mover was not in does not move: its files cannot be carried by someone who is not in it (the move's carry refuses them), and a record must never move without its files. It stays in the
   // source Space with its people, and the move names it.
-  if (mover && !was.includes(mover)) return { skipped: true, chat: "", people: [], agents: [], former: [...was, ...ids(src.agents)], moverOnly: false };
+  if (mover && !(moverIn !== undefined ? moverIn : was.includes(mover))) return { skipped: true, chat: "", people: [], agents: [], former: [...was, ...ids(src.agents)], moverOnly: false };
   const keep = was.filter(isMember);
   /** @type {string[]} */ const former = was.filter(p => !isMember(p));
   // The mover never gains a chat they were not in (per-chat privacy): if nobody who was in it is a member of the target, the chat does not carry. It stays in the source Space with its people.

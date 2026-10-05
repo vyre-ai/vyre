@@ -165,7 +165,9 @@ export async function runMove({ from, to, plan, ports = {} }) {
       if (!cur) continue;
       const old = String(cur.data.chat || "");
       if (state.chatMap[old]) continue; // carried by an earlier attempt
-      const c = await carryChat({ to, src: cur.data, newRoot: target.data.drive_path });
+      // whether the mover is in the chat is the kernel's own answer, the same rule the move's carry applies to the files (network-2: drive.read on a chat folder is chatHas): never the record's mirror of people
+      const mine = from.chats && typeof from.chats.mineIds === "function" ? new Set(from.chats.mineIds(from.chain)) : null;
+      const c = await carryChat({ to, src: cur.data, newRoot: target.data.drive_path, ...(mine ? { moverIn: mine.has(old) } : {}) });
       if (c.skipped) {
         // nobody who was in it is a member here: it stays in the source Space with its people; the target's copy of its record goes, and the move report names it
         ;(state.leftChats ||= {})[old] = { title: String(cur.data.title || ""), urn: r.urn };

@@ -235,10 +235,6 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
     if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));
     const moved = await kernel.records.update(by, CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
-    // the old folder list still counts each run as picked into the project it was in
-    const oldSlug = rec.data.project && rec.data.project.urn ? (await projectOf(rec.data.project.urn).catch(() => null)) : null;
-    const runs = ((await tool("threads.of-chat", { chat })) || {}).runs || [];
-    for (const r of runs) { await tool("projects.remove-threads", { project: oldSlug && oldSlug.data.slug, threads: [r.thread] }); await tool("projects.add-threads", { project: proj.data.slug, threads: [r.thread] }); }
     return moved;
   }
 

@@ -398,3 +398,21 @@ test("the carry's two answer shapes are read alike, and a carry that skips the f
   await assert.rejects(() => runMove({ from: s2.a, to: s2.b, plan: plan2, ports: { move_id: "mvs2" } }), /** @param {any} e */ e => e.code === "verify_failed" && /skipped the files of a chat/.test(e.message));
   assert.deepEqual(removed, [], "nothing was removed from the old Space");
 });
+
+test("whether the mover is in a chat is the kernel's answer (chats.mineIds), not the record's mirror of people: the move's carry applies the same rule to the files", async () => {
+  const a = space("A", ["project", "chat-record"]), b = space("B", ["project", "chat-record"]);
+  const proj = await a.records.create(null, "project", { name: "Rivera", slug: "rivera", status: "active", memory_scope: "project:rivera" });
+  await a.records.update(null, "project", proj.id, { drive_path: `Projects/${proj.id}` });
+  // the record's mirror says the mover is in "Mirror only" and is not in "Really in"; the kernel says the opposite
+  await a.records.create(null, "chat-record", { title: "Mirror only", chat: "chat_m", project: { urn: proj.urn }, people: "per_a,per_mover", agents: "", status: "idle" });
+  await a.records.create(null, "chat-record", { title: "Really in", chat: "chat_r", project: { urn: proj.urn }, people: "per_a", agents: "", status: "idle" });
+  /** @type {any} */ (a).chats = { mineIds: () => ["chat_r"] };
+  /** @type {any[]} */ const made = [];
+  /** @type {any} */ (b).members = { roleOf: (/** @type {any} */ x) => (["per_a", "per_mover"].includes(x.id) ? "member" : null) };
+  /** @type {any} */ (b).chain = { who: "B", hops: [{ actor: { kind: "person", id: "per_mover" } }] };
+  /** @type {any} */ (b).chats = { create: async (/** @type {any} */ _c, /** @type {any} */ o) => { const c = { id: `chat_new${made.length + 1}`, people: ["per_mover", ...o.people], assistants: [] }; made.push(c); return c; }, change: async (/** @type {any} */ _c, /** @type {string} */ id) => ({ ...made.find(x => x.id === id) }) };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const done = await runMove({ from: a, to: b, plan, ports: { move_id: "mvk" } });
+  assert.deepEqual([...b.rows.values()].filter(r => r.type === "chat-record").map(r => r.data.title), ["Really in"]);
+  assert.deepEqual(done.chats_left_behind, [{ chat: "chat_m", title: "Mirror only" }]);
+});
