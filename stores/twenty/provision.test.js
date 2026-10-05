@@ -224,7 +224,7 @@ test("a Space made from the saved database: its compose file restores it once, s
   assert.match(g, /\n  restore:\n/);
   assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
   assert.match(g, /\$\{GOLDEN_DUMP:-\.\/golden\.dump\}:\/golden\.dump:ro/);
-  assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
+  assert.match(g, /pg_restore -h db -U postgres -d default --clean --if-exists --no-owner --no-acl --exit-on-error/);
   for (const reset of [/DELETE FROM core\.\\"appToken\\";/, /DELETE FROM core\.\\"userSession\\";/, /DELETE FROM core\.\\"apiKey\\";/, /\\"oAuthClientSecretHash\\" = encode\(sha256\(gen_random_uuid\(\)/, /\\"inviteHash\\" = gen_random_uuid\(\)/]) assert.match(g, reset, "nothing shared stays: " + reset);
   assert.match(g, /to_regclass\('public\.vyre_golden'\)/, "a finished restore is skipped");
   assert.match(g, /pg_restore .* --clean --if-exists /, "and a half one is restored over");
