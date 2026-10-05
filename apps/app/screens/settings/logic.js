@@ -88,6 +88,7 @@ function all(/** @type {string} */ space) {
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
+      ["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"],
       ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
