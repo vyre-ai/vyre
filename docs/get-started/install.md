@@ -26,8 +26,8 @@ to install are at the end, in [Other ways to install](#other-ways-to-install).
 - [ ] Size: one space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow. If a server has too little free memory for Twenty, the installer says so and Vyre offers the small built-in store instead.
 - [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok
       account if you want them. You can add them later in Settings.
-- [ ] A phone or a Mac with the Vyre app. A browser holds no key, so it cannot start setup: it
-      connects to a Vyre that is already set up.
+- [ ] A phone or a Mac with the Vyre app. In some browsers you start from your phone, and a browser
+      otherwise connects to a Vyre that is already set up.
 
 > [!WHY] Do I need a VPN or another network app?
 > No. Vyre has its own private network built in, so your server, your computers and your phone
@@ -41,7 +41,7 @@ Android are built from the repository today (see [On your phone](../using/mobile
 screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do
 you have your own server, or are you joining a team?* Choosing **I am joining a team** makes your
 name and connects this device with a code. Choosing **I have my own server** sets up My Cloud on
-it. The steps below follow the first path and create your own space.
+it. The steps below follow **I have my own server**.
 
 Then the app asks you to choose your Vyre name. It is how people find you. Vyre makes a key for
 the name on this device, and the key stays here. A name needs at least three letters, and the app
@@ -83,7 +83,7 @@ not root, and paste the line the app shows. On a Linux server it looks like this
 curl -fsSL vyre.run/i | sh
 ```
 
-Press **I ran it** in the app when it has finished.
+A prerelease build of the app shows a different line, one that fetches that release's own installer from GitHub; a stable build shows the line above. Press **I ran it** in the app when it has finished.
 
 The installer asks for `sudo` itself, only for what needs it: Docker, the `/srv/vyre` folder and
 `/usr/local/bin/vyre`. It asks before it installs anything. If Docker is missing it asks
@@ -117,9 +117,9 @@ Near the end the terminal asks you to pair this server from your Vyre app:
 > An earlier install is running here. `vyre update` updates it. To start over, run
 > `vyre uninstall --keep-data`, then paste the line again. Your data stays.
 
-> [!SNAG] The page keeps saying "Waiting for your server"
-> Check the line finished in the terminal. The code lasts one hour; after that, press **Start
-> again** on the page for a fresh line.
+> [!SNAG] **Pair your server** shows nothing to scan
+> Check the line finished in the terminal, then run the line again, or run `vyre call
+> wink.server.code '{"qr":true}'` on the server.
 
 ::: tabs
 ::: tab A Mac that stays on
@@ -147,8 +147,9 @@ scan the QR; on a computer, paste the long code into the field.
 
 ![Pair your server: the server's terminal shows a long code, and the phone has a field to paste it](shots/first-run-pair-code.png "Pair your server")
 
-The server's terminal then shows three words for each way in and asks you to pick the ones the
-app shows. The app shows the same three words and asks you to confirm only if they match:
+The app then shows three words and waits. The server's terminal shows three words for each way in
+and asks you to pick the set the app shows. Say yes at the server only if it shows the same words,
+or press **Not the same** in the app:
 
 ```output
   <Name> is asking to pair this server. Pick the three words your app shows:
@@ -158,7 +159,7 @@ app shows. The app shows the same three words and asks you to confirm only if th
   Which one? (1, 2 or 3, Enter to refuse)
 ```
 
-![Pair your server, second step: the terminal says the words are maple copper island, and the phone shows three choices](shots/first-run-pair-words.png "Check the three words")
+![Pair your server, second step: the terminal says the words are maple copper island, and the phone shows three choices](shots/first-run-pair-words.png "Pair your server")
 
 A wrong pick prints `Those were not the words the app shows, so nothing was paired.` and offers to
 try again. If five minutes pass before a device asks, it prints `The code ran out before a device
@@ -181,8 +182,8 @@ your device once it has paired.` To show the code again later, run `vyre call wi
 
 ## 5. Finish setting up the space
 
-Setup carries on by itself on the device it started on. Each screen has a **Later** or **Skip**
-where you can come back to it:
+Setup carries on by itself on the device it started on. Most screens have **Later**, so
+you can come back to them:
 
 - **Give the space a look.** Pick a colour (Violet, Amber, Sky, Sage or Rose) for how its mark
   shows on every screen. You can change it later.

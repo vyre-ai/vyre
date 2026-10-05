@@ -28,7 +28,7 @@ Personal also shows where it is backed up: **Backed up, encrypted, to** the team
 
 ## My Cloud
 
-When you set up Vyre, the app asks one question: do you have your own server, or are you joining a team? **I have my own server** sets up My Cloud. A computer shows the one line to run on the server and then asks you to type the code the server shows. A phone is sent the setup link and never an install line. The steps are in [Install](../get-started/install.md).
+When you set up Vyre, the app asks one question: do you have your own server, or are you joining a team? **I have my own server** sets up My Cloud. A computer shows the one line to run on the server and then asks you to scan or paste the code the server shows, and to confirm three words. A phone is sent the setup link and never an install line. The steps are in [Install](../get-started/install.md).
 
 To make a Mac the server, open Settings on the Mac and choose to make it the server for My Cloud. The Mac must stay on, and it runs Records for My Cloud.
 

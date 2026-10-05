@@ -48,8 +48,8 @@ sign-in**).
    browser menu, then **Install app**.
 4. Open it from the icon and turn on notifications when Now offers them.
 
-Step 4 pairs your Mac with the server. The phone's Now then shows "A Mac wants to pair" with a
-code: type the code the Mac printed, press **Approve**, and confirm with Face ID. A Mac can't
+Step 4 pairs your Mac with the server. The phone's Now then shows "A Mac wants to pair". Press
+**Approve** only if it is your Mac, and confirm with Face ID. A Mac can't
 approve itself, which is why the phone comes first ([known gaps](../known-gaps.md)).
 
 **Check:** on the Mac, once step 4 is done, `vyre link` says "linked to" and names your server.
