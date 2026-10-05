@@ -47,7 +47,7 @@ export function lentServiceFor(o) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"].map(n => [n, refuse])));
     }
-    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
+    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
     live.set(space, made);
     return made;

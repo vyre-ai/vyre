@@ -46,7 +46,7 @@ async function rig(t, o = {}) {
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
   const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, leases: k.gateway.leases, lenderCap: () => o.cap,
+  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap,
     specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };
@@ -317,11 +317,15 @@ test("a restart reconciles: the session that outlived the daemon is ended and th
   } finally { for (const m of [m1, ...later]) await m.stop().catch(() => {}); }
 });
 
-test("a lent session may name its chat: stored in the home's own table, checked for shape, never on the wire", async t => {
+test("a lent session may name its chat: kept only when the lender's person is in that chat, shape-checked, never on the wire", async t => {
   const r = await rig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  const chat = "chat_01234567-89ab-cdef-0123-456789abcdef";
-  await c.spec({ session: "s1", chat }); await c.spec({ session: "s2" });
-  assert.deepEqual(r.home.rows().sort((a, b) => a.session.localeCompare(b.session)), [{ session: "s1", device: "dev_laptop", chat }, { session: "s2", device: "dev_laptop" }]);
+  const carol = r.k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  const mine = await r.g.chats.create(r.bob, { people: [] }), theirs = await r.g.chats.create(carol, { people: [] });
+  await c.spec({ session: "s1", chat: mine.id }); await c.spec({ session: "s2" }); await c.spec({ session: "s4", chat: theirs.id });
+  assert.deepEqual(r.home.rows().sort((a, b) => a.session.localeCompare(b.session)), [{ session: "s1", device: "dev_laptop", chat: mine.id }, { session: "s2", device: "dev_laptop" }, { session: "s4", device: "dev_laptop" }],
+    "someone else's chat is dropped: the session runs but is not shown as that chat's");
+  await c.spec({ session: "s5", chat: "chat_00000000-0000-4000-8000-000000000000" });
+  assert.equal(r.home.rows().find(x => x.session === "s5").chat, undefined, "a chat that does not exist is dropped");
   await assert.rejects(c.spec({ session: "s3", chat: "../../x" }), e => e.code === "bad_input", "a chat is named by its id");
   assert.equal(r.home.rows().some(x => x.session === "s3"), false, "a bad chat starts nothing");
   assert.ok(r.home.rows().every(x => !("key" in x)), "a row carries no device key");

@@ -83,7 +83,9 @@ export function createLentHome(o) {
       const had = lent.get(String(i.session));
       if (had && had.person !== w.person) throw err("not_found", "not found");
       if (i.chat !== undefined && !(typeof i.chat === "string" && /^chat_[0-9a-f-]{36}$/.test(i.chat))) throw err("bad_input", "a chat is named by its id");
-      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(i.chat ? { chat: i.chat } : {}) });
+      // The lender names the chat, so the home believes it only when that person is in that chat (the kernel's own read decision): otherwise the session runs and the chat is dropped, never shown as running here.
+      const chat = i.chat && o.chatHas && (await Promise.resolve(o.chatHas(chain, i.chat)).catch(() => false)) === true ? i.chat : null;
+      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null };
     },
