@@ -101,7 +101,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DECK_FIXTURES` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
-| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
+| `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
 | `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
