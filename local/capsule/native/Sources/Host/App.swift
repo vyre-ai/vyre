@@ -26,7 +26,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let viewCommands: ViewCommandsProvider
     var viewSub: VyredSubscription?
     var loosenedSub: VyredSubscription?
-    /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
+    /// The box's alarms and reminders ringing here, from /v1/wink/server-events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring

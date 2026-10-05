@@ -1,7 +1,7 @@
 // capsule-suite: boxLinkSuite
 // A Mac paired to a server asks the server for the assistant, memory and agents (Vyred/BoxLink.swift, #36). The user's Mac said
 // "there is no assistant on this Vyre" while their assistant was on their server, because Lumen asked the Mac's own vyred.
-// A FakeVyred stands in for the Mac's vyred: it has wink.server.home and wink.server.call, and proxies the box's events at /v1/link/events.
+// A FakeVyred stands in for the Mac's vyred: it has wink.server.home and wink.server.call, and proxies the box's events at /v1/wink/server-events.
 
 import Foundation
 

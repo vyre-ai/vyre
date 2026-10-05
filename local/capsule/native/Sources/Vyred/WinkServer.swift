@@ -5,16 +5,21 @@
 //   wink.server.call   { tool, input, device? } -> the server tool's own answer, or { error: { code, message } }
 //
 // What the contract does not say yet (assumed here, one line sent to network): the address and name sit under `box` as link.status had them, `reachable` may be absent (read as true when linked),
-// an unreachable server answers with an error code in `unreachableCodes`, and the server's events still arrive on /v1/link/events. There is no health tool, no sleep tool and no wake tool: the menu bar's
-// link line and the sleep and wake hellos stay behind `has(...)` and say nothing until one exists.
+// an unreachable server answers with an error code in `unreachableCodes`, and the server's events arrive on /v1/wink/server-events (SSE: id, event name = type, data = the event plus source "box"; link.down and link.up when the server goes away or
+// comes back). Final shapes from network-2 (work/network2-srv 91723e204): home is { linked, reachable, box: { device, name, address }, lastSeen, via }, health is { state: connected | relayed |
+// offline, path, latencyMs, since, why? }. There is no sleep tool or wake tool yet: the Mac's hellos stay behind `has(...)` and say nothing until one exists.
 
 import Foundation
 
 public enum WinkServer {
     public static let home = "wink.server.home"
     public static let call = "wink.server.call"
+    /// The link line for the menu bar: { state, path, latencyMs, since, why? }. Cached 15 s on the server.
+    public static let health = "wink.server.health"
     /// The server's thread, ask and memory events, proxied by this Mac's vyred (assumed unchanged).
-    public static let eventsPath = "/v1/link/events"
+    public static let eventsPath = "/v1/wink/server-events"
+    /// Events about the link itself, not a thread: the server went away, or came back.
+    public static let linkDown = "link.down", linkUp = "link.up"
     /// Error codes that mean the server is not there (as opposed to slow or refusing).
     public static let unreachableCodes: Set<String> = ["box_unreachable", "server_unreachable", "no_link", "unpaired"]
 

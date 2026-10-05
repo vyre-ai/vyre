@@ -59,6 +59,9 @@ let snapshotSuite = Suite("snapshots") { t in
         t.eq(LinkLine.from(["path": "relay", "relay": "fra", "latencyMs": 80], now: now)?.path, "relayed via fra 80 ms")
         t.eq(LinkLine.from(["path": "unknown", "why": "the node is offline"], now: now)?.path, "offline")
         t.eq(LinkLine.from([:], now: now), nil)
+        t.eq(LinkLine.from(["state": "relayed", "path": "relay", "latencyMs": 80], now: now)?.path, "relayed 80 ms")
+        t.eq(LinkLine.from(["state": "connected", "latencyMs": 9], now: now)?.dot, .direct)
+        t.eq(LinkLine.from(["state": "offline", "path": "none", "why": "the server did not answer"], now: now)?.handshake, "the server did not answer")
     }
 
     t.test("each state draws") {

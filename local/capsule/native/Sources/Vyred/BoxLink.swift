@@ -2,11 +2,11 @@
 //
 // The Mac's own vyred knows none of them: its agents.list has no assistant, so Lumen said "there is no assistant on this Vyre"
 // while the person's assistant was on their server. A paired Mac's vyred offers `wink.server.call {tool, input}` (WinkServer.swift) (a tool on the box)
-// and proxies the box's events at /v1/link/events (docs/concepts/box-and-mac.md). This file uses both:
+// and proxies the box's events at /v1/wink/server-events (docs/concepts/box-and-mac.md). This file uses both:
 //
 //   - The asks that belong to the server (agents.*, memory.*, learn.lessons) go through link.call when link.status says the Mac
 //     is linked. So do the thread calls for a thread the server owns (one an agents.ask started, one its lists named).
-//   - The server's thread, ask and memory events are followed on /v1/link/events (WinkServer.eventsPath) and handed to the same subscribers as the Mac's
+//   - The server's thread, ask and memory events are followed on /v1/wink/server-events (WinkServer.eventsPath) and handed to the same subscribers as the Mac's
 //     own, so a reply from the server draws as it arrives.
 //   - Everything else stays on this Mac: apps, files, clipboard, the Mac's own sessions, the vault, presence, the Gate.
 //   - When the server cannot be reached the call says so in words; nothing falls back to the Mac's empty answer.
@@ -26,7 +26,7 @@ public final class BoxLink: @unchecked Sendable {
         "threads.thinking", "threads.model", "threads.answer", "threads.asks",
     ]
     /// The server's events Lumen follows, as the Mac's own are.
-    static let eventTypes = ["thread.*", "ask.*", "memory.*"]
+    static let eventTypes = ["thread.*", "ask.*", "memory.*", "link.*"]
 
     private let lock = NSLock()
     private var isLinked = false
@@ -150,6 +150,11 @@ public final class BoxLink: @unchecked Sendable {
                         guard let self, let client else { return }
                         self.lock.lock(); let ok = gen == self.generation; self.lock.unlock()
                         guard ok else { return }
+                        // The server went away or came back: the same state a failed call sets, said at once.
+                        if e.type == WinkServer.linkDown || e.type == WinkServer.linkUp {
+                            self.lock.lock(); if self.isLinked { self.isReachable = e.type == WinkServer.linkUp }; self.lock.unlock()
+                            return
+                        }
                         // The server's thread is the server's: its follow-ups go there. Its ids never touch the Mac's own resume point.
                         self.adopt(thread: e.thread)
                         client.dispatch(e)
