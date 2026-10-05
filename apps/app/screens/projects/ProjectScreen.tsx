@@ -1,17 +1,22 @@
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { EmptyState, ErrorState, PageHeader, ProjectView, SkeletonRows, projectHeader, useProject, useTaskActions } from "@vyre/ui";
+import { EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, projectHeader, useProject, useTaskActions } from "@vyre/ui";
+import { TeamTab } from "../teammates/TeamTab";
+import { slugOf } from "../teammates/model";
 
 /** /u/project/:id: a record of a type that holds work, as a project: stages made of tasks, the team, linked records, chats and files. */
 export default function ProjectScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useProject(String(id));
+  const [tab, setTab] = useState<"project" | "team">("project");
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(q.data?.world, go);
   const back = () => (router.canGoBack() ? router.back() : router.replace("/u/projects" as never));
   const f = q.data?.found;
   const h = f && q.data ? projectHeader(q.data.world, f.def, f.row) : null;
+  const slug = f ? slugOf(f.row, h?.title ?? "") : "";
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} />
@@ -19,7 +24,13 @@ export default function ProjectScreen() {
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
-          : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} />}
+          : (
+            <>
+              <Segmented label="Project" value={tab} onChange={setTab} options={[["project", "Project"], ["team", "Team"]]} />
+              {tab === "team" ? (slug ? <TeamTab project={slug} /> : <EmptyState title="No team here" body="This project has no name the box can keep a team under." />)
+                : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} />}
+            </>
+          )}
         {sheets}
       </ScrollView>
     </View>

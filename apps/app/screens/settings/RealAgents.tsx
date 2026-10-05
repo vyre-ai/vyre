@@ -4,8 +4,9 @@ import { ConnectClaude } from "./ConnectClaude";
 import { AccountsCard } from "./AccountsCard";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Segmented, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { TeammatesPage } from "../teammates/TeammatesPage";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
 
@@ -15,6 +16,7 @@ export function RealAssistants() {
   const [list, setList] = useState<Agent[] | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [tab, setTab] = useState<"assistants" | "teammates">("assistants");
   const load = useCallback(() => { setErr(""); agentsList().then(setList).catch((e) => setErr(say(e, "Assistants did not answer."))); }, []);
   useEffect(load, [load]);
   const flip = (a: Agent) => {
@@ -23,6 +25,9 @@ export function RealAssistants() {
   };
   return (
     <Page title="Assistants" back="/u/settings">
+      <Segmented label="Assistants" value={tab} onChange={setTab} options={[["assistants", "Assistants"], ["teammates", "Teammates"]]} />
+      {tab === "teammates" ? <TeammatesPage /> : null}
+      {tab === "teammates" ? null : <>
       {err ? <Card flush><ErrorState title="Assistants did not load" reason={err} retry={load} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here." /></Card> : null}
       {list === null && !err ? <LoadingState rows={3} /> : null}
@@ -42,6 +47,7 @@ export function RealAssistants() {
           ))}
         </Card>
       ) : null}
+      </>}
     </Page>
   );
 }

@@ -2,18 +2,17 @@ import { useState } from "react";
 import { View } from "react-native";
 import { aid } from "../../../../deck/ui/kernel-view.js";
 import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
-import { handEvidence, ownerOf } from "../../../../deck/ui/tasks.js";
+import { AssignPicker } from "../../screens/teammates/AssignPicker";
+import { handEvidence } from "../../../../deck/ui/tasks.js";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
-import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { Banner } from "../components/Banner";
 import { showToast } from "../components/Toast";
 import { useStore } from "../store";
 import { haptic } from "../motion/haptics";
-import { ActorMark } from "./ActorMark";
 import { TaskFacts, DraftBlock } from "./TaskFacts";
 import { cardFor, nameOf, recordTitle, STATE_LABEL, taskFacts, draftOf, stateTone, type World } from "./model";
 
@@ -121,17 +120,9 @@ function Sheets({ world, open, close, confirmProof, run, go }: { world: World; o
           </>
         ) : null}
       </Sheet>
-      <Sheet open={open?.kind === "reassign"} onClose={close} title={open?.kind === "reassign" ? `Reassign ${task.title}` : undefined}>
-        {open?.kind === "reassign" ? (
-          <View>
-            {world.actors.filter((a) => a.family !== "service" && a.id !== aid(task.doer)).sort((a, b) => Number(b.family === "person") - Number(a.family === "person") || Number(b.id === ownerOf(aid(task.doer), world.actors)) - Number(a.id === ownerOf(aid(task.doer), world.actors))).map((a) => (
-              <Row key={a.id} lead={<ActorMark who={a} />} title={a.name} sub={a.role || (a.family === "person" ? "Person" : "Assistant")} onPress={async () => {
-                try { await store.reassign(task.id, a.id, world.me); showToast(`${task.title} is with ${a.name}.`); close(); } catch (e) { say(e); }
-              }} />
-            ))}
-          </View>
-        ) : null}
-      </Sheet>
+      <AssignPicker open={open?.kind === "reassign"} onClose={close} title={open?.kind === "reassign" ? `Reassign ${task.title}` : "Assign to"} actors={world.actors} exclude={open?.kind === "reassign" ? [aid(task.doer)] : []} onPick={async (a) => {
+        try { await store.reassign(task.id, a.id, world.me); showToast(`${task.title} is with ${a.name}.`); close(); } catch (e) { say(e); }
+      }} />
       <Sheet open={open?.kind === "file"} onClose={close} title={open?.kind === "file" ? `Add: ${typeof task.output?.target === "string" ? task.output.target : "the file"}` : undefined}>
         {open?.kind === "file" ? <AddFile task={task} close={close} me={world.me} /> : null}
       </Sheet>
