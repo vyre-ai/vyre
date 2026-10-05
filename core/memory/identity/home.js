@@ -13,6 +13,7 @@
 // public key; the assistant opens that. The server only carries the request and the answer. Moving the home to another server is a copy of ciphertext checked by hash, with the old place left
 // holding only a marker: the key never changes, so nothing is re-encrypted and nothing is readable on the way.
 
+import { canonical } from "../../../kernel/core/canonical.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -101,7 +102,8 @@ export async function approveUnlock(device, ask) {
 /** A server's own key pair: it signs the unlock requests it makes, so a phone that granted this server can tell its requests from anyone else's. It decrypts nothing. @returns {{ publicJwk: import("node:crypto").JsonWebKey, privateJwk: import("node:crypto").JsonWebKey }} */
 export const newServerKey = () => newDeviceKey();
 
-const askBytes = (/** @type {any} */ ask) => Buffer.from(JSON.stringify({ id: ask.id, home: ask.home, request: ask.request, sessionPub: ask.sessionPub, rev: ask.rev, server: ask.server && ask.server.fp }));
+// sorted-key canonical JSON (kernel/core/canonical.js): the order a field arrives in never decides whether a signature stands
+const askBytes = (/** @type {any} */ ask) => Buffer.from(canonical({ id: ask.id, home: ask.home, request: ask.request, sessionPub: ask.sessionPub, rev: ask.rev, server: ask.server ? ask.server.fp : null }));
 /** Sign an unlock request as this server. @param {any} ask @param {import("node:crypto").JsonWebKey} privateJwk */
 export const signAsk = (ask, privateJwk) => crypto.sign("sha256", askBytes(ask), { key: crypto.createPrivateKey({ key: privateJwk, format: "jwk" }), dsaEncoding: "ieee-p1363" }).toString("base64url");
 /** Was this request signed by the server with that public key? @param {any} ask @param {import("node:crypto").JsonWebKey} publicJwk */

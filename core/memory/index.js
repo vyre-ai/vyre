@@ -1289,19 +1289,20 @@ export default {
       effect: "read", callers: ["module"],
       description: "What the person's sealed memory would carry to their My Cloud server: { counts: { objects, bytes }, blockers }. Read only; the counts go into the hash the person approves.",
       input: { type: "object", properties: {} },
-      run: async () => planOf(upgradeBackend(), String(idCfg && idCfg.id || ""), { unsaved: () => Boolean(identity && identity.unsaved()) }),
+      run: async (_i, extra = {}) => { if (String(extra.caller || "") !== "module:spaces") throw denied("the upgrade is the spaces module's to ask for"); return planOf(upgradeBackend(), String(idCfg && idCfg.id || ""), { unsaved: () => Boolean(identity && identity.unsaved()) }); },
     });
     ctx.tool("memory.upgrade.move", {
       effect: "write", callers: ["module"],
       description: "Carry the person's sealed memory (the identity home, the Personal backup, the encrypted personal records: ciphertext, keys unchanged) to their per-member storage on the My Cloud space `to`, each object checked by hash after it lands. Answers { objects, bytes, skipped, failed }; a failed object is named and does not stop the others.",
       input: { type: "object", required: ["to"], properties: { to: { type: "string" } } },
-      run: async (input) => {
+      run: async (input, extra = {}) => {
+        if (String(extra.caller || "") !== "module:spaces") throw denied("the upgrade is the spaces module's to ask for");
         const backend = upgradeBackend();
         if (!backend) return { objects: 0, bytes: 0, skipped: 0, failed: [] };
         if (identity && identity.unlocked) { try { identity.save(); } catch { /* the autosave seals it too */ } }
-        // literal tool names (the reach scan reads a computed one as an unreviewed call)
-        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i),
-          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i) };
+        // literal tool names (the reach scan reads a computed one as an unreviewed call); `relay: true` carries the proven person of the running call (windows' RELAY_ALLOWED lets memory relay to spaces.storage. only)
+        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i, { relay: true }), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i, { relay: true }),
+          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i, { relay: true }), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i, { relay: true }) };
         return carry(backend, spacesTransport((tool, i) => /** @type {any} */ (storage)[tool](i), String(input.to)), String(idCfg.id));
       },
     });
