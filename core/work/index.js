@@ -282,10 +282,10 @@ export default {
       run: async (input, extra) => {
         const k = kernelOf();
         const rec = await hubOf().projectOf(String(input.project || ""));
-        // The record again under the caller's own chain: what the caller may not read, it does not learn. A first-party module (the teammates, the harness) has no person behind it and is
+        // The record again under the caller's own chain: what the caller may not read, it does not learn. A first-party module (the teammates, the harness) and the registry itself (module:vyred, turning a projectArg id into a short name) have no person behind them and is
         // answered from the service's own read; an added module is not answered.
         const viaModule = String((extra && extra.caller) || "").startsWith("module:");
-        const mine = !rec ? null : viaModule ? (extra && extra.firstParty ? rec : null) : await k.records.get(await chainOf(extra), "project", rec.id).catch(() => null);
+        const mine = !rec ? null : viaModule ? ((extra && extra.firstParty) || (extra && extra.caller) === "module:vyred" ? rec : null) : await k.records.get(await chainOf(extra), "project", rec.id).catch(() => null);
         if (!rec || !mine) throw Object.assign(new Error("no such project"), { code: "not_found" });
         return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
