@@ -13,6 +13,8 @@ import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience, authorLabel } from "./group.js";
 import { quoteOf } from "./reply.js";
+import { timeLineOf } from "../time/show.js";
+import { metaOf } from "./stamp.js";
 import { useRouter } from "expo-router";
 import { artifactHref, artifactOf } from "./extras.js";
 import { readSelection } from "./highlight.js";
@@ -249,7 +251,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const mine = store.group.isMine(k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
-        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
+        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <Text size="read" selectable>{it.text}</Text>
           {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}

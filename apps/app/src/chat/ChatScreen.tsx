@@ -37,6 +37,9 @@ import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
+import { useNeeds } from "../state/needs";
+import { heldFor } from "../state/held.js";
+import { useRouter } from "expo-router";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -123,6 +126,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   const actions = store.actions;
   const { onBranched } = p;
+  const needs = useNeeds();
+  const router = useRouter();
+  const chatId = here.thread ?? p.sessionId;
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
@@ -138,6 +144,9 @@ export function ChatScreen(p: ChatScreenProps) {
             },
           }
         : {}),
+      // A draft that is a held send links to its item, where it is read in full, edited and sent.
+      heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
+      onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
       onReplyTo: (message: string, name: string, text?: string) => setReplyTo({ message, name, text: text ?? "" }),
       flash,
       onJumpTo: (message: string) => {
@@ -152,7 +161,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
+    [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
     async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {

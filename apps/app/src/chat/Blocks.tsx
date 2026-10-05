@@ -57,6 +57,9 @@ export type BlockCtx = {
   onOpenSource?: (url: string) => void;
   onTakeOver?: () => void;
   onCopy?: (text: string) => void;
+  /** The held item a draft is, when the box holds it for a yes (its need id), and the way to open it. */
+  heldFor?: (draft: { subject?: string | null; body?: string }) => string | null;
+  onOpenHeld?: (needId: string) => void;
   /** Face ID for a task's approval: resolves true when the person passed. */
   onFaceId?: () => Promise<boolean>;
   onApprove?: (taskId: string) => void;
@@ -366,9 +369,10 @@ export function DraftBlock({ block, ctx }: { block: Extract<Block, { block: "dra
   const { color } = useUiTheme();
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(block.body);
+  const held = ctx.heldFor?.(block) ?? null;
   return (
     <Shell icon="chat" title={block.subject ?? "Draft"} sub={block.to ? `To ${block.to}` : block.kind}
-      right={<Chip>Draft, nothing sent</Chip>}>
+      right={<Chip>{held ? "Waiting for your yes" : "Draft, nothing sent"}</Chip>}>
       {editing ? (
         <TextInput multiline value={body} onChangeText={setBody} accessibilityLabel="Edit the draft" style={{ color: color.text, minHeight: 96, borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 8, padding: 8, fontSize: 15, lineHeight: 22 }} />
       ) : (
@@ -377,6 +381,7 @@ export function DraftBlock({ block, ctx }: { block: Extract<Block, { block: "dra
       <View style={S.s25}>
         <Button size="sm" label={editing ? "Done" : "Edit"} onPress={() => setEditing((e) => !e)} />
         <Button size="sm" kind="ghost" icon="copy" label="Copy" onPress={() => copy(body, ctx)} />
+        {held && ctx.onOpenHeld ? <Button size="sm" kind="primary" label="Review and send" onPress={() => ctx.onOpenHeld?.(held)} /> : null}
       </View>
     </Shell>
   );

@@ -16,6 +16,7 @@ import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
 import { replyInput } from "./reply.js";
+import { viewerZone } from "../time/show.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
@@ -108,13 +109,13 @@ export function boxStream(session: string): BoxStream {
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
-    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
+    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
-      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
+      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };

@@ -139,7 +139,7 @@ export function createFolder() {
         } else {
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
           // A private message (enc) holds no words the home can read: the row says so, and a device that holds the key draws it (not built yet).
-          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...who(f), ...(d.parent ? { parent: d.parent } : {}), ...quoteFromData(d) };
+          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...(typeof f.time === "number" ? { at: f.time } : {}), ...(typeof d.tz === "string" && d.tz ? { tz: d.tz } : {}), ...who(f), ...(d.parent ? { parent: d.parent } : {}), ...quoteFromData(d) };
           if (put(key, "user", it)) out.layout = true;
           else { items.set(key, it); }
           touch(key);
