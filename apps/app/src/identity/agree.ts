@@ -3,6 +3,8 @@
 // rest (HKDF-SHA256, AES-256-GCM: lib/keywrap.js). The private key never reaches the page. There is no prompt per use: opening a chat is not one of the yes moments (the user's no-nagging rule).
 // No react-native import here (Node tests run this file): a phone is told apart by `navigator.product`.
 // Its public point goes in this device's identity entry as `agree` (kernel/identity/chain.js).
+// A browser has no native key: it uses the page's own non-extractable WebCrypto key in IndexedDB (src/crypto/agree-key.ts, app-wire's getAgreeKey), the same key that opens its chats, so the point
+// it publishes is the one that opens them. That module is imported only there (it needs the noble libraries, which Node tests of this file do not load).
 
 import { shellIdentity } from "../shell/shell.ts";
 
@@ -18,12 +20,16 @@ export function validPoint(epk: string): Uint8Array {
   return p;
 }
 
+/** The browser's agreement key, or null where WebCrypto or IndexedDB is not there (a private window). */
+const webKey = async () => { try { return await (await import("../crypto/agree-key.ts")).getAgreeKey(); } catch { return null; } };
+
 /** This device's agreement public point (raw uncompressed, base64url), made on first use. null where this build has no agreement key (a browser, an app without the native module). */
 export async function agreePublic(create = true): Promise<string | null> {
   try {
     if (!onPhone()) {
       const id = shellIdentity();
-      return id?.agreePublic ? await id.agreePublic(create) : null;
+      if (id?.agreePublic) return await id.agreePublic(create);
+      return (await webKey())?.point ?? null;
     }
     const m = (await import("../../modules/vyre-signer")) as unknown as { agreePublic?: (create: boolean) => Promise<string> };
     return m.agreePublic ? await m.agreePublic(create) : null;
@@ -36,8 +42,12 @@ export async function agree(epk: string): Promise<Uint8Array> {
   let out: string;
   if (!onPhone()) {
     const id = shellIdentity();
-    if (!id?.agree) throw Object.assign(new Error("This device has no agreement key."), { code: "no_agree_key" });
-    out = await id.agree(epk);
+    if (id?.agree) out = await id.agree(epk);
+    else {
+      const k = await webKey();
+      if (!k) throw Object.assign(new Error("This device has no agreement key."), { code: "no_agree_key" });
+      out = b64u(await k.ecdh(validPoint(epk)));
+    }
   } else {
     const m = (await import("../../modules/vyre-signer")) as unknown as { agree?: (epk: string) => Promise<string> };
     if (!m.agree) throw Object.assign(new Error("This device has no agreement key."), { code: "no_agree_key" });

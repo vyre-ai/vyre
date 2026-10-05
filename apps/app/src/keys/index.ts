@@ -17,7 +17,8 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
 }
 /** The Mac app's window hands recovery its own key (the seed stays in the Keychain); a browser makes one in the call. */
 export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean; agree?: string; held?: boolean; key?: NonNullable<Awaited<ReturnType<typeof macDeviceKey>>> }> => {
-  if (!macKeyAvailable()) return {};
+  // a browser has no Mac key, but its agreement key still goes in the entry (the one that opens its chats)
+  if (!macKeyAvailable()) { const agree = (await agreePublic(true)) ?? undefined; return agree ? { agree } : {}; }
   const key = await macDeviceKey(true);
   if (!key) return {};
   const enclave = await macEnclavePublic(true); // a Mac with no Secure Enclave keeps an entry that signs alone
