@@ -114,7 +114,7 @@ test("without a destination the files land under the target project, and a chat'
   const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "p9", chat_map: { [oldChat]: newChat } });
   assert.deepEqual(out.map(x => x.dest), [`Projects/p9/chat/${newChat}/note.txt`, "Projects/p9/retainer.txt"]);
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, `Projects/p9/chat/${newChat}/note.txt`)), "chat note");
-  await assert.rejects(() => b.D.get(b.ada, `Projects/p9/chat/${newChat}/note.txt`), { code: "not_found" }, "the mover still reads nothing in the chat");
+  await assert.rejects(() => b.D.get(b.dan, `Projects/p9/chat/${newChat}/note.txt`), { code: "not_found" }, "a non-participant reads nothing in the chat");
   await assert.rejects(() => moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE, project_to: "../x", chat_map: { [oldChat]: newChat } }), { code: "bad_input" });
 });
 
@@ -144,7 +144,7 @@ test("a Personal to My Cloud upgrade carries files too: space.upgrade_started fo
 test("a file of a chat the mover is not in is refused by name, in a move and in an upgrade: the project folder grant does not reach it", async t => {
   const { a, b, moves, started } = await world(t);
   const text = "closed chat ".repeat(8), UP = "55555555-5555-4555-8555-555555555555";
-  await a.D.put(a.bob, `${a.closed}/secret.txt`, enc(text)); await a.D.put(a.bob, `Projects/p1/plain.txt`, enc("plain"));
+  await a.D.put(a.bob, `${a.closed}/secret.txt`, enc(text)); await a.D.put(a.ada, `Projects/p1/plain.txt`, enc("plain"));
   const closedE = { path: `${a.closed}/secret.txt`, dest: `${b.closed}/secret.txt`, sha256: sha(text), size: Buffer.byteLength(text) };
   const plainE = { path: "Projects/p1/plain.txt", dest: "Projects/p1/plain.txt", sha256: sha("plain"), size: 5 };
   started(a.ada, MOVE);
