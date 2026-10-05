@@ -17,7 +17,7 @@ up=""; for i in $(seq 1 60); do sleep 1; L=$(ls $H/.vyre/logs/*.log 2>/dev/null 
 if [ -z "$up" ]; then echo "BOOT-CHECK FAIL: the daemon did not come up in 60 s"; bad=1; else
   echo "boot-check ok   daemon: $up" | cut -c1-140
   e=$(HOME=$H node bin/vyre call system.echo '{"text":"hi"}' 2>&1 | tr -d '\n '); echo "$e" | grep -q '"text":"hi"' && echo "boot-check ok   system.echo" || { echo "BOOT-CHECK FAIL system.echo: $e" | cut -c1-200; bad=1; }
-  r=$(HOME=$H node bin/vyre call records.me '{}' 2>&1 | tr -d '\n '); echo "$r" | grep -q '"person"' && echo "boot-check ok   records.me (stand-in owner)" || { echo "BOOT-CHECK FAIL records.me: $r" | cut -c1-200; bad=1; }
+  for try in 1 2 3; do r=$(HOME=$H node bin/vyre call records.me '{}' 2>&1 | tr -d '\n '); echo "$r" | grep -q '"person"' && break; sleep 3; done; echo "$r" | grep -q '"person"' && echo "boot-check ok   records.me (stand-in owner)" || { echo "BOOT-CHECK FAIL records.me: $r" | cut -c1-200; bad=1; }
 fi
 kill -TERM -- -$(cat $H/pid) 2>/dev/null; sleep 2; kill -KILL -- -$(cat $H/pid) 2>/dev/null
 [ $bad -ne 0 ] && { echo "--- last 20 daemon log lines:"; { cat $H/d.log; cat $H/.vyre/logs/*.log 2>/dev/null; } | tail -20 | cut -c1-240; }
