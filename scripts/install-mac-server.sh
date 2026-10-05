@@ -87,6 +87,16 @@ GH_SHA256_ARM64=da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e
 GH_SHA256_AMD64=b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3
 GH_BIN=""
 
+# The built-in network on a Mac server (core/wink/netd.js): Headscale and the Wink node program run NATIVELY beside vyred, not in the Colima VM (netd supervises them over
+# unix sockets and files, which do not cross the VM boundary). Headscale: the pinned darwin release binary, sums from headscale_0.29.4's checksums.txt in the release itself.
+# The node program (wink-forwarder) is a first-party file of the signed release, wink-forwarder-darwin-<arch>, listed in SHA256SUMS like every other.
+# VYRE_HEADSCALE_URL / _SHA256 and VYRE_FORWARDER_FILE override, for tests.
+HEADSCALE_VERSION=0.29.4
+HEADSCALE_SHA256_ARM64=b5cfd0f81caaa1e8f71f830fd89fdf86a8719bb6e9f9a2ec5b47d9426c96986e
+HEADSCALE_SHA256_AMD64=06e4c94a8b9397ed8c2714a4cd484c998604dc884e9b5d4a186aef05f14047b1
+HEADSCALE_BIN=""
+FORWARDER_BIN=""
+
 # The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
 # and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
 # https://nodejs.org/dist/v22.23.3/SHASUMS256.txt, read with curl on 2026-09-30.
@@ -422,6 +432,37 @@ setup_gh() {
   step "gh is $g"
 }
 
+# setup_wink_net: Headscale and the Wink node program, for the built-in network. Either missing is not fatal: netd then says "no-binary" and the relay carries everything,
+# which is correct; the person is told which one is missing.
+setup_wink_net() {
+  if [ "$DRY" = 1 ]; then say "would put the pinned Headscale and the release's wink-forwarder into Vyre's own bin (the built-in network; without them the relay carries everything)"; return 0; fi
+  case "$UNAME_M" in
+    arm64|aarch64) ha=arm64; hs=$HEADSCALE_SHA256_ARM64; fa=arm64 ;;
+    x86_64|amd64) ha=amd64; hs=$HEADSCALE_SHA256_AMD64; fa=amd64 ;;
+    *) say "  note  no pinned Headscale for this Mac ($UNAME_M); the relay carries everything"; return 0 ;;
+  esac
+  hs=${VYRE_HEADSCALE_SHA256-$hs}
+  hu=${VYRE_HEADSCALE_URL:-https://github.com/juanfont/headscale/releases/download/v$HEADSCALE_VERSION/headscale_${HEADSCALE_VERSION}_darwin_$ha}
+  if [ -z "$hs" ]; then say "  note  no pinned Headscale for this release; the relay carries everything"
+  elif ! curl -fsSL --retry 2 -o "$TMP/headscale" "$hu"; then say "  note  could not download Headscale; the relay carries everything"
+  elif [ "$(sha256 "$TMP/headscale")" != "$hs" ]; then say "  note  the Headscale download does not match its pinned checksum; nothing was installed"
+  else
+    mkdir -p "$BIN"; cp "$TMP/headscale" "$BIN/headscale"; chmod 755 "$BIN/headscale"; HEADSCALE_BIN=$BIN/headscale
+    step "Headscale $HEADSCALE_VERSION is $HEADSCALE_BIN"
+  fi
+  fname=wink-forwarder-darwin-$fa
+  if [ -n "${VYRE_FORWARDER_FILE:-}" ]; then
+    # a file you built yourself (a checkout install): used as it is, and said so
+    if [ -f "$VYRE_FORWARDER_FILE" ]; then mkdir -p "$BIN"; cp "$VYRE_FORWARDER_FILE" "$BIN/wink-forwarder"; chmod 755 "$BIN/wink-forwarder"; FORWARDER_BIN=$BIN/wink-forwarder; step "the node program is $FORWARDER_BIN (your own build)"
+    else say "  note  VYRE_FORWARDER_FILE is not a file; the relay carries everything"; fi
+  elif [ -f "$TMP/SHA256SUMS" ] && awk -v p="$fname" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then
+    get "$fname"; mkdir -p "$BIN"; cp "$TMP/$fname" "$BIN/wink-forwarder"; chmod 755 "$BIN/wink-forwarder"; FORWARDER_BIN=$BIN/wink-forwarder
+    step "the node program is $FORWARDER_BIN (from the signed release)"
+  else
+    say "  note  this release has no node program for this Mac ($fname); the relay carries everything"
+  fi
+}
+
 # write_env: DOCKER_HOST at Colima's own socket, and the setup code with the time it was written,
 # into VYRE_HOME/vyre.env (0600). The rest of the file is kept. The code is never an argument.
 write_env() {
@@ -445,6 +486,10 @@ write_wrapper() {
   mkdir -p "$BIN"
   WNODE=$(wrapper_node)
   GH_LINE=""; [ -z "$GH_BIN" ] || GH_LINE="export VYRE_GH_BIN=\"$GH_BIN\""
+  [ -z "$HEADSCALE_BIN" ] || GH_LINE="$GH_LINE
+export VYRE_HEADSCALE_BIN=\"$HEADSCALE_BIN\""
+  [ -z "$FORWARDER_BIN" ] || GH_LINE="$GH_LINE
+export VYRE_WINK_FORWARDER_BIN=\"$FORWARDER_BIN\""
   cat >"$BIN/vyre-serve" <<EOF
 #!/bin/sh
 # vyre on a Mac server: written by install-mac-server.sh
@@ -637,6 +682,7 @@ main() {
   install_app
   setup_colima
   setup_gh
+  setup_wink_net
   write_env
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then
