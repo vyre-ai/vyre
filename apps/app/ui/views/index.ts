@@ -1,6 +1,7 @@
 export { ListView } from "./ListView";
 export { BoardView } from "./BoardView";
 export { CalendarView } from "./CalendarView";
+export { DashboardView } from "./DashboardView";
 export { RecordPage } from "./RecordPage";
 export type { RecordsWorld } from "./shared";
 export { useRecordsWorld, useRecordEvents, useFieldEnv } from "./data";
