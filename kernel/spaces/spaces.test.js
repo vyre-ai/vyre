@@ -306,3 +306,35 @@ test("a new Space has the person's default assistant as an actor from its start,
   for (const h of [spaces.for(pid), a]) assert.equal(h.kernel.grants.hasDefaultAssistant(), true, `${h.space}`);
   void personal;
 });
+
+test("moving a project between two Spaces of one home: approved once where it starts, received under the role in the other, single use, same person, this target and plan only", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  const pid = "0190c3f2-1111-4abc-8def-000000000001";
+  const project = `vyre://${a.space}/project/${pid}`;
+  const plan_hash = "p".repeat(43);
+  const req = { project, to: b.space, plan_hash };
+  // no proof: the source asks for the person's approval
+  await assert.rejects(() => a.gateway.moves.out(ca, req), { code: "needs_presence" });
+  // a proof for another plan is no proof for this one
+  await assert.rejects(() => a.gateway.moves.out(ca, req, sign(a.space, "moveOut", { ...req, plan_hash: "q".repeat(43) })), { code: /needs_presence|bad_proof|wrong/ });
+  const out = await a.gateway.moves.out(ca, req, sign(a.space, "moveOut", req));
+  assert.match(out.move_id, /^[0-9a-f-]{36}$/);
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 1);
+  const receive = { from: a.space, project, plan_hash, move_id: out.move_id };
+  // another plan, another project, another person, another target: none of these is that move
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, plan_hash: "q".repeat(43) }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, project: `vyre://${a.space}/project/0190c3f2-1111-4abc-8def-000000000002` }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, move_id: "0190c3f2-1111-4abc-8def-0000000000ff" }), { code: "not_found" });
+  const bobCb = b.kernel.chains.fromFacts({ kind: "device", device_key_id: "d9", person: ME, path: "direct" });
+  void bobCb;
+  const got = await b.gateway.moves.in(cb, receive);
+  assert.deepEqual(got, { received: true, move_id: out.move_id });
+  assert.equal(b.kernel.log.read({ type: "project.move_in" }).length, 1);
+  // single use
+  await assert.rejects(() => b.gateway.moves.in(cb, receive), { code: "invalid" });
+  // the source cannot be named as the target, and a move to oneself is refused
+  await assert.rejects(() => a.gateway.moves.out(ca, { ...req, to: a.space }, sign(a.space, "moveOut", { ...req, to: a.space })), { code: "bad_input" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, from: b.space }), { code: "bad_input" });
+});
