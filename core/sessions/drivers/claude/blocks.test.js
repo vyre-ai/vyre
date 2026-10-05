@@ -10,9 +10,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { blocks, BLOCK_CAP, THINK_CAP } from "./transcripts.js";
 import { tempHome } from "../../../../test/helpers.js";
-import { translate } from "../switchboard/translate.js";
+import { translate } from "../../../switchboard/translate.js";
 
-const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "transcripts", "fixtures");
 const RICH = path.join(FIX, "rich.jsonl");
 const at = (/** @type {string} */ s) => Date.parse(s);
 
