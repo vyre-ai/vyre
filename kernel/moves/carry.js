@@ -82,6 +82,10 @@ export function createMoves(o) {
           if (!okSrc.has(sp)) { if (!(await may(src, fromChain, `Projects/${sp}`))) throw new KernelError("not_found", "that folder is not yours to move"); okSrc.add(sp); }
         }
         if ((!upgrade && !e.path.startsWith(`Projects/${id}/`)) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
+        // The file itself, not only its project folder: a chat's folders are its participants' alone at the authorizer, so a mover who is not in the chat is refused its files here (a move or an upgrade never reseals them).
+        const act = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ p) => (await k.gateway.authorize({ chain, action, resource: `vyre://${chain.space}/file/${p}` })).effect === "allow";
+        if (!(await act(src, fromChain, "drive.read", e.path))) throw new KernelError("not_found", "a file of the move is not yours to move");
+        if (!(await act(dst, toChain, "drive.write", e.dest))) throw new KernelError("not_found", "that file is not yours to move into");
         const destFolder = e.dest.split("/").slice(0, 2).join("/");
         if (!(await may(dst, toChain, destFolder))) throw new KernelError("not_found", "that folder is not yours to move into");
         // resume: already there with this hash
