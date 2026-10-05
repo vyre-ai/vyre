@@ -31,6 +31,7 @@ import { verifyDevice } from "./node/peer-wire.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
+import { p256 } from "@noble/curves/p256";
 import { deviceKey } from "./devicekey.js";
 import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
@@ -63,6 +64,20 @@ export const KIND_OFFERS = Object.freeze({ web: ["access"], phone: ["access"], c
 export const FLOW_KIND = Object.freeze({ W1: "phone", W2: "computer", W3: "server" });
 /** Roles that may add a server or storage device to a space. */
 export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
+/**
+ * What an offered device entry may carry beyond its key and label, copied into the entry the identity list takes: `agree` (its key-agreement point), `enclave` (its chip key) and `held: "web"` (a key a
+ * page script can reach, so the entry cannot change who speaks for the identity). The chain validates each one's shape; nothing else is copied, and a `held` that is not "web" or true is dropped.
+ * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web", attest?: string }}
+ */
+/** Is this a real P-256 key-agreement point: 65 bytes, uncompressed, and ON the curve (noble's decoder throws off-curve), so a made-up point never reaches the identity list. @param {string} v */
+const onCurve = v => { try { const b = Buffer.from(v, "base64url"); if (b.length !== 65 || b[0] !== 4 || b.toString("base64url") !== v) return false; p256.ProjectivePoint.fromHex(new Uint8Array(b)); return true; } catch { return false; } };
+
+export const entryExtras = e => ({
+  ...(e && typeof e.agree === "string" && onCurve(e.agree) ? { agree: e.agree } : {}),
+  ...(e && typeof e.enclave === "string" && e.enclave ? { enclave: e.enclave.slice(0, 200) } : {}),
+  ...(e && (e.held === "web" || e.held === true) ? { held: /** @type {"web"} */ ("web") } : {}),
+  ...(e && typeof e.attest === "string" && e.attest && e.attest.length <= 16384 ? { attest: e.attest } : {}),
+});
 if (!ADMIN_ROLES.every(r => ROLE_IDS.includes(r))) throw new Error("wink: ADMIN_ROLES must be roles of the contract");
 
 export const MIGRATIONS = [
@@ -129,7 +144,7 @@ export const POLL_MS = 1500;
  *   identityPin?: () => Promise<{ id: string, seq: number, head: string } | null> | { id: string, seq: number, head: string } | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
- *   serve?: (tool: string, input: any) => Promise<any>,
+ *   serve?: (tool: string, input: any, from: string) => Promise<any>,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
  *   typedCode?: boolean | (() => boolean), typedDefault?: () => boolean, codeNow?: () => { code: string, expires: number, offer: string } | null, cancelCode?: () => void, confirmAdopt?: boolean, askMs?: number, askHoldMs?: number, askPollMs?: number, pairWordsFor?: (device: string) => Promise<string>,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
@@ -453,8 +468,8 @@ export function createPairing(o) {
     const r = await callRelease(chan);
     // the probe forgets a server the person removed: it answers `removed`, not whatever the old route still says
     if (r !== "unknown") { meta.set(`removed:${sid}`, now()); meta.del(`probe:${sid}`); }
-    if (r === "released") { if (links) links.forget(sid); meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
-    meta.del(`channel:${sid}`);
+    if (r === "released") { if (links) links.forget(sid); meta.del(`channel:${sid}`); meta.del(`paired:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
+    meta.del(`channel:${sid}`); meta.del(`paired:${sid}`);
     if (r === "refused") { meta.del(`release:${sid}`); return "refused"; }
     meta.set(`release:${sid}`, { ...chan, since: now() });
     ctx.events.emit("wink.server-release", { device: sid, state: "pending" });
@@ -514,6 +529,7 @@ export function createPairing(o) {
     // The person types the ack on the showing device; the ticket then appears and this finishes with no more taps.
     void (async () => {
       let fresh = "";
+      /** The channel this pairing wrote and what was there before it: a pairing that fails after that gives it back, so no half-made pairing leaves a server this computer could later call. @type {{ sid: string, was: { channel: any, probe: any } } | null} */ let channelMade = null;
       try {
         const w2 = watchFetch();
         const f = await ports.finish({ relay, seed: t.seed, name: i.name || String(ctx.config.name || "a device"), waitMs: 5 * 60_000, pollMs: POLL_MS, pairOptions, fetch: w2.fetch, ...(i.seed ? { once: true } : {}) });
@@ -545,7 +561,7 @@ export function createPairing(o) {
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
-          if (p.adopted) { const ch = channelOf(pd); if (links) links.forget(sid); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); ctx.events.emit("wink.server-paired", { device: sid }); } }
+          if (p.adopted) { const ch = channelOf(pd); if (links) links.forget(sid); if (ch) { channelMade = { sid, was: { channel: meta.get(`channel:${sid}`), probe: meta.get(`probe:${sid}`) } }; meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); ctx.events.emit("wink.server-paired", { device: sid }); } }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
@@ -572,9 +588,14 @@ export function createPairing(o) {
             await new Promise(res => setTimeout(res, o.askPollMs ?? 500));
           }
         }
+        // the pairing is complete: only now is this server one this computer is paired to, and the newest such is the home
+        if (channelMade) meta.set(`paired:${channelMade.sid}`, { at: now() });
         p.state = "done";
         ctx.events.emit("wink.pair-done", { pairing: id, kind: i.kind, target: i.target, ...(p.device ? { device: p.device } : {}) });
-      } catch (e) { if (fresh) devices.remove(fresh); failWith("failed", String(/** @type {Error} */ (e).message || "pairing failed")); ctx.log(`wink: pairing failed: ${/** @type {Error} */ (e).message}`); }
+      } catch (e) {
+        if (fresh) devices.remove(fresh);
+        if (channelMade) { const { sid: cs, was } = channelMade; try { if (links) links.forget(cs); } catch { /* closed */ } if (was.channel) meta.set(`channel:${cs}`, was.channel); else meta.del(`channel:${cs}`); if (was.probe) meta.set(`probe:${cs}`, was.probe); else meta.del(`probe:${cs}`); channelMade = null; }
+        failWith("failed", String(/** @type {Error} */ (e).message || "pairing failed")); ctx.log(`wink: pairing failed: ${/** @type {Error} */ (e).message}`); }
     })();
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
@@ -1253,10 +1274,10 @@ export function createPairing(o) {
     });
     ctx.tool("wink.server.owner", {
       internal: true,
-      description: "For the spaces module: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
+      description: "For the spaces and files modules: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
       input: obj(),
       run: async (_i, meta0 = {}) => {
-        if (String((meta0 && meta0.caller) || "") !== "module:spaces") throw fail("denied", "this is for the spaces module");
+        if (!["module:spaces", "module:files"].includes(String((meta0 && meta0.caller) || ""))) throw fail("denied", "this is for the spaces and files modules");
         const o2 = meta.get("owner");
         return o2 && typeof o2.identity === "string" ? { identity: o2.identity, kind: o2.kind, id: o2.id, ...(o2.name ? { name: o2.name } : {}) } : null;
       },
@@ -1449,7 +1470,7 @@ export function createPairing(o) {
       // the identity's own list takes the device's identity key, signed by THIS device's entry (the new entry is a newcomer for 24 hours); a refusal leaves the pairing made and says so
       if (a.entry) {
         try {
-          const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label }));
+          const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label, ...entryExtras(a.entry) }));
           a.enrolled = Boolean(r && !r.error && r.data);
           if (!a.enrolled) a.enrolReason = String((r && r.error && r.error.message) || "the identity list did not take this device").slice(0, 200);
         } catch (e) { a.enrolled = false; a.enrolReason = String(/** @type {Error} */ (e).message || "the identity list did not take this device").slice(0, 200); }
@@ -1487,7 +1508,7 @@ export function createPairing(o) {
     ctx.tool("wink.phone.wait", {
       callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
-      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str }) }),
+      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str, agree: str, enclave: str, attest: str, held: { anyOf: [{ type: "string" }, { type: "boolean" }] } }) }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();
@@ -1495,7 +1516,7 @@ export function createPairing(o) {
         const i = input || {};
         if (!a.named && i.name) { const n = cleanPhoneName(i.name); if (n) a.name = n; a.named = true; }
         // A box-less device joining the person's identity (relay/client/phonepair.js) says which identity key it holds, once: the yes at the three words covers it, because it came over this device's own channel
-        if (!a.entry && i.entry && typeof i.entry === "object" && typeof i.entry.publicKey === "string" && Buffer.from(i.entry.publicKey, "base64url").length === 32) a.entry = { publicKey: i.entry.publicKey, label: cleanPhoneName(i.entry.label) || a.name };
+        if (!a.entry && i.entry && typeof i.entry === "object" && typeof i.entry.publicKey === "string" && Buffer.from(i.entry.publicKey, "base64url").length === 32) a.entry = { publicKey: i.entry.publicKey, label: cleanPhoneName(i.entry.label) || a.name, ...entryExtras(i.entry) };
         if (a.state === "waiting" && !a.words) {
           if (!a.commit && /^[0-9a-f]{64}$/.test(String(i.commit || ""))) a.commit = String(i.commit);
           if (a.commit && typeof i.reveal === "string" && i.reveal) {
@@ -1552,7 +1573,15 @@ export function createPairing(o) {
   const serverLinks = () => links || (links = createServerLinks({ connect: relayConnect, options: pairOptions, ...(o.serve ? { serve: o.serve } : {}), name: String(ctx.config.name || "a device"), log: m => ctx.log(m), ...(o.signDevice ? { sign: o.signDevice } : ownKey ? { sign: async (/** @type {string} */ m) => ownKey.sign(m) } : {}), ...(o.presenceSigner ? { presenceSigner: o.presenceSigner } : {}), ...(o.proveTool ? { proveTool: o.proveTool } : ownKey ? { proveTool: ownKey.proveTool } : {}), autoPresence: autoPresence,
     channelOf: sid => { const c = meta.get(`channel:${sid}`); return c && c.route ? { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } : null; } }));
   /** The id of the server this device is paired to (the home a drive on this computer is offered to), or null. One home: the first paired server by id. */
-  const homeServerId = () => { try { const r = /** @type {any} */ (db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' ORDER BY k LIMIT 1").get()); return r ? String(r.k).slice("channel:".length) : null; } catch { return null; } };
+  const homeServerId = () => {
+    try {
+      // the newest completed pairing; a channel with no completion mark (made before the mark existed) counts as the oldest, and a failed pairing leaves no channel at all
+      const rows = /** @type {any[]} */ (db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' ORDER BY k").all());
+      /** @type {string | null} */ let best = null; let bestAt = -1;
+      for (const r of rows) { const sid = String(r.k).slice("channel:".length); const m = meta.get(`paired:${sid}`); const at = m && Number.isFinite(Number(m.at)) ? Number(m.at) : 0; if (at > bestAt) { best = sid; bestAt = at; } }
+      return best;
+    } catch { return null; }
+  };
   return { autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 

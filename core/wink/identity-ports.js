@@ -24,7 +24,7 @@ export function identityPorts(o) {
         entries = st && Array.isArray(st.entries) ? st.entries : [];
       }
       const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-      return e && typeof e.pub === "string" ? { eid: String(e.eid), kind: "device", pub: e.pub, identity, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) } : null;
+      return e && typeof e.pub === "string" ? { eid: String(e.eid), kind: "device", pub: e.pub, identity, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) } : null;
     },
     /** @param {Uint8Array} message */
     signIdentity: async message => {

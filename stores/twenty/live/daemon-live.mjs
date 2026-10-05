@@ -22,7 +22,7 @@ const model = () => k.chains.fromFacts({ kind: "agent_session", vouched: true, a
 const R = k.gateway.records;
 try {
   await R.define(owner(), { add_types: [CONTACT] });
-  const c = await R.create(owner(), "contact", { name: "Pat Harlow" });
+  const c = await R.create(owner(), "contact", { name: "Pat Juniper" });
   // Roles carry no seal.put; a first-party stand-in module with that one action puts the value (the person-typed path needs a presence proof from a real device).
   await k.grants.installModule("proof", { actions: ["seal.put"] });
   const putter = k.chains.fromFacts({ kind: "module", module: "proof", first_party: true });

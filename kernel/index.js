@@ -26,6 +26,7 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { holdKernelDrive } from "./storage/keys.js";
 import { backendFor } from "./storage/devices.js";
 import { createBridge } from "./storage/bridge.js";
 import { TASK } from "../records/core-types.js";
@@ -93,25 +94,13 @@ export async function createKernel(cfg) {
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
-  // A store that always refuses (a device install with no Cloud: kernel/store/refusing.js) holds no records, so its kernel boots with no task records and never asks again. A real store that is
-  // only briefly unavailable at start is not that: the task type is asked for again in the background (a growing wait, `taskRetryMs` first) until it answers, and any other error stops the boot.
-  const note = typeof cfg.note === "function" ? cfg.note : (/** @type {string} */ _m) => {};
+  // The task record type is asked for at boot. A record store that is not there yet (stores/twenty/deferred-store.js) remembers a definition made now and applies it when it attaches; what it cannot do
+  // now, the task migration (it reads and writes records), runs when the store comes up (`whenReady`), so no second retry loop lives here. Any other error stops the boot.
   const defineTasks = async () => { await store.define({ add_types: [TASK] }); await tasks.migrate(); };
-  if (store.refusing !== true) {
-    try { await defineTasks(); }
-    catch (e) {
-      if (/** @type {any} */ (e).code !== "unavailable") throw e;
-      let wait = Number(cfg.taskRetryMs) > 0 ? Number(cfg.taskRetryMs) : 2000, tries = 0;
-      const again = () => {
-        const t = setTimeout(async () => {
-          try { await defineTasks(); note(`kernel: the task record type is defined now (the record store came up)`); }
-          catch (err) { if (++tries < 60 && /** @type {any} */ (err).code === "unavailable") { wait = Math.min(wait * 2, 30_000); again(); } else note(`kernel: could not define the task record type: ${/** @type {any} */ (err).message}`); }
-        }, wait);
-        if (typeof t.unref === "function") t.unref();
-      };
-      note(`kernel: the record store is not available yet (${/** @type {Error} */ (e).message}); the task record type is retried in the background`);
-      again();
-    }
+  try { await defineTasks(); }
+  catch (e) {
+    if (/** @type {any} */ (e).code !== "unavailable" || typeof store.whenReady !== "function") throw e;
+    store.whenReady(() => tasks.migrate());
   }
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
@@ -123,8 +112,12 @@ export async function createKernel(cfg) {
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
     moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
+    // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
+    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); },
+    verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
+    verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
@@ -353,6 +346,8 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
+        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
+        setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }
     /**
@@ -419,5 +414,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }
