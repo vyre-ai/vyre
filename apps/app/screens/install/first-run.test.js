@@ -157,7 +157,7 @@ test("the setup banner shows only when the box says setup is not finished", () =
 test("the short typed code is off unless a development build turns it on", async () => {
   const { readFileSync } = await import("node:fs");
   const rc = readFileSync(new URL("../shell/rc.ts", import.meta.url), "utf8");
-  assert.match(rc, /typedCode: process\.env\.EXPO_PUBLIC_VYRE_TYPED_CODE === "1"/, "off by default: only an explicit 1 turns it on");
+  assert.match(rc, /typedCode: flagOn\(process\.env\.EXPO_PUBLIC_VYRE_TYPED_CODE\)/, "off by default: only an explicit 1 turns it on, read by the exact literal Expo inlines");
   for (const f of ["../devices/TypeCode.tsx"]) {
     const src = readFileSync(new URL(f, import.meta.url), "utf8");
     assert.match(src, /export function TypeCode\(p: TypeCodeProps\) \{ return RC\.typedCode \?/, "the typed field renders nothing while it is off");
