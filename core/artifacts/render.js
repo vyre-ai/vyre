@@ -46,7 +46,7 @@ export const BY_EXTENSION = /** @type {Record<string, {kind: Kind, format: Forma
  * navigation of anything but itself, no plugins, and an opaque origin even at the top level. */
 const BASE = [
   "default-src 'none'", "style-src 'unsafe-inline'", "img-src data: blob:", "font-src data:", "media-src data: blob:",
-  "connect-src 'none'", "form-action 'none'", "base-uri 'none'", "object-src 'none'", "worker-src 'none'", "manifest-src 'none'",
+  "connect-src 'none'", "frame-src 'none'", "form-action 'none'", "base-uri 'none'", "object-src 'none'", "worker-src 'none'", "manifest-src 'none'",
 ];
 
 /**
