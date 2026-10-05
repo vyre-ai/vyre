@@ -84,6 +84,9 @@ const w = buildHome(root, {
 const { start } = await import("../../core/daemon/index.js");
 const d = await start({ root });
 const handle = d.registry.deps.handler({});
+// PW-1: on a box a one-time code enrols a key only from the owner's own PAIRED device (a confirmed Wink record), not from a tailnet login. This world is alex's phone on the tailnet and no real pairing runs here, so the
+// phone stands in for the paired owner device: the presence layer's `ownerDevice` answers true for exactly the world's one caller. (The real rule is tested in core/presence and test/wink-paired.test.js.)
+d.registry.deps.presence.ownerDevice = async (/** @type {string} */ caller) => String(caller || "").toLowerCase() === `tailnet:${OWNER}`.toLowerCase();
 
 // Fake credentials for both senders, put and granted to the Gate by alex at the Mac with a Capsule
 // key that is removed again at once, so the phone starts with nothing but a code to enroll with.
