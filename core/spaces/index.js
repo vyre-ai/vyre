@@ -55,6 +55,7 @@ export const hooks = {
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
+  /** @type {((person: string, space: string) => Promise<{ member: boolean }>) | null} the kernel's membership answer, replaced by a test that needs a home whose grants do not name the owner */ membership: null,
   /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
   /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
@@ -158,6 +159,8 @@ export default {
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
     /** The spaces a device is enrolled in: an explicit list per device (the device's entry id on the person's list). A device with no list yet is enrolled in every space (nothing was ever chosen); the list is made the first time it is changed or at pairing. */
+    /** The kernel's answer to "is this person a member of this Space"; a test may replace it (hooks.membership). */
+    const kernelMembership = (/** @type {string} */ person, /** @type {string} */ space) => (hooks.membership ? hooks.membership(person, space) : K.membership(person, space));
     const enrolledList = async (/** @type {string} */ eid) => /** @type {string[]|null} */ ((await kv.get(`device-spaces/${eid}`)) || null);
     const isEnrolled = async (/** @type {string} */ eid, /** @type {string} */ spaceId) => { const l = await enrolledList(eid); return l === null || l.includes(spaceId); };
     /** Refuse a call that comes from a device that is not enrolled in this space. @param {string} spaceId @param {any} meta */
@@ -1094,10 +1097,10 @@ export default {
     const kernelSpacesOf = async (/** @type {string} */ person) => {
       const ids = [];
       if (K && typeof K.membership === "function") {
-        if (typeof K.space === "string" && ((await K.membership(person, K.space).catch(() => ({ member: false }))).member === true || person === K.owner)) ids.push(K.space); // the home Space is its owner's by definition
+        if (typeof K.space === "string" && ((await kernelMembership(person, K.space).catch(() => ({ member: false }))).member === true || person === K.owner)) ids.push(K.space); // the home Space is its owner's by definition
         // every space this home's kernel hosts (made here, or hosted for the person by spaces.host-here), plus the module's finished rows that have a kernel
         const all = new Set([...(K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : []), ...spaces.all().filter(r => r.status === "done").map(r => r.id)]);
-        for (const id of all) if (id !== K.space && kernelHandle(id) && (await K.membership(person, id).catch(() => ({ member: false }))).member === true) ids.push(id);
+        for (const id of all) if (id !== K.space && kernelHandle(id) && (await kernelMembership(person, id).catch(() => ({ member: false }))).member === true) ids.push(id);
       }
       return [...new Set(ids)];
     };
@@ -1189,7 +1192,7 @@ export default {
           // not the home person's device: a MEMBER's device is enrolled in a space only when it is a device on that member's own identity list AND the member is an active member of that space NOW
           memberPerson = await memberDevicePerson(String(i.device));
           let ok = false;
-          if (memberPerson && typeof K.membership === "function") { try { ok = (await K.membership(memberPerson, String(i.space))).member === true; } catch { ok = false; } }
+          if (memberPerson && typeof K.membership === "function") { try { ok = (await kernelMembership(memberPerson, String(i.space))).member === true; } catch { ok = false; } }
           return { enrolled: ok };
         }
         let id = String(i.space);
@@ -1207,7 +1210,7 @@ export default {
           let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
           const person = who || (typeof K.owner === "string" ? K.owner : null);
           let member = false;
-          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (person && typeof K.membership === "function") { try { member = (await kernelMembership(person, id)).member === true; } catch { member = false; } }
           // The home's own Space belongs to the home's owner by definition: a kernel whose membership table still names the owner it had before the identity was adopted must not turn the owner's own
           // confirmed devices away (typed-paired devices got no person chain, so records.* said "not a signed-in person").
           if (!member && person && id === K.space && person === K.owner) member = true;
@@ -1218,7 +1221,7 @@ export default {
           let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
           const person = who || (typeof K.owner === "string" ? K.owner : null);
           let member = false;
-          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (person && typeof K.membership === "function") { try { member = (await kernelMembership(person, id)).member === true; } catch { member = false; } }
           if (!member) return { enrolled: false };
         }
         const deviceId = String(i.device);
@@ -1243,7 +1246,7 @@ export default {
         const mine = [];
         for (const id of K.spaces.list()) {
           // the kernel's own answer for the home's person (no caller chain needed: a terminal on a server is not always recognised as the person, and this list is the owner's own)
-          let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
+          let m = null; try { const r = await kernelMembership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
           mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
@@ -1432,7 +1435,7 @@ export default {
     /** One person's membership in one space: the kernel's answer (member or not, and the role) when it hosts or reaches that space, else the local table's. @param {string} space @param {string} person */
     const membershipRow = async (space, person) => {
       if (K && typeof K.membership === "function" && kernelHandle(space)) {
-        let r; try { r = await K.membership(person, space); } catch { return null; }
+        let r; try { r = await kernelMembership(person, space); } catch { return null; }
         return r && r.member ? { space, person, role: r.role, scope: null, expires: null } : null;
       }
       const m = mstore.get(space, person);
@@ -1755,7 +1758,7 @@ export default {
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
-      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
+      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await kernelMembership(person, space)).member === true; } catch { return false; } }
       return Boolean(mstore.get(space, person));
     };
     /** The people this device knows an identity name for (it has resolved them), the candidates for a proven device. */

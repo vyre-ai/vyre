@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(spaces): the home Space is its owner's by definition. `hooks.membership` (a test seam) stands in for a kernel whose grants do not name the owner; test/one-registry-b.test.js shows the owner's devices are enrolled in the home at first contact and at boot, a stranger's device is not, and a fresh home does adopt its owner into the home Space's grants (the bootstrap is sound). The test fails without the kernelSpacesOf fix. Existing devices are healed by the boot migration that already adds the home to every explicit list.
+
 - feat(gateway-door): a refusal "not from a signed-in person" now logs why (the first hop the kernel built, whether person facts were proved, and, for a device, a hint to check its enrolment in the Space); the caller still gets the plain words. test/wink-paired.test.js adds the HTTP-over-relay case: the paired session's bearer and signed proof reach records.me and records.define as the person.
 
 - fix(spaces): the home Space is its owner's by definition. `spaces.devices.enrolled` and the list a device is first enrolled with (`kernelSpacesOf`) no longer depend on the kernel's membership table naming the owner: a home whose table did not (awbox: the kernel owner was an identity the Space's grants never adopted) wrote an empty enrolment list for every new device, so the kernel gave a confirmed paired device no person chain and records.* answered "not from a signed-in person". Found by running app-wire's walk against a copy of awbox's home.

@@ -14,6 +14,7 @@ import { tempHome, present } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { CONTACT } from "../kernel/conformance/suite.js";
+import { hooks as spacesHooks } from "../core/spaces/index.js";
 
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "standin-directory.mjs");
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => res(p)); }); });
@@ -221,4 +222,41 @@ test("spaces.host-here: this home's owner has its OWN kernel host a space (kerne
   assert.deepEqual([again.data.space, again.data.existed], [r.data.space, true]);
   assert.equal((await deck("spaces.host-here", { name: "x" })).error?.code, "bad_name");
   assert.equal((await deck("spaces.host-here", { name: "fine", id: "spc_nope" })).error?.code, "bad_input");
+});
+
+test("the home Space is its owner's by definition: with a kernel whose grants do not name the owner, the owner's devices are enrolled in the home (at first contact and at boot) and a device the box does not know as the owner's is not", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "stale-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  let d = await start({ root, kernel: true, log: () => {} });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const made = (await deck("spaces.identity.create", { name: "alex" })).data;
+  const home = d.kernel.id.space;
+  // a fresh home does adopt the owner into the home Space's grants (the bootstrap is sound: the stale state below is not one a new home makes)
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  assert.ok(JSON.stringify(await d.kernel.gateway.grants.members.list(ownerChain)).includes(d.kernel.id.owner), "the home's member list names its owner after the identity is claimed");
+  // the stale state (awbox: the kernel's owner was never adopted into the home Space's grants): the kernel says the owner is no member of the home
+  spacesHooks.membership = async () => ({ member: false });
+  t.after(() => { spacesHooks.membership = null; });
+  const enrolled = (/** @type {() => any} */ dd, /** @type {string} */ device) => dd().registry.call("spaces.devices.enrolled", { device, space: home }, "module:vyred", { door: true });
+  // the owner's device loses its list, then the box starts again: the list it is given holds the home
+  await d.stop();
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  db.prepare("DELETE FROM spaces_kv WHERE key = ?").run(`device-spaces/${made.eid}`);
+  db.close();
+  d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 1500));
+  const rows = (await deck("spaces.devices.list", { device: made.eid })).data.spaces;
+  assert.ok(rows.some((/** @type {any} */ r) => r.space === home && r.enrolled === true), `the owner's device is enrolled in the home: ${JSON.stringify(rows)}`);
+  assert.equal((await enrolled(() => d, made.eid)).data.enrolled, true);
+  // a device the box does not know as the owner's, and no one else's, is not enrolled in anything
+  assert.equal((await enrolled(() => d, "strangerdevice0001")).data.enrolled, false);
 });
