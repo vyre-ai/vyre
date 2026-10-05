@@ -127,6 +127,7 @@ export function createFlows(o) {
     },
     "flows.retry": async (chain, i) => { personOf(chain); await runner.retry(i.run); return { ok: true }; },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
+    "kits.diff": async (chain, i) => kits.diff(i.kit),
     // A person, or an assistant acting for them: the person is the approver and the task asks them. An assistant never installs: the install runs only after the approver says yes.
     "kits.propose": async (chain, i) => { const who = proposerOf(chain); if (!who) throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" }); return kits.propose(i.kit, who, chain); },
     "flows.propose": async (chain, i) => { if (!proposals) throw Object.assign(new Error("proposals are not wired here"), { code: "unavailable" }); return proposals.propose(chain, i); },

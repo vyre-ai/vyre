@@ -45,6 +45,11 @@
           "label": "Job title"
         },
         {
+          "name": "time_zone",
+          "kind": "text",
+          "label": "Time zone"
+        },
+        {
           "name": "organization",
           "kind": "link",
           "label": "Organization",
@@ -354,8 +359,7 @@
           "label": "Status",
           "options": [
             "active",
-            "archived",
-            "moved"
+            "archived"
           ]
         },
         {
@@ -363,16 +367,6 @@
           "kind": "link",
           "label": "Client",
           "to": "contact"
-        },
-        {
-          "name": "owner",
-          "kind": "actor",
-          "label": "Owner"
-        },
-        {
-          "name": "due",
-          "kind": "date",
-          "label": "Due"
         },
         {
           "name": "drive_path",
@@ -395,14 +389,14 @@
           "label": "Archived"
         },
         {
-          "name": "moved_to",
-          "kind": "text",
-          "label": "Moved to (Space and project) when it left this Space"
+          "name": "owner",
+          "kind": "actor",
+          "label": "Owner"
         },
         {
-          "name": "moved_from",
-          "kind": "text",
-          "label": "Moved from (Space and project) when it came from another"
+          "name": "due",
+          "kind": "date",
+          "label": "Due"
         },
         {
           "name": "stage",

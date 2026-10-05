@@ -74,6 +74,10 @@ export interface FieldDefinition {
   readonly visible_if?: string;
   /** Required only while this Expression is true and the field is visible (`stage == "Signed"`). A write that leaves it empty then is refused. Never together with `required`. */
   readonly required_if?: string;
+  /** Written only by the named service (`kernel`: the tasks service, for a task's status); a write by any other chain is refused. The type says so, the gateway enforces it. */
+  readonly owned_by?: 'kernel';
+  /** A text field that must hold a particular form: `time_zone` is an IANA zone name (`America/Los_Angeles`). */
+  readonly format?: 'time_zone';
   readonly computed?: { readonly expr: string } | { readonly over: { readonly type: string; readonly via: string; readonly fn: 'count' | 'sum' | 'min' | 'max' | 'avg'; readonly field?: string; readonly where?: unknown } };
 }
 
