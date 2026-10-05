@@ -17,6 +17,7 @@ import { parse, roots, stepRefs } from "./expr.js";
  *   actions: Record<string, { risk: string, label?: string }>,
  *   roles?: readonly string[],
  *   teammates?: readonly string[],
+ *   pools?: readonly string[],
  *   templates?: readonly string[],
  *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[], draft?: { method?: string, path: string },
  *     ops?: { name?: string, method: string, path: string, read?: boolean, outward?: boolean, idem?: { header?: string, param?: string }, readback?: { path: string, id: string, match: Record<string, string> } }[], rate?: { per_min: number } }>,
@@ -190,6 +191,7 @@ export function compileFlow(flow, cat) {
         const who = String(s.kind === "agent" ? s.assistant : s.to);
         const [kind, name] = [who.split(":")[0], who.slice(who.indexOf(":") + 1)];
         if (kind === "teammate" && cat.teammates && !cat.teammates.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no teammate ${name}` });
+        if (kind === "pool" && cat.pools && !cat.pools.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no pool ${name}` });
         if (kind === "role" && cat.roles && !cat.roles.includes(name)) errors.push({ path: `${p}.to`, message: `there is no role ${name}` });
         if (s.template && cat.templates && !cat.templates.includes(String(s.template))) errors.push({ path: `${p}.template`, message: `there is no template ${s.template}` });
         effects.assigns.push({ step: s.id, to: who, checker: s.checker || null, output: s.output && s.output.kind });

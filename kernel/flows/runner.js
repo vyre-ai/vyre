@@ -18,6 +18,7 @@ import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
+import { chooseDoer } from "./assign.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -828,37 +829,57 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
       const t = res.task || {};
-      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null };
+      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
     const who = s.kind === "agent" ? s.assistant : s.to;
     const need = { action: "ask.request", resource: `vyre://${ctx.cat.space}/task/*` };
     return this.#effect(ctx, s, key, need, async idem => {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
-      const { doer, helpers } = await this.#actor(ctx, who);
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record });
       const spec = s.kind === "ask"
         ? { title, doer, ...(helpers.length ? { helpers } : {}), output: { kind: "decision" }, source: "flow_step", ...(record ? { record } : {}), ...(s.form ? { form: s.form } : {}) }
         : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: String(val(s.instructions) ?? "") } } : {}) };
-      const task = await this.k.ask.request(this.#chain(ctx), { ...spec, flow: { run: run.id, step: s.id } }, { idem });
-      if (!awaiting) return { task: task.id };
-      await this.#mark(ctx, key, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
+      // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
+      const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: { run: run.id, step: s.id } }, { idem });
+      if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
+      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });
       this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow-run/${run.id}`);
       throw this.#suspendOn(ctx, key, { kind: "task", task: task.id });
     }, { input: s.kind === "agent" ? val(s.instructions) : val(s.title) });
   }
 
-  /** @param {any} ctx @param {string} ref @returns {Promise<{ doer: ActorRef, helpers: ActorRef[] }>} */
-  async #actor(ctx, ref) {
+  /**
+   * Who does a task. A person or a teammate is named; a role or a pool is CHOSEN: of its candidates, the ones with the skills the step asks for, then the one who has worked most on this record,
+   * then the lightest open workload (kernel/flows/assign.js), and the choice comes back with its reason. With no skills and no signals the first holder is chosen, and a role's other
+   * holders help, as before.
+   * @param {any} ctx @param {string} ref @param {{ skills?: string[], record?: string }} [o] @returns {Promise<{ doer: ActorRef, helpers: ActorRef[], why?: string }>}
+   */
+  async #actor(ctx, ref, o = {}) {
     const space = ctx.run.space;
     const [kind, ...rest] = String(ref).split(":");
     const name = rest.join(":");
     if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] };
     if (kind === "teammate") return { doer: { kind: "agent", id: name, space }, helpers: [] };
-    const holders = this.ports.roles ? await this.ports.roles(space, name) : [];
-    const people = holders.filter(h => h.kind === "person");
-    if (!people.length) throw new StepFail("nobody", `nobody holds the role ${name} in this Space, so there is no one to ask`);
-    return { doer: people[0], helpers: people.slice(1) };
+    /** @type {{ actor: ActorRef, name?: string, skills?: string[] }[]} */ let candidates;
+    if (kind === "pool") {
+      candidates = this.ports.pool ? await this.ports.pool(space, name) : [];
+      if (!candidates.length) throw new StepFail("nobody", `nobody is in the pool ${name}, so there is no one to give this to`);
+    } else {
+      const holders = this.ports.roles ? await this.ports.roles(space, name) : [];
+      candidates = holders.filter((/** @type {any} */ h) => h.kind === "person").map((/** @type {any} */ h) => ({ actor: h }));
+      if (!candidates.length) throw new StepFail("nobody", `nobody holds the role ${name} in this Space, so there is no one to ask`);
+    }
+    const sig = this.ports.signals ? await this.ports.signals(space, o.record).catch(() => null) : null;
+    const skills = Array.isArray(o.skills) ? o.skills : [];
+    const c = chooseDoer({ candidates, skills, involvement: (sig && sig.involvement) || {}, load: (sig && sig.load) || {} });
+    if (!c.pick) throw new StepFail("nobody", `no one fits: ${c.why}`);
+    // a role keeps its other holders as helpers; a pool is a choice of one
+    const helpers = kind === "role" ? candidates.filter(x => x.actor.id !== c.pick.actor.id).map(x => x.actor) : [];
+    return { doer: c.pick.actor, helpers, ...(kind === "pool" || skills.length || sig ? { why: c.why } : {}) };
   }
 
   /** A checker is a person or a role; a role stays a role for the kernel to expand to humans. @param {any} ctx @param {string} ref */

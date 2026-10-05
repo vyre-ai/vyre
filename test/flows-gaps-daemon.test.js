@@ -12,6 +12,7 @@ import * as config from "../core/config/index.js";
 import { createDoor } from "../kernel/door/door.js";
 import { isChain } from "../kernel/core/chain.js";
 import { redact } from "../kernel/seal/classes.js";
+import { CORE_TYPES } from "../records/core-types.js";
 import { mechanism } from "../kernel/modules/sandbox.js";
 import { testHooks, OPEN_WALL } from "../lib/sandbox/index.js";
 import { skipOffRunner } from "../lib/sandbox/test-host.js";
@@ -165,4 +166,21 @@ test("a real watcher starts a Flow: the watcher process files an item, watcher.f
   await call("watchers.run", { name: "harlow-forms" }, { root }).catch(() => {});
   await new Promise(r => setTimeout(r, 1500));
   assert.equal((await host.flows.tools["flows.runs"](host.personChain(), { id: def.data.id })).length, 1);
+});
+
+test("a task given to a pool in a real daemon goes to the team member with the skill, and says why on the task", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install } = await boot(t);
+  const sp = d.kernel.id.space;
+  const TEAM = CORE_TYPES.find(x => x.name === "team-member");
+  await d.kernel.gateway.records.define(admin, { add_types: [TEAM, { ...MESSAGE, name: "case", label: "Case" }] });
+  const mk = (/** @type {string} */ name, /** @type {string} */ skills) => d.kernel.gateway.records.create(admin, "team-member", { name, kind: "assistant", role: "legal", skills, actor: { actor: { kind: "person", id: name, space: sp } } });
+  await mk("per_ann", "probate");
+  await mk(d.kernel.id.owner, "probate, spanish");
+  const flow = await install({ format: 1, name: "give", label: "Give", authorship: "human", trigger: { on: "manual" }, steps: [
+    { id: "a", kind: "assign", to: "pool:legal", skills: ["spanish"], title: "Call the client", output: { kind: "note" }, how: "person" }] });
+  await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: {} });
+  const runs = await until(async () => { const r = await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }); return r.length && r[0].state !== "running" ? r : null; }, "the run");
+  const full = (await host.flows.tools["flows.run"](host.personChain(), { run: runs[0].id })).run;
+  assert.equal(full.steps.a.output.chosen.doer, d.kernel.id.owner, JSON.stringify(full.error || full.steps.a));
+  assert.match(full.steps.a.output.chosen.why, /has spanish/);
 });

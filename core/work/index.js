@@ -102,14 +102,20 @@ export default {
       },
     });
     ctx.tool("work.situation", {
-      description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why.",
-      input: obj({ project: { type: "string" }, record: { type: "string" } }),
+      description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why. With `context: true`, or a `task`, also the record's world: the records it links to and that link to it, recent communications with the people on it, and what happened to it lately.",
+      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean" }, task: { type: "string" } }),
       run: async (input, extra) => {
         const k = kernelOf();
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
-        const project = ref(input.project), record = ref(input.record);
+        let project = ref(input.project), record = ref(input.record);
+        const chain = await chainOf(extra);
+        // A task names the record it is about: an agent doing it gets that record's world as well
+        if (typeof input.task === "string" && input.task && !record) {
+          const t = await k.ask.get(chain, input.task).catch(() => null);
+          if (t && typeof t.record === "string") record = ref(t.record);
+        }
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra) });
+        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), context: input.context === true || typeof input.task === "string" });
       },
     });
 
