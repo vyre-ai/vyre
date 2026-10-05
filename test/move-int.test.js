@@ -25,9 +25,9 @@ test("a project moves to another hosted Space: records, files, a chat folder, me
   assert.ok(made.data, JSON.stringify(made));
   const urn = made.data.project, id = urn.split("/").pop(), root_ = made.data.drive_path;
   const G = d.kernel.gateway;
-  await G.records.create(admin, "session-summary", { title: "Intake", thread: "t-1", project: { urn }, drive: root_ });
   await G.drive.put(admin, `${root_}/retainer.txt`, enc("signed"));
   const chat = await G.grants.chats.create(admin, {});
+  await G.records.create(admin, "chat-record", { title: "Intake", chat: chat.id, project: { urn }, drive: root_ });
   await G.drive.put(admin, `${root_}/chat/${chat.id}/note.txt`, enc("from the chat"));
   const plan = await call("work.project.move-plan", { project: urn, to_space: firm.space });
   console.log("plan:", JSON.stringify(plan).slice(0, 600));
