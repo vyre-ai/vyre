@@ -426,6 +426,8 @@ export class TwentyStore {
           if (f.options.some((o) => !exVals.has(o.value))) { await this.client.gql("metadata", "mutation UpdField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { options: f.options } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         }
       }
+      // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
+      for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
       // a type that is exactly as it was needs none of it (a Space restarting finds every type unchanged: one metadata read in all)
       if (!known || canonical(known.def) !== canonical(def)) looks.push({ p, def, was: known ? known.def : undefined });
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
