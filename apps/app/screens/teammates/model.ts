@@ -6,8 +6,6 @@ export type Duty = { id: string; title: string; instruction: string; trigger: st
 export type Pane = { notes: string | null; charter: string | null; duties: Duty[]; status: { state: string; position: number | null } | null; errors: number };
 export type Assignee = { id: string; name: string; family: string; role?: string };
 
-/** A project slug, as the box's teammates and duties tools take it. */
-export const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 /** A role is one lowercase word, like design or backend. */
 export const ROLE = /^[a-z][a-z0-9-]{0,30}$/;
 
@@ -87,8 +85,10 @@ export function byProject(rows: Teammate[]): { project: string; rows: Teammate[]
   return [...m.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b))).map(([project, r]) => ({ project, rows: r.sort((a, b) => a.role.localeCompare(b.role)) }));
 }
 
-/** The box project a Project record's team belongs to: the record's own `slug` (core type `project`, unique, the key every box tool that names a project takes). Empty when the record has none yet; the title is never guessed into a slug. */
-export function projectSlug(row: { id?: string; data?: Record<string, unknown> } | null | undefined): string {
-  const own = row?.data?.slug;
-  return typeof own === "string" && SLUG.test(own) ? own : "";
+/** What every team.* tool takes for `project`: the Project record's id (a vyre:// address works too). A short name is refused by the box, and a slug is display only, so a project with no slug has a team all the same. */
+export function projectId(row: { id?: unknown } | null | undefined): string {
+  return typeof row?.id === "string" ? row.id.trim() : "";
 }
+
+/** A project's name for the Assistants page: the box's answer for its id, else a plain word, never the raw id. */
+export const projectTitle = (id: string, names: Record<string, string>) => (id ? names[id] || "A project" : "Everywhere");

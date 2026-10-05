@@ -34,14 +34,17 @@ test("teammates: rows keep what is drawn and say the state in words", { skip: !s
   assert.equal(m.plural(1, "teammate"), "1 teammate");
 });
 
-test("teammates: a role is one lowercase word and a project\u2019s slug is its own field and never guessed from the title", { skip: !strip }, async () => {
+test("teammates: a role is one lowercase word and a project is named to the box by its record id", { skip: !strip }, async () => {
   const m = await import("./model.ts");
   assert.ok(m.ROLE.test("design") && m.ROLE.test("back-end"));
   for (const bad of ["Design", "two words", "", "1x", "a".repeat(40)]) assert.equal(m.ROLE.test(bad), false, bad);
-  assert.equal(m.projectSlug({ id: "x", data: { slug: "dana-wine" } }), "dana-wine");
-  assert.equal(m.projectSlug({ id: "x", data: { name: "Dana Wine intake", slug: "Bad Slug" } }), "", "a slug the box would refuse is empty, not repaired");
-  assert.equal(m.projectSlug({ id: "x", data: { name: "Dana Wine intake" } }), "", "no slug field, no team: the title is not turned into one");
-  assert.equal(m.projectSlug(null), "");
+  assert.equal(m.projectId({ id: "01JABC" }), "01JABC");
+  assert.equal(m.projectId({ id: " 01JABC ", data: { name: "No slug here" } }), "01JABC", "a project with no slug still has a team: the id is the key");
+  assert.equal(m.projectId({ data: { slug: "dana-wine" } }), "", "a slug is not an id");
+  assert.equal(m.projectId(null), "");
+  assert.equal(m.projectTitle("01JABC", { "01JABC": "Dana Wine intake" }), "Dana Wine intake");
+  assert.equal(m.projectTitle("01JZZZ", {}), "A project", "never the raw id");
+  assert.equal(m.projectTitle("", {}), "Everywhere");
 });
 
 test("assign to: people and agents together, the project's teammates first, services never", { skip: !strip }, async () => {
@@ -71,23 +74,25 @@ test("teammates: grouped by project for the Assistants page", { skip: !strip }, 
 test("teammates: the source calls the box's own tools with the inputs the Deck sent", { skip: !strip }, async () => {
   const { teammatesSource } = await import("./source.ts");
   const b = box({
-    "team.list": { data: ROWS }, "team.default.get": { data: { enabled: false } },
+    "team.list": { data: ROWS }, "work.project.ref": { data: { id: "P1", urn: "vyre://s/project/P1", slug: "dana", name: "Dana Wine intake" } }, "team.default.get": { data: { enabled: false } },
     "team.notes": { data: { text: "n" } }, "team.charter.get": { data: { charter: { text: "c" } } },
     "team.duties.list": { data: { duties: [{ id: "d1", title: "T", instruction: "watch", trigger: "daily", act: false, enabled: true, started: true }, { nope: 1 }] } },
     "team.status": { data: { state: "running", position: 0 } },
     "agents.list": { data: [{ name: "kit", kind: "agent" }, { name: "me", kind: "assistant" }] },
   });
   const s = teammatesSource(b.call);
-  assert.equal((await s.list("dana")).length, 2);
-  assert.deepEqual(b.seen.at(-1), { tool: "team.list", input: { project: "dana" } });
+  assert.equal((await s.list("P1")).length, 2);
+  assert.deepEqual(b.seen.at(-1), { tool: "team.list", input: { project: "P1" } });
+  assert.deepEqual(await s.names(["P1", "P1", ""]), { P1: "Dana Wine intake" });
+  assert.deepEqual(b.seen.at(-1), { tool: "work.project.ref", input: { project: "P1" } });
   await s.all(); assert.deepEqual(b.seen.at(-1).input, { all: true });
-  assert.equal(await s.steer("dana"), false);
-  const t = (await s.list("dana"))[0];
+  assert.equal(await s.steer("P1"), false);
+  const t = (await s.list("P1"))[0];
   const p = await s.pane(t);
   assert.deepEqual({ n: p.notes, c: p.charter, st: p.status, e: p.errors, d: p.duties.map((d) => d.id) }, { n: "n", c: "c", st: { state: "running", position: 0 }, e: 0, d: ["d1"] });
   assert.deepEqual(await s.fillers(), ["kit"], "the person's own assistant never fills a role");
-  await s.add("dana", "design", "  UI  "); assert.deepEqual(b.seen.at(-1), { tool: "team.add", input: { project: "dana", role: "design", brief: "UI" } });
-  await s.add("dana", "qa"); assert.deepEqual(b.seen.at(-1).input, { project: "dana", role: "qa" });
+  await s.add("P1", "design", "  UI  "); assert.deepEqual(b.seen.at(-1), { tool: "team.add", input: { project: "P1", role: "design", brief: "UI" } });
+  await s.add("P1", "qa"); assert.deepEqual(b.seen.at(-1).input, { project: "P1", role: "qa" });
   await s.retire("t1"); assert.deepEqual(b.seen.at(-1), { tool: "team.retire", input: { teammate: "t1" } });
   await s.setNotes("t1", "hi"); assert.deepEqual(b.seen.at(-1).input, { action: "set", agent: "t1", text: "hi" });
   await s.setCharter("t1", "c2"); assert.deepEqual(b.seen.at(-1), { tool: "team.charter.set", input: { teammate: "t1", text: "c2" } });
@@ -97,14 +102,14 @@ test("teammates: the source calls the box's own tools with the inputs the Deck s
   await s.dutyOn(d); assert.deepEqual(b.seen.at(-1), { tool: "team.duties.enable", input: { id: "d1", expect: "watch" } });
   await s.dutyOff(d); assert.deepEqual(b.seen.at(-1), { tool: "team.duties.disable", input: { id: "d1" } });
   await s.dutyRun(d); assert.deepEqual(b.seen.at(-1).tool, "team.duties.run-now");
-  await s.setSteer("dana", true); assert.deepEqual(b.seen.at(-1), { tool: "team.default.set", input: { project: "dana", enabled: true } });
+  await s.setSteer("P1", true); assert.deepEqual(b.seen.at(-1), { tool: "team.default.set", input: { project: "P1", enabled: true } });
 });
 
 test("teammates: a refusal throws with the box's words, and an unreadable pane part is counted", { skip: !strip }, async () => {
   const { teammatesSource } = await import("./source.ts");
   const { errWords } = await import("./model.ts");
   const s = teammatesSource(box({ "team.list": { error: { code: "not_found", message: "no such tool" } }, "team.notes": { error: { code: "x", message: "" } } }).call);
-  await assert.rejects(s.list("dana"), (e) => errWords(e) === "Teammates are not available on your server yet.");
+  await assert.rejects(s.list("P1"), (e) => errWords(e) === "Teammates are not available on your server yet.");
   const p = await s.pane({ agent: "t", project: "d", role: "r", brief: "", filler: null, state: "idle", queued: 0, current: null, last: null });
   assert.equal(p.notes, null); assert.equal(p.errors, 1 + 0 + 0, "only the notes read failed");
 });

@@ -1,4 +1,4 @@
-// A project's teammates over an injected `call`: reads on open and after each action, writes all the person's own. The box has no tool that lists a
+// A project's teammates over an injected `call`, keyed by the Project record id (cleanup's team.* change; the box refuses a short name): reads on open and after each action, writes all the person's own. The box has no tool that lists a
 // teammate's queued asks, so the pane shows how many are queued (team.list) and the one running (team.status).
 import type { Call } from "../settings/real-source";
 import { dutiesOf, teammatesOf, type Duty, type Pane, type Teammate } from "./model.ts";
@@ -34,6 +34,12 @@ export function teammatesSource(call: Call) {
         status: status.failed || !status.data ? null : { state: String(status.data.state || ""), position: status.data.position == null ? null : Number(status.data.position) },
         errors: [notes, charter, duties].filter((r) => r.failed).length,
       };
+    },
+    /** Each project's name, by record id (work.project.ref): one read per id, a refused one is left out. */
+    names: async (ids: string[]): Promise<Record<string, string>> => {
+      const out: Record<string, string> = {};
+      await Promise.all([...new Set(ids.filter(Boolean))].map(async (id) => { const r = await soft<{ name?: string }>("work.project.ref", { project: id }); if (!r.failed && r.data?.name) out[id] = String(r.data.name); }));
+      return out;
     },
     /** The agents that can fill a role (never the person's own assistant). */
     fillers: async (): Promise<string[]> => {
