@@ -212,7 +212,7 @@ or paste its link, and press **Open invite**. The app shows the space's name and
 An invite from a link outside Vyre carries a warning to check the space name first.
 
 A chat is where you work with your assistant and your agents, and Now shows your day: the next
-call, the spaces you are in, and the things that need you.
+call, the spaces you are in, and the things that need you. Until a space has an assistant, Now shows **Create your assistant** to its owner or admin.
 
 ![The first chat, "Fix the intake date check", with the assistant editing and the composer below](shots/first-run-chat.png "First chat")
 
@@ -229,6 +229,8 @@ There is nothing to install and nothing to sign in to first.
 2. In the browser, on an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On
    Android, use Chrome's **Install app**. Open Vyre from the Home Screen: it runs full screen,
    like an app.
+
+If the owner removes this phone, it forgets everything it held (keys, pairing, settings, pins, cache and unsent writes) the next time it reaches Vyre, and asks to be paired again. A refused sign-in, a locked phone or an unreachable server does not do this.
 
 More in [On your phone](../using/mobile.md).
 
