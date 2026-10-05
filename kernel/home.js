@@ -72,6 +72,8 @@ export async function bootHomeKernel(cfg) {
     if (hostedAdopt) { try { await hostedAdopt(to, from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } }
   };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
+  // A home whose record store is Twenty (a server, or VYRE_STORE=twenty) never starts on the built-in SQLite store by falling through: bootKernel uses SQLite only when no store was passed, so no store here is a refusal.
+  if (cfg.requireStore === true && !personalStore) throw new KernelError("store_required", "this home's records live in Twenty, and no record store was made for it, so it will not start on the built-in one");
   // The home Space's own Drive (kernel/storage/provision.js): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
   /** @type {any} */ let drive;
   if (sealer) {
