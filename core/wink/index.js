@@ -888,7 +888,7 @@ export function createWink(inject = {}) {
 
     // Another home's pull of a project move (core/wink/homecall.js): the door admits a stranger home only while a move is open here.
     const homeMoves = createHomeMoves();
-    registerHomeMove(ctx, { moves: homeMoves, relayUrl: () => (ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "") });
+    const homeCalls = registerHomeMove(ctx, { moves: homeMoves, relayUrl: () => (ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "") });
     const timer = setInterval(sweep, 60_000);
     timer.unref();
     return {
@@ -901,6 +901,7 @@ export function createWink(inject = {}) {
       join: () => liveJoin,
       netd: () => netdRef,
       async stop() {
+        homeCalls.stop();
         live = null;
         liveLinks = null;
         clearInterval(timer);

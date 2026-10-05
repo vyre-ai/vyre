@@ -8,6 +8,8 @@
 // wink.home.call on the target, across real daemons and a real relay. Checked: no move open = refused; an open move = a pull crosses and the stub's answer comes back; another space of an
 // open move and any other tool = refused at the door (a hand-built stream, not only the caller's own check); a closed move refuses at once, including on a stream already open; an expired move refuses; a
 // pull of a full 1 MiB of base64 text crosses and one over the cap is too_large; one request at a time; the per-move rate limit; the box-wide cap on new strange channels.
+// The source's pull tool is a stand-in with the SHAPE of lib/spaces/move-pull.js: hello gives a nonce, auth is an HMAC over from+to+move+nonce with a secret both runners hold, and everything else needs a session earned by
+// the same stream. The door's rule is checked against strangers: before auth only hello and auth cross (3 requests, 10 s), a failed auth ends the stream, and strangers never spend the move's budget.
 // What it does NOT prove: a NAT between the boxes, the hosted Cloudflare relay (only the Node relay), the spaces module's own protocol (lib/spaces/move-pull.js is windows').
 // Run it from the boxes' persistent clone (E2E_DIR/repo): it never rsyncs. Firewall: comment-tagged ufw rules for the other box's address only, removed at the end. Pids are recorded; nothing is killed by pattern.
 import fs from "node:fs";
@@ -67,7 +69,7 @@ async function main() {
     for (const [r, port] of [["source", P.ctlSource], ["target", P.ctlTarget]]) sh(HOSTS[r], `rm -rf ${RUN}/${port}`);   // every run starts from fresh homes
     // the target hosts the relay; the source reaches it from outside (its address only)
     sh(HOSTS.target, `sudo -n ufw allow from ${ips.source} to any port ${P.relay} proto tcp comment ${TAG} >/dev/null`);
-    const common = { relayUrl: `ws://${ips.target}:${P.relay}` };
+    const common = { relayUrl: `ws://${ips.target}:${P.relay}`, secret: crypto.randomBytes(16).toString("hex") };
     await startRunner("target", { ...common, role: "target", ctlPort: P.ctlTarget, startsRelay: true, relayPort: P.relay });
     await startRunner("source", { ...common, role: "source", ctlPort: P.ctlSource });
     out("up", ips);
@@ -81,10 +83,10 @@ async function main() {
 
     // 2. open a move: a pull crosses and the stub's answer comes back
     ctl(HOSTS.source, P.ctlSource, { cmd: "open", space: "spc_a", move_id: "mv_a", ttlMs: 3_600_000 });
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "hello" } });
-    check("an open move: a pull crosses and the answer comes back", r.data && r.data.stub === true && r.data.echo && r.data.echo.t === "hello", r);
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", login: true, request: { t: "plan" } });
+    check("an open move: hello, auth and then a pull cross and the answer comes back", r.data && r.data.stub === true && r.data.echo && r.data.echo.t === "plan", r);
     const seen = ctl(HOSTS.source, P.ctlSource, { cmd: "served" });
-    check("the source ran it as the daemon on the stranger's behalf (home:<id>), once", seen.calls.length === 1 && seen.calls[0].caller === "module:vyred" && /^home:/.test(seen.calls[0].onBehalfOf || ""), seen.calls);
+    check("the source ran hello, auth and the plan as the daemon on the other home's behalf (home:<id>), three requests", seen.calls.length === 3 && seen.calls.every(c => c.caller === "module:vyred" && /^home:/.test(c.onBehalfOf || "")), seen.calls);
 
     // 3. another space of an open move, and any other tool, are refused AT THE DOOR (a hand-built stream)
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "raw", ...dial, headSpace: "spc_a", tool: "spaces.moves.pull", input: { space: "spc_other", request: {} } });
@@ -98,39 +100,53 @@ async function main() {
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: {}, tool: "spaces.list" });
     check("wink.home.call itself refuses any other tool before dialing", coded(r, "denied"), r);
     const calls = ctl(HOSTS.source, P.ctlSource, { cmd: "served" }).calls;
-    check("nothing but the one stub pull ever reached the source's registry", calls.length === 1, calls);
+    check("nothing but hello, auth and the one plan ever reached the source's registry", calls.length === 3, calls);
 
     // 4. the answer cap: a full 1 MiB of base64 text crosses, more is too_large
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "file", chars: 1_048_576 }, timeoutS: 90 });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", login: true, request: { t: "file", chars: 1_048_576 }, timeoutS: 90 });
     check("a full 1 MiB of base64 text crosses", r.data && r.data.chunk && r.data.chunk.length === 1_048_576, r.error || { len: r.data && r.data.chunk && r.data.chunk.length });
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "file", chars: 1_048_576 + 40_000 }, timeoutS: 90 });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", login: true, request: { t: "file", chars: 1_048_576 + 40_000 }, timeoutS: 90 });
     check("an answer over the cap is refused with too_large", coded(r, "too_large"), r.error || "it crossed");
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "fail" } });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", login: true, request: { t: "fail" } });
     check("the tool's own error code (plan_changed) comes back unchanged", coded(r, "plan_changed"), r);
+
+    // 4b. strangers: a relay key that says homeMove:true but cannot prove the target Space is held at the door, and spends none of the move's budget
+    await sleep(61_000);   // a fresh minute for the box-wide arrivals
+    const before = ctl(HOSTS.source, P.ctlSource, { cmd: "served" }).calls.length;
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "stranger", ...dial, space: "spc_a", mode: "plan-first" });
+    check("a stranger asking for the plan before any auth is refused and its stream ends", coded(r.first, "denied") && r.after && r.after.error, r);
+    check("that request never reached the pull tool", ctl(HOSTS.source, P.ctlSource, { cmd: "served" }).calls.length === before, null);
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "stranger", ...dial, space: "spc_a", mode: "forged-auth" });
+    check("a stranger with a forged auth is refused (denied) and its stream ends at once", coded(r.auth, "denied") && r.after && r.after.error, r);
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "stranger", ...dial, space: "spc_a", mode: "four-hellos" });
+    check("a stranger gets three requests before auth and the fourth is refused", r.okCount === 3 && coded(r.fourth, "denied"), r);
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "stranger", ...dial, space: "spc_a", mode: "idle" });
+    check("a stranger that proves nothing is closed after the pre-auth window", r.closed === true, r);
 
     // 5. one request at a time, and the per-move rate limit, on one open stream
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "parallel", ...dial, space: "spc_a", n: 4, request: { t: "slow", ms: 1500 } });
     check("two requests at once on a move: one runs, the others are refused (one at a time)", r.ok >= 1 && r.refused >= 1 && r.codes.every(c => c === "rate_limited"), r);
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "many", ...dial, space: "spc_a", n: 260, timeoutS: 170 });
     check("the per-move rate limit refuses after its minute's requests (rate_limited)", r.refusedAt !== null && r.codes.every(c => c === "rate_limited"), r);
+    check("the strangers above spent none of it: the real target had its full minute (refused only after about 240)", r.refusedAt >= 232, r);
 
     // 6. close revokes: at once, and on a stream that is already open
     await sleep(61_000);   // the per-move and box-wide minutes pass (the rate test above used them up), so only the close can refuse
     const held = ctl(HOSTS.target, P.ctlTarget, { cmd: "hold", ...dial, space: "spc_a", name: "h1" });
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "hello" } });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "plan" } });
     check("an open stream can pull while the move is open", Boolean(r.data) && held.held === true, r);
     ctl(HOSTS.source, P.ctlSource, { cmd: "close", move_id: "mv_a" });
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "hello" } });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "plan" } });
     check("wink.home-move.close: the open stream's next request is refused", coded(r), r);
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "hello" }, timeoutS: 40 });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", login: true, request: { t: "plan" }, timeoutS: 40 });
     check("wink.home-move.close: a new pull is refused", coded(r), r);
 
     // 7. expiry
     ctl(HOSTS.source, P.ctlSource, { cmd: "open", space: "spc_c", move_id: "mv_c", ttlMs: 6000 });
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_c", request: { t: "hello" } });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_c", login: true, request: { t: "plan" } });
     check("a move with a short expiry pulls while it is open", Boolean(r.data), r);
     await sleep(7500);
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_c", request: { t: "hello" }, timeoutS: 40 });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_c", request: { t: "plan" }, timeoutS: 40 });
     check("an expired move is refused", coded(r), r);
 
     // 8. the box-wide cap on new strange channels
@@ -138,7 +154,7 @@ async function main() {
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "burst", ...dial, space: "spc_d", n: 16, timeoutS: 170 });
     check("a burst of new channels is capped box-wide per minute", r.failed >= 1 && r.passed >= 1, r);
     await sleep(62_000);
-    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_d", request: { t: "hello" } });
+    r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_d", login: true, request: { t: "plan" } });
     check("after the minute a pull crosses again", Boolean(r.data), r);
   } catch (e) {
     check("the run completed", false, String(e.message).slice(0, 600));
@@ -184,10 +200,22 @@ async function runner(args) {
   // the source's spaces.moves.pull is a stub: the daemon's registry answers it (the spaces module is not part of this proof). Recorded, so the run can say what reached it.
   const served = [];
   const orig = d.registry.call.bind(d.registry);
+  // The stand-in pull tool, with the shape of lib/spaces/move-pull.js: hello -> a nonce for this caller; auth -> an HMAC over from+to+move+nonce with the secret both runners hold -> a session for this caller;
+  // everything else needs that caller's session. A nonce and a session belong to the stream that earned them (meta.onBehalfOf).
+  const nonces = new Map(), sessions = new Set();
+  const proofOf = (from, to, move, nonce) => crypto.createHmac("sha256", cfg.secret).update(`vyre-move-pull-v1\n${from}\n${to}\n${move}\n${nonce}`).digest("hex");
   d.registry.call = async (tool, input, caller, meta) => {
     if (tool !== "spaces.moves.pull") return orig(tool, input, caller, meta);
-    served.push({ tool, caller, onBehalfOf: meta && meta.onBehalfOf });
+    const who = String((meta && meta.onBehalfOf) || "");
+    served.push({ tool, caller, onBehalfOf: who });
     const q = (input && input.request) || {};
+    if (q.t === "hello") { const nonce = crypto.randomBytes(12).toString("hex"); nonces.set(who, { nonce, space: input.space }); return { data: { nonce } }; }
+    if (q.t === "auth") {
+      const n = nonces.get(who); nonces.delete(who);
+      if (!n || n.nonce !== q.nonce || q.proof !== proofOf(input.space, "spc_target", q.move_id, n.nonce)) return { error: { code: "denied", message: "that proof does not show the target space" } };
+      sessions.add(who); return { data: { session: `s_${who}` } };
+    }
+    if (!sessions.has(who)) return { error: { code: "denied", message: "connect first" } };
     if (q.t === "fail") return { error: { code: "plan_changed", message: "the plan moved" } };
     if (q.t === "slow") { await sleep(Number(q.ms) || 1000); return { data: { stub: true, echo: q } }; }
     if (q.t === "file") return { data: { stub: true, chunk: "A".repeat(Number(q.chars) || 10) } };
@@ -209,6 +237,12 @@ async function runner(args) {
     return { session, close() { try { session.close("done"); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } } };
   };
   const err = e => ({ error: { code: e.code || "failed", message: String(e.message).slice(0, 300) } });
+  const moveOf = space => `mv_${String(space).slice(4)}`;
+  /** hello, then auth with the right proof, on a hand-built stream (the target's side of the protocol). */
+  const loginRaw = async (c, space) => {
+    const h = await c.session.call("spaces.moves.pull", { space, request: { t: "hello", move_id: moveOf(space), to: "spc_target" } }, { timeoutMs: 15_000 });
+    await c.session.call("spaces.moves.pull", { space, request: { t: "auth", move_id: moveOf(space), to: "spc_target", nonce: h.nonce, proof: proofOf(space, "spc_target", moveOf(space), h.nonce) } }, { timeoutMs: 15_000 });
+  };
   const holds = new Map();
   const H = {
     info: async () => { const r = await orig("relay.route.id", {}, "module:vyred", {}); return r.data || {}; },
@@ -216,16 +250,39 @@ async function runner(args) {
     close: async b => (await asSpaces("wink.home-move.close", { move_id: b.move_id })),
     served: async () => ({ calls: served }),
     call: async b => {
-      const r = await asSpaces("wink.home.call", { route: b.route, box: b.box, relay: b.relay, tool: b.tool || "spaces.moves.pull", input: { space: b.space, request: b.request } });
+      if (b.login) {   // the target's side of the protocol over wink.home.call's kept stream: hello, then auth with the proof, then the request below on the same stream
+        const base = { route: b.route, box: b.box, relay: b.relay, tool: "spaces.moves.pull" };
+        const h = await asSpaces("wink.home.call", { ...base, input: { space: b.space, request: { t: "hello", move_id: moveOf(b.space), to: "spc_target" } } });
+        if (h.error) return { error: { code: h.error.code, message: String(h.error.message).slice(0, 300) } };
+        const a = await asSpaces("wink.home.call", { ...base, input: { space: b.space, request: { t: "auth", move_id: moveOf(b.space), to: "spc_target", nonce: h.data.nonce, proof: proofOf(b.space, "spc_target", moveOf(b.space), h.data.nonce) } } });
+        if (a.error) return { error: { code: a.error.code, message: String(a.error.message).slice(0, 300) } };
+      }
+      const r = await asSpaces("wink.home.call", { route: b.route, box: b.box, relay: b.relay, tool: b.tool || "spaces.moves.pull", input: { space: b.space, request: b.request }, ...(b.fresh ? { fresh: true } : {}) });
       return r.error ? { error: { code: r.error.code, message: String(r.error.message).slice(0, 300) } } : { data: r.data };
     },
     raw: async b => {
       let c; try { c = await dialRaw(b, b.headSpace); } catch (e) { return err(e); }
       try { return { data: await c.session.call(b.tool, b.input, { timeoutMs: 15_000 }) }; } catch (e) { return err(e); } finally { c.close(); }
     },
+    stranger: async b => {   // a relay key that says homeMove:true and cannot prove the target space
+      let c; try { c = await dialRaw(b, b.space); } catch (e) { return err(e); }
+      const pull = request => c.session.call("spaces.moves.pull", { space: b.space, request }, { timeoutMs: 15_000 }).then(data => ({ data }), e => err(e));
+      try {
+        if (b.mode === "plan-first") { const first = await pull({ t: "plan", session: "x" }); await sleep(500); return { first, after: await pull({ t: "hello" }) }; }
+        if (b.mode === "forged-auth") {
+          const h = await pull({ t: "hello", move_id: moveOf(b.space), to: "spc_target" });
+          const auth = await pull({ t: "auth", move_id: moveOf(b.space), to: "spc_target", nonce: h.data && h.data.nonce, proof: "forged" });
+          await sleep(500); return { auth: auth, after: await pull({ t: "hello" }) };
+        }
+        if (b.mode === "four-hellos") { let okCount = 0; for (let i = 0; i < 3; i++) { const r = await pull({ t: "hello", move_id: moveOf(b.space), to: "spc_target" }); if (r.data) okCount++; } return { okCount, fourth: await pull({ t: "hello", move_id: moveOf(b.space), to: "spc_target" }) }; }
+        if (b.mode === "idle") { await sleep(12_000); return { closed: Boolean((await pull({ t: "hello" })).error) }; }
+        return err({ code: "bad_input", message: "mode" });
+      } finally { c.close(); }
+    },
     parallel: async b => {
       const c = await dialRaw(b, b.space);
       try {
+        await loginRaw(c, b.space);
         const rs = await Promise.allSettled(Array.from({ length: b.n }, () => c.session.call("spaces.moves.pull", { space: b.space, request: b.request }, { timeoutMs: 20_000 })));
         const codes = rs.filter(x => x.status === "rejected").map(x => x.reason.code);
         return { ok: rs.filter(x => x.status === "fulfilled").length, refused: codes.length, codes };
@@ -235,15 +292,16 @@ async function runner(args) {
       const c = await dialRaw(b, b.space);
       const codes = []; let refusedAt = null;
       try {
-        for (let i = 1; i <= b.n; i++) { try { await c.session.call("spaces.moves.pull", { space: b.space, request: { t: "hello" } }, { timeoutMs: 20_000 }); } catch (e) { codes.push(e.code); if (refusedAt === null) refusedAt = i; if (codes.length >= 3) break; } }
+        await loginRaw(c, b.space);
+        for (let i = 1; i <= b.n; i++) { try { await c.session.call("spaces.moves.pull", { space: b.space, request: { t: "plan" } }, { timeoutMs: 20_000 }); } catch (e) { codes.push(e.code); if (refusedAt === null) refusedAt = i; if (codes.length >= 3) break; } }
         return { refusedAt, codes: [...new Set(codes)] };
       } finally { c.close(); }
     },
-    hold: async b => { const c = await dialRaw(b, b.space); holds.set(b.name, c); return { held: true }; },
+    hold: async b => { const c = await dialRaw(b, b.space); await loginRaw(c, b.space); holds.set(b.name, c); return { held: true }; },
     holdcall: async b => { const c = holds.get(b.name); if (!c) return err({ code: "no_such_hold", message: b.name }); try { return { data: await c.session.call("spaces.moves.pull", { space: "spc_a", request: b.request }, { timeoutMs: 15_000 }) }; } catch (e) { return err(e); } },
     burst: async b => {
       let passed = 0, failed = 0;
-      for (let i = 0; i < b.n; i++) { const r = await H.call({ ...b, request: { t: "hello" } }); if (r.data) passed++; else failed++; }
+      for (let i = 0; i < b.n; i++) { const r = await H.call({ ...b, fresh: true, request: { t: "hello", move_id: moveOf(b.space), to: "spc_target" } }); if (r.data) passed++; else failed++; }
       return { passed, failed };
     },
   };
