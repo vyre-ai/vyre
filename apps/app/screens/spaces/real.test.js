@@ -12,7 +12,8 @@ const MEMBERS = { space: "spc_a58c2e0dbfb34fc2", members: [
 ], warnings: [{ code: "single_owner", message: "This space has one owner." }] };
 
 test("a space card reads the display name, address, role and home", () => {
-  assert.deepEqual(shapeSpaces(LIST), [{ id: "spc_a58c2e0dbfb34fc2", name: "Harlow Legal", address: "harlowdev.vyre.run", role: "owner", home: "this computer", setup: null }]);
+  assert.deepEqual(shapeSpaces(LIST), [{ id: "spc_a58c2e0dbfb34fc2", name: "Harlow Legal", address: "harlowdev.vyre.run", role: "owner", zone: null, home: "this computer", setup: null }]);
+  assert.equal(shapeSpaces([{ ...LIST[0], time_zone: "America/Los_Angeles" }])[0].zone, "America/Los_Angeles");
   assert.deepEqual(shapeSpaces(null), []);
   assert.equal(homeWords({ kind: "server" }), "your server");
 });

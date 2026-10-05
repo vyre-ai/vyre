@@ -24,6 +24,7 @@ export function shapeSpaces(data) {
     // the same name the switcher shows: Personal, My Cloud, or the team's own name (never an id)
     name: spaceName(s),
     address: s.name,
+    zone: typeof s.time_zone === "string" && s.time_zone ? s.time_zone : null,
     role: s.role === "owner" ? "owner" : s.role || "member",
     home: homeWords(s.home),
     setup: s.setup || null,

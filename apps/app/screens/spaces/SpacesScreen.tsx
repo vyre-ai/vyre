@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ZoneSection } from "./ZoneSection";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
@@ -68,6 +69,7 @@ export function SpacesScreen() {
           </Card>
         ))}
       </View>
+      {cur && canInvite && !MOCK ? <ZoneSection space={cur.id} zone={(cur as { zone?: string | null }).zone ?? null} spaceName={spaceName} onSaved={() => void load()} /> : null}
       <Sec title={`Members of ${spaceName}`}>
         <Card flush>
           {members.map((m, i) => {
