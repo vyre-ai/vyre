@@ -779,7 +779,7 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
   const KIT = "per_" + "k".repeat(26);
   // making an owner with no proof: the kernel says the change needs the person's approval, in the module's words; a role below owner needs none (user ruling 5 Oct)
   const bare = await d.call("spaces.members.add", { space, person: "per_" + "z".repeat(26), role: "owner" }, "cli", { token });
-  assert.equal(bare.error?.code, "needs_presence", JSON.stringify(bare.error));
+  assert.ok(["needs_presence", "presence_required"].includes(bare.error?.code), JSON.stringify(bare.error)); // the registry asks first for an owner, the kernel would otherwise
   const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
   assert.ok(!added.error, JSON.stringify(added.error));
   const listed = await d.ok("spaces.members.list", { space }, "cli", { token });
