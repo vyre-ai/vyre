@@ -128,7 +128,9 @@ export async function createKernel(cfg) {
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
     // Only a module that declared `needs.kernel` is made a service of the Space (one sealed event each); the rest get a handle that can do nothing.
     const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
-    const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
+    // On a Basic device only the fixed personal types exist: a module's other types are not made (its tools answer the Cloud line when they reach for one).
+    const wanted = Array.isArray(needs.types) ? (cfg.basic ? needs.types.filter((/** @type {any} */ t) => cfg.basic.allow.has(String(t && t.name))) : needs.types) : [];
+    const ready = Promise.all([installed, wanted.length ? store.define({ add_types: wanted }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
     // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing

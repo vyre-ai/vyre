@@ -122,6 +122,8 @@ export function createRecords(cfg) {
 
   function mapError(/** @type {any} */ e) {
     if (e instanceof KernelError) return e;
+    // On Basic a type that is not one of the fixed personal types was never defined (a module's types are not made there): the person is told why, in the one line.
+    if (cfg.basic && e && e.code === "unknown_type") return new KernelError("cloud_required", cfg.basic.refusal);
     if (e && STORE_CODES.has(e.code)) return new KernelError(e.code, e.message);
     return new KernelError("unavailable", "the store could not answer", String(e && e.message));
   }
@@ -1022,7 +1024,7 @@ export function createRecords(cfg) {
       try { keep = await store.get(type, keepId); drop = await store.get(type, dropId); defs = await store.types(); } catch (e) { throw mapError(e); }
       if (!keep || !drop || keep.deleted_at || drop.deleted_at) throw new KernelError("not_found", "no such record");
       const def = defs.find((/** @type {any} */ t) => t.name === type);
-      if (!def) throw new KernelError("unknown_type", `no type ${type}`);
+      if (!def) throw cfg.basic ? new KernelError("cloud_required", cfg.basic.refusal) : new KernelError("unknown_type", `no type ${type}`);
       const LISTS = new Set(["multi_choice", "emails", "phones", "urls"]);
       /** @type {Record<string, any>} */ const patch = {}, conflicts = {};
       const sealed_left = [];
