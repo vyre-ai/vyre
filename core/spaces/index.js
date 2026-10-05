@@ -1611,7 +1611,8 @@ export default {
       /** @type {any[]} */ let rows = [];
       try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' ORDER BY created, id").all(); } catch { rows = []; }
       void who;
-      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name) })) };
+      // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do
+      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name), online: null })) };
     });
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);

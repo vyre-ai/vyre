@@ -1479,6 +1479,6 @@ test("spaces.servers: the servers this device is paired to, with the id spaces.c
   db.exec("CREATE TABLE IF NOT EXISTS wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', owner_kind TEXT, owner_id TEXT, offers TEXT, created INTEGER NOT NULL DEFAULT 0)");
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("srv_box1", "server", "Home server", 2);
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("ph_1", "phone", "Phone", 1);
-  assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server" }] }, "only servers, and not a phone");
+  assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, and not a phone");
   void w;
 });
