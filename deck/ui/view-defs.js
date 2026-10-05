@@ -58,7 +58,7 @@ export const viewDefs = {
   },
 };
 
-/** The view definition of a type: the table's entry or a plain one, with the type's stored views laid over it. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[], views?: readonly StoredView[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
+/** The view definition of a type: the table's entry or a plain one, with the type's stored views laid over it. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[], views?: readonly StoredView[] }} def @param {Record<string, ViewDefinition>} [table] @param {string} [viewName] a stored view of one kind, by name, to use instead of the first @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs, viewName) {
   const base = defaultViewDef(def, table);
   return def.views && def.views.length ? withStoredViews(base, def, viewName) : base;
