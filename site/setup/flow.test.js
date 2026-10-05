@@ -511,7 +511,7 @@ test("devices: the page makes no pairing ticket (one pairing path: the install t
   flow.stop();
 });
 
-test("devices: the screen draws the ring into its slot only while showing, and never prints the ticket", async t => {
+test("devices: the screen has no pairing button and draws no ring: the page makes no ticket", async t => {
   const box = stepsBox();
   const doc = new FakeDoc(), root = doc.createElement("main");
   const drawn = [];
@@ -535,12 +535,10 @@ test("devices: the screen draws the ring into its slot only while showing, and n
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
   assert.equal(flow.state.stage, "devices");
   assert.deepEqual(drawn, []);
-  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Add my phone")).listeners.click();
-  await until(() => drawn.length === 1);
-  assert.deepEqual(drawn, ["ring"]);
-  assert.ok(!root.textContent.includes("AAECAwQFBgc"), "the ticket is not printed");
+  assert.ok(!root.all().some(e => e.tag === "button" && e.children.some(c => c.value === "Add my phone")), "there is no Add my phone button");
   await new Promise(r => setTimeout(r, 40));
-  assert.equal(drawn.length, 1, "drawn once, not on every poll");
+  assert.deepEqual(drawn, [], "no ring is drawn");
+  assert.ok(!root.textContent.includes("AAECAwQFBgc"), "no ticket is printed");
   flow.stop();
 });
 
@@ -938,6 +936,7 @@ test("activity: each step leaves one line in the page's own words, and a forged 
   flow.skipAi();
   assert.ok(flow.state.activity.some(l => l.startsWith("Skipped the AI sign-in")));
   assert.equal(new Set(flow.state.activity).size, flow.state.activity.length, "no line twice");
+  flow.stop();
 });
 
 test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {

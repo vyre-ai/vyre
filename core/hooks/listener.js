@@ -1,5 +1,5 @@
 // @ts-check
-// listener: the one HTTP listener in Vyre that the public internet reaches, through Funnel.
+// listener: the one HTTP listener in Vyre that the public internet reaches, through the Wink public gate (core/wink/control/gate.js).
 //
 // It binds 127.0.0.1 and nothing else. Never a network address and never 0.0.0.0. Whatever carries public links to this home
 // reaches loopback and proxies each published path here. What it accepts is narrow:

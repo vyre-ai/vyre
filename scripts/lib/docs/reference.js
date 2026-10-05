@@ -225,7 +225,7 @@ const ENV_MEANING = {
   BOX_PROBE_MS: "How long `vyre box` waits for the box's address to answer. Default two minutes.",
   BOX_WAIT_MS: "How long `vyre box` waits for an install to finish. Default 65 minutes.",
   CAPSULE_DRIVE: "In a development build, lets a script drive the Capsule.",
-  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
+  DRIVE_ACCESS: "`ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more.",
   CLAUDE_BIN: "The `claude` binary to run. Default `claude` on the PATH.",
   CLOUDFLARE_API: "The Cloudflare API base URL, in place of the real one.",
   COMPUTERS_CAP_ADD: "Extra Linux capabilities for agent computers, comma separated.",

@@ -23,7 +23,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { peersFor, inviteesFor } from "./peers.js";
+import { peersFor, inviteesFor, serversFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -32,6 +32,7 @@ import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
+import { publishableRelay, relayUrlProblem } from "../../lib/relay-url.js";
 
 export { loadKeys } from "./keys.js";
 export { DEFAULT_RELAY } from "../../lib/relay-default.js";
@@ -182,7 +183,7 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -487,7 +488,7 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       await link?.ready();
-      const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
+      const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: publishableRelay(settings().url), route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
       const mac = ticketMac(s.secret, record);
       const status = link ? await link.registerSetup({ loc: s.loc, record, mac: mac.toString("base64url"), exp: s.exp }) : null;
       s.registered = status === 200;
@@ -561,6 +562,20 @@ export default {
       const id = String(reply.device);
       const row = /** @type {any} */ (db.prepare("SELECT name, kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) { channel.close(4401, "device removed"); return; }
+      // A paired SERVER of this home reaching it through the relay (the fallback when the direct path is down): no HTTP-like request reaches anything, and the one door is the peer stream, where
+      // the home's door lets it read the network's status and nothing else (core/daemon/peer-door.js acceptServer). Its row's name is its Wink device id.
+      if (row.kind === "server") {
+        const door = serversFor(ctx);
+        if (!door) { channel.close(4401, "this box does not take servers"); return; }
+        const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "a server opens one door" } })); } catch { /* gone */ } };
+        bridge(channel, { handler: refuse, caller: `server:${row.name}`, peer: { node: String(row.name), stableId: id, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m),
+          peers: { space: door.space, serverId: String(row.name), allow: () => door.isServer(String(row.name)), accept: (/** @type {any} */ stream) => door.acceptServer(stream, { serverId: String(row.name) }) } });
+        const set = live.get(id) || new Set();
+        set.add(channel); live.set(id, set);
+        const closed = channel.onclose;
+        channel.onclose = reason => { closed(reason); set.delete(channel); };
+        return;
+      }
       // The label is the trust claim (BR-2, lead ruling 4 Oct 2026): `device:<id>` only for a live, confirmed device of kind app. A browser is `web:<id>` and a setup page `setup:<id>`,
       // labels the registry never admits as an owner's device, so they reach just the tools that name their class. Any other kind gets no label and no channel.
       const label = callerLabel(row.kind, id);
@@ -630,6 +645,7 @@ export default {
         if (meta.caller !== "module:wink") throw fail("denied", "relay.apply is for the wink module");
         const url = input.url ? String(input.url) : settings().url;
         if (!/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        { const why = relayUrlProblem(url); if (why) throw fail("bad_input", why); }
         if (url !== settings().url) stopLink();
         await keys.ready();
         save({ enabled: true, url });
@@ -646,6 +662,7 @@ export default {
         owner(meta.caller, meta, "turning the relay on");
         const url = input.url ? String(input.url) : settings().url;
         if (!/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        { const why = relayUrlProblem(url); if (why) throw fail("bad_input", why); }
         if (url !== settings().url) stopLink();
         await keys.ready();
         save({ enabled: true, url });
@@ -676,7 +693,7 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
-      return { url: pairUrl({ relay: settings().url, route: route(), box: k().box.pub, secret, name: boxName() }), expiresAt: pairing.exp, connected };
+      return { url: pairUrl({ relay: publishableRelay(settings().url), route: route(), box: k().box.pub, secret, name: boxName() }), expiresAt: pairing.exp, connected };
     };
 
     ctx.tool("relay.pair.start", {
@@ -726,7 +743,7 @@ export default {
       const connected = link ? await link.ready() : false;
       // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
       // An offer (a Wink invitation: kind, role, projects) rides inside the sealed record only when a module minted the ticket (relay.ticket.mint).
-      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp, ...(opt.offer ? { offer: opt.offer } : {}) }));
+      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: publishableRelay(settings().url), route: route(), box: k().box.pub.toString("base64url"), exp, ...(opt.offer ? { offer: opt.offer } : {}) }));
       const mac = ticketMac(rawTicket, record);
       let confirmed = false;
       if (link) {
@@ -1162,6 +1179,40 @@ export default {
       run: async input => {
         const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at FROM relay_devices WHERE id = ?").get(String(input.id)));
         return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined } : null;
+      },
+    });
+
+    // A paired server's row, made by the wink module when it hands a server what it needs to reach this home. The server's key is derived from the peer secret both sides hold, so the home
+    // names the public half itself (nothing comes from the server); the row is of kind "server", which the device list never shows and which may open only the server door.
+    ctx.tool("relay.devices.admit-server", {
+      internal: true,
+      description: "Admit a paired server's relay key as a row of kind server (never an app device): it may open one peer stream, and the home's door lets it read the network's status. `pub` is the 32-byte key, base64url; `server` is its Wink device id. Modules only. Answers { id }.",
+      input: obj({ pub: str, server: str }, ["pub", "server"]),
+      run: async input => {
+        const pub = Buffer.from(String(input.pub), "base64url");
+        if (pub.length !== 32) throw fail("bad_input", "a relay key is 32 bytes");
+        const server = String(input.server);
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(server)) throw fail("bad_input", "a server id is letters, digits, - and _");
+        const id = deviceId(pub);
+        const existing = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ?").get(id));
+        if (existing && existing.kind !== "server") throw fail("conflict", "that key is a device here already");
+        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, NULL, ?, ?, NULL, 'server', NULL, NULL, 0, 0, 0, NULL)
+          ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, removed_at = NULL, kind = 'server'`).run(id, server, pub.toString("base64url"), now(), now());
+        return { id };
+      },
+    });
+    ctx.tool("relay.devices.drop-server", {
+      internal: true,
+      description: "Take a paired server's relay row away and close its channels. Modules only. Answers { dropped }.",
+      input: obj({ server: str }, ["server"]),
+      run: async input => {
+        const rows = /** @type {any[]} */ (db.prepare("SELECT id FROM relay_devices WHERE kind = 'server' AND name = ? AND removed_at IS NULL").all(String(input.server)));
+        for (const r of rows) {
+          db.prepare("UPDATE relay_devices SET removed_at = ?, name = '' WHERE id = ?").run(now(), r.id);
+          for (const ch of live.get(r.id) || []) ch.close(4401, "device removed");
+          live.delete(r.id);
+        }
+        return { dropped: rows.length };
       },
     });
 

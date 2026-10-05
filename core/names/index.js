@@ -64,25 +64,10 @@ export default {
       run: async ({ name }) => svc.check(name),
     });
     ctx.tool("names.claim", {
-      description: "Claim <name>.vyre.run for this box for good. Answers with the one-time recovery code (shown only here) when the name is new. The name is held; its address is published once the built-in network has one for this home.",
+      description: "Claim <name>.vyre.run for this box for good. The name is held; its address is published once the built-in network has one for this home.",
       input: obj({ name: { type: "string" } }),
       callers: WHO,
       run: async ({ name }, meta = {}) => { setupSteps(meta); return svc.claim(name); },
-    });
-    ctx.tool("names.recover", {
-      description: "Take this box's name back with its recovery code after a reinstall. A 72-hour pending rebind: the old box, if still online, cancels it by itself, and its owner's devices are told. Returns the new recovery code, shown once.",
-      input: obj({ name: { type: "string" }, code: { type: "string" } }, ["code"]),
-      presence: true,
-      callers: WHO,
-      run: async (input, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.recover(input); },
-    });
-    // A new install has no owner yet, so the recovery code is its authority. Internal: the setup
-    // channel's allowlist wires it, nothing else calls it.
-    ctx.tool("names.recover.code", {
-      description: "names.recover for a new install's setup channel, where the recovery code is the only authority.",
-      input: obj({ name: { type: "string" }, code: { type: "string" } }, ["name", "code"]),
-      internal: true,
-      run: async input => svc.recover(input),
     });
     ctx.tool("names.domain.check", {
       description: "Live DNS check of the records for using your own domain: _acme-challenge.<domain> as a CNAME to <routehash>.acme.vyre.run (required) and an optional CAA record.",
@@ -95,7 +80,29 @@ export default {
       callers: WHO,
       run: async (_, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release(); },
     });
-    // A recovery of this box's name is cancelled by the box itself, so look often (the rebind waits 72 hours).
+    // The box's public gate (core/wink/control/publicgate.js) gets its certificate and its address through the directory, which this module alone can sign for.
+    // Modules only, and only the Wink module: it never sees the route key, only these three answers.
+    const fromWink = meta => { if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("the name directory's DNS calls are the Wink module's"), { code: "denied" }); };
+    const myName = () => { const n = ctx.config.name; if (!n) throw Object.assign(new Error("this box has no name yet"), { code: "no_name" }); return String(n); };
+    ctx.tool("names.directory.acme", {
+      description: "Put an ACME DNS-01 challenge value under this box's name (Wink module only).",
+      input: obj({ token: { type: "string" } }, ["token"]),
+      internal: true,
+      run: async ({ token }, meta) => { fromWink(meta); return dir.acme(myName(), String(token)); },
+    });
+    ctx.tool("names.directory.acme-clear", {
+      description: "Clear this box's ACME challenge record (Wink module only).",
+      input: obj(),
+      internal: true,
+      run: async (_, meta) => { fromWink(meta); return dir.acmeClear(myName()); },
+    });
+    ctx.tool("names.directory.publish", {
+      description: "Point this box's name at the public IPv4 the directory sees it at (Wink module only).",
+      input: obj(),
+      internal: true,
+      run: async (_, meta) => { fromWink(meta); return dir.publish(myName()); },
+    });
+    // Ask the directory hourly how this box's name stands (a name support moved to another server is told to the person).
     const watching = () => svc.watch().catch(e => ctx.log("names: directory check failed: " + e.message));
     const watch = setInterval(watching, HOUR);
     watch.unref();

@@ -20,9 +20,9 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp, associationFile } from "./app.js";
+import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
@@ -38,6 +38,7 @@ import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { lentServiceFor } from "./lent-service.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -145,6 +146,10 @@ export function moduleRoots(root) {
  *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
+  // A packaged build starts only with the kernel on (MA-5): refused before the home, the lock or the store is touched. A development checkout starts as it always has.
+  const kernelOn = kernelWanted(opts, process.env, opts.packageRoot);
+  const refused = kernelOffRefusal(kernelOn, opts.packageRoot);
+  if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
@@ -233,13 +238,14 @@ async function startLocked(opts, root, p, release) {
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
-  // The kernel is off unless asked for (VYRE_KERNEL=1, or opts.kernel): nothing below runs and nothing about this daemon changes. When on, it gives the home a
+  // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
+  if (opts.kernel === undefined && process.env.VYRE_KERNEL === "0" && isPackaged(opts.packageRoot)) log(KERNEL_FLAG_IGNORED);
+  if (kernelWanted(opts, process.env, opts.packageRoot)) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
@@ -255,9 +261,13 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
+    const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
+    const { createCalendarSyncHost } = await import("./calendar-sync.js");
     const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
-      connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
+      connectors: catalogOfConnectors,
+      // The Space's calendar, in step with an outside one, by default.
+      calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }) });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -318,7 +328,10 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
+    // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
+    const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -465,7 +478,11 @@ async function startLocked(opts, root, p, release) {
         return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
+      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
+        onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) h.onSession(caller, session); } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -1085,7 +1102,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { ...(process.env.VYRE_KERNEL === "0" && isPackaged() ? { kernel_note: KERNEL_FLAG_IGNORED } : {}), version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
@@ -1387,6 +1404,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     return serveApp(res, url.pathname);
   }
+  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
+  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
+  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
+  // then the Deck answers as before.
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
@@ -1449,8 +1471,11 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
   ".ttf": "font/ttf", ".map": "application/json" };
 
+/** At the root (config app.root) these stay the box's: the pre-app pages and what they load, and the signed release files. */
+const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon\.svg|favicon\.svg|icon-[^/]+|apple-touch-icon\.png|splash|kernel|lib)(\/|\.|$)/;
+
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
-const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
+const DECK_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that

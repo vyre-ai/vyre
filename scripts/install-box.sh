@@ -5,7 +5,7 @@
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
 #   --from DIR         use the box files in a local checkout DIR and build the image from it
-#   --print-link       end with only VYRE_LINK=<url> (and VYRE_SSH=<line>) on stdout, for a
+#   --print-link       end with only VYRE_PAIRED=<space> or VYRE_PAIR=<command> on stdout, for a
 #                      program to read; everything else goes to stderr (or VYRE_LINK_ONLY=1)
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
@@ -171,14 +171,14 @@ finish() {
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
-      say "  The setup link went to stdout for the program that asked."
+      say "  Whether it is paired went to stdout for the program that asked."
     else
       if [ "$PAIRED" = 1 ]; then
         say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
       elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
-        say "  Next: finish pairing from your device (the long code above), or open the link above."
+        say "  Next: finish pairing from your device (the long code above)."
       fi
     fi
   fi
@@ -467,7 +467,7 @@ docker_gid() {
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs. The one
+# it is where the person adds COMPOSE_PROFILES and anything else of theirs. The one
 # exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
   gid=$(docker_gid)

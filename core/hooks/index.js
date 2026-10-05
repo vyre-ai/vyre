@@ -1,5 +1,5 @@
 // @ts-check
-// hooks: inbound webhooks from the public internet (ADR 0014 part 10; the way in is the relay, team/BACKLOG.md "public ingress").
+// hooks: inbound webhooks from the public internet (ADR 0014 part 10; the way in is the Wink public gate, core/wink/control/gate.js: POST /hooks/<route> on https://<name>.vyre.run:7443).
 //
 // This is the only part of Vyre the internet reaches, so it is built to do almost nothing:
 //   - Off by default (config hooks.enabled). Off means no listener at all.
@@ -12,8 +12,8 @@
 //   - A watcher that listens for hook.received on its route gets the delivery handed to it by
 //     the watcher runtime, which reads it with hooks.delivery.
 //
-// A webhook has no identity to forge, only a signature to check, so whatever carries it to the loopback listener needs no trust of its own. Until the relay carries public
-// requests down to the home (BACKLOG, "public ingress"), nothing publishes a route: hooks.status says so, and a route that is open still stores what reaches the listener.
+// A webhook has no identity to forge, only a signature to check, so whatever carries it to the loopback listener needs no trust of its own. The Wink public gate carries
+// POST /hooks/<route> from the internet to this listener (core/wink/control/gate.js); until the box has its public address hooks.status says so, and a route that is open still stores what reaches the listener.
 
 import * as config from "../config/index.js";
 import { listen, HOST, BODY_LIMIT, PER_MINUTE } from "./listener.js";
@@ -147,7 +147,7 @@ export default {
     });
 
     ctx.tool("hooks.list", {
-      description: "The webhook listener's state and every open route: its path, signature scheme, header and vault item (a name, never a value), how many deliveries are kept, the newest few (id, at, bytes), and the Funnel commands to publish or close it.",
+      description: "The webhook listener's state and every open route: its path, signature scheme, header and vault item (a name, never a value), how many deliveries are kept, the newest few (id, at, bytes).",
       input: obj({}),
       run: async (_i, { caller }) => {
         reader(caller);
@@ -156,7 +156,7 @@ export default {
     });
 
     ctx.tool("hooks.open", {
-      description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. It is stored and verified here; it is reachable from the internet once public links are available.",
+      description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. It is stored and verified here; it is reachable from the internet at the box's public address once that is up (hooks.status says when).",
       input: obj({ name: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme", "secret"]) }, ["name", "verify"]),
       presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && i.verify && i.verify.scheme} signature` },
       run: async ({ name, verify: v }, { caller }) => {
@@ -183,7 +183,7 @@ export default {
           next: [
             ...(cfg().enabled ? [] : ["turn the listener on with hooks.enable { on: true }"]),
             ...(ready ? [] : [`let the hooks module use the secret: vyre vault grant ${v.secret} hooks`]),
-            "the route is stored and verified here; it is not reachable from the internet until public links are available (hooks.status says when)",
+            "the route is stored and verified here; hooks.status gives the public address to hand the sender once the box has one",
           ],
         };
       },
@@ -211,16 +211,28 @@ export default {
       },
     });
 
+    /** Where the internet reaches this box for webhooks: the Wink public gate's origin once it is up and the name points here (wink.network.status), else why not. */
+    const publicNow = async () => {
+      try {
+        const r = /** @type {any} */ (await ctx.call("wink.network.status", { ping: false }));
+        const g = r && r.data && r.data.ingress;
+        if (g && g.base) return { available: true, base: String(g.base) };
+        return { available: false, why: g && g.why ? `the public address is not up yet: ${g.why}` : "the box has no public address yet (it needs its name, and its public port reachable from the internet); a route is stored and verified here, and reachable from this machine only" };
+      } catch { return { available: false, why: "the box has no public address yet; a route is stored and verified here, and reachable from this machine only" }; }
+    };
+
     ctx.tool("hooks.status", {
-      description: "The listener and the open routes: each route's path, scheme and deliveries, and whether the internet can reach it (not yet: public links come through the relay).",
+      description: "The listener and the open routes: each route's path, scheme and deliveries, and whether the internet can reach it, with the address to give the sender (the box's public address, https://<name>.vyre.run:7443/hooks/<route>) once it is up.",
       input: obj({}),
       run: async (_i, { caller }) => {
         reader(caller);
         const names = Object.keys(cfg().routes);
+        const pub = await publicNow();
+        const live = pub.available && Boolean(state().listening);
         return {
           ...state(), routes: names,
-          public: { available: false, why: "public links are not available yet; a route is stored and verified here, and reachable from this machine only" },
-          urls: Object.fromEntries(names.map(n => [n, null])),
+          public: live ? { available: true, base: pub.base } : { available: false, why: pub.available ? "the listener is off; turn it on with hooks.enable { on: true }" : pub.why },
+          urls: Object.fromEntries(names.map(n => [n, live ? `${pub.base}/hooks/${n}` : null])),
         };
       },
     });

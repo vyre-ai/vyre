@@ -44,6 +44,8 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
 
   // a second machine: its own node host and device key, joined with a one-time key from the home
   const dev = createHost({ root: path.join(root, "dev"), forwarderBin: /** @type {string} */ (bins.forwarder), log: m => logs.push(`dev: ${m}`), graceMs: 60_000,
+    // the home gives the new node its door rule a moment after the node first appears, so a first direct dial can come too early: try again after 5 s, not the host's minute (as core/wink/netjoin.js does)
+    retryMs: 5000,
     device: { id: eid, sign: m => b64u(crypto.sign(null, m, privateKey)) } });
   t.after(async () => { try { await dev.stopAll(); } catch { /* best effort */ } });
   const key = await home.joinKey(120_000, eid);
@@ -51,7 +53,7 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
   await dev.start(space);
   const link = dev.connect(space);
   t.after(() => link.close());
-  const r = await until(async () => { await home.syncPolicy().catch(() => {}); try { return await link.call("about.text", { q: 1 }, { timeoutMs: 15_000 }); } catch { return null; } }, 90_000, `a call to cross (${logs.slice(-6).join(" | ")})`);
+  const r = await until(async () => { await home.syncPolicy().catch(() => {}); try { return await link.call("about.text", { q: 1 }, { timeoutMs: 15_000 }); } catch { return null; } }, 150_000, `a call to cross (${logs.filter(l => !/http request|poll\.go/.test(l)).slice(-30).join(" | ")})`);
   assert.equal(r.caller, `device:${eid}`);
   assert.equal(link.status().path, "direct", "the call crossed the Wink network, not the relay");
   assert.equal(served.at(-1).caller, `device:${eid}`);

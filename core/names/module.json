@@ -42,6 +42,21 @@
         "name": "names.release",
         "reach": "person",
         "effect": "write"
+      },
+      {
+        "name": "names.directory.acme",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "names.directory.acme-clear",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "names.directory.publish",
+        "reach": "modules",
+        "effect": "write"
       }
     ]
   },

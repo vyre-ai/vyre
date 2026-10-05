@@ -62,6 +62,8 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     claim: name => call("POST", "/v1/names/claim", { name }),
     /** @param {string} name @param {string} ip */
     point: (name, ip) => call("POST", "/v1/names/point", { name, ip }),
+    /** The name's A record becomes the public IPv4 this request comes from (never one the caller names): for a box that serves its own network gate. @param {string} name */
+    publish: name => call("POST", "/v1/names/publish", { name }),
     /** @param {string} name @param {string} token */
     acme: (name, token) => call("POST", "/v1/names/acme", { name, token }),
     /** @param {string} name */

@@ -6,9 +6,11 @@ server, and does nothing else. The design is ADR 0014, part 10.
 A delivery that arrives is checked against the sender's own signature, stored, and announced as the event `hook.received { route, id, bytes, at }`. It never calls a tool, never
 reaches the Gate, and reads nothing from the vault except its own route's secret. A watcher listening for that event reads the body.
 
-**Public links are not available yet.** The way in from the internet was a feature of another product that Vyre no longer runs. Its replacement is the relay carrying a public
-request down to the home, where the signature is checked (team/BACKLOG.md, "public ingress"). Until then a route is stored and verified, and reachable from the server itself only;
-`vyre hooks status` says so.
+**The way in from the internet** is the box's public address, served by the Wink public gate: `POST https://<name>.vyre.run:7443/hooks/<route>`. The gate carries exactly that
+shape (a POST, no query, a JSON or form body of at most 256 KB with its length declared) to this listener, and nothing else on the box answers on that port: every other path,
+method or shape is the same 404 and reaches nothing. The signature is checked here, at the home. The address exists once the box has its name and its public port is reachable from
+outside (or `wink.publish` says it is); until then a route is stored and verified, and reachable from the server itself only. `vyre hooks status` says which, and prints the address to
+give the sender.
 
 ## Turn it on
 

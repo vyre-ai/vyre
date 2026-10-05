@@ -794,14 +794,48 @@ test("worker: unknown, released, expired, refused and silent all get the same an
   assert.equal((await rt.object(a.route).ctx.storage.list({ prefix: "code/q/" })).size, 0, "a silent box leaves no waiting request");
 });
 
-test("worker: a box that leaves frees its code, and a stale request for it is refused", async t => {
-  const rt = world(t, { env: codeEnv });
-  const a = await codeBox(rt);
-  a.s.ws.close();
-  await rt.settle();
-  assert.equal((await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" })).status, 404);
-  assert.equal(await rt.object(`rv:${a.a.rv}`, "CODES").ctx.storage.get("c"), undefined);
-});
+for (const hibernateEveryEvent of [false, true]) {
+  const mode = hibernateEveryEvent ? " (hibernating after every event)" : "";
+  test(`worker: a box whose control socket drops keeps its code for the grace; a request meanwhile is refused${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: codeEnv });
+    const a = await codeBox(rt);
+    a.s.ws.close();
+    await rt.settle();
+    assert.equal((await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" })).status, 404, "nobody can answer while the control is down");
+    assert.notEqual(await rt.object(`rv:${a.a.rv}`, "CODES").ctx.storage.get("c"), undefined, "the slot is still held inside the grace");
+    assert.ok(rt.object(a.route).ctx.storage.alarmAt > Date.now() + 80_000, "an alarm is set for the end of the grace");
+    // The same box (same route key) comes back inside the grace: its code works again.
+    const back = await box(rt, a.key, a.route);
+    await back.s.json();
+    await rt.settle();
+    const p = codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Yagain" });
+    const got = await back.s.json();
+    assert.equal(got.t, "code.msg");
+    back.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Yok" }));
+    assert.equal((await p).status, 200, "the code its screen showed still redeems after the reconnect");
+    // The alarm that fires after a reconnect frees nothing.
+    const real = Date.now;
+    Date.now = () => real() + 91_000;
+    try { await rt.object(a.route).run(inst => inst.alarm()); } finally { Date.now = real; }
+    assert.notEqual(await rt.object(a.route).ctx.storage.get("code"), undefined);
+  });
+
+  test(`worker: a box that leaves and does not come back loses its code when the grace ends${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: codeEnv });
+    const a = await codeBox(rt);
+    a.s.ws.close();
+    await rt.settle();
+    const real = Date.now;
+    Date.now = () => real() + 30_000;
+    try { await rt.object(a.route).run(inst => inst.alarm()); } finally { Date.now = real; }
+    assert.notEqual(await rt.object(a.route).ctx.storage.get("code"), undefined, "an early alarm keeps it");
+    Date.now = () => real() + 91_000;
+    try { await rt.object(a.route).run(inst => inst.alarm()); } finally { Date.now = real; }
+    assert.equal(await rt.object(a.route).ctx.storage.get("code"), undefined);
+    assert.equal(await rt.object(`rv:${a.a.rv}`, "CODES").ctx.storage.get("c"), undefined, "the rendezvous is free again");
+    assert.equal((await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" })).status, 404);
+  });
+}
 
 test("worker: the preflight answers any origin and a bad request is 400 whatever is live", async t => {
   const rt = world(t, { env: codeEnv });

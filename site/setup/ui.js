@@ -129,7 +129,7 @@ export function render(s, ctx) {
     if (s.stage === "devices") return [
       el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Add your phone"),
-      el("p", { class: "lead" }, "Your phone pairs by scanning a ring with the Vyre app's camera. The ring works once, for five minutes, and this page can make only one."),
+      el("p", { class: "lead" }, "This page pairs nothing. Your first device pairs at the server's own terminal: it shows a QR and a long code, and you confirm three words. Your phone and everything else is added from the Vyre app afterwards."),
     ];
     if (s.stage === "network") return [
       el("p", { class: "lbl" }, stepLabel()),

@@ -17,7 +17,7 @@ function world(t, directory = undefined) {
   const ctx = { config: cfg, paths: config.ensure(root), log: () => {}, events: { emit: (type, payload) => emitted.push({ type, payload }) } };
   const held = new Set();
   const dir = directory || {
-    claim: async name => { if (held.has(name)) throw new Error("someone else has that name"); held.add(name); return { code: "abcd-efgh-ijkl-mnop-qrst-uv" }; },
+    claim: async name => { if (held.has(name)) throw new Error("someone else has that name"); held.add(name); return { fresh: true }; },
     check: async name => ({ status: held.has(name) ? "taken" : "ok" }),
     release: async name => { held.delete(name); },
   };
@@ -31,16 +31,16 @@ test("names: which names can be had", () => {
   for (const bad of ["a", "1abc", "-abc", "abc-", "a_b", "www", "api", "a--b", "x".repeat(33)]) assert.equal(checkName(bad).valid, false, bad);
 });
 
-test("names: a claim holds the name, answers the recovery code once, and serves nothing", async t => {
+test("names: a claim holds the name, makes no recovery code, and serves nothing", async t => {
   const w = world(t);
   const out = /** @type {any} */ (await w.svc.claim("alex"));
-  assert.equal(out.recoveryCode, "abcd-efgh-ijkl-mnop-qrst-uv");
+  assert.equal(out.recoveryCode, undefined, "no recovery code is made");
   const s = w.svc.status();
   assert.equal(s.phase, "named");
   assert.equal(s.name, "alex");
   assert.deepEqual([s.listening, s.port, s.certificate, s.address], [false, null, null, null]);
   assert.equal(w.cfg.name, "alex");
-  assert.ok(!JSON.stringify([s, w.emitted]).includes("abcd-efgh"), "the recovery code is in no status or event");
+  assert.ok(!/recovery/i.test(JSON.stringify([s, w.emitted])), "no status or event speaks of a recovery code");
   assert.deepEqual(w.emitted.map(e => e.type), ["name.claimed"]);
   assert.ok(!/tailscale|tailnet/i.test(JSON.stringify(s)), "nothing in the status names another product");
 });
@@ -49,7 +49,7 @@ test("names: a taken name fails the claim with a reason and saves nothing", asyn
   const w = world(t);
   w.held.add("alex");
   const out = /** @type {any} */ (await w.svc.claim("alex"));
-  assert.equal(out.recoveryCode, null);
+  assert.equal(out.recoveryCode, undefined);
   assert.equal(w.svc.status().phase, "failed");
   assert.match(String(w.svc.status().why), /someone else/);
   assert.notEqual(w.cfg.name, "alex");

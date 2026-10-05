@@ -49,6 +49,7 @@ import { execFile } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { callAsPerson } from "../presence.js";
+import { OFFER_NOTE } from "../offer-note.js";
 import { personIO } from "./presence.js";
 import { qr, terminal } from "../qr.js";
 import { parseSSE } from "./threads.js";
@@ -249,6 +250,7 @@ export async function add(flags, deps = {}) {
   const indent = "                   ";
   out(`  Pairing a phone${address ? ` with the box ${dim("(" + hostOf(address) + ")")}` : ""}`);
   out(dim("  Confirmed · the QR works once, for 10 minutes"));
+  out(dim(`  ${OFFER_NOTE}`));
   out("");
   out(`  1 ${pad("Which phone?")}${phone || "iPhone or Android"}${phone ? "" : dim("  (--iphone or --android shows one)")}`);
   let n = 2;
@@ -564,7 +566,7 @@ export async function android(flags, deps = {}) {
   return new Promise(resolve => {
     let done = false;
     const end = (/** @type {number} */ code, /** @type {string} */ line) => { if (done) return; done = true; stop(); clearTimeout(timer); process.off("SIGINT", onInt); out(line); resolve(code); };
-    onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}`);
+    onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}\n${dim(`  ${OFFER_NOTE}`)}`);
     const onInt = () => end(0, dim("  stopped watching · vyre phone list shows whether it paired"));
     const timer = setTimeout(() => end(EXIT.FAILED, beacon("  the pairing offer ran out before the phone used it") + "\n" + dim("  next: vyre phone add on the box for a new QR")), life);
     process.on("SIGINT", onInt);

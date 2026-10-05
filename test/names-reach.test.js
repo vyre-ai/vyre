@@ -25,14 +25,13 @@ async function box(t) {
   return d;
 }
 
-// recover is also a presence tool: a caller that cannot prove a person is here (an agent claim on a surface label) stops there, before the reach check.
+// the name tools are presence tools: a caller that cannot prove a person is here (an agent claim on a surface label) stops there, before the reach check.
 const refused = r => r.error && ["denied", "no_such_tool", "presence_required"].includes(r.error.code);
 
-test("names: claim, release and recover refuse a model session, an agent, a hook, a guest and any other module", async t => {
+test("names: claim and release refuse a model session, an agent, a hook, a guest and any other module", async t => {
   const d = await box(t);
   const callers = ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "cli:agent:kit", "module:sneaky", "module:vault", "hook", "anonymous", "tailnet-guest:sam@example.com", "tailnet:agent:kit"];
-  const calls = [["names.claim", { name: "alex" }], ["names.release", {}],
-    ["names.recover", { name: "alex", code: "abcd-efgh-ijkl-mnop-qrst-uv" }]];
+  const calls = [["names.claim", { name: "alex" }], ["names.release", {}]];
   for (const c of callers) for (const [tool, input] of calls) {
     const r = await d.registry.call(tool, input, c);
     assert.ok(refused(r), `${tool} from ${c}: ${JSON.stringify(r).slice(0, 200)}`);

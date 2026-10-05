@@ -2,7 +2,7 @@
 // The public share server: the one thing that answers a public artifact link. A separate process
 // that imports nothing from Vyre and holds no socket, token or key of vyred's. It reads one folder
 // of published snapshots (<data>/public/<sha256 of the link token>/{index.html,meta.json}) and
-// nothing else, and listens on loopback only. Whatever carries public links to this home (the relay, once it does: team/BACKLOG.md "public ingress") proxies /s/ to
+// nothing else, and listens on loopback only. The Wink public gate (core/wink/control/gate.js) carries GET|HEAD /s/<token> from the internet to
 // it (plans/artifacts.md 3.6, AR6). The box image runs it under its
 // OWN user, never vyred's (reviewer-2 H2): given --not-uid <vyred's uid> it refuses to start as that
 // user, and it never runs as root. Run it under Node's permission model too, with read and write

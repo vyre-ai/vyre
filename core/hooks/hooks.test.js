@@ -61,7 +61,7 @@ async function freePort() {
  * A registry with the hooks module, a stand-in vault (vault.release from a map, recording who
  * asked), and optionally the watchers module with a stand-in projects module.
  */
-async function registry(t, { hooks = {}, vault = { "northwind-orders-hook": SECRET, "northwind-stripe": STRIPE_SECRET }, watchers = false } = {}) {
+async function registry(t, { hooks = {}, vault = { "northwind-orders-hook": SECRET, "northwind-stripe": STRIPE_SECRET }, watchers = false, ingress = null } = {}) {
   const root = tmp(t, "vyre-hooks-");
   const p = config.ensure(root);
   const clock = { now: Date.parse("2026-09-27T09:00:00Z") };
@@ -80,6 +80,10 @@ async function registry(t, { hooks = {}, vault = { "northwind-orders-hook": SECR
       if (!(name in v().values)) throw new Error(name + " is not granted to hooks · vyre vault grant " + name + " hooks");
       return { value: v().values[name] };
     } });
+    return { async stop() {} };
+  } };`);
+  if (ingress) writeModule(mods, "wink", { does: { tools: ["wink.network.status"] } }, `export default { async start(ctx) {
+    ctx.tool("wink.network.status", { run: async () => ({ ingress: ${JSON.stringify(ingress)} }) });
     return { async stop() {} };
   } };`);
   const names = ["hooks", ...(watchers ? ["watchers"] : [])];
@@ -347,11 +351,24 @@ test("hooks.status: the listener and the routes, and it says plainly that the in
   const s = await r.ok("hooks.status", {}, "cli", {});
   assert.ok(s.routes.includes("northwind-stripe"));
   assert.equal(s.public.available, false);
-  assert.match(s.public.why, /not available yet/);
+  assert.match(s.public.why, /no public address yet/);
   assert.ok(Object.values(s.urls).every(u => u === null), "no route has a public address");
   assert.equal(s.listening, true);
   assert.ok(!/tailscale|funnel/i.test(JSON.stringify(s)), "nothing in the answer names another product");
   await r.no("hooks.status", {}, "tailnet-guest:sam@example.com", "denied", {});
+});
+
+test("hooks.status: once the box's public gate is up, each route has its address, and a waiting gate says why", async t => {
+  const up = await live(t, { ingress: { state: "up", base: "https://alex.vyre.run:7443" } });
+  const s = await up.ok("hooks.status", {}, "cli", {});
+  assert.equal(s.public.available, true);
+  assert.equal(s.public.base, "https://alex.vyre.run:7443");
+  assert.equal(s.urls["northwind-orders"], "https://alex.vyre.run:7443/hooks/northwind-orders");
+  const wait = await live(t, { ingress: { state: "waiting", base: null, why: "its name does not point at it yet" } });
+  const w = await wait.ok("hooks.status", {}, "cli", {});
+  assert.equal(w.public.available, false);
+  assert.match(w.public.why, /does not point at it yet/);
+  assert.equal(w.urls["northwind-orders"], null);
 });
 
 test("hooks: a watcher on hook.received for its route gets the delivery, and no other route's", async t => {

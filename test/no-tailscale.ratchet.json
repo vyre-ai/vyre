@@ -3,7 +3,6 @@
  "files": [
   ".github/workflows/box-image.yml",
   "apps/CONTRACT.md",
-  "apps/RELEASE.md",
   "apps/android/app/src/main/java/sh/vyre/app/api/ApiError.kt",
   "apps/android/app/src/main/java/sh/vyre/app/ui/FirstRun.kt",
   "apps/android/app/src/test/java/sh/vyre/app/FormatTest.kt",
@@ -27,8 +26,6 @@
   "apps/ios/VyreTests/RouteTests.swift",
   "apps/test/world.js",
   "box/Dockerfile",
-  "box/compose.egress.yml",
-  "box/vyre",
   "core/artifacts/artifacts.test.js",
   "core/cli/commands/box.test.js",
   "core/cli/commands/doctor.test.js",

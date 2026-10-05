@@ -24,7 +24,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, isServer?: (id: string) => boolean, lent?: (space: string, kernel: any) => any, onSession?: (caller: string, session: any) => void, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -35,10 +35,12 @@ export function createPeerDoor(o) {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, log, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, log, ...(o.lent ? (() => { const l = (() => { try { return o.lent(space, k); } catch { return null; } })(); if (l) log(`peer door: the lent-computer service is up for ${space}`); return l ? { services: { lent: l } } : {}; })() : {}), identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
+  /** What a paired SERVER (a Wink device of kind server, not a relay app device) may ask its home on the direct door: the network's own read-only status, nothing else. A server belongs to an identity but never speaks for it. */
+  const SERVER_TOOLS = new Set(["network.wink.status", "network.wink.whois"]);
   const rowOf = async id => {
     try {
       const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data;
@@ -146,7 +148,7 @@ export function createPeerDoor(o) {
   const watchers = new Set();
   if (o.events && typeof o.events.on === "function") for (const type of ["device.removed", "wink.removed", "presence.signed-out", "presence.refused"]) { try { o.events.on(type, () => { for (const w of [...watchers]) w.check(); }); } catch { /* no bus */ } }
 
-  return {
+  const door = {
     space: PEER_HOME,
     allow: (/** @type {string} */ d) => DEVICE.test(String(d)),
     /**
@@ -156,7 +158,16 @@ export function createPeerDoor(o) {
      */
     serve: async (caller, tool, input) => {
       const id = String(caller || "").slice(7);
-      if (!String(caller).startsWith("device:") || !DEVICE.test(id) || !(await rowOf(id))) throw err("denied", "this device is not paired here any more");
+      if (!String(caller).startsWith("device:")) throw err("denied", "this device is not paired here any more");
+      if (!(DEVICE.test(id) && (await rowOf(id)))) {
+        // not an app device: a live paired server of this home may read the network's status (its direct-door key was checked at the node door), and nothing else
+        if (!(/^[A-Za-z0-9_-]{1,64}$/.test(id) && typeof o.isServer === "function" && o.isServer(id))) throw err("denied", "this device is not paired here any more");
+        if (!SERVER_TOOLS.has(String(tool))) throw err("denied", "a paired server may only read the network's status on its home");
+        // a server's id is not a device-class label (lib/caller.js), and it must not become one: the two reads run as the daemon, on this server's behalf, and nothing else does
+        const r = await o.registry.call(tool, input && typeof input === "object" ? input : {}, "module:vyred", { door: true, onBehalfOf: caller });
+        if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
+        return r ? r.data : null;
+      }
       return withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, null), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "wink" })(caller, tool, input);
     },
     /**
@@ -321,7 +332,22 @@ export function createPeerDoor(o) {
           return true;
         } });
       session.onclose = () => { endAll("closed", false); watchers.delete(watcher); };
+      // the admitted device's session, two-way: the home calls back down it (a storage drive that only that device can reach is held this way, core/wink/storage/hold.js)
+      if (o.onSession) { try { o.onSession(caller, session); } catch (e) { log(`peer door: onSession failed (${String(/** @type {any} */ (e).message).slice(0, 80)})`); } }
       log(`peer door: ${caller} opened a peer stream`);
     },
   };
+  // The server door over the relay: the same restricted read as the direct door's, for a paired server whose direct path is down. The server's row is asked on every call (isServer), so a
+  // removed server is refused at its next call and its stream closes; what it may ask is exactly SERVER_TOOLS, run as the daemon on its behalf.
+  door.isServer = (/** @type {string} */ id) => typeof o.isServer === "function" && o.isServer(String(id)) === true;
+  door.acceptServer = (/** @type {any} */ stream, /** @type {{ serverId: string }} */ who) => {
+    const id = String(who.serverId);
+    /** @type {any} */ let session = null;
+    session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      if (!door.isServer(id)) { const t = setTimeout(() => { try { session.close("device removed"); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); throw err("denied", "this server is not paired here any more"); }
+      return door.serve(`device:${id}`, tool, input);
+    } });
+    log(`peer door: server ${id} opened a peer stream through the relay`);
+  };
+  return door;
 }

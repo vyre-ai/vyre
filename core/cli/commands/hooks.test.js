@@ -55,7 +55,7 @@ test("hooks: list, status, open and close, each with --json", async t => {
 
   const st = await vyre("hooks", "status");
   assert.equal(st.code, 0, st.out);
-  assert.match(st.out, /not available yet/);
+  assert.match(st.out, /no public address yet/);
   const sj = JSON.parse((await vyre("hooks", "status", "--json")).out);
   assert.equal(sj.public.available, false);
   assert.deepEqual(sj.routes, ["northwind-orders"]);

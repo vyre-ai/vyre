@@ -31,7 +31,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `modules` | `object` | see below | Modules to start or stop against their role. |
 | `modules.enable` | `string[]` | none | Modules to start even where their role says not to. |
 | `modules.disable` | `string[]` | none | Modules never to start. |
-| `network` | `object` | see [network](#network) | How this machine is reached. See [Install](../get-started/install.md). |
+| `network` | `object` | see [network](#network) | How this machine is reached. See [Tailscale](../using/tailscale.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
 | `owner` | `{ id: string }` | unset | The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input. |
 | `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
@@ -66,6 +66,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
+| `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/wink/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_AGENT_HOME` | Not described yet. | `core/daemon/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
@@ -80,10 +81,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
-| `VYRE_BOX_PAIR_WAIT_MS` | Not described yet. | `core/cli/commands/box.js` |
-| `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
-| `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CHECK_VIEWS` | Not described yet. | `core/cli/view.js` |
 | `VYRE_CHROME_HOST_DIR` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs`, `local/hands-chrome-mac/standalone/doctor.js` |
 | `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
@@ -100,7 +98,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DECK_FIXTURES` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
-| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
+| `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
 | `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
@@ -117,10 +115,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js`, `core/wink/netd.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
-| `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
+| `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
@@ -131,11 +129,12 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPENROUTER_URL` | Not described yet. | `core/sessions/index.js` |
-| `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js`, `core/cli/kit.js` |
+| `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/up.js`, `core/cli/kit.js` |
 | `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
+| `VYRE_PUBLISH_DOCKER` | Not described yet. | `core/publish/index.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
@@ -144,7 +143,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
-| `VYRE_SESSION_SANDBOX_OFF` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
@@ -194,7 +192,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CHROME_SOCK` | Not described yet. | `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/spike/host/host.js` |
 | `VYRE_CHROME_TEST` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js`, `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
-| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js`, `core/team/team-fixture.js` |
+| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/runner/index.js`, `core/switchboard/index.js`, `core/team/team-fixture.js` |
 | `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
@@ -205,6 +203,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js`, `core/team/team-fixture.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
+| `VYRE_SESSION_SANDBOX_OFF` | Not described yet. | `core/daemon/index.js`, `core/team/team-fixture.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
 | `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/daemon/index.js`, `core/spawner/client.js`, `core/spawner/main.js` |
