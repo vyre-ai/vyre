@@ -157,20 +157,18 @@ Pending (the page does not claim these): (1) the box side of the Personal backup
 
 Pending from network (work/network 901a83bd4, not in this branch yet): `vyre up` on a server says "not paired yet. Pair this server from your Vyre app: run vyre call wink.server.code '{"qr":true}' here, then scan the QR or paste the long code." or "paired to <space>"; `vyre up --print-link` prints VYRE_PAIRED=<space> or VYRE_PAIR=<command>, never a link (924439443, 3f04ae52a). When that merges, update docs/using/cli.md (the `vyre up` line) and install.md. The install.sh last line no longer says "or open the link above" (bad361ad9), and the Twenty pull bug is fixed (f50498282).
 
-## Draft, not published: "Move up to My Cloud" (spaces.md, after the My Cloud section)
+## Draft, not published: "Move to My Cloud" (spaces.md, after the My Cloud section)
 
-Publish only when windows' upgrade sha merges to devbox (A2-0 gate). Grounded in core/work/project-move-remote.js on work/hub-kernel-on (the upgrade is built on the remote project move); check every line against windows' merged build and the app screen before it goes in.
+Publish only when windows' upgrade merges to devbox (A2-0 gate). Shapes from windows at origin/work/spaces aa1647d3f: spaces.upgrade.plan / spaces.upgrade.run (one proof), screen label "Move to My Cloud". Check each line against the merged build and the app screen first.
 
-> ## Move up to My Cloud
+> ## Move to My Cloud
 >
-> A Personal space can move to My Cloud when you get a server. You keep one space and one history: your projects come with their records and files, your private chats, and your memory.
+> When you get a server, a Personal space can move up to My Cloud. You keep your work: records, private chats and memory come with you, and your phones and browsers keep using the same space.
 >
-> **What comes with you.** Records, files, private chats and memory. Everything stays encrypted on the way: your new server fetches it from the old home straight, and nothing passes through us. Memory and private chats go sealed to a key your new space makes.
+> **See the list first.** Vyre shows what will move, how many records of each type, and any fields My Cloud's types gain so your records fit. If something blocks the move, Vyre says what and does not offer the button.
 >
-> **One approval.** You approve the move once, and your approval covers exactly the list you were shown. If a project changes after you approved, the move stops and asks again.
+> **One approval.** You approve once, and the approval covers exactly the list you saw. If anything changed since, Vyre stops and shows the list again.
 >
-> **Nothing is lost on a bad move.** The new server checks the counts and every file against the list. If anything does not match, nothing is removed from Personal. A dropped connection resumes where it stopped.
->
-> **The move report.** When it finishes, Vyre tells you what moved (records and files per project), anything left behind with the reason, and anything this version cannot carry yet. What cannot move stays in Personal; nothing is dropped without being listed.
+> **After the move.** Vyre reports what moved. Personal stays readable but takes no new changes; new work goes to My Cloud. Anything that could not come along is named with the reason. Today that is the value of a sealed field: the record moves without it and the report says so.
 
-Open before publishing: whether the report lists "the project's memory room" and "the Work engine's session lines" as not carried (the code names both when a build lacks them); whether one approval covers all projects (batch moves.out hash) or one per project; the exact screen label.
+Open: sealed field values (a bug-class gap until platform's reseal carries them; the page says what the report says, only if Personal types hold sealed fields); chats and memory carry only when their owners' upgrade tools exist (chats.upgrade.*, memory.upgrade.*), so the page claims them only after those merge; the real-Twenty re-run on testbox5 must pass.
