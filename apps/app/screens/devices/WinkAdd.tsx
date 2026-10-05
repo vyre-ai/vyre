@@ -5,7 +5,8 @@ import { Button, Card, Chip, Ring, Row, Text, type IconName, IconTile } from "@v
 import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { COPY, DEFAULT_NAMES, lastStep, showsRing, stepLine, stepWords, wordsStep, type DeviceKind } from "./wink.js";
-import { installLine } from "../install/first-run.js";
+import { installLine, isPhone } from "../install/first-run.js";
+import { deviceKindHere } from "../../src/real/pair-say";
 import { shell } from "../../src/shell/shell";
 import { PairEntry, PairWords, openPairing, type LongCode } from "./PairParts";
 import { SAMPLE_CODE } from "../../src/api/wink-code";
@@ -16,7 +17,7 @@ import { RealAdd } from "./RealAdd";
 const KINDS: { id: DeviceKind; icon: IconName; title: string; body: string }[] = [
   { id: "phone", icon: "phone", title: "A phone", body: "Open Vyre on it and scan." },
   { id: "computer", icon: "laptop", title: "A computer", body: "Scan its code, then confirm three words." },
-  { id: "server", icon: "box", title: "A server", body: "One you own, to take heavy work." },
+  { id: "server", icon: "box", title: "Another computer", body: "One that stays on, to take heavy work." },
 ];
 const FP = "7KQM 4P2X";
 
@@ -34,6 +35,8 @@ export function WinkAdd() {
   const router = useRouter();
   const addDevice = useDevices((s) => s.addDevice);
   const [kind, setKind] = useState<DeviceKind | null>(null);
+  // A phone or a browser never hosts or picks a server: it adds a phone or a computer (DESIGN-first-run-per-platform).
+  const kinds = isPhone(deviceKindHere()) || deviceKindHere() === "web" ? KINDS.filter((k) => k.id !== "server") : KINDS;
   const [step, setStep] = useState(0);
   const [session, setSession] = useState<PairingSession | null>(null);
   const [said, setSaid] = useState("");
@@ -44,7 +47,7 @@ export function WinkAdd() {
     return (
       <Page title="Add a device" sub="What are you adding?" back="/u/wink">
         <Card flush>
-          {KINDS.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<IconTile name={k.icon} size={40} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
+          {kinds.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<IconTile name={k.icon} size={40} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
         </Card>
       </Page>
     );
