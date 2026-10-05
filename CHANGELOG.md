@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(kernel): `approvedAct` compares the bind. An approved task that recorded the bind of what the person saw (`form.bind`, a digest of the request as it would be sent) releases only a request that carries the same bind; approve A and send B is refused, and a request that states none is too. It holds for every outward act, not only the calendar sync (which checked it for itself). `authorize` passes the request's `input.bind` through, and the service lease passes the bind it computes from the request it is about to send. An approval that recorded no bind is judged as before. Test: approve A, send B with that approval, refused.
+
 - feat(one-yes): `wink.code.open` is a pair moment, so a headless walk or a dev build signs the owner's yes over it (`dev-sign-proof --yes pair --tool wink.code.open --input '{"flow":"W2"}'`) and a browser or server typed pairing can start; `records.seal-put` and `records.reveal` are the vault moment (filling or revealing a sealed field, ruling 7cc004d). A prefix never counts.
 
 - fix(security): every container image Vyre runs as root on a box or builds the edge from is pinned by digest (reviewer-3 SC-1, SC-2): the backup and restore helper (`alpine tar` over the data volumes, now alpine:3.20@sha256 as `HELPER_IMAGE`), the edge's Caddy base and its derived Dockerfile's alpine, and BuildKit. The publish image check accepts `name:tag@sha256:...`. test/image-pins.test.js fails on any unpinned image reference in core/cli/commands/box.js and lib/publish/edge.js. The manual restore example in docs/using/box-care.md is pinned too. The digests are the multi-arch index digests of 5 Oct 2026; bump them on purpose.
