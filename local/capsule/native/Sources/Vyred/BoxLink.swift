@@ -1,17 +1,17 @@
 // BoxLink: on a Mac paired to a server, the assistant, memory and agents live on that server (#36).
 //
 // The Mac's own vyred knows none of them: its agents.list has no assistant, so Lumen said "there is no assistant on this Vyre"
-// while the person's assistant was on their server. A paired Mac's vyred offers `link.call {tool, input}` (a tool on the box)
+// while the person's assistant was on their server. A paired Mac's vyred offers `wink.server.call {tool, input}` (WinkServer.swift) (a tool on the box)
 // and proxies the box's events at /v1/link/events (docs/concepts/box-and-mac.md). This file uses both:
 //
 //   - The asks that belong to the server (agents.*, memory.*, learn.lessons) go through link.call when link.status says the Mac
 //     is linked. So do the thread calls for a thread the server owns (one an agents.ask started, one its lists named).
-//   - The server's thread, ask and memory events are followed on /v1/link/events and handed to the same subscribers as the Mac's
+//   - The server's thread, ask and memory events are followed on /v1/link/events (WinkServer.eventsPath) and handed to the same subscribers as the Mac's
 //     own, so a reply from the server draws as it arrives.
 //   - Everything else stays on this Mac: apps, files, clipboard, the Mac's own sessions, the vault, presence, the Gate.
 //   - When the server cannot be reached the call says so in words; nothing falls back to the Mac's empty answer.
 //
-// Not linked, or link.status missing: nothing changes, and every call goes to this vyred as before.
+// Not linked, or wink.server.home missing: nothing changes, and every call goes to this vyred as before.
 
 import Foundation
 
@@ -32,6 +32,7 @@ public final class BoxLink: @unchecked Sendable {
     private var isLinked = false
     private var isReachable: Bool?
     private var name: String?
+    private var address: String?
     private var threads = Set<String>()
     private var streams: [SSEConnection] = []
     private var generation = 0
@@ -39,6 +40,8 @@ public final class BoxLink: @unchecked Sendable {
     public var linked: Bool { lock.lock(); defer { lock.unlock() }; return isLinked }
     public var reachable: Bool? { lock.lock(); defer { lock.unlock() }; return isReachable }
     public var boxName: String? { lock.lock(); defer { lock.unlock() }; return name }
+    /// The server's https origin as the pairing knows it, or nil. Never a guess.
+    public var boxAddress: String? { lock.lock(); defer { lock.unlock() }; return isLinked ? address : nil }
 
     /// Does this call go to the server?
     func routes(_ tool: String, _ input: [String: Any]) -> Bool {
@@ -77,14 +80,14 @@ public final class BoxLink: @unchecked Sendable {
 
     /// Run a routed call on the server. Never falls back to this Mac.
     func call(_ client: VyredClient, _ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
-        let r = await client.callLocal("link.call", ["tool": tool, "input": input], timeout: max(timeout, 5))
+        let r = await client.callLocal(WinkServer.call, WinkServer.callInput(tool, input), timeout: max(timeout, 5))
         switch r {
         case .success(let d):
             learn(from: d)
             lock.lock(); if isLinked { isReachable = true }; lock.unlock()
             return r
         case .failure(let code, let message):
-            if code == "box_unreachable" || code == "no_link" || code == "unpaired" {
+            if WinkServer.unreachableCodes.contains(code) {
                 lock.lock(); isReachable = false; lock.unlock()
                 return .failure(code: "box_unreachable", message: Self.away(message))
             }
@@ -107,17 +110,17 @@ public final class BoxLink: @unchecked Sendable {
         await refresh(client)
     }
 
-    /// link.status, then the server's events while linked. Called when this vyred is found and when the panel shows.
+    /// wink.server.home, then the server's events while linked. Called when this vyred is found and when the panel shows.
     @MainActor func refresh(_ client: VyredClient) async {
-        guard client.has("link.status") else { setLinked(false, client); return }
-        let r = await client.callLocal("link.status", [:], timeout: 5)
-        guard case .success(let d) = r, let o = d as? [String: Any] else { return }
-        let on = VJ.truthy(o["linked"])
+        guard client.has(WinkServer.home) else { setLinked(false, client); return }
+        let r = await client.callLocal(WinkServer.home, [:], timeout: 5)
+        guard case .success(let d) = r, let h = WinkServer.parseHome(d) else { return }
         lock.lock()
-        name = VJ.nonEmpty((o["box"] as? [String: Any])?["name"])
-        isReachable = on ? (o["reachable"] as? Bool ?? true) : nil
+        name = h.name
+        address = h.address
+        isReachable = h.reachable
         lock.unlock()
-        setLinked(on, client)
+        setLinked(h.linked, client)
     }
 
     @MainActor private func setLinked(_ on: Bool, _ client: VyredClient) {
@@ -139,7 +142,7 @@ public final class BoxLink: @unchecked Sendable {
         stopStreams()
         lock.lock(); let gen = generation; lock.unlock()
         let made = Self.eventTypes.map { type in
-            SSEConnection(socket: client.socket, path: "/v1/link/events?type=\(type)&since=latest",
+            SSEConnection(socket: client.socket, path: "\(WinkServer.eventsPath)?type=\(type)&since=latest",
                 onOpen: {},
                 onEvent: { [weak self, weak client] json in
                     guard let e = VyredEvent(json: json) else { return }

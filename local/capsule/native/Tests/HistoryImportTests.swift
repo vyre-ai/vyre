@@ -37,7 +37,7 @@ private let SCAN: [String: Any] = ["claude_keeps_days": 30, "sources": [
 
 @MainActor private func model(paired: Bool = true, scan: [String: Any]? = SCAN) -> (HistoryImportModel, HistoryLink) {
     let l = HistoryLink()
-    l.answer("link.status") { _ in .success(["role": "local", "linked": paired, "box": ["name": "alex-box"]] as [String: Any]) }
+    l.answer("wink.server.home") { _ in .success(["role": "local", "linked": paired, "box": ["name": "alex-box"]] as [String: Any]) }
     l.answer("import.scan") { _ in .success(scan ?? ["sources": [Any]()]) }
     return (HistoryImportModel(vyred: l), l)
 }

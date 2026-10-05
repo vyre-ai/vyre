@@ -1,7 +1,7 @@
 // capsule-suite: boxLinkSuite
 // A Mac paired to a server asks the server for the assistant, memory and agents (Vyred/BoxLink.swift, #36). The user's Mac said
 // "there is no assistant on this Vyre" while their assistant was on their server, because Lumen asked the Mac's own vyred.
-// A FakeVyred stands in for the Mac's vyred: it has link.status and link.call, and proxies the box's events at /v1/link/events.
+// A FakeVyred stands in for the Mac's vyred: it has wink.server.home and wink.server.call, and proxies the box's events at /v1/link/events.
 
 import Foundation
 
@@ -10,14 +10,14 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
     return false
 }
 
-/// A Mac's vyred: its own agents.list is empty (no assistant here), link.call answers for the server.
+/// A Mac's vyred: its own agents.list is empty (no assistant here), wink.server.call answers for the server.
 private func pairedMac(linked: Bool = true, boxUp: Bool = true) -> FakeVyred {
     let v = FakeVyred(); v.start()
-    v.tool("link.status") { _ in ["role": "local", "linked": linked, "reachable": boxUp, "box": ["name": "kit", "address": "https://kit.vyre.run"]] as [String: Any] }
+    v.tool("wink.server.home") { _ in ["role": "local", "linked": linked, "reachable": boxUp, "box": ["name": "kit", "address": "https://kit.vyre.run"]] as [String: Any] }
     v.tool("agents.list") { _ in [] as [Any] }
     v.tool("apps.list") { _ in ["apps": ["mail"]] as [String: Any] }
     v.tool("threads.get") { i in ["thread": ["id": i["thread"] ?? ""], "from": "mac"] as [String: Any] }
-    v.tool("link.call") { i in
+    v.tool("wink.server.call") { i in
         if !boxUp { return FakeError(code: "box_unreachable", message: "the box is not reachable") }
         let tool = (i["tool"] as? String) ?? "", input = (i["input"] as? [String: Any]) ?? [:]
         switch tool {
@@ -44,7 +44,7 @@ let boxLinkSuite = Suite("box link") { t in
         t.eq(c.box.linked, false)
         t.ok(!c.has("agents.ask"), "no agents.ask here, and no server to lend it")
         if case .success(let d)? = r { t.eq((d as? [Any])?.count, 0, "the Mac's own, empty list") } else { t.ok(false, "agents.list answered") }
-        t.eq(v.callsOf("link.call").count, 0, "nothing went to the server")
+        t.eq(v.callsOf("wink.server.call").count, 0, "nothing went to the server")
     }
 
     t.test("linked: agents.list, agents.ask and memory.ask go to the server, and everything else stays here") {
@@ -66,7 +66,7 @@ let boxLinkSuite = Suite("box link") { t in
         if case .success(let d)? = got?.1 { t.eq((d as? [String: Any])?["thread"] as? String, "t-box") } else { t.ok(false, "agents.ask") }
         if case .success(let d)? = got?.2 { t.eq((d as? [String: Any])?["answer"] as? String, "From the server.") } else { t.ok(false, "memory.ask") }
         if case .success(let d)? = got?.3 { t.eq(((d as? [String: Any])?["apps"] as? [String]), ["mail"], "apps.list is this Mac's") } else { t.ok(false, "apps.list") }
-        t.eq(v.callsOf("link.call").compactMap { $0["tool"] as? String }, ["agents.list", "agents.ask", "memory.ask"])
+        t.eq(v.callsOf("wink.server.call").compactMap { $0["tool"] as? String }, ["agents.list", "agents.ask", "memory.ask"])
         t.eq(v.callNames.filter { $0 == "agents.list" || $0 == "agents.ask" || $0 == "memory.ask" }.count, 0, "the Mac's own agents and memory were never asked")
     }
 
@@ -129,7 +129,7 @@ let boxLinkSuite = Suite("box link") { t in
         let c = VyredClient(socket: v.socket)
         let _: Bool? = t.wait { _ = await c.refreshTools(); await c.box.refresh(c); return true }
         t.ok(t.wait { await until { v.openBoxStreams == 3 } } ?? false)
-        v.tool("link.status") { _ in ["role": "local", "linked": false] as [String: Any] }
+        v.tool("wink.server.home") { _ in ["role": "local", "linked": false] as [String: Any] }
         let _: Bool? = t.wait { await c.box.refresh(c); return true }
         t.eq(c.box.linked, false)
         t.ok(t.wait { await until { v.openBoxStreams == 0 } } ?? false, "the streams closed")
@@ -187,7 +187,7 @@ let boxLinkSuite = Suite("box link") { t in
         }
         if case .success(let d)? = routed { t.eq((d as? [String: Any])?["answer"] as? String, "From the server.") } else { t.ok(false, "routed") }
         t.eq(v.callNames.filter { $0 == "memory.ask" }.count, 0, "the Mac's own memory was not asked")
-        t.ok(!(v.callsOf("link.call").first { ($0["tool"] as? String) == "memory.ask" }?["input"] as? [String: Any] ?? [:]).keys.contains("stream"), "plain: no stream flag")
+        t.ok(!(v.callsOf("wink.server.call").first { ($0["tool"] as? String) == "memory.ask" }?["input"] as? [String: Any] ?? [:]).keys.contains("stream"), "plain: no stream flag")
         // Not paired, memory slow: the plain words.
         let slow = FakeVyred(); slow.start(); defer { slow.stop() }
         slow.tool("memory.ask") { _ in Thread.sleep(forTimeInterval: 1.5); return ["answer": "late"] as [String: Any] }

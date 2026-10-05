@@ -394,7 +394,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     public let box = BoxLink()
     public func has(_ tool: String) -> Bool {
         lock.lock()
-        let local = tools.contains(tool), linkCall = tools.contains("link.call")
+        let local = tools.contains(tool), linkCall = tools.contains(WinkServer.call)
         lock.unlock()
         return local || (linkCall && box.offers(tool))
     }
@@ -511,7 +511,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     /// A tool with no draft answers plain JSON, which reads as any other call.
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval,
                      onDraft: @escaping @Sendable (_ id: String, _ text: String) -> Void) async -> VyredResult {
-        // A paired Mac's memory is the server's: link.call carries no live draft, so it asks plain (the server's memory.thinking events
+        // A paired Mac's memory is the server's: wink.server.call carries no live draft, so it asks plain (the server's memory.thinking events
         // still draw the stage line, on the same id).
         if box.routes(tool, input) {
             var plain = input
