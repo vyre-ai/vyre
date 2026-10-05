@@ -116,7 +116,7 @@ export function createStoreFor(cfg) {
     if (mode === "sqlite") return undefined;
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
-      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      if (chosen?.kind === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
       if (!meta.personal) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "none", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       // the home's own Space: the daemon starts, records answer one plain refusal, and the reasons are written beside it for `vyre status`
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
