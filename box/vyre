@@ -1462,7 +1462,7 @@ sp_swap() {
     chmod 600 "$SP_SWAPFILE" || { rm -f "$SP_SWAPFILE"; return 0; }
   fi
   # the file is used only if it is what this function makes: a regular file owned by the user running it (root), mode 600
-  [ "$(stat -c '%F|%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "regular file|$(id -un)|600" ] || { sp_log "swap: $SP_SWAPFILE is not a 0600 file of this user; left alone"; return 0; }
+  { [ -f "$SP_SWAPFILE" ] && [ ! -L "$SP_SWAPFILE" ] && [ "$(stat -c '%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "$(id -un)|600" ]; } || { sp_log "swap: $SP_SWAPFILE is not a 0600 file of this user; left alone"; return 0; }
   loop=$(losetup -j "$SP_SWAPFILE" 2>/dev/null | head -n 1 | cut -d: -f1)
   [ -n "$loop" ] || loop=$(losetup -f --show "$SP_SWAPFILE" 2>/dev/null) || { sp_log "swap: no loop device"; return 0; }
   # a fresh random key now (and at every boot through crypttab): never stored, so the contents die with the mapping
