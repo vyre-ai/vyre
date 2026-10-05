@@ -1475,10 +1475,11 @@ export default {
           grantOf: async (/** @type {string} */ moveId) => { const g = await kv.get(`move-pull/${moveId}`); return g && g.from === space ? g : null; },
           sign: async (/** @type {string} */ m) => { const k = files.keys.load(space); if (!k) throw refuse("This home holds no key for that space.", "unavailable"); return b64u(await k.sign(Buffer.from(m))); },
           verify: async (/** @type {string} */ pub, /** @type {string} */ m, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(m), sig); } catch { return false; } },
-          planFor: (g) => serve({ op: "plan", person: g.person, project: g.project }),
-          readRecord: (g, urn) => serve({ op: "record", person: g.person, urn }),
-          readFile: async (g, path, offset, length) => Buffer.from(String((await serve({ op: "file", person: g.person, path, offset, length })).base64 || ""), "base64"),
-          sealedFor: (g, ref) => serve({ op: "sealed", person: g.person, ref }),
+          // every call names exactly what was approved: the serving side checks it against the source's own `project.move_started` (it does not rely on this pull check alone)
+          planFor: (g) => serve({ op: "plan", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, to_space: g.to }),
+          readRecord: (g, urn) => serve({ op: "record", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, urn }),
+          readFile: async (g, path, offset, length) => Buffer.from(String((await serve({ op: "file", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, path, offset, length })).base64 || ""), "base64"),
+          sealedFor: (g, ref) => serve({ op: "sealed", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, ref }),
           log: (m) => ctx.log.info(m),
         });
         pullSources.set(space, src);
@@ -1493,7 +1494,7 @@ export default {
       const t = r && typeof r.t === "string" ? r.t : "";
       if (!["hello", "auth", "plan", "records", "file", "sealed", "done"].includes(t)) throw refuse("That is not a request this home answers.", "bad_input");
       try { return await pullSourceOf(space)[/** @type {"hello"} */ (t)](r); }
-      catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (/^(not_found|denied|bad_input|rate_limited|plan_changed|too_large|unavailable)$/.test(c)) throw refuse(String(/** @type {Error} */ (e).message), c); throw plainKernelError(e); }
+      catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (/^(not_found|denied|bad_input|rate_limited|plan_changed|too_large|unavailable|blocked)$/.test(c)) throw refuse(String(/** @type {Error} */ (e).message), c); throw plainKernelError(e); }
     }, { internal: true });
     // the TARGET side of the pull: the driver (the Flow's copy) checks the source before it signs anything, then asks this home to sign with the target Space's key. Neither tool takes a key or returns one.
     tool("spaces.moves.pull-check-source", "In the TARGET home: is this signature the SOURCE space's, by its published key (`fromName`, `pin`)? The driver asks before it signs anything.", obj({ from: str, to: str, move_id: str, nonce: str, src_sig: str, fromName: str, pin: str }, ["from", "to", "move_id", "nonce", "src_sig", "fromName", "pin"]), async (i, meta) => {
