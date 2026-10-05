@@ -1,1 +1,104 @@
-{}
+{
+  "docs/get-started/shots/first-run-chat.dark.png": {
+    "sha256": "6c4ff1eb39c8a5c158193d82a408e662d04197bf9defe34fcc807310a05d3baa",
+    "shows": {
+      "apps/app/app/chat-demo.tsx": "2c118c259453bb77971fd6ad89ce71ff7e49bdb63eae567134737d4271189e9c",
+      "apps/app/src/chat/ChatScreen.tsx": "b4bc8fe3fbd3f46a99282fd986fc717651f86fbc24bc98b632798a8f25c6b31b",
+      "apps/app/src/chat/mock-stream.ts": "183cdd323f9ee9fb3a069da09c6934594b7003dea7b18cb79b3953641ec4c829"
+    }
+  },
+  "docs/get-started/shots/first-run-chat.png": {
+    "sha256": "6c4ff1eb39c8a5c158193d82a408e662d04197bf9defe34fcc807310a05d3baa",
+    "shows": {
+      "apps/app/app/chat-demo.tsx": "2c118c259453bb77971fd6ad89ce71ff7e49bdb63eae567134737d4271189e9c",
+      "apps/app/src/chat/ChatScreen.tsx": "b4bc8fe3fbd3f46a99282fd986fc717651f86fbc24bc98b632798a8f25c6b31b",
+      "apps/app/src/chat/mock-stream.ts": "183cdd323f9ee9fb3a069da09c6934594b7003dea7b18cb79b3953641ec4c829"
+    }
+  },
+  "docs/get-started/shots/first-run-claim.dark.png": {
+    "sha256": "7606bb5d091e6d3c9589bc97f87570e7a7c90d8deb23c5de32c10fdc8b04833f",
+    "shows": {
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1"
+    }
+  },
+  "docs/get-started/shots/first-run-claim.png": {
+    "sha256": "7606bb5d091e6d3c9589bc97f87570e7a7c90d8deb23c5de32c10fdc8b04833f",
+    "shows": {
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1"
+    }
+  },
+  "docs/get-started/shots/first-run-now.dark.png": {
+    "sha256": "347b49b067c2bc37d76f136ab05217f5c71a09dc8e96fc56a9859150549b67bb",
+    "shows": {
+      "apps/app/screens/now/NowScreen.tsx": "1b6cb4de1a81093f8ae12edd9a75e83086af6da95a61cf70da5c45750d1c6cca",
+      "apps/app/screens/shell/data.ts": "8e57316a32f64e642f73f2545b6bfc07649116561729a62353533a517a63bbfc"
+    }
+  },
+  "docs/get-started/shots/first-run-now.png": {
+    "sha256": "347b49b067c2bc37d76f136ab05217f5c71a09dc8e96fc56a9859150549b67bb",
+    "shows": {
+      "apps/app/screens/now/NowScreen.tsx": "1b6cb4de1a81093f8ae12edd9a75e83086af6da95a61cf70da5c45750d1c6cca",
+      "apps/app/screens/shell/data.ts": "8e57316a32f64e642f73f2545b6bfc07649116561729a62353533a517a63bbfc"
+    }
+  },
+  "docs/get-started/shots/first-run-pair-code.dark.png": {
+    "sha256": "47a93ebed333648f10075b5524aefd2a7e62768c5ea03471ec1e4270172a69e0",
+    "shows": {
+      "apps/app/screens/devices/PairParts.tsx": "5c9416639379fbd464203ab5c61961411d5f33381ff8fbc1e367b395d831d582",
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1",
+      "apps/app/src/api/pairing-session.ts": "19690d9f628cacf130d3c89aaf193672d5d95e4fe97091a42f1dc2461a096fd3"
+    }
+  },
+  "docs/get-started/shots/first-run-pair-code.png": {
+    "sha256": "47a93ebed333648f10075b5524aefd2a7e62768c5ea03471ec1e4270172a69e0",
+    "shows": {
+      "apps/app/screens/devices/PairParts.tsx": "5c9416639379fbd464203ab5c61961411d5f33381ff8fbc1e367b395d831d582",
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1",
+      "apps/app/src/api/pairing-session.ts": "19690d9f628cacf130d3c89aaf193672d5d95e4fe97091a42f1dc2461a096fd3"
+    }
+  },
+  "docs/get-started/shots/first-run-pair-words.dark.png": {
+    "sha256": "47a93ebed333648f10075b5524aefd2a7e62768c5ea03471ec1e4270172a69e0",
+    "shows": {
+      "apps/app/screens/devices/PairParts.tsx": "5c9416639379fbd464203ab5c61961411d5f33381ff8fbc1e367b395d831d582",
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1",
+      "apps/app/src/api/pairing-session.ts": "19690d9f628cacf130d3c89aaf193672d5d95e4fe97091a42f1dc2461a096fd3"
+    }
+  },
+  "docs/get-started/shots/first-run-pair-words.png": {
+    "sha256": "47a93ebed333648f10075b5524aefd2a7e62768c5ea03471ec1e4270172a69e0",
+    "shows": {
+      "apps/app/screens/devices/PairParts.tsx": "5c9416639379fbd464203ab5c61961411d5f33381ff8fbc1e367b395d831d582",
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1",
+      "apps/app/src/api/pairing-session.ts": "19690d9f628cacf130d3c89aaf193672d5d95e4fe97091a42f1dc2461a096fd3"
+    }
+  },
+  "docs/get-started/shots/first-run-space.dark.png": {
+    "sha256": "7606bb5d091e6d3c9589bc97f87570e7a7c90d8deb23c5de32c10fdc8b04833f",
+    "shows": {
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1"
+    }
+  },
+  "docs/get-started/shots/first-run-space.png": {
+    "sha256": "7606bb5d091e6d3c9589bc97f87570e7a7c90d8deb23c5de32c10fdc8b04833f",
+    "shows": {
+      "apps/app/screens/install/InstallScreen.tsx": "94ee015339e95717067667e5752ba20b2ee7096e22722e2f6778053f3e63e192",
+      "apps/app/screens/install/data.ts": "eab7313e4e5755e50c57d7585aaa034f52f80521e7981c0f4b6641f2c242a1be",
+      "apps/app/screens/install/flow.js": "74201fed6e0d369c890765e0773b5b62827168231993567cf5bfca82ac4ca1b1"
+    }
+  }
+}

@@ -10,7 +10,7 @@
 //   events    EventEnvelope: noun.past-verb types, a subject urn, an actor "<kind>:<id>@<space>", a data bag with the sentence the Deck prints (data.what, data.why);
 //             the hashes are stand-ins (the mock keeps no chain). Record events say what changed, never a value
 //
-// Worlds: "morning" (the morning after a payment: spaces Mine and Harlow Legal, Alex Rivera, Chris Park, juno, kit, Research, Intake, Drafting, Jane Doe and
+// Worlds: "morning" (the morning after a payment: spaces Mine and Juniper Studio, Alex Rivera, Chris Park, juno, kit, Research, Intake, Drafting, Jane Doe and
 // the rest, tasks k1..k28 from the approved prototype), "payday" (the same without Doe estate plan, so the "client pays" scenario can play on top of it),
 // and "empty" (spaces, people and types only).
 import { advanceStage, approve, evidenceOf, isProof, makeStuck, move as moveTask, ownerOf, reassign as reassignTask, reject, spawnStage, startsItself, unblock, whyNot, withEvidence,
@@ -38,7 +38,7 @@ void _stageDone;
 /** @type {import("./contracts.js").Space[]} */
 const SPACES = [
   { id: SPACE.mine, name: "Mine", kind: "mine", accent: "violet" },
-  { id: SPACE.harlow, name: "Harlow Legal", kind: "team", accent: "amber", density: "compact" },
+  { id: SPACE.harlow, name: "Juniper Studio", kind: "team", accent: "amber", density: "compact" },
 ];
 
 /** @type {Who[]} */
@@ -49,9 +49,9 @@ const ACTORS = [
   { id: WHO.kit, family: "assistant", name: "kit", role: "Assistant", seed: "kit", owner: WHO.alex },
   { id: WHO.iris, family: "assistant", name: "iris", role: "Assistant", seed: "iris", owner: WHO.chris },
   { id: WHO.rev, family: "assistant", name: "rev", role: "Assistant", seed: "rev", owner: WHO.alex },
-  { id: WHO.research, family: "teammate", name: "Research", role: "Teammate, Harlow Legal", seed: "research-harlow", owner: WHO.alex },
-  { id: WHO.intake, family: "teammate", name: "Intake", role: "Teammate, Harlow Legal", seed: "intake-harlow", owner: WHO.alex },
-  { id: WHO.drafting, family: "teammate", name: "Drafting", role: "Teammate, Harlow Legal", seed: "drafting-harlow", owner: WHO.alex },
+  { id: WHO.research, family: "teammate", name: "Research", role: "Teammate, Juniper Studio", seed: "research-harlow", owner: WHO.alex },
+  { id: WHO.intake, family: "teammate", name: "Intake", role: "Teammate, Juniper Studio", seed: "intake-harlow", owner: WHO.alex },
+  { id: WHO.drafting, family: "teammate", name: "Drafting", role: "Teammate, Juniper Studio", seed: "drafting-harlow", owner: WHO.alex },
   { id: WHO.vyre, family: "service", name: "Vyre", role: "The Kit and its Flows", seed: "vyre" },
 ];
 
@@ -468,11 +468,11 @@ export function createMockStore(opts = {}) {
     c("c4", { name: "Priya Shah", role: "Client", email: "priya.shah@example.com", phone: "+1 510 555 0164", dob: "1979-11-21", ssn: "544-90-3321", notes: "Updating a will after a move." });
     c("c5", { name: "Lena Ortiz", role: "Vendor", email: "lena@ortiznotary.example.com", phone: "+1 415 555 0123", notes: "Mobile notary. Signs same day." });
     c("c6", { name: "Dana Reyes", role: "Client", email: "dana.reyes@example.com", phone: "+1 415 555 0190", notes: "Site rebuild client contact." });
-    put("template", H, { name: "Welcome", kind: "Email", subject: "Welcome to Harlow Legal, [Client first name]",
-      body: "Hi [Client first name],\n\nThank you for choosing Harlow Legal. [Tailored paragraph]\n\nYour matter is [Matter title], and [Attorney name] is your attorney. Next we will send your engagement letter.\n\n[Firm signature]" }, "tpl1");
+    put("template", H, { name: "Welcome", kind: "Email", subject: "Welcome to Juniper Studio, [Client first name]",
+      body: "Hi [Client first name],\n\nThank you for choosing Juniper Studio. [Tailored paragraph]\n\nYour matter is [Matter title], and [Attorney name] is your attorney. Next we will send your engagement letter.\n\n[Firm signature]" }, "tpl1");
     put("template", H, { name: "Engagement letter", kind: "Document", subject: "Engagement letter, [Matter title]",
-      body: "Client: [Client name]\nSocial Security number: [SSN]\nMatter: [Matter title]\nFee: [Fee]\n\nThis letter confirms that Harlow Legal will act for you in this matter.\n\n[Firm signature]" }, "tpl2");
-    log({ type: "member.joined", subject: urnOf(H, "space", H), actor: WHO.chris, what: "joined Harlow Legal", at: today(10, 20) });
+      body: "Client: [Client name]\nSocial Security number: [SSN]\nMatter: [Matter title]\nFee: [Fee]\n\nThis letter confirms that Juniper Studio will act for you in this matter.\n\n[Firm signature]" }, "tpl2");
+    log({ type: "member.joined", subject: urnOf(H, "space", H), actor: WHO.chris, what: "joined Juniper Studio", at: today(10, 20) });
     if (world === "empty") return;
 
     const m = (/** @type {string} */ alias, /** @type {any} */ v, /** @type {string} */ stage) => {
@@ -521,7 +521,7 @@ export function createMockStore(opts = {}) {
       const k1 = k("m1", { title: "Research the client", doer: WHO.research, stage: "Intake", state: "done", output: { kind: "fields", fields: ["situation", "assets", "pressure", "research"] }, how: "assistant",
         result: { note: { text: "Wants the trust funded before the house sale in November.", sources: ["Intake form, 8 Sep", "County property record", "Her first message"] } } });
       k("m1", { title: "Welcome email for Jane Doe", doer: WHO.intake, checker: WHO.alex, stage: "Intake", state: "done", output: { kind: "sent", target: "Email to Jane Doe" }, how: "tailor", template: "tpl1", dependsOn: [k1.id],
-        result: { draft: { subject: "Welcome to Harlow Legal, Jane", body: "Hi Jane,\n\nThank you for choosing Harlow Legal. I read that you want the trust funded before the house sale in November, so we will start there.\n\nHarlow Legal", sources: 3 } } });
+        result: { draft: { subject: "Welcome to Juniper Studio, Jane", body: "Hi Jane,\n\nThank you for choosing Juniper Studio. I read that you want the trust funded before the house sale in November, so we will start there.\n\nJuniper Studio", sources: 3 } } });
       const k3 = k("m1", { title: "Engagement letter", doer: WHO.drafting, checker: WHO.alex, stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "tpl2", due: today(12, 0) + dayMs, now: "is drafting the engagement letter" });
       k("m1", { title: "Review the draft with Jane Doe", doer: WHO.alex, stage: "Engagement", state: "ready", output: { kind: "decision", target: "Approved or changes" }, how: "person", dependsOn: [k3.id], madeBy: WHO.chris, note: "Assigned by Chris", due: today(12, 0) + 3 * dayMs });
     }

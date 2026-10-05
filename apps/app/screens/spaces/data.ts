@@ -8,7 +8,7 @@ export type Teammate = { id: string; name: string; sub: string };
 export function loadSpaces(): SpaceCard[] {
   return [
     { id: "mine", name: "Mine", address: "alex.vyre.run", role: "owner", home: "this computer" },
-    { id: "harlow", name: "Harlow Legal", address: "harlow.vyre.run", role: "admin", home: "your server" },
+    { id: "juniper", name: "Juniper Studio", address: "juniper.vyre.run", role: "admin", home: "your server" },
   ];
 }
 

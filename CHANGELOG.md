@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- docs: the get-started pictures are now the app's own first-run screens (claim a name, create a space, pair a server with the long code and with the three words, the first chat, Now), light and dark, taken by `npm run docs:shots` from the app's web export built with the sample world; the sample space is Juniper Studio (scripts/docs-shots world `app`, scripts/lib/docs/shots.js, apps/app sample data), the clock is fixed so the greeting and date do not change between runs. The seven old on-box onboarding shots are gone with the page they showed.
 - fix(docs): docs-check's screenshot rule skips docs/work (the 86 chat design-note pictures there are unpublished work notes, not docs shots, and have no shot definition); a test holds it.
 - fix(relay): the Worker relay now keeps a typed code for a 90 s grace when the box's control socket drops (the Node relay got this in 0446ada12): same route key reconnecting keeps the code, a DO alarm frees it after the grace, requests meanwhile are refused. `CODE.graceMs` is in the Worker's constants too.
 - refactor(acme): the ACME client, csr and certificate store moved from core/names to lib/acme, so the public gate (core/wink) and lib/publish use them with no core/names edge; docs reference and index regenerated.

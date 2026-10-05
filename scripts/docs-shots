@@ -405,6 +405,44 @@ const report = (shot, page) => {
   for (const e of errs) log(`  ${shot.name}: page error: ${e}`);
 };
 
+
+// ---- the app's sample export --------------------------------------------------------------------
+
+/** Build apps/app's web export with the sample world, into the temp folder (root base, no service worker). */
+async function buildApp() {
+  // DOCS_SHOTS_APP_DIST: reuse an export already built with the sample world (to retake a shot without waiting for the build).
+  if (process.env.DOCS_SHOTS_APP_DIST) return path.resolve(process.env.DOCS_SHOTS_APP_DIST);
+  const appDir = path.join(REPO, "apps", "app");
+  const out = path.join(WORK, "app-dist");
+  const env = { ...process.env, EXPO_PUBLIC_VYRE_MOCK: "1", VYRE_APP_BASE: "root", EXPO_PUBLIC_VYRE_APP_BASE: "root", CI: "1" };
+  if (!fs.existsSync(path.join(appDir, "node_modules"))) throw new Error("apps/app has no node_modules: run npm ci there first");
+  log("docs-shots: building the app's sample export (about two minutes)");
+  for (const argv of [["scripts/term-assets.mjs"], ["scripts/glass-assets.mjs"]]) {
+    const r = spawnSync(process.execPath, argv, { cwd: appDir, env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`apps/app ${argv[0]} failed: ${(r.stderr || r.stdout).slice(-400)}`);
+  }
+  const r = spawnSync("npx", ["expo", "export", "-p", "web", "--output-dir", out], { cwd: appDir, env, encoding: "utf8", timeout: 600_000 });
+  if (r.status !== 0) throw new Error(`expo export failed: ${(r.stderr || r.stdout).slice(-600)}`);
+  return out;
+}
+
+/** Serve a folder of static files on a free local port; a path with no file is the app's one page, a missing asset is a 404. */
+async function serveApp(dir) {
+  const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".woff2": "font/woff2", ".ttf": "font/ttf", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
+  const srv = http.createServer((req, res) => {
+    const p = decodeURIComponent(String(req.url).split("?")[0]);
+    let f = path.join(dir, p);
+    const missing = !f.startsWith(dir) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
+    if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
+    if (missing) f = path.join(dir, "index.html");
+    res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
+    fs.createReadStream(f).pipe(res);
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  stops.push(() => new Promise(r => srv.close(() => r(undefined))));
+  return { port: /** @type {any} */ (srv.address()).port, close: () => srv.close() };
+}
+
 // ---- the CLI's output ---------------------------------------------------------------------------
 
 async function cliOutput() {
@@ -462,6 +500,35 @@ try {
   } };
   await shootDeck(ready.filter(s => s.world === "deck"), w);
   if (gl) await shootDeck(ready.filter(s => s.world === "glass"), gl);
+
+  // The app: its web export, built with the sample world, served from a folder here. It is not the
+  // Deck and it talks to no box: EXPO_PUBLIC_VYRE_MOCK=1 gives it the sample world (alex, Juniper Studio).
+  const appShots = ready.filter(s => s.world === "app");
+  if (appShots.length) {
+    const appDist = await buildApp();
+    const server = await serveApp(appDist);
+    try {
+      for (const shot of appShots) for (const theme of shot.themes) {
+        log(`${shot.name} (${theme})`);
+        const page = await browser.page();
+        try {
+          await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme === "light" ? "light" : "dark" }] });
+          // The first run keeps its progress on the device so a closed app resumes: every shot starts from nothing.
+          // A fixed clock, so "Good morning" and the date on Now read the same every time the shots are taken.
+          await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const R = Date, t0 = new R("2026-10-05T09:30:00").getTime(), s0 = R.now();
+            const now = () => t0 + (R.now() - s0);
+            class D extends R { constructor(...a) { if (a.length === 0) super(now()); else super(...a); } static now() { return now(); } }
+            globalThis.Date = D; })();` });
+          await page.send("Storage.clearDataForOrigin", { origin: `http://127.0.0.1:${server.port}`, storageTypes: "all" });
+          await save(shot, theme, await capture(page, shot, { navigate: `http://127.0.0.1:${server.port}${shot.url}`, homes }));
+          report(shot, page);
+        } catch (e) {
+          log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1;
+          log("  at " + String(await page.run("return location.href").catch(() => "")) + ", the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 1500).replace(/\n+/g, " | "));
+        } finally { await page.close(); }
+      }
+    } finally { server.close(); }
+  }
 
   // The onboarding: one tab, the steps in order, as a person walks them.
   const obs = ready.filter(s => s.world === "onboard" || s.world === "fresh");
