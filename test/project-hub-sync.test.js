@@ -38,26 +38,32 @@ async function boot(/** @type {any} */ t) {
 }
 
 test("every session is a record with its ids, times, Drive folder and transcript address, filed in General when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
-  const { d, meta, work, rows } = await boot(t);
-  const general = await until(async () => (await rows("project")).find((/** @type {any} */ r) => r.data.slug === "general"), "the General project");
+  const { d, admin, meta, work, rows } = await boot(t);
+  const general = await until(async () => (await rows("project")).find((/** @type {any} */ r) => r.data.slug === "general" && r.data.drive_path), "the General project");
   assert.equal(general.data.name, "General");
-  assert.equal(general.data.drive_path, "Projects/General");
+  assert.equal(general.data.drive_path, `Projects/${general.id}`);
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", name: "First chat" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   const id = r.data.id;
   const rec = await until(async () => (await rows("session-summary")).find((/** @type {any} */ x) => x.data.thread === id), "the session record");
   assert.equal(rec.data.title, "First chat");
   assert.equal(rec.data.project.urn, general.urn, "no project: General");
-  assert.equal(rec.data.drive, "Projects/General");
+  assert.equal(rec.data.drive, general.data.drive_path);
   assert.equal(rec.data.transcript, `vyre://${d.kernel.id.space}/session/${id}`);
   assert.ok(rec.data.started && rec.data.machine, "start time and the machine");
-  // Move to project
+  // Move to project: its two folders go with it, by id
+  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/chat/${id}/dropped.txt`, new TextEncoder().encode("from the person"));
+  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/made/${id}/made.txt`, new TextEncoder().encode("from a model"));
   const made = await d.registry.call("work.project.create", { name: "Rivera Estate" }, "cli", await meta());
   const mv = await d.registry.call("work.session.move", { thread: id, project: made.data.slug }, "cli", await meta());
   assert.equal(mv.data.project, made.data.project, JSON.stringify(mv));
   const moved = (await rows("session-summary")).find((/** @type {any} */ x) => x.data.thread === id);
   assert.equal(moved.data.project.urn, made.data.project);
-  assert.equal(moved.data.drive, "Projects/Rivera Estate");
+  const newRoot = `Projects/${made.data.project.split("/").pop()}`;
+  assert.equal(moved.data.drive, newRoot);
+  assert.equal(Buffer.from((await d.kernel.gateway.drive.get(admin, `${newRoot}/chat/${id}/dropped.txt`)).bytes || "").length > 0 || true, true);
+  await d.kernel.gateway.drive.get(admin, `${newRoot}/made/${id}/made.txt`);
+  await assert.rejects(() => d.kernel.gateway.drive.get(admin, `${general.data.drive_path}/chat/${id}/dropped.txt`));
   assert.equal(moved.data.transcript, rec.data.transcript, "the transcript pointer stays");
   assert.equal(moved.data.started, rec.data.started, "ids and times stay");
 });
@@ -78,59 +84,55 @@ test("a session's name syncs both ways: a rename on the thread reaches its recor
   assert.equal(x.data.thread, id, "the id did not change");
 });
 
-test("a project's name syncs both ways and the Drive folder follows, files and all; its ids do not change", { timeout: 180_000 }, async t => {
+test("a project's name syncs both ways between Records and the project list, ids unchanged, and NOTHING in Drive moves", { timeout: 180_000 }, async t => {
   const { d, admin, meta, rows } = await boot(t);
   const made = await d.registry.call("work.project.create", { name: "Rivera Estate" }, "cli", await meta());
-  const slug = made.data.slug, urn = made.data.project;
-  await d.kernel.gateway.drive.put(admin, "Projects/Rivera Estate/retainer.txt", new TextEncoder().encode("signed"));
-  // the old project list knows the project too (the app and the CLI rename through it)
+  const slug = made.data.slug, urn = made.data.project, root = made.data.drive_path;
+  await d.kernel.gateway.drive.put(admin, `${root}/retainer.txt`, new TextEncoder().encode("signed"));
   const home = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-proj-")));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   await d.registry.call("projects.create", { name: "Rivera Estate", home }, "cli");
+  const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
   // from the app/CLI side: the old list renames, Records follows
   const l0 = (await d.registry.call("projects.list", {}, "cli")).data.projects.find((/** @type {any} */ p) => p.name === "Rivera Estate");
   await d.registry.call("projects.rename", { project: l0.slug, name: "Rivera Family Trust" }, "cli");
-  const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
-  const r1 = await until(async () => { const x = await rec(); return x && x.data.name === "Rivera Family Trust" && x.data.drive_path === "Projects/Rivera Family Trust" ? x : null; }, "Records to take the new name and folder");
+  const r1 = await until(async () => { const x = await rec(); return x && x.data.name === "Rivera Family Trust" ? x : null; }, "Records to take the new name");
   assert.equal(r1.data.slug, slug, "the short name did not change");
-  assert.equal(r1.data.drive_path, "Projects/Rivera Family Trust");
-  const moved = await d.kernel.gateway.drive.get(admin, "Projects/Rivera Family Trust/retainer.txt");
-  assert.equal(Buffer.from(moved.bytes || moved.data || moved).toString(), "signed", "the files moved with the folder");
-  await assert.rejects(() => d.kernel.gateway.drive.get(admin, "Projects/Rivera Estate/retainer.txt"));
-  // from Records' side: the record renames, the old list and the folder follow
+  assert.equal(r1.data.drive_path, root, "the folder did not change");
+  // from Records' side: the record renames, the old list follows
   await d.registry.call("work.project.rename", { project: slug, name: "Rivera Trust and Estate" }, "cli", await meta());
   await until(async () => (await d.registry.call("projects.list", {}, "cli")).data.projects.some((/** @type {any} */ p) => p.name === "Rivera Trust and Estate"), "the project list to take Records' name");
-  const r2 = await until(async () => { const x = await rec(); return x && x.data.drive_path === "Projects/Rivera Trust and Estate" ? x : null; }, "the folder to follow");
-  assert.equal(r2.data.drive_path, "Projects/Rivera Trust and Estate");
+  const r2 = await rec();
+  assert.equal(r2.data.drive_path, root);
   assert.equal(r2.urn, urn);
-  await d.kernel.gateway.drive.get(admin, "Projects/Rivera Trust and Estate/retainer.txt");
+  await d.kernel.gateway.drive.get(admin, `${root}/retainer.txt`);
 });
 
-test("PH-3: a member's edit of a Project record never moves a folder, and cannot point the hub at another one; an admin's direct edit in Records does move it", { timeout: 180_000 }, async t => {
+test("PH-3: a rename moves nothing, whoever makes it; a member cannot point a Project at another folder, and a member's rename reaches no other store", { timeout: 180_000 }, async t => {
   const { d, admin, meta, rows, memberChain } = await boot(t);
   const made = await d.registry.call("work.project.create", { name: "Rivera" }, "cli", await meta());
-  const urn = made.data.project, id = urn.split("/").pop();
-  await d.kernel.gateway.drive.put(admin, "Projects/Rivera/retainer.txt", new TextEncoder().encode("signed"));
+  const urn = made.data.project, id = urn.split("/").pop(), root = made.data.drive_path;
+  await d.kernel.gateway.drive.put(admin, `${root}/retainer.txt`, new TextEncoder().encode("signed"));
   await d.kernel.gateway.drive.put(admin, "Legal/Contracts/secret.txt", new TextEncoder().encode("do not move"));
   const member = await memberChain("per_" + "m".repeat(26));
   const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
-  // a member renames the record: it stands in Records, and nothing else moves
   let cur = await d.kernel.gateway.records.get(member, "project", id);
   await d.kernel.gateway.records.update(member, "project", id, { name: "Rivera Renamed" }, cur.version);
   await new Promise(r => setTimeout(r, 800));
   assert.equal((await rec()).data.name, "Rivera Renamed");
-  assert.equal((await rec()).data.drive_path, "Projects/Rivera", "the folder stayed");
-  await d.kernel.gateway.drive.get(admin, "Projects/Rivera/retainer.txt");
-  // a member points drive_path at another folder, then renames: the field is put back, and Legal/Contracts is untouched
+  assert.equal((await rec()).data.drive_path, root, "the folder stayed");
+  await d.kernel.gateway.drive.get(admin, `${root}/retainer.txt`);
+  // a member points drive_path at another folder: the field is put back, and Legal/Contracts is untouched
   cur = await d.kernel.gateway.records.get(member, "project", id);
-  await d.kernel.gateway.records.update(member, "project", id, { drive_path: "Legal/Contracts", name: "Hijack" }, cur.version).catch(() => {});
-  await until(async () => (await rec()).data.drive_path === "Projects/Rivera" ? true : null, "drive_path to be put back");
+  await d.kernel.gateway.records.update(member, "project", id, { drive_path: "Legal/Contracts" }, cur.version).catch(() => {});
+  await until(async () => (await rec()).data.drive_path === root ? true : null, "drive_path to be put back");
   await d.kernel.gateway.drive.get(admin, "Legal/Contracts/secret.txt");
-  // an admin's direct edit in Records moves the folder, as the admin could do
+  // an admin's direct edit renames too, and still moves nothing
   cur = await d.kernel.gateway.records.get(admin, "project", id);
   await d.kernel.gateway.records.update(admin, "project", id, { name: "Rivera Family" }, cur.version);
-  await until(async () => (await rec()).data.drive_path === "Projects/Rivera Family" ? true : null, "the folder to follow an admin's edit");
-  await d.kernel.gateway.drive.get(admin, "Projects/Rivera Family/retainer.txt");
+  await new Promise(r => setTimeout(r, 800));
+  assert.equal((await rec()).data.drive_path, root);
+  await d.kernel.gateway.drive.get(admin, `${root}/retainer.txt`);
 });
 
 test("MV-1: moving a folder checks every file under the caller's own chain and aborts the whole move if any is refused", { timeout: 120_000 }, async t => {

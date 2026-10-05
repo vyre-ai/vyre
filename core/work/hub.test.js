@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHub, folderName } from "./hub.js";
+import { createHub } from "./hub.js";
 
 /** A kernel stand-in: records in a map, a Drive that refuses a chain named "nodrive", and every moveFolder call recorded. */
 function fake() {
@@ -33,27 +33,38 @@ test("a caller who cannot write Drive cannot make a project, and no record is le
   await assert.rejects(() => hub.createProject({ who: "nodrive" }, { name: "Rivera" }), /not allowed/);
   assert.equal([...rows.values()].filter(r => r.type === "project").length, 0);
   const ok = await hub.createProject({ who: "person" }, { name: "Rivera" });
-  assert.equal(ok.data.drive_path, "Projects/Rivera");
+  assert.equal(ok.data.drive_path, `Projects/${ok.id}`, "the folder is named by the record's id");
 });
 
-test("a session's folders are named from its title and id, and follow a rename and a move", async () => {
+test("a session's folders are named by its id: a rename moves nothing, and Move to project moves the two folders as the mover, aborting before any relink if one is refused", async () => {
   const { kernel, moves } = fake();
   const hub = createHub({ kernel });
   const a = await hub.createProject({ who: "p" }, { name: "Rivera" });
   const b = await hub.createProject({ who: "p" }, { name: "Harlow" });
   const sess = await kernel.records.create(null, "session-summary", { title: "Welcome email", thread: "0f0e0d0c-0b0a-4908", project: { urn: a.urn }, drive: a.data.drive_path });
-  assert.equal(hub.sessionFolder(sess), "welcome-email-0f0e0d");
+  assert.equal(hub.sessionFolder(sess), "0f0e0d0c-0b0a-4908");
   const renamed = await hub.renameSession(sess, "Engagement letter", "record", { who: "p" });
   assert.equal(renamed.data.title, "Engagement letter");
-  assert.deepEqual(moves.slice(0, 2), [["Projects/Rivera/chat/welcome-email-0f0e0d", "Projects/Rivera/chat/engagement-letter-0f0e0d"], ["Projects/Rivera/made/welcome-email-0f0e0d", "Projects/Rivera/made/engagement-letter-0f0e0d"]]);
-  await hub.moveSession(sess.data.thread, b.urn, { who: "p" });
-  assert.deepEqual(moves.slice(2), [["Projects/Rivera/chat/engagement-letter-0f0e0d", "Projects/Harlow/chat/engagement-letter-0f0e0d"], ["Projects/Rivera/made/engagement-letter-0f0e0d", "Projects/Harlow/made/engagement-letter-0f0e0d"]]);
+  const proj = await hub.renameProject(a, "Rivera Family", "record", { who: "p" });
+  assert.equal(proj.data.name, "Rivera Family");
+  assert.equal(proj.data.drive_path, a.data.drive_path, "a rename never changes the folder");
+  assert.deepEqual(moves, [], "and moves nothing");
+  const mover = { who: "mover" };
+  await hub.moveSession(sess.data.thread, b.urn, mover);
+  assert.deepEqual(moves, [[`${a.data.drive_path}/chat/0f0e0d0c-0b0a-4908`, `${b.data.drive_path}/chat/0f0e0d0c-0b0a-4908`], [`${a.data.drive_path}/made/0f0e0d0c-0b0a-4908`, `${b.data.drive_path}/made/0f0e0d0c-0b0a-4908`]]);
+  assert.equal((await hub.sessionRecord(sess.data.thread)).data.drive, b.data.drive_path);
+  await assert.rejects(() => hub.moveSession(sess.data.thread, a.urn), /moved by a person/);
 });
 
-test("folderName keeps a name usable as a Drive folder: no slashes, colons or control characters, no leading dots", () => {
-  assert.equal(folderName("Rivera/Estate: 2026"), "Rivera Estate 2026");
-  assert.equal(folderName("..hidden"), "hidden");
-  assert.equal(folderName("///"), "Project");
+test("when a file of the move is refused the session stays where it was", async () => {
+  const { kernel } = fake();
+  kernel.drive.moveFolder = async () => { throw Object.assign(new Error("that folder is not yours to move"), { code: "not_found" }); };
+  const hub = createHub({ kernel });
+  const a = await hub.createProject({ who: "p" }, { name: "Rivera" });
+  const b = await hub.createProject({ who: "p" }, { name: "Harlow" });
+  await kernel.records.create(null, "session-summary", { title: "x", thread: "t9", project: { urn: a.urn }, drive: a.data.drive_path });
+  await assert.rejects(() => hub.moveSession("t9", b.urn, { who: "m" }), /not yours/);
+  assert.equal((await hub.sessionRecord("t9")).data.project.urn, a.urn);
 });
 
 test("a /rename inside Claude Code reaches the record: only a CHANGE in the transcript's name counts, and a stale one never overwrites a title set in Records", async () => {

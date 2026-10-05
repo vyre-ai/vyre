@@ -23,11 +23,11 @@ test("work.project.create makes a Project record with its short name, Drive fold
   const { d, admin, meta } = await boot(t);
   const r = await d.registry.call("work.project.create", { name: "Rivera Estate", repo: "https://github.com/harlow/rivera" }, "cli", await meta());
   assert.ok(r.data && r.data.slug === "rivera-estate", JSON.stringify(r));
-  assert.equal(r.data.drive_path, "Projects/Rivera Estate");
+  assert.equal(r.data.drive_path, `Projects/${r.data.project.split("/").pop()}`, "named by the record id");
   assert.equal(r.data.memory_scope, "project:rivera-estate");
   const rec = await d.kernel.gateway.records.get(admin, "project", r.data.project.split("/").pop());
   assert.deepEqual([rec.data.name, rec.data.status, rec.data.repo], ["Rivera Estate", "active", "https://github.com/harlow/rivera"]);
-  const marker = await d.kernel.gateway.drive.get(admin, "Projects/Rivera Estate/.project");
+  const marker = await d.kernel.gateway.drive.get(admin, `${r.data.drive_path}/.project`);
   assert.match(Buffer.from(marker.bytes || marker.data || marker).toString(), /\/project\//);
   // the same name again gets the next free short name, and a taken one is refused
   const again = await d.registry.call("work.project.create", { name: "Rivera Estate" }, "cli", await meta());
@@ -66,7 +66,7 @@ test("a session in a project only the old folder projects know is given its Proj
   const row = await until(async () => (await d.kernel.gateway.records.query(admin, "session-summary", { page: { limit: 10 } })).rows[0] || null, "the summary");
   const proj = await d.kernel.gateway.records.get(admin, "project", row.data.project.urn.split("/").pop());
   assert.equal(proj.data.slug, "legacy-client");
-  assert.equal(proj.data.drive_path, "Projects/legacy-client");
+  assert.equal(proj.data.drive_path, `Projects/${proj.id}`);
 });
 
 test("a terminal session (the Harness's SessionStart and SessionEnd hooks) gets a summary record too, found by its folder, and closes once", { timeout: 120_000 }, async t => {
