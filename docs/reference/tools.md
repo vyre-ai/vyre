@@ -8529,12 +8529,13 @@ A chat's logged frames and member rows, for the chat upgrade. First-party module
 
 ### `stream.import-chat`
 
-Put a chat's frames and member rows back (the other end of the chat upgrade); a chat that already has frames here is left as it is. First-party modules only.
+Put a chat's frames and member rows back (the other end of the chat upgrade); with fresh: true, a chat that already has frames here is left as it is. First-party modules only.
 
 - Input:
   - `chat` string, required
   - `frames` list, required
   - `members` list, required
+  - `fresh` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `stream.keep`
@@ -12380,7 +12381,7 @@ One chat you are in: its record plus its slots (the assistants and models runnin
 
 ### `work.chat.history-import`
 
-Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read from the file the move carried in the chat's own folder. You must be in the chat. A chat that already has its history here is left as it is.
+Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read in order from the numbered chunks the move carried in the chat's own folder, each checked against its hash. You must be in the chat. It resumes where it stopped; a chat that already had its own frames here is left as it is.
 
 - Input:
   - `chat` string, required
@@ -12422,6 +12423,7 @@ Move your chats from this Space to your other Space (Personal to My Cloud): each
 - Input:
   - `to` string, required
   - `move_id` string
+  - `upgrade_id` string
 - Callers: any caller
 
 ### `work.chat.upgrade-plan`
