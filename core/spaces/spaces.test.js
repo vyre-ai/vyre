@@ -1416,3 +1416,50 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
 });
+
+test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and the Personal row then points to My Cloud", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { createSqliteStore } = await import("../../kernel/store/sqlite.js");
+  const { createTwentyStore } = await import("../../stores/twenty/store.js");
+  const { TwentyClient } = await import("../../stores/twenty/client.js");
+  const { FakeTwenty } = await import("../../stores/twenty/testing/fake-twenty.js");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { CONTACT } = await import("../../kernel/conformance/suite.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const fake = await new FakeTwenty().start();
+  t.after(() => fake.stop());
+  const PERSONAL = "spc_" + "c".repeat(12), CLOUD = "spc_" + "d".repeat(12), ME = "per_" + "m".repeat(26);
+  const presence = () => { const used = new Set(); return { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "wrong_payload") }; };
+  let clock = 1_800_000_000_000; const tick = () => ++clock;
+  const pk = await createKernel({ space: PERSONAL, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 1), clock: tick, presence: presence(), store: createSqliteStore({ db: new DatabaseSync(":memory:") }) });
+  const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "upt-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 }) });
+  const chainOf = (k) => k.chains.fromFacts({ kind: "device", device_key_id: "d1", person: ME, path: "direct" });
+  const kernelFor = () => ({
+    space: PERSONAL, owner: ME, membership: async () => ({ member: true, role: "owner" }),
+    chain: async () => chainOf(pk), chainIn: async () => chainOf(pk),
+    proofFrom: (meta) => (meta && meta.kernel_proof ? { presence: meta.kernel_proof } : {}), proofRequest: (call, ...a) => proofRequest(PERSONAL, call, ...a),
+    for: (id) => (id === PERSONAL ? { space: id, hosted: true, gateway: pk.gateway } : id === CLOUD ? { space: id, hosted: false, gateway: ck.gateway } : (() => { throw new Error("no such space"); })()),
+    spaces: { hosts: () => false },
+  });
+  const d = await device(t, { kernelFor });
+  await pk.gateway.records.define(chainOf(pk), { add_types: [CONTACT] });
+  for (const n of ["Ada", "Bo", "Cy"]) await pk.gateway.records.create(chainOf(pk), "contact", { name: n });
+  const plan = await d.ok("spaces.upgrade.plan", { to: CLOUD });
+  assert.deepEqual([plan.counts.total, plan.blockers, plan.hash.length], [3, [], 43]);
+  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: "x".repeat(43) })).error?.code, "plan_changed", "an approval for another plan is refused before anything");
+  const ask = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash });
+  assert.equal(ask.needs_proof, true, "no proof: the device is asked for the person's approval of exactly this plan");
+  const proof = { payload_hash: ask.request.payload_hash, nonce: "n1" };
+  const done = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { kernel_proof: proof });
+  assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], true]);
+  assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud's Twenty");
+  const row = (await d.ok("spaces.list")).find(x => x.id === PERSONAL);
+  assert.equal(row.upgraded_to, CLOUD, "the Personal row points to My Cloud");
+  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { kernel_proof: proof })).error?.code != null, true, "a moved space is not upgraded again");
+  void w;
+});

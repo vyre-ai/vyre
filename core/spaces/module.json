@@ -94,6 +94,14 @@
     "reach": "person"
    },
    {
+    "name": "spaces.upgrade.plan", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.run", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.moves.pull", "effect": "write",
     "reach": "modules"
    },

@@ -21,6 +21,7 @@ import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
+import { planUpgrade, runUpgrade } from "../../lib/spaces/upgrade.js";
 import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
@@ -1268,6 +1269,8 @@ export default {
       return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id) })));
     };
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
+    /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */
+    const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
     const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
@@ -1298,7 +1301,7 @@ export default {
         if (K && typeof K.space === "string" && K.owner && !out.some(x => x.id === K.space)) {
           const sId = /** @type {string} */ (me().id);
           const m = typeof K.membership === "function" ? await K.membership(sId, K.space).catch(() => null) : null;
-          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), ...upgradedRow(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
       } catch { /* no home row */ }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
@@ -1516,6 +1519,48 @@ export default {
       if (!k) throw refuse("This home holds no key for that space.", "unavailable");
       return { proof: b64u(await k.sign(Buffer.from(pullMessage(String(i.from), space, String(i.move_id), String(i.nonce))))) };
     }, { internal: true });
+    // ---- upgrading this device's Personal space to My Cloud (kernel/gateway/upgrade.js, lib/spaces/upgrade.js). The device carries it: it holds this home's gateway and My Cloud's over the paired session. ----
+    /** The upgrade ports of the modules that own sealed data (memory, chats): `<module>.upgrade.plan` and `<module>.upgrade.move { to }`, for module callers only. A module without them is simply not part of the plan. @param {string} prefix */
+    const upgradePort = (prefix) => ({
+      plan: async () => { const r = await ctx.call(`${prefix}.plan`, {}); if (r && r.error) { if (r.error.code === "no_such_tool") return null; throw Object.assign(new Error(String(r.error.message || "not available")), { code: String(r.error.code || "unavailable") }); } return r.data; },
+      move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(`${prefix}.move`, a); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; },
+    });
+    const upgradePorts = async () => {
+      /** @type {Record<string, any>} */ const ports = {};
+      for (const [k, prefix] of [["chats", "chats.upgrade"], ["memory", "memory.upgrade"]]) { const p = upgradePort(prefix); let plan = null; try { plan = await p.plan(); } catch { plan = { blockers: ["could not be read"], counts: null }; } if (plan !== null) ports[k] = { plan: async () => plan, move: p.move }; }
+      return ports;
+    };
+    const upgradeSides = async (/** @type {string} */ to, /** @type {any} */ meta) => {
+      if (!K || typeof K.space !== "string") throw refuse("This device has no Personal space to upgrade.", "unavailable");
+      if (!SPACE_ID_RE.test(String(to)) || to === K.space) throw refuse("Name your My Cloud space.", "bad_input");
+      const lh = kernelHandle(K.space), rh = kernelHandle(String(to));
+      if (!lh || !lh.gateway || !rh || !rh.gateway) throw refuse("That space is not reachable from this device.", "not_found");
+      const lk = await kctxOf(meta, K.space);
+      return {
+        local: { space: K.space, records: lh.gateway.records, definitions: (/** @type {any} */ c) => lh.gateway.definitions(c), chain: lk.chain },
+        remote: { space: String(to), records: rh.gateway.records, definitions: (/** @type {any} */ c) => rh.gateway.definitions(c), chain: null },
+        gateway: lh.gateway, proof: lk.proof,
+      };
+    };
+    tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
+      const { local } = await upgradeSides(i.to, meta);
+      const ports = await upgradePorts();
+      try { const p = await planUpgrade({ local, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
+      catch (e) { throw plainKernelError(e); }
+    });
+    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. Afterwards this space points to My Cloud.", obj({ to: str, plan_hash: str }, ["to", "plan_hash"]), async (i, meta) => {
+      const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
+      const ports = await upgradePorts();
+      let plan; try { plan = await planUpgrade({ local, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
+      if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
+      if (plan.blockers.length) throw refuse(`This cannot start yet: ${plan.blockers.join("; ")}`, "blocked");
+      let started;
+      try { started = await gateway.upgrade.start(local.chain, { to: String(i.to), plan_hash: plan.hash }, proof); }
+      catch (e) { if (String(/** @type {any} */ (e).code) === "needs_presence") return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }) }; throw plainKernelError(e); }
+      let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { throw plainKernelError(e); }
+      const fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete });
+      return { upgraded: true, to: fin.to, moved: report.moved, notMoved: report.notMoved, frozen: fin.frozen };
+    });
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
       if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");
