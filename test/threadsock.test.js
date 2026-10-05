@@ -415,7 +415,8 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh));
   assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
   assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh));
-  assert.notEqual(fresh["the vault and sealed values"], false, "no vault read in this build: it counts as data");
+  // The vault has a real read now (lib/vault-wipe.js): exactly `false` only when the home holds no item, shared record, key or sealed value of the person's (the sealer's own keys are not one); the folder's file is the sealer's.
+  assert.equal(fresh["the vault and sealed values"], false, JSON.stringify(fresh));
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
   await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 });
