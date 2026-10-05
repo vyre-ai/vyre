@@ -74,7 +74,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 106 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 109 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 7 | 0 | none |
@@ -93,7 +93,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 63 | 35 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 61 | 35 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 20 | 0 | cli |
 
 ## about
@@ -754,7 +754,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [106](tools.md#spaces), 31 of them only for other modules
+- Tools: [109](tools.md#spaces), 33 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`
@@ -974,7 +974,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [63](tools.md#wink), 9 of them only for other modules
+- Tools: [61](tools.md#wink), 9 of them only for other modules
 - Emits: [35 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
