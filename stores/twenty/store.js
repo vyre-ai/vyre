@@ -333,6 +333,10 @@ export class TwentyStore {
     const audit = await this.#auditSwitch();
     const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }`));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
+    // every link to a type must name a type that exists once this define is done: checked before anything is made in Twenty, so a refusal leaves no half-made object behind
+    { const will = new Set([...this.plans.keys(), ...(diff.add_types ?? []).map((/** @type {any} */ t) => t.name), ...(diff.change_types ?? []).map((/** @type {any} */ t) => t.name)]);
+      for (const n of diff.remove_types ?? []) will.delete(n);
+      for (const t of [...(diff.add_types ?? []), ...(diff.change_types ?? [])]) for (const f of t.fields ?? []) if (f.kind === "link" && f.to && !will.has(f.to)) throw new StoreError("invalid", `${t.name}.${f.name} links to ${f.to}, which is not a type here`); }
     // a link with no inverse of its own (a type defined straight on the store, not through the gateway) is named as the gateway would name it, so Twenty's inverse field and the kernel's agree
     /** @type {Map<string, string>} */ const inverseLabels = new Map();
     { const all = new Map([...this.plans].map(([n, q]) => [n, q.def])); for (const t of [...(diff.add_types ?? []), ...(diff.change_types ?? [])]) all.set(t.name, t);

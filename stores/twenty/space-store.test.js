@@ -74,7 +74,7 @@ test("a new hosted Space on a box too small for Twenty is not created until the 
   assert.equal(plan.store, "sqlite");
   assert.equal(plan.confirm.text, SMALL_BOX_NOTE);
   assert.deepEqual(plan.confirm.choices, SMALL_BOX_CHOICES);
-  assert.match(SMALL_BOX_NOTE, /can't be moved to the larger store yet, so add memory first/);
+  assert.match(SMALL_BOX_NOTE, /Put it on your server instead/);
   assert.equal((await planStore({ dir: tmp(), mode: "auto", preflight: async () => ({ ok: true, reasons: [], facts: {} }) })).confirm, undefined);
   await assert.rejects(() => f(SP, { owner: "per_x" }), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("cancel"));
   assert.equal(fs.existsSync(path.join(hdir(home), "store.json")), false, "nothing was decided or written");

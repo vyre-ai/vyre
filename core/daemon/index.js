@@ -246,7 +246,8 @@ async function startLocked(opts, root, p, release) {
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
     // profile and gateway container are options of that factory with defaults, not settings.
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+    const { storeMode } = await import("../../stores/twenty/space-store.js");
+    if (storeMode() !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
       storeFor = createStoreFor({ home: root, log });
     }

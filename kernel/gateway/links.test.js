@@ -132,3 +132,21 @@ test("links: the pure parts: plural, snake, the default inverse in a fixed order
   assert.equal(deriveInverse({ name: "a", label: "A" }, { name: "t", label: "T" }, () => true), null);
   void withInverses;
 });
+
+test("links: a list link takes add and remove in an update: worked out against the stored list, each record once, and checked like any list", async () => {
+  const rg = rig();
+  await rg.r.define(owner(), { add_types: [CONTACT, MATTER] });
+  const [a, b, c] = [await rg.r.create(owner(), "contact", { name: "A" }), await rg.r.create(owner(), "contact", { name: "B" }), await rg.r.create(owner(), "contact", { name: "C" })];
+  const m = await rg.r.create(owner(), "matter", { title: "m", parties: [{ urn: a.urn }] });
+  const added = await rg.r.update(owner(), "matter", m.id, { parties: { add: [{ urn: b.urn }, { urn: a.urn }] } }, 1);
+  assert.deepEqual(added.data.parties.map(x => x.urn), [a.urn, b.urn], "one added, the repeat ignored");
+  const both = await rg.r.update(owner(), "matter", m.id, { parties: { add: [{ urn: c.urn }], remove: [{ urn: a.urn }] } }, 2);
+  assert.deepEqual(both.data.parties.map(x => x.urn), [b.urn, c.urn]);
+  assert.deepEqual((await rg.r.get(owner(), "matter", m.id)).data.parties.map(x => x.urn), [b.urn, c.urn], "what the store holds");
+  await assert.rejects(() => rg.r.update(owner(), "matter", m.id, { parties: { add: [{ urn: u("contact", mintUuid()) }] } }, 3), { code: "bad_input", message: /does not exist/ });
+  await assert.rejects(() => rg.r.update(owner(), "matter", m.id, { client: { add: [{ urn: a.urn }] } }, 3), { code: "bad_input", message: /not a list link/ });
+  await assert.rejects(() => rg.r.update(owner(), "matter", m.id, { parties: { add: [{ urn: a.urn }], set: [] } }, 3), { code: "bad_input", message: /only keys/ });
+  await assert.rejects(() => rg.r.update(owner(), "matter", m.id, { parties: { add: "x" } }, 3), { code: "bad_input" });
+  const emptied = await rg.r.update(owner(), "matter", m.id, { parties: { remove: [{ urn: b.urn }, { urn: c.urn }] } }, 3);
+  assert.deepEqual(emptied.data.parties, []);
+});

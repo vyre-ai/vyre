@@ -432,7 +432,7 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
-  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = []) {
+  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
@@ -446,6 +446,7 @@ export function createRecords(cfg) {
       if (made !== `${last.kind}:${last.id}` && role !== "owner" && role !== "admin") throw new KernelError("not_allowed", `only whoever made this ${type} or an admin changes it`);
     }
     const lim = await limitsOf(chain, type, d);
+    /** @type {any[]} */ let linkFields = [];
     if (op === "create" || op === "update") {
       refuseOutside(lim.allow, input);
       // a removed field takes no new values (its data is kept, and a person can bring the field back)
@@ -454,14 +455,17 @@ export function createRecords(cfg) {
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
-      // a link names live records of its type: the gateway checks, so every store holds only links that stand
-      await checkLinkTargets(fields, input);
+      linkFields = fields;
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);
       for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
     }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
+    // a list link may be changed by adding and removing entries (`{ contacts: { add: [{ urn }], remove: [{ urn }] } }`): worked out against the stored list, so the check and the store see the whole list
+    if (op === "update" && hooks.expand) input = await hooks.expand(before);
+    // a link names live records of its type: the gateway checks, so every store holds only links that stand
+    if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
     let stage = {};
     if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
@@ -794,7 +798,32 @@ export function createRecords(cfg) {
       return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
-      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id), undefined, opts.redact || []));
+      const cell = { patch };
+      const expand = async (/** @type {any} */ before) => {
+        const objs = Object.entries(patch || {}).filter(([, v]) => v && typeof v === "object" && !Array.isArray(v) && v.urn === undefined);
+        if (!objs.length) return patch;
+        let defs; try { defs = await store.types(); } catch (e) { throw mapError(e); }
+        const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
+        // only a list link takes the add and remove form: another object value (a money amount, an address) is its own value
+        const lists = objs.filter(([k]) => { const f = fields.find((/** @type {any} */ x) => x.name === k); return f && f.kind === "link" && (f.many === true || f.to !== undefined); });
+        if (!lists.length) return patch;
+        const out = { ...patch };
+        for (const [k, v] of lists) {
+          const f = fields.find((/** @type {any} */ x) => x.name === k);
+          if (!f || f.kind !== "link" || f.many !== true) throw new KernelError("bad_input", `${k} is not a list link: it takes a value, not add and remove`);
+          if (Object.keys(v).some(x => x !== "add" && x !== "remove")) throw new KernelError("bad_input", `${k}: add and remove are the only keys`);
+          const has = (/** @type {any} */ l) => Array.isArray(l) && l.every((/** @type {any} */ x) => x && typeof x.urn === "string");
+          if ((v.add !== undefined && !has(v.add)) || (v.remove !== undefined && !has(v.remove))) throw new KernelError("bad_input", `${k}: add and remove are lists of references`);
+          const drop = new Set((v.remove || []).map((/** @type {any} */ x) => x.urn));
+          const list = [];
+          const seen = new Set();
+          for (const x of [...((before && before.data && Array.isArray(before.data[k])) ? before.data[k] : []), ...(v.add || [])]) if (!drop.has(x.urn) && !seen.has(x.urn)) { seen.add(x.urn); list.push({ urn: x.urn }); }
+          out[k] = list;
+        }
+        cell.patch = out;
+        return out;
+      };
+      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, cell.patch, base), () => store.get(type, id), undefined, opts.redact || [], { expand }));
     },
     async remove(chain, type, id, base, opts = {}) {
       return idem.once(chain, "remove", opts.idem, { type, id, base }, () => write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id)));
