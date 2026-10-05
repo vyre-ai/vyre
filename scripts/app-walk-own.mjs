@@ -106,7 +106,7 @@ async function typeAndAck({ pg, shot }, code, offer, label) {
   return ack;
 }
 
-await scenario("O: I have my own server asks for the name first", A, {}, async (c) => {
+await scenario("O: I have my own server asks for the name first", B, { noName: true }, async (c) => {
   await c.pg.goto(`${c.base}/u/install`, { waitUntil: "domcontentloaded" });
   await c.pg.getByText("Get started", { exact: true }).first().click({ timeout: 40000 });
   await c.pg.getByText("I have my own server", { exact: false }).first().click({ timeout: 20000 });
