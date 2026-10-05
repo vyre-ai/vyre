@@ -358,9 +358,11 @@ export default {
       input: obj({ to: { type: "string" }, move_id: { type: "string" }, upgrade_id: { type: "string" } }, ["to"]),
       run: async (input, extra) => {
         const k = kernelOf();
+        const here = await sideOf(k.space, extra);
+        mustBeThePerson(here.chain, "moving your chats to another Space"); // before anything else is looked at
         const to = await sideOf(String(input.to), extra);
-        const from = withCarry(await sideOf(k.space, extra), to);
-        mustBeThePerson(from.chain, "moving your chats to another Space"); mustBeThePerson(to.chain, "moving your chats to another Space");
+        mustBeThePerson(to.chain, "moving your chats to another Space");
+        const from = withCarry(here, to);
         const history = async (/** @type {string} */ chat) => {
           const st = await ctx.call("stream.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { frames: [], members: [] });
           const th = await ctx.call("threads.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { runs: [], events: [] });
