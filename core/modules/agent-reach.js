@@ -19,6 +19,7 @@ export const PERSON_ONLY = new Map([
   ["spaces.moves.finish", "finishes the person's own project move and clears or keeps the original: the person's own act"],
   ["spaces.personal-host.set", "chooses where the person's own encrypted items live: the person's own act"],
   ["spaces.storage.set-cap", "sets a member's storage cap: an owner's own act, an assistant never widens its own budget"],
+  ["spaces.members.add-agent", "gives an assistant a place in a space: it widens an assistant's own authority, the person's own act"],
   ["spaces.identity.republish", "republishes the person's identity list: the person's own act"],
   ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
   ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
