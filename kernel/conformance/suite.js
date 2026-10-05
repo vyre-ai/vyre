@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 5;
+export const SUITE_REVISION = 6;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -30,6 +30,18 @@ export const ACCOUNT = Object.freeze({
   ],
 });
 
+/** A type with links, for the relation cases (revision 6): one contact (a single link) and a list of contacts (a many link), each with a named inverse. */
+export const LEAD = Object.freeze({
+  name: "lead", label: "Lead",
+  fields: [
+    { name: "title", kind: "text", label: "Title", required: true },
+    { name: "contact", kind: "link", label: "Contact", to: "contact", inverse: { name: "leads", label: "Leads" } },
+    { name: "referrers", kind: "link", label: "Referred by", to: "contact", many: true, inverse: { name: "referred", label: "Referred" } },
+  ],
+});
+/** The Space id the suite's link urns name: a store that holds links as relations needs to be made for this Space (the memory and built-in stores do not care). */
+export const SUITE_SPACE = "spc_aaaaaaaaaaaa";
+const SPACE_URN = `vyre://${SUITE_SPACE}`;
 const ref = (/** @type {string} */ r = "sv_1") => ({ sealed: "ssn", ref: r, present: true, valid_format: true, set_at: 1 });
 
 /**
@@ -280,7 +292,8 @@ export function conformance(make, { test, assert }, label = "store") {
     ], stages: [{ name: "On" }, { name: "Gone" }] };
     await s.define({ add_types: [t] });
     assert.deepEqual((await s.types()).find((/** @type {any} */ x) => x.name === "client"), t);
-    const r = await s.create("client", mintUuid(), { who: { urn: "vyre://spc_aaaaaaaaaaaa/contact/0190c3f2-1111-4abc-8def-000000000000" }, stage: "On", old: "kept" });
+    const who = await add(s, { name: "Who" });
+    const r = await s.create("client", mintUuid(), { who: { urn: `${SPACE_URN}/contact/${who.id}` }, stage: "On", old: "kept" });
     assert.equal((await s.get("client", r.id)).data.old, "kept");
   });
 
@@ -319,5 +332,80 @@ export function conformance(make, { test, assert }, label = "store") {
     }
     assert.equal(n, 130);
     assert.equal(last.done, true);
+  });
+
+  // ---- links (revision 6): a link is one end of a relation; a store holds it the best way it can and answers the same ----
+  /** @param {any} s */
+  const withLead = async s => { await s.define({ add_types: [LEAD] }); };
+  const link = (/** @type {string} */ id) => ({ urn: `${SPACE_URN}/contact/${id}` });
+  const ids = (/** @type {any[]} */ rows) => rows.map(r => r.id).sort();
+  const urns = (/** @type {any} */ v) => (Array.isArray(v) ? v.map((/** @type {any} */ x) => x.urn).sort() : []);
+
+  T("links: a single link keeps its reference, changes, clears, and is found by eq, in and is_null", async s => {
+    await withLead(s);
+    const a = await add(s, { name: "A" }), b = await add(s, { name: "B" });
+    const l = await s.create("lead", mintUuid(), { title: "x", contact: link(a.id) });
+    assert.deepEqual((await s.get("lead", l.id)).data.contact, link(a.id));
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "eq", value: link(a.id) }, page: { limit: 10 } })).rows), [l.id]);
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "eq", value: link(b.id) }, page: { limit: 10 } })).rows), []);
+    const moved = await s.update("lead", l.id, { contact: link(b.id) }, 1);
+    assert.deepEqual(moved.data.contact, link(b.id));
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "in", value: [link(a.id), link(b.id)] }, page: { limit: 10 } })).rows), [l.id]);
+    const none = await s.create("lead", mintUuid(), { title: "y" });
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "is_null" }, page: { limit: 10 } })).rows), [none.id]);
+    const cleared = await s.update("lead", l.id, { contact: null }, 2);
+    assert.equal(cleared.data.contact, undefined);
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "is_null" }, page: { limit: 10 } })).rows), ids([l, none]));
+  });
+
+  T("links: a many link keeps a set of references, adds and removes members, and is found by contains", async s => {
+    await withLead(s);
+    const a = await add(s, { name: "A" }), b = await add(s, { name: "B" }), c = await add(s, { name: "C" });
+    const l = await s.create("lead", mintUuid(), { title: "x", referrers: [link(a.id), link(b.id)] });
+    assert.deepEqual(urns((await s.get("lead", l.id)).data.referrers), urns([link(a.id), link(b.id)]));
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(b.id) }, page: { limit: 10 } })).rows), [l.id]);
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(c.id) }, page: { limit: 10 } })).rows), []);
+    const u1 = await s.update("lead", l.id, { referrers: [link(b.id), link(c.id)] }, 1);
+    assert.deepEqual(urns(u1.data.referrers), urns([link(b.id), link(c.id)]), "a is out, c is in");
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(a.id) }, page: { limit: 10 } })).rows), []);
+    const u2 = await s.update("lead", l.id, { referrers: [] }, 2);
+    assert.deepEqual(u2.data.referrers ?? [], [], "an empty list is no links");
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(b.id) }, page: { limit: 10 } })).rows), []);
+  });
+
+  T("links: the records that link to one record are found by a filter on the link, in pages, and a two-sided relation lists both ways", async s => {
+    await withLead(s);
+    const a = await add(s, { name: "A" }), b = await add(s, { name: "B" });
+    const mine = [];
+    for (let i = 0; i < 5; i++) mine.push((await s.create("lead", mintUuid(), { title: `m${i}`, contact: link(a.id), referrers: [link(b.id)] })).id);
+    for (let i = 0; i < 3; i++) await s.create("lead", mintUuid(), { title: `o${i}`, contact: link(b.id) });
+    const f = { field: "contact", op: "eq", value: link(a.id) };
+    const p1 = await s.query("lead", { filter: f, page: { limit: 2 } });
+    assert.equal(p1.rows.length, 2); assert.ok(p1.next_cursor);
+    const seen = [...p1.rows];
+    for (let cursor = p1.next_cursor; cursor;) { const p = await s.query("lead", { filter: f, page: { limit: 2, cursor } }); seen.push(...p.rows); cursor = p.next_cursor; }
+    assert.deepEqual(ids(seen), mine.slice().sort(), "every linked record once");
+    assert.equal(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(b.id) }, page: { limit: 20 } })).rows).length, 5, "the many side lists the same way");
+    const total = await s.aggregate("lead", { group_by: [], measures: [{ fn: "count" }], filter: f });
+    assert.equal(total[0].values.count, 5);
+  });
+
+  T("links: removing the target never breaks a link, and restoring it brings the link back", async s => {
+    await withLead(s);
+    const a = await add(s, { name: "A" }), b = await add(s, { name: "B" });
+    const l = await s.create("lead", mintUuid(), { title: "x", contact: link(a.id), referrers: [link(a.id), link(b.id)] });
+    await s.remove("contact", a.id, a.version);
+    await s.restore("contact", a.id, 2);
+    const back = (await s.get("lead", l.id)).data;
+    assert.deepEqual(back.contact, link(a.id));
+    assert.deepEqual(urns(back.referrers), urns([link(a.id), link(b.id)]));
+    assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "eq", value: link(a.id) }, page: { limit: 10 } })).rows), [l.id]);
+  });
+
+  T("links: the definition keeps many and the named inverse as given", async s => {
+    await withLead(s);
+    const t = (await s.types()).find((/** @type {any} */ x) => x.name === "lead");
+    assert.deepEqual(t.fields.find((/** @type {any} */ f) => f.name === "referrers"), LEAD.fields[2]);
+    assert.deepEqual(t.fields.find((/** @type {any} */ f) => f.name === "contact").inverse, { name: "leads", label: "Leads" });
   });
 }

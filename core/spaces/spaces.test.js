@@ -59,7 +59,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false, wink = false, kernelFor = undefined } = {}) {
+async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -86,7 +86,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined 
   const logs = [];
   const seen = [];
   events.on("*", e => seen.push(e));
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
+  const reg = new Registry({ db, events, config: { role: "box", ...(machine ? { machine } : {}), name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
@@ -236,6 +236,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const list = await d.ok("spaces.list");
   assert.equal(list.length, 1);
   assert.deepEqual([list[0].name, list[0].role, list[0].status, list[0].workspaceId], ["harlow.vyre.run", "owner", "done", null]);
+  assert.equal(list[0].tier, "basic", "a space whose home is a device is Basic");
   const got = await d.ok("spaces.get", { space: "harlow" });
   assert.deepEqual([got.owners, got.members], [1, 1]);
   assert.ok(got.warnings.some(x => x.code === "single_owner"));
@@ -1318,5 +1319,14 @@ test("the device reaches the paired server over the Wink peer session when the d
   hooks.sessionFor = async () => { throw new Error("closed"); };
   const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.equal(down.error?.code, "server_unreachable");
+  void w;
+});
+
+test("spaces.list tier: a space on this computer is cloud when this machine is a server, basic on a device", async t => {
+  const w = world(t);
+  const d = await device(t, { machine: "server" });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  await d.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["cloud"]);
   void w;
 });
