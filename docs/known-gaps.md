@@ -12,18 +12,6 @@ These docs describe what the code does today. This page lists where Vyre 0.2.0 s
 
 ## Coming next in 0.2.1
 
-### Terminal Touch ID asks
-
-Today a terminal on your Mac counts as you for the tools that are yours to call, because Vyre checks which process connected and refuses any process running under a Claude session. The tools that need a person present (sending, the vault, pairing) already ask for Touch ID or a passkey. About 30 more tools will ask for Touch ID from a terminal in 0.2.1.
-
-What to do today: nothing changes in how you work. Keep Claude Code's own permission prompts on, and see [Presence](concepts/presence.md) for what is checked now.
-
-### Interactive artifacts in Safari send your session cookie to Vyre
-
-A page or an app that an agent made runs in a locked frame, but a page can send the browser to another address by itself. In Safari on a Mac and on an iPhone, if that address is your own Vyre address, Safari also sends your Vyre session cookie with the request. Vyre's tools are all POST requests, so that request cannot call a tool, and nothing exploitable is known. Chrome does not send the cookie. 0.2.1 makes Vyre ignore your session on requests that come from inside a page frame.
-
-What to do today: treat a page or an app as able to send out whatever is inside it, in any browser. Do not let an agent put in one anything you would not send to the internet, and be careful with one made in a session that read mail or web pages you did not write. Documents, reports, dashboards, diagrams and decks run no code and are not affected. See [Artifacts](using/artifacts.md).
-
 ### No hold on risky pages and apps
 
 An interactive artifact made by a session that read outside content and touched private data is not held for your approval. Vyre shows "Runs its own code and can reach the internet" on the frame and records when a page loads a second time, but that log is a record, not a guard.
