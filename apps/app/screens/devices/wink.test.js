@@ -29,7 +29,8 @@ test("the step line says what happens", () => {
 
 test("every step has words", () => {
   for (const k of ["phone", "computer", "server"]) for (let i = 0; i < stepCount(k); i++) assert.ok(stepWords(k, i));
-  assert.match(stepWords("server", 0), /A short typed code is not accepted/);
+  assert.match(stepWords("server", 0), /Scan the QR, or paste the long code\./);
+  assert.doesNotMatch(stepWords("server", 0), /not accepted/, "the short typed code is a way in again (the user's ruling)");
   assert.match(stepWords("computer", 0), /new computer shows its code/);
 });
 
