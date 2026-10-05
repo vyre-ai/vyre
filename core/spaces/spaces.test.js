@@ -1350,7 +1350,19 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   void alex;
 });
 
-test("a vyred device keeps a P-256 agreement key: its entry carries the point at create and at add, the private scalar is in no reply, and ecdh matches an independent ECDH", async t => {
+/** A drop wrap made the way lib/keywrap.js does: ECDH-ES to a device's agree point, HKDF-SHA256 (salt = the ephemeral point, info vyre-identity-wrap-v1), AES-256-GCM bound to `aad`. */
+function wrapTo(/** @type {string} */ point, /** @type {Buffer} */ key, /** @type {string} */ aad) {
+  const eph = crypto.createECDH("prime256v1"); eph.generateKeys();
+  const epk = eph.getPublicKey(), shared = eph.computeSecret(Buffer.from(point, "base64url"));
+  const kek = Buffer.from(crypto.hkdfSync("sha256", shared, epk, Buffer.from("vyre-identity-wrap-v1"), 32));
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", kek, iv);
+  c.setAAD(Buffer.from(aad));
+  const ct = Buffer.concat([c.update(key), c.final()]);
+  return { v: 1, epk: epk.toString("base64url"), iv: iv.toString("base64url"), ct: ct.toString("base64url"), tag: c.getAuthTag().toString("base64url") };
+}
+const DROP = "vyre-drop-wrap\nfile_abc:1";
+
+test("a vyred device keeps a P-256 agreement key: its entry carries the point at create and at add, the private scalar is in no reply, and a drop wrap opens through unwrap-drop with only the file key out", async t => {
   const w = world(t);
   const d = await device(t), d2 = await device(t);
   const made = await d.ok("spaces.identity.create", { name: "agreealex" });
@@ -1372,22 +1384,29 @@ test("a vyred device keeps a P-256 agreement key: its entry carries the point at
   const scalar = JSON.parse(fs.readFileSync(path.join(d.space, "identity.json"), "utf8")).agreePrivate;
   assert.ok(scalar && scalar.length >= 42);
   assert.ok(!JSON.stringify(store.status()).includes(scalar) && !JSON.stringify(made).includes(scalar));
-  // ecdh: first-party files, an ephemeral peer point in, the raw shared secret out, equal to what the peer computes with this device's public point
-  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
-  const r = await d.ok("spaces.identity.ecdh", { epk: peer.getPublicKey().toString("base64url") }, "module:files");
-  assert.equal(r.secret, peer.computeSecret(Buffer.from(point, "base64url")).toString("base64url"));
+  // a drop: files hands the wrap and its aad, and gets the file key back and nothing else
+  const fileKey = crypto.randomBytes(32), wrap = wrapTo(point, fileKey, DROP);
+  const r = await d.ok("spaces.identity.unwrap-drop", { wrap, aad: DROP }, "module:files");
+  assert.deepEqual(Object.keys(r), ["key"], "only the file key leaves");
+  assert.equal(r.key, fileKey.toString("base64url"));
   assert.ok(!JSON.stringify(r).includes(scalar));
-  assert.equal((await d.call("spaces.identity.ecdh", { epk: "AAAA" }, "module:files")).error?.code, "bad_point");
+  // purpose bound: a chat ring's wrap (another aad), a wrong aad, a bare ephemeral point and a malformed wrap are refused
+  const ring = wrapTo(point, fileKey, "ring:chat_x:1");
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { wrap: ring, aad: "ring:chat_x:1" }, "module:files")).error?.code, "wrong_purpose", "a chat ring's wrap is not a drop");
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { wrap, aad: "vyre-drop-wrap\nfile_other:1" }, "module:files")).error?.code, "cannot_open", "the aad binds the wrap");
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { epk: wrap.epk }, "module:files")).error?.code != null, true, "a raw epk call is refused");
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { wrap: { ...wrap, epk: "AAAA" }, aad: DROP }, "module:files")).error?.code, "bad_point");
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { wrap: { v: 1 }, aad: DROP }, "module:files")).error?.code, "bad_wrap");
+  assert.equal((await d.call("spaces.identity.ecdh", { epk: wrap.epk }, "module:files")).error != null, true, "the raw ecdh door is gone");
 });
 
-test("spaces.identity.ecdh is for first-party files only: another module, the cli, an agent and a surface are refused", async t => {
+test("spaces.identity.unwrap-drop is for first-party files only: another module, the cli, an agent and a surface are refused", async t => {
   world(t);
   const d = await device(t);
   await d.ok("spaces.identity.create", { name: "agreebob" });
-  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
-  const epk = peer.getPublicKey().toString("base64url");
-  for (const caller of ["module:wink", "module:memory", "module:filesx", "cli", "agent:kit", "surface:capsule"]) {
-    const r = await d.call("spaces.identity.ecdh", { epk }, caller);
+  const wrap = wrapTo(fileIdentityStore(d.space).agree(), crypto.randomBytes(32), DROP);
+  for (const caller of ["module:wink", "module:memory", "module:work", "module:filesx", "cli", "agent:kit", "surface:capsule"]) {
+    const r = await d.call("spaces.identity.unwrap-drop", { wrap, aad: DROP }, caller);
     assert.ok(r.error, `${caller} must be refused`);
     assert.equal(r.data, undefined, caller);
   }
@@ -1446,7 +1465,7 @@ test("KP-2: spaces.identity.enrol decides held itself: an entry nobody proved is
 // memory's key-wrap vector (lib/vectors/keywrap.json, on work/memory-noble until it merges): this device's ecdh gives the vector's shared secret, and memory's own HKDF and AES-GCM then open the wrap.
 // Skipped while the file is not in this tree; the check is real as soon as it is.
 const KEYWRAP = new URL("../../lib/vectors/keywrap.json", import.meta.url);
-test("spaces.identity.ecdh matches memory's keywrap vector: the shared secret is the vector's, and its kek opens the wrap", { skip: !fs.existsSync(KEYWRAP) && "lib/vectors/keywrap.json is not in this tree yet" }, async t => {
+test("the device's ecdh matches memory's keywrap vector: the shared secret is the vector's, its kek opens the wrap, and unwrap-drop refuses that chat ring wrap", { skip: !fs.existsSync(KEYWRAP) && "lib/vectors/keywrap.json is not in this tree yet" }, async t => {
   world(t);
   const d = await device(t);
   await d.ok("spaces.identity.create", { name: "vecalex" });
@@ -1454,8 +1473,9 @@ test("spaces.identity.ecdh matches memory's keywrap vector: the shared secret is
   const file = path.join(d.space, "identity.json");
   const rec = JSON.parse(fs.readFileSync(file, "utf8"));
   fs.writeFileSync(file, JSON.stringify({ ...rec, agreePrivate: V.agree_private_jwk.d }) + "\n", { mode: 0o600 });
-  const r = await d.ok("spaces.identity.ecdh", { epk: V.wrap.epk }, "module:files");
+  const r = { secret: fileIdentityStore(d.space).ecdh(Buffer.from(V.wrap.epk, "base64url")).toString("base64url") };
   assert.equal(r.secret, V.shared);
+  assert.equal((await d.call("spaces.identity.unwrap-drop", { wrap: V.wrap, aad: V.aad }, "module:files")).error?.code, "wrong_purpose", "memory's vector is a chat ring wrap: this door does not open it");
   const epk = Buffer.from(V.wrap.epk, "base64url");
   const kek = Buffer.from(crypto.hkdfSync("sha256", Buffer.from(r.secret, "base64url"), epk, Buffer.from("vyre-identity-wrap-v1"), 32));
   assert.equal(kek.toString("base64url"), V.kek);
@@ -1586,4 +1606,29 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.deepEqual(await d.ok("spaces.storage.delete", { space: HOME, name: "personal/a", expected: sha("v2") }, "cli", as(MEM)), { ok: true, deleted: true });
   assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
+});
+
+test("spaces.identity.devices.read on a SERVER (no identity of its own): the paired owner is the person the call acts for, and nobody else; with no owner claimed the answer is empty", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const device0 = await device(t); // a home that makes the directory's `hooks` live
+  void device0;
+  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const owner = await claim("srvowner", pt()), stranger = await claim("srvstranger", pt());
+  let claimed = /** @type {string | null} */ (owner.id);
+  const kernelFor = () => ({ for: () => null, ownerClaimed: () => claimed });
+  const server = await device(t, { kernelFor: /** @type {any} */ (kernelFor) });
+  assert.equal(fileIdentityStore(server.space).status().exists, false, "a server has no identity of its own");
+  for (const p of [owner, stranger]) await server.reg.call("spaces.person.learn", { id: p.id, name: p === owner ? "srvowner" : "srvstranger" }, "module:vyred");
+  const read = person => server.call("spaces.identity.devices.read", { person }, "module:work");
+  const mine = await read(owner.id);
+  assert.ok(!mine.error, JSON.stringify(mine.error));
+  assert.equal(mine.data.devices.length, 1, "the owner's device and its point");
+  assert.equal(mine.data.devices[0].device, owner.eid);
+  assert.match(mine.data.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
+  assert.deepEqual((await read(stranger.id)).data, { devices: [] }, "a person the owner shares no space with is not 'anyone'");
+  assert.deepEqual((await server.call("spaces.identity.devices.read", { person: owner.id }, "module:memory")).error?.code, "denied", "callers are still work and files");
+  claimed = null;
+  assert.deepEqual((await read(owner.id)).data, { devices: [] }, "no owner claimed: nothing");
 });

@@ -94,6 +94,9 @@ function plainDirectory(e) {
   return e && typeof e.message === "string" && e.message ? e.message : "The name directory could not do that. Try again in a moment.";
 }
 
+/** The associated data every file drop wrap starts with: the one purpose spaces.identity.unwrap-drop opens. */
+const DROP_AAD_PREFIX = "vyre-drop-wrap\n";
+
 /** @type {((entry: any, meta?: any) => Promise<boolean>) | null} the default entry verifier, made on first use */
 let defaultEntryProof = null;
 
@@ -1005,8 +1008,8 @@ export default {
       return run;
     };
     /** The person the call is from, by the kernel's chain (LD-5): the person on the chain, else the home identity. */
-    const callerPerson = async (/** @type {any} */ meta) => {
-      const home = /** @type {string} */ (me().id);
+    const callerPerson = async (/** @type {any} */ meta, /** @type {string | undefined} */ homeId = undefined) => {
+      const home = homeId !== undefined ? homeId : /** @type {string} */ (me().id);
       if (!K || typeof K.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return home;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
@@ -1961,7 +1964,11 @@ export default {
     const devicesOf = async (i, meta) => {
       const target = String(i.person || "");
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(target)) return { devices: [] };
-      const caller = await callerPerson(meta);
+      // The person the call acts for when no person rides on it: this home's own person, or on a SERVER (no identity of its own) the owner that paired it (the kernel's claimed owner). Nobody else: with neither, the answer is empty.
+      /** @type {string | null} */ let home = null;
+      try { home = String(me().id); } catch { const claimed = K && typeof K.ownerClaimed === "function" ? K.ownerClaimed() : null; home = claimed ? String(claimed) : null; }
+      if (!home) return { devices: [] };
+      const caller = await callerPerson(meta, home);
       if (!caller) return { devices: [] };
       let shares = caller === target;
       if (!shares) {
@@ -1983,13 +1990,26 @@ export default {
       return devicesOf(i, meta);
     }, { internal: true });
 
-    // This device's key-agreement step: ECDH between its agreement key (the `agree` point on its identity entry) and a peer's ephemeral public point. Only the 32-byte shared secret returns, never the private scalar.
-    // First-party only: `files` unwraps a chat key with it. A module that is not on the list, an agent and a surface are refused (a secret that opens a wrapped key is not for them).
-    tool("spaces.identity.ecdh", "ECDH with this device's key-agreement key: the shared secret for a peer's ephemeral public point (base64url, 65-byte uncompressed P-256). For first-party modules only.", obj({ epk: str }, ["epk"]), async (i, meta) => {
+    // A drop's key, unwrapped by this device: the wrap was made to this device's `agree` point (ECDH-ES on P-256, HKDF-SHA256 over the shared secret with the ephemeral point as salt, AES-256-GCM, the same format as lib/keywrap.js
+    // so a wrap from memory's library opens here). The ECDH, the KDF and the unwrap all happen INSIDE this tool: only the unwrapped file key leaves, never the shared secret and never the private scalar. It is bound to ONE
+    // purpose: the wrap's associated data must start with "vyre-drop-wrap\n", so a chat ring's wrap (another purpose's aad) or a bare ephemeral point is refused: this door cannot be used as a general decryption oracle.
+    // First-party only: `files` opens a drop with it.
+    tool("spaces.identity.unwrap-drop", "Open a file drop's wrapped key with this device's key-agreement key: the wrap and its associated data in, the unwrapped file key out. Only for a wrap whose associated data starts with vyre-drop-wrap. For first-party modules only.", obj({ wrap: { type: "object" }, aad: str }, ["wrap", "aad"]), async (i, meta) => {
       onlyModules(meta, ["files"]);
-      const epk = Buffer.from(String(i.epk || ""), "base64url");
+      const aad = typeof i.aad === "string" ? i.aad : "";
+      if (!aad.startsWith(DROP_AAD_PREFIX)) throw refuse("That is not a file drop's wrap.", "wrong_purpose");
+      const w = i.wrap && typeof i.wrap === "object" ? /** @type {any} */ (i.wrap) : null;
+      if (!w || w.v !== 1 || ["epk", "iv", "ct", "tag"].some(k => typeof w[k] !== "string")) throw refuse("That is not a wrapped key.", "bad_wrap");
+      const epk = Buffer.from(w.epk, "base64url");
       if (epk.length !== 65 || epk[0] !== 4) throw refuse("That is not a P-256 point.", "bad_point");
-      try { return { secret: identity.ecdh(epk).toString("base64url") }; } catch (e) { throw refuse(/** @type {any} */ (e).code === "no_agree_key" ? "This device has no agreement key yet." : "That is not a P-256 point.", /** @type {any} */ (e).code || "failed"); }
+      let shared;
+      try { shared = identity.ecdh(epk); } catch (e) { throw refuse(/** @type {any} */ (e).code === "no_agree_key" ? "This device has no agreement key yet." : "That is not a P-256 point.", /** @type {any} */ (e).code || "failed"); }
+      try {
+        const kek = Buffer.from(crypto.hkdfSync("sha256", shared, epk, Buffer.from("vyre-identity-wrap-v1"), 32));
+        const d = crypto.createDecipheriv("aes-256-gcm", kek, Buffer.from(w.iv, "base64url"));
+        d.setAAD(Buffer.from(aad, "utf8")); d.setAuthTag(Buffer.from(w.tag, "base64url"));
+        return { key: Buffer.concat([d.update(Buffer.from(w.ct, "base64url")), d.final()]).toString("base64url") };
+      } catch { throw refuse("This device cannot open that wrap.", "cannot_open"); }
     }, { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
