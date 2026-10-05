@@ -18,7 +18,7 @@ Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model fo
 
 ## Set up
 
-Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI and adding your phone.
+Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run), signing in to your AI and adding your phone.
 
 - **The server** is a Linux machine with Docker, or a Mac that stays on.
 - **The network** is built in. There is nothing to install and nothing to sign in to.
