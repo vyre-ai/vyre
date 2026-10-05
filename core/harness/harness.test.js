@@ -12,6 +12,8 @@ import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const HOME = "/home/alex/.vyre";
+// Every brief opens with the one time line (lib/time); the older checks look at what follows it.
+const body = r => r.data.text.replace(/^Time: [^\n]*(\n\n|$)/, "");
 
 test("rules: nothing reads the vault, however it is reached", () => {
   const deny = i => rules({ tool: i.tool, input: i.input, cwd: "/home/alex/Work", home: HOME }).decision;
@@ -102,7 +104,7 @@ async function harness(t, extra = []) {
 
 test("harness: with no other modules, every hook answers with nothing rather than failing", async t => {
   const { reg } = await harness(t);
-  assert.equal((await reg.call("harness.brief", { cwd: "/home/alex/Work/harlow-site", session: "s1" }, "cli")).data.text, "");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/home/alex/Work/harlow-site", session: "s1" }, "cli")), "");
   assert.deepEqual(await reg.call("harness.enrich", { prompt: "what did Dana want?", cwd: "/x" }, "harness"), { data: { text: "" } });
   assert.deepEqual(await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" } }, "harness"), { data: { decision: null } });
 });
@@ -137,19 +139,19 @@ test("harness: brief and enrich use projects and memory when they are running", 
   const b = await reg.call("harness.brief", { cwd: "/w/harlow-site", session: "s1", source: "startup" }, "cli");
   // The house voice comes first, then the team nudge, then the project's own brief. In scope:
   // style gets the project, so its (project rules) text is the one that shows.
-  assert.equal(b.data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  assert.equal(body(b), "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   assert.equal(events.since(0).find(e => e.type === "thread.started").payload.session, "s1");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" }, "harness")).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" }, "harness")).data.text, "", "slash commands get nothing");
   // Outside a project there is no project brief, but the house voice still applies (ADR 0037:
   // "for every session") - the account-level text, since there is no project to scope it to.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" }, "cli")).data.text, "Write plainly, no em dashes.", "no brief, but still the house voice");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/w/northwind" }, "cli")), "Write plainly, no em dashes.", "no brief, but still the house voice");
   // An agent's scope, as the switchboard hands it to the hooks.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" }, "cli")).data.text, "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" }, "cli")), "Write plainly, no em dashes (project rules).\n\nThis project has teammates: design.\n\nProject harlow-legal. People: Dana Reyes.");
   // Reviewer's LOW on 36caa4ad: cwd resolves to a real project (harlow-legal), but this agent's
   // own scope is "northwind" only - out of scope, so style.append must get no project at all
   // (the account-level text), never harlow-legal's own style.rules.
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" }, "cli")).data.text, "Write plainly, no em dashes.", "out of scope: the account voice, never this project's own rules");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" }, "cli")), "Write plainly, no em dashes.", "out of scope: the account voice, never this project's own rules");
   assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" }, "harness")).data.text, "", "nor their memory");
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" }, "harness")).data.text, /Dana Reyes/, "the assistant sees every project");
 });
@@ -172,7 +174,7 @@ test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis
     ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, longStyle],
     ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, longTeam],
   ]);
-  const text = (await reg.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text;
+  const text = body(await reg.call("harness.brief", { cwd: "/w/harlow-site" }, "cli"));
   const nudge = text.slice(0, text.indexOf("\n\nProject harlow-legal."));
   assert.equal(nudge.length, 2000);
   assert.equal(nudge.at(-1), "…");
@@ -229,13 +231,13 @@ test("harness: brief warns a terminal resume of a live headless thread, and not 
     return {};
   } };`;
   const { reg, events } = await harness(t, [["threads", { version: "0.1.0", does: { tools: ["threads.claimed", "threads.contend"] }, watches: { emits: ["thread.contended"] } }, threads]]);
-  const term = (await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: false }, "cli")).data.text;
+  const term = body(await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: false }, "cli"));
   assert.equal(term, "Warning from Vyre: this conversation is also running headless under Vyre right now (holder: deck:1). " +
     "Two processes writing one transcript lose work. Stop the headless one with `vyre threads stop s-live` before going on here, " +
     "or leave this session and keep working there. Tell the user this before anything else.");
   assert.deepEqual(events.since(0).filter(e => e.type === "thread.contended").map(e => e.payload), [{ session: "s-live", holder: "deck:1" }]);
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: true }, "cli")).data.text, "", "our own child is not a second writer");
-  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-other" }, "cli")).data.text, "", "a session vyred is not running");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: true }, "cli")), "", "our own child is not a second writer");
+  assert.equal(body(await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-other" }, "cli")), "", "a session vyred is not running");
   assert.equal(events.since(0).filter(e => e.type === "thread.contended").length, 1);
 });
 
@@ -279,4 +281,12 @@ test("harness: an assistant outside any project reads the whole account for its 
   assert.equal(asked().at(-1).room, undefined, "the assistant's read is not narrowed to the unfiled room");
   await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex" }, "harness");
   assert.equal(asked().at(-1).room, "unfiled", "a person's own session outside a project still reads the unfiled room");
+});
+
+test("harness: every brief carries the time line, in the caller's zone", async t => {
+  const { reg } = await harness(t);
+  const a = (await reg.call("harness.brief", { cwd: "/w/x" }, "cli", { zone: "Asia/Karachi" })).data.text;
+  assert.match(a, /^Time: it is .*\(Asia\/Karachi\)\./, "an empty brief still says what time it is");
+  const b = (await reg.call("harness.brief", { cwd: "/w/x" }, "cli", { zone: "America/Los_Angeles" })).data.text;
+  assert.match(b, /\(America\/Los_Angeles\)/);
 });
