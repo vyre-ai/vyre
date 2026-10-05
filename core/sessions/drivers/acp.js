@@ -650,7 +650,8 @@ function runAcp(entry, known, o) {
     // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
     const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
     const first = firstPrompt && !loaded;
-    const sys = first && o.system && o.system.text ? [{ type: "text", text: String(o.system.text) }] : [];
+    // The environment brief and the role go with the first prompt of every process, a resumed session's too: it must know the state as it is now.
+    const sys = firstPrompt && o.system && o.system.text ? [{ type: "text", text: String(o.system.text) }] : [];
     firstPrompt = false;
     // Memory, as Claude gets it: the brief on the first prompt and up to 5 quoted lines on every one,
     // ahead of the person's words, scoped by vyred to this thread's own agent and project (the
