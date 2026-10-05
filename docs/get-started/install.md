@@ -46,7 +46,7 @@ screen offers **Get started** and **I already have Vyre**. **Get started** asks 
   name.
 - **I have my own server** goes straight to **Set up My Cloud**. That page shows the install line
   and the long-code entry together, and it is where **Add your own server** leads for a home that
-  joined a team. A device with no name yet cannot pair from it: choose your name first.
+  joined a team. Pairing needs this device to have your name, so make your name first.
 
 Then the app asks you to choose your Vyre name. It is how people find you. Vyre makes a key for
 the name on this device, and the key stays here. A name needs at least three letters, and the app
