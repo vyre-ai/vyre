@@ -66,10 +66,11 @@ export function createSupervisor(cfg = {}) {
 
     /**
      * Start a module under the sandbox. Refuses unless the self-test passed.
-     * @param {{ name: string, dir: string, entry: string }} m
+     * @param {{ name: string, dir: string, entry: string, ctx?: (path: string[], args: any[], io: { push: (id: number, event: any) => void }) => Promise<any> }} m
      */
     async start(m) {
       if (!api.available()) throw new KernelError("supervisor_absent", "the module supervisor cannot prove its sandbox, so this module will not run");
+      if (typeof m.ctx !== "function") m = { ...m, ctx: async () => { throw Object.assign(new Error("this module has no ctx here"), { code: "undeclared" }); } };
       if (running.has(m.name)) return running.get(m.name);
       const cmd = sandboxCommand({ platform: cfg.platform, execPath: cfg.execPath, dir: m.dir, entry: m.entry });
       if (!cmd) throw new KernelError("supervisor_absent", "no OS sandbox on this platform");
@@ -88,6 +89,13 @@ export function createSupervisor(cfg = {}) {
           catch (e) { write({ down: x.up, ok: false, error: { code: /** @type {any} */ (e)?.code || "failed", message: "refused" } }); }
           return;
         }
+        if (x.log !== undefined) { try { cfg.log?.(m.name, x.log, x.msg); } catch { /* a log line never stops a module */ } return; }
+        if (x.up !== undefined && x.op === "ctx") {
+          // A door of the module's ctx: the host's own ctx for this module answers (it holds every declaration), and the answer goes back down the same pipe.
+          try { write({ down: x.up, ok: true, result: await m.ctx(x.path, x.args, { push: (/** @type {number} */ id, /** @type {any} */ event) => write({ ev: id, event }) }) }); }
+          catch (e) { write({ down: x.up, ok: false, error: { code: /** @type {any} */ (e)?.code || "failed", message: String(/** @type {any} */ (e)?.message || "refused").slice(0, 200) } }); }
+          return;
+        }
         const p = pending.get(x.id); if (!p) return;
         pending.delete(x.id); clearTimeout(p.t);
         x.ok ? p.res(x.result) : p.rej(new KernelError(x.error?.code || "failed", String(x.error?.message || "the module failed")));
@@ -98,11 +106,11 @@ export function createSupervisor(cfg = {}) {
       const handle = Object.freeze({
         name: m.name,
         ready: readyP,
-        call: (/** @type {string} */ method, /** @type {any} */ input) => new Promise((res, rej) => {
+        call: (/** @type {string} */ method, /** @type {any} */ input, /** @type {any} */ meta) => new Promise((res, rej) => {
           if (closed) return rej(new KernelError("module_down", "the module is not running"));
           const id = ++n, t = setTimeout(() => { pending.delete(id); child.kill("SIGKILL"); rej(new KernelError("timeout", "the module took too long and was stopped")); }, callMs);
           pending.set(id, { res, rej, t });
-          write({ id, op: "call", method, input });
+          write({ id, op: "call", method, input, ...(meta ? { meta } : {}) });
         }),
         stop: () => new Promise(res => { if (closed) return res(undefined); child.once("exit", () => res(undefined)); child.stdin.end(); setTimeout(() => child.kill("SIGKILL"), 2000).unref(); }),
         pid: child.pid,

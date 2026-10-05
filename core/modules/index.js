@@ -10,6 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { sandboxDoor } from "./sandbox-ctx.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
@@ -761,10 +762,12 @@ export class Registry {
       // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
       // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
       if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
-        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [] });
         const ctx = this.context(m);
-        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
-        rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };
+        // The module's ctx is this host-side one; the sandbox reaches each door by message (core/modules/sandbox-ctx.js), so an added module runs the same contract as a built-in one.
+        const door = sandboxDoor({ name: m.name, ctx, dataDir: path.join(this.deps.paths.root, "data", m.name) });
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [], ctx: door });
+        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input, /** @type {any} */ meta) => this.deps.moduleHost.call(m.name, e.name, input, meta ? { caller: meta.caller, who: meta.who, agent: meta.agent, thread: meta.thread, project: meta.project } : undefined) });
+        rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
         rec.state = "running";
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
