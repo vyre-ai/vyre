@@ -9,6 +9,7 @@
 import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
 import { openRecords, fromEvent, recordOf } from "./records.js";
 import { parseRule } from "./rrule.js";
+import { importLegacy } from "./legacy.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendar, shapeCal } from "./events.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
@@ -62,7 +63,8 @@ export default {
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
     const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how), zone: () => settings().timezone });
-    if (K) await st.load();
+    // A planner that kept its own tables (0.2.x) brings what they hold into the records once, then the tables go.
+    if (K) { await importLegacy({ db: ctx.store && ctx.store.db, K, log: ctx.log }); await st.load(); }
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
     // zone data (about 8 MB of RSS), which an idle planner never needs.

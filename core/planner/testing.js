@@ -59,7 +59,7 @@ export async function prepareKernel(/** @type {any} */ k) {
 /** A kernel for a test: the memory store, or any store handed in (the live suite passes a real Twenty's). */
 export const newKernel = async (/** @type {any} */ store) => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...(store ? { store } : {}) });
 
-export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null } = {}) {
+export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null, store = null } = {}) {
   const k = kernel || await newKernel();
   const owner = k.chains.fromFacts(FACTS);
   if (!kernel) await prepareKernel(k);
@@ -81,7 +81,7 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   /** An assistant's call carries the chain the daemon would make from its vouched session; the test hands it in as meta.kernelChain. */
   const withChains = (/** @type {any} */ real) => Object.defineProperty(Object.create(real), "chain", { value: async (/** @type {any} */ meta) => (meta && meta.kernelChain) || real.chain(meta) });
   const ctx = {
-    name: "planner", config: { role: "box", planner: { timezone: tz } }, paths: { root }, kernel: withChains(k.kernelFor({ name: "planner", needs: NEEDS })),
+    name: "planner", ...(store ? { store } : {}), config: { role: "box", planner: { timezone: tz } }, paths: { root }, kernel: withChains(k.kernelFor({ name: "planner", needs: NEEDS })),
     log: m => logs.push(m),
     events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),

@@ -190,6 +190,11 @@
               "label": "Done"
             },
             {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
+            },
+            {
               "name": "waits_on",
               "kind": "text",
               "label": "Runs when this item is done"
@@ -302,6 +307,11 @@
               "name": "done_at",
               "kind": "datetime",
               "label": "Done"
+            },
+            {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
             }
           ]
         },
