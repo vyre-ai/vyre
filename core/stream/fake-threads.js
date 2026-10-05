@@ -14,8 +14,10 @@ export function fakeThreads(dir) {
   fs.writeFileSync(path.join(d, "index.js"), `
 export default { async start(ctx) {
   ctx.tool("threads.get", {
-    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module:term"],
+    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module"],
     run: async (i, meta) => {
+      // only the term module's relayed call is admitted among modules (the others are refused before anything is recorded, as the real caller list does)
+      if (/^module:/.test(String(meta.caller)) && meta.caller !== "module:term") throw Object.assign(new Error("denied"), { code: "denied" });
       (globalThis.__fakeThreadsCalls ||= []).push({ thread: i.thread, caller: meta.caller });
       const e = (code) => Object.assign(new Error(code), { code });
       const known = globalThis.__fakeThreadsKnown && globalThis.__fakeThreadsKnown.get(i.thread);
