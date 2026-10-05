@@ -28,7 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
-import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
+import { sessionTempDir, sessionsRoot, artifactsDirFor } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -1114,23 +1114,6 @@ export class Switchboard {
     return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
   }
 
-  /**
-   * The folder a session saves what it makes in: <session temp>/artifacts, a real folder (no link in its path) the session can write and nothing else shares. Null without a home to sit beside,
-   * or when it cannot be made. artifacts watches it and keeps each file in the project's Drive folder.
-   * @param {string} id
-   */
-  artifactsDir(id) {
-    if (!this.deps.root) return null;
-    try {
-      const temp = sessionTempDir(String(this.deps.root), id);
-      fs.mkdirSync(temp, { recursive: true, mode: 0o700 });
-      const dir = path.join(fs.realpathSync(temp), "artifacts");
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      fs.chmodSync(dir, 0o700);
-      return dir;
-    } catch { return null; }
-  }
-
   sessionTemp(id) {
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
@@ -1257,8 +1240,12 @@ export class Switchboard {
     // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
     if (sock) delete env.VYRE_HOME;
     // The session's own folder for what it makes (VYRE_ARTIFACTS_DIR): inside its sandboxed temp folder, outside the home. Whatever is saved there is kept in the project's Drive folder (artifacts watches it).
-    const artifactsDir = this.artifactsDir(id);
+    const as = o.accountRun && o.accountRun.uid != null ? { uid: o.accountRun.uid, gid: o.accountRun.gid != null ? o.accountRun.gid : o.accountRun.uid } : {};
+    const made = this.deps.root ? artifactsDirFor(String(this.deps.root), id, as) : null;
+    // a session that runs as another user is told of the folder only when it can write it
+    const artifactsDir = made && (as.uid === undefined || made.handed) ? made.dir : null;
     if (artifactsDir) env.VYRE_ARTIFACTS_DIR = artifactsDir; else delete env.VYRE_ARTIFACTS_DIR;
+    if (made && as.uid !== undefined && !made.handed) this.emit("thread.text", { message: "vyre", text: "Files this session makes cannot be kept in the project's folder: Vyre is not allowed to give its folder to the session's user here.", done: true, notice: true }, id, this.record(id) && this.record(id).project);
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
@@ -1288,8 +1275,6 @@ export class Switchboard {
     const ar = o.accountRun;
     if (ar && ar.home) env.HOME = ar.home;
     const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
-    // A session that runs as another user (the packaged box) must be able to write its folder; best effort, and only where vyred is allowed to give it away.
-    if (artifactsDir && account && account.uid != null) { try { fs.chownSync(artifactsDir, account.uid, ar && ar.gid != null ? ar.gid : account.uid); } catch { /* not allowed here: the session's own uid is the owner already, or the folder stays vyred's */ } }
     // What a provider that is not Claude gets: the floor as a function (its file and shell methods
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
@@ -1316,7 +1301,7 @@ export class Switchboard {
     const provider = other || claudeProvider({ sdk: this.sdk, bin: this.sdk ? this.deps.bin || process.env.VYRE_CLAUDE_BIN || "" : this.bin, run: this.run });
     const driver = other ? String(o.provider) : this.sdk ? "sdk" : "cli";
     state.proc = provider.run({ ...lo, cwd: rec.cwd, env, ...on });
-    if (artifactsDir) this.deps.call("artifacts.capture.register", { thread: id, dir: artifactsDir, ...(account && account.uid != null ? { uid: account.uid } : {}) }).catch(() => {});
+    if (artifactsDir) this.deps.call("artifacts.capture.register", { thread: id, dir: artifactsDir, ...(as.uid !== undefined ? { uid: as.uid } : {}) }).catch(() => {});
     this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
     this.touch(id, state);
     // A session never sits in "starting" for ever: if the agent says nothing within the limit (not signed in, not installed, no route to its provider) the thread FAILS with what was seen, its processes
