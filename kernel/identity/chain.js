@@ -380,17 +380,17 @@ export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
     const dev = typeof via === "string" ? find(at, via) : undefined;
     if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
     if (ctx.live) await stillOnList(ctx, ops, dev);
-    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e };
+    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e, signing: dev };
   }
   if (e.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
-  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e };
+  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e, signing: e };
 }
 
 /** The position of a person's chain a space op relies on: its head. @param {any[]} ownerOps */
 export async function viaOf(ownerOps) { return { via_seq: ownerOps.length - 1, via_head: await hashOf(ownerOps[ownerOps.length - 1]) }; }
 
-/** Does `sig` over `message` check out under the key `signerKey` names? @param {string} pub @param {Uint8Array} message @param {string} sig */
-export const verifyWith = (pub, message, sig) => verifySig(pub, message, sig);
+/** Does `sig` over `message` check out under the key `signerKey` names? Pass the entry that signed (`signing` in signerKey's answer) so a passkey's assertion is checked as one. @param {string} pub @param {Uint8Array} message @param {string} sig @param {Entry} [entry] */
+export const verifyWith = (pub, message, sig, entry) => (entry && entry.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (entry.pub), String(entry.rp || ""), message, sig) : verifySig(pub, message, sig));
 
 /** Verify a whole chain from its genesis and return its state. @param {any[]} ops @param {Ctx} [ctx] */
 export async function verifyChain(ops, ctx = {}) {
