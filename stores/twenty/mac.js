@@ -54,6 +54,8 @@ export function macStoreOptions(o) {
 
   return {
     runner: realRunner({ env }),
+    /** Twenty is reached on 127.0.0.1 at the port recorded in the Space's reach.json (provision.js, `publish: "loopback"`). */
+    reach: /** @type {"loopback"} */ ("loopback"),
     /** The Mac's preflight: Colima's socket is there, there is disk, and the VM can be given room for this Space. Never throws. @param {{ dir: string }} p */
     async preflight(p) {
       /** @type {string[]} */ const reasons = [];
@@ -75,7 +77,7 @@ export function macStoreOptions(o) {
         const made = await make(countTwentySpaces(o.home) + 1, { env, onProgress: line => (p.log ?? log)(line) });
         if (!made.ok) throw Object.assign(new Error(made.message), { code: "unavailable", reasons: [made.message] });
       }
-      return (o.provision ?? provisionSpace)(p);
+      return (o.provision ?? provisionSpace)({ ...p, publish: "loopback", reach: "loopback" });
     },
   };
 }

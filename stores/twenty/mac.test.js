@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { macStoreOptions, dockerHostOf, countTwentySpaces } from "./mac.js";
-import { spaceDir, TWENTY_TESTED_REF, POSTGRES_IMAGE, REDIS_IMAGE } from "./provision.js";
+import { spaceDir, TWENTY_TESTED_REF, POSTGRES_IMAGE, REDIS_IMAGE, PROXY_IMAGE, composeFile, readLoopbackPort, pickLoopbackPort } from "./provision.js";
 import { FakeTwenty } from "./testing/fake-twenty.js";
 
 const dirs = [];
@@ -72,7 +72,7 @@ test("a new Space makes room first (and says so), then provisions the same pinne
   mark(home, "personal");
   const o = macStoreOptions({ home, env: { HOME: home, DOCKER_HOST: "unix:///c.sock" }, makeRoom: async (n, { onProgress }) => { order.push(`room ${n}`); onProgress("Making room for a new space"); return { ok: true, message: "" }; } });
   const twentyHome = path.join(home, "kernel", "spaces", "spc_bbbbbbbbbbbb", "twenty-home");
-  const first = await o.provision({ home: twentyHome, space: "spc-bbbbbbbbbbbb", runner, reach: "ip", memory: "small", log: l => lines.push(l) });
+  const first = await o.provision({ home: twentyHome, space: "spc-bbbbbbbbbbbb", runner, memory: "small", pickPort: async () => 50123, log: l => lines.push(l) });
   assert.deepEqual(order, ["room 2"], "room is made for the second Twenty space before anything is pulled");
   assert.ok(lines.includes("Making room for a new space"));
   assert.ok(calls.some(c => /compose .*pull/.test(c)) && calls.some(c => /compose .*up -d --wait/.test(c)), "the same compose steps as a server");
@@ -81,10 +81,17 @@ test("a new Space makes room first (and says so), then provisions the same pinne
   assert.ok(compose.includes(POSTGRES_IMAGE) && compose.includes(REDIS_IMAGE));
   assert.ok(fs.readFileSync(path.join(spaceDir(twentyHome, "spc-bbbbbbbbbbbb"), ".env"), "utf8").includes(`TWENTY_IMAGE_REF=${TWENTY_TESTED_REF}`));
   assert.ok(fs.existsSync(first.keyFile));
+  assert.equal(first.port, 50123);
+  assert.equal(first.url, "http://127.0.0.1:50123", "reached on loopback, not on a container address");
+  assert.ok(!calls.some(c => /inspect/.test(c)), "no container address is looked up");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(spaceDir(twentyHome, "spc-bbbbbbbbbbbb"), "reach.json"), "utf8")).port, 50123);
+  assert.match(fs.readFileSync(path.join(spaceDir(twentyHome, "spc-bbbbbbbbbbbb"), ".env"), "utf8"), /^TWENTY_HOST_PORT=50123$/m);
   // the same Space again: already provisioned, so no resize and no second provisioning
   order.length = 0;
-  await o.provision({ home: twentyHome, space: "spc-bbbbbbbbbbbb", runner, reach: "ip", memory: "small" });
+  const again = await o.provision({ home: twentyHome, space: "spc-bbbbbbbbbbbb", runner, memory: "small" });
   assert.deepEqual(order, [], "no room is made for a Space that is already there");
+  assert.equal(again.port, 50123, "the recorded port is kept across restarts");
+  assert.equal(readLoopbackPort(spaceDir(twentyHome, "spc-bbbbbbbbbbbb")), 50123);
   await fake.stop();
 });
 
@@ -94,4 +101,25 @@ test("when the VM cannot be given room, nothing is provisioned and the person is
   await assert.rejects(() => o.provision({ home: path.join(home, "kernel", "spaces", "spc_c", "twenty-home"), space: "spc-c", runner: { exec: async (...a) => { calls.push(a); return { stdout: "", stderr: "" }; }, fetch, sleep: async () => {} } }),
     e => e.code === "unavailable" && /your server/.test(e.message));
   assert.deepEqual(calls, [], "no docker call was made");
+});
+
+test("a Linux compose publishes no port; the Mac one publishes Twenty on 127.0.0.1 only, through a proxy, and Twenty keeps the internal network alone", () => {
+  const linux = composeFile({ space: "harlow" });
+  assert.ok(!/^\s*ports:/m.test(linux) && !/proxy:/.test(linux) && !/publish/.test(linux), "no published port, no proxy, no second network on a server");
+  const mac = composeFile({ space: "harlow", publish: "loopback" });
+  const ports = [...mac.matchAll(/^\s*ports:\n((?:\s+- .*\n)+)/gm)].flatMap(m => m[1].trim().split("\n").map(l => l.trim()));
+  assert.deepEqual(ports, ['- "127.0.0.1:${TWENTY_HOST_PORT:?}:3000"'], "one published port, bound to loopback");
+  assert.ok(!/0\.0\.0\.0/.test(mac) && !/"\$\{TWENTY_HOST_PORT[^}]*\}:3000"/.test(mac), "never an unbound host address");
+  const server = mac.slice(mac.indexOf("  server:"), mac.indexOf("  worker:"));
+  assert.ok(!/ports:/.test(server) && /networks:\n      store:/.test(server), "Twenty's server itself has no port and sits on the internal network only");
+  assert.match(mac, /networks:\n  store:\n    internal: true\n  publish: \{\}/, "the store network stays internal; only the proxy's own network is ordinary");
+  const proxy = mac.slice(mac.indexOf("  proxy:"), mac.indexOf("networks:\n  store"));
+  assert.match(proxy, /networks: \[store, publish\]/);
+  assert.ok(proxy.includes(PROXY_IMAGE));
+  for (const m of mac.matchAll(/^\s+image: (.*)$/gm)) assert.match(m[1], /@sha256:[0-9a-f]{64}/, `an unpinned image: ${m[1]}`);
+});
+
+test("pickLoopbackPort gives a free dynamic-range port", async () => {
+  const p = await pickLoopbackPort();
+  assert.ok(p >= 49152 && p < 65152, String(p));
 });
