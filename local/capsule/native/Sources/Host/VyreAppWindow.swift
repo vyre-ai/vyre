@@ -26,6 +26,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var presence: CapsulePresence?
     /// This Mac's identity key (MacIdentity.swift), set by the Capsule at launch; the page signs through it and never sees the seed.
     var identity: MacIdentity?
+    /// The Secure Enclave key of this Mac's device entry (MacEnclave.swift).
+    var enclave: MacEnclave?
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -145,6 +147,13 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case "identity.has": reply(id, ["has": id0.has])
             default: id0.forget(); reply(id, ["ok": true])
             }
+        case "enclave.public":
+            guard let pt = enclave?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no Secure Enclave key."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pt)])
+        case "enclave.sign":
+            guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let e = enclave else { return reply(id, ["error": "There is no Secure Enclave key on this Mac to sign with."]) }
+            guard let sig = await e.sign(m, reason: (args["prompt"] as? String).map { String($0.prefix(120)) } ?? "Approve this change to your name") else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
+            reply(id, ["signature": MacIdentity.b64url(sig)])
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
@@ -295,7 +304,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
           has: function () { return call("identity.has").then(function (r) { return r.has; }); },
-          forget: function () { return call("identity.forget").then(function () {}); }
+          forget: function () { return call("identity.forget").then(function () {}); },
+          enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          enclaveSign: function (message, prompt) { return call("enclave.sign", { message: message, prompt: prompt }).then(function (r) { return r.signature; }); }
         },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },

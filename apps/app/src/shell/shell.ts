@@ -12,6 +12,9 @@ export type MacShell = {
     sign(message: string): Promise<string>;
     has(): Promise<boolean>;
     forget(): Promise<void>;
+    /** The Secure Enclave key of this Mac's entry (Touch ID per signature): its raw uncompressed point, and a raw r||s signature. Absent or rejecting on a Mac with no Secure Enclave. */
+    enclavePublic?(create?: boolean): Promise<string>;
+    enclaveSign?(message: string, prompt: string): Promise<string>;
   };
   /** The version of this app, when the bridge says (a release candidate shows its own install line). */
   version?: string;
