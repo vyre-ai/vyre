@@ -11,7 +11,7 @@ status: draft
 The planner keeps your alarms, timers, reminders, todos and notes on your box, with one clock
 that rings them. When something is due, every surface hears it at once: a notification on each
 device that has push on, and a banner in the Deck. Answer it on one and it stops on all of them.
-Your connected Google calendars are copied in too, so the agenda shows your whole day and an
+Everything the planner keeps is a record in your Space (see "Where it is kept" below). Your connected Google calendars are copied in too, so the agenda shows your whole day and an
 event reminds you before it starts. A Mac paired with a box sends every change to the box; a Mac
 on its own runs the planner itself.
 
@@ -43,8 +43,30 @@ vyre notes add kit prefers mornings
 vyre notes
 ```
 
-`vyre todo` lists open todos by list. Priority is `!low`, `!!` or `!high`. A todo due on a day with
-no time never rings; it shows on that day's agenda and stays there until it is done.
+`vyre todo` lists open todos by list. Priority is `!low`, `!!` or `!high`. A todo is a task in your
+Space with you as the one who does it, so you also see it in Now and on the Tasks screens. It is due
+on a day and rings nothing; it shows on that day's agenda and stays there until it is done. A todo's
+words and dates do not change once it is added (a task keeps its words): finish it, drop it, or add
+it again. Dropping a todo skips the task and it does not come back. A todo does not repeat: use a
+reminder with a repeat for something that comes round.
+
+## Where it is kept
+
+The planner keeps its things as records in your Space, so the Records screens show and edit them
+and the Space's log has them:
+
+- alarms, timers, reminders and tasks that run later are `reminder` records, and notes are `note`
+  records;
+- events you make here, and the copy of your connected calendars, are `event` records (an event is
+  one start and one end, and does not repeat);
+- todos are the Space's tasks;
+- what is ringing, and the planner's settings, are system records the screens do not list.
+
+A reminder you write on a Records screen rings at its time like one you add with `vyre remind`. The
+planner needs the kernel to be on: where it is not, every planner tool but `planner.parse` says so.
+A planner that kept its own tables (0.2.x) carries what they hold into the records at the first start
+with the kernel and drops the tables; a todo that was already done is not carried, and the calendar
+copy is read again from Google within 15 minutes.
 
 ## See your day
 
@@ -77,8 +99,8 @@ A snooze is 9 minutes unless you give a number. The first answer wins: once you 
 Snooze anywhere, the banner goes from the Deck and the notification closes on your other
 devices. An alarm you do not answer rings again every 5 minutes, 3 more times.
 
-Alarms and timers ring through quiet hours, since you set them. Reminders and todos wait until
-quiet hours end.
+Alarms and timers ring through quiet hours, since you set them. Reminders wait until quiet hours
+end.
 
 ## Show the words on your lock screen
 
@@ -99,8 +121,8 @@ prompt and no Touch ID. When your assistant, juno, promises to remind you, it ad
 itself.
 
 - You edit, finish, snooze and delete any item, whoever added it, with no prompt.
-- An agent changes, finishes, snoozes or deletes only the items it added. kit cannot move your
-  alarm or tick off juno's todo.
+- An agent changes, snoozes or deletes only the items it added. kit cannot move your alarm. A todo
+  is done by a person: an agent can add one but cannot finish it.
 - An item added by an agent other than your assistant shows who added it, for example
   "from kit", in the Deck and on its banner. Items from you and your assistant show nothing.
 - Agents do not add events. An event with other people is an invite, and an agent can only ask

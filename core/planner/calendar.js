@@ -1,12 +1,11 @@
 // @ts-check
-// The planner's read-only copy of connected Google calendars (ADR 0025 point 11). The google module
+// The planner's copy of connected Google calendars (ADR 0025 point 11), kept as Event records (source google). The google module
 // owns the accounts and their tokens; the planner only calls google.* tools through ctx.call, never
 // a token. Every 15 minutes while any account is connected (a scheduler wake hook, so no timer of
 // its own), and on google.added / google.removed, the window from a day ago to 14 days ahead is
-// read into planner_calendar. Each timed event rings event_lead minutes before its start, once per
+// kept as Event records, the record's own id being the event's id here. Each timed event rings event_lead minutes before its start, once per
 // (account, event, start), however often the cache is refreshed. All-day events never ring.
 
-import crypto from "node:crypto";
 import { newId, ringKey } from "./store.js";
 import { parseDate, toUTC } from "./time.js";
 
@@ -18,9 +17,6 @@ const PAGE = 100;
 const LATE_MS = 60_000;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** One cache row per (account, event), with an id that stays the same across resyncs. */
-export const rowId = (account, eventId) => `c_${crypto.createHash("sha256").update(`${account}\0${eventId}`).digest("base64url").slice(0, 16)}`;
-
 /** A cached event as the tools show it: an agenda entry with the same fields as a planner one. */
 export const shapeCal = r => r && ({
   id: r.id, source: r.account, account: r.account, event: r.event_id, kind: "event", title: r.title ?? "", at: r.start, start: r.start,
@@ -28,25 +24,12 @@ export const shapeCal = r => r && ({
 });
 
 /**
- * @param {{ ctx: any, db: import("node:sqlite").DatabaseSync, st: any, scheduler: import("./scheduler.js").Scheduler,
+ * @param {{ ctx: any, st: ReturnType<typeof import("./store.js").store>, scheduler: import("./scheduler.js").Scheduler,
  *   settings: () => import("./scheduler.js").Settings, now: () => number, emit: (type: string, payload: any, item?: any) => void,
  *   cancelRinging: (id: string) => void, active: () => boolean }} deps
  */
-export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, cancelRinging, active }) {
-  const q = {
-    row: db.prepare("SELECT * FROM planner_calendar WHERE id = ?"),
-    ofAccount: db.prepare("SELECT id FROM planner_calendar WHERE account = ?"),
-    accounts: db.prepare("SELECT DISTINCT account FROM planner_calendar"),
-    insert: db.prepare(`INSERT INTO planner_calendar (id, account, event_id, title, start, end, all_day, where_, url, synced_at, next_fire)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
-    update: db.prepare(`UPDATE planner_calendar SET title = ?, start = ?, end = ?, all_day = ?, where_ = ?, url = ?, synced_at = ?, next_fire = ?,
-      snooze_until = ? WHERE id = ?`),
-    drop: db.prepare("DELETE FROM planner_calendar WHERE id = ?"),
-    firedFor: db.prepare("SELECT 1 FROM planner_firings WHERE item = ? AND kind = 'event' AND due = ? LIMIT 1"),
-    next: db.prepare("SELECT MIN(x) AS x FROM (SELECT MIN(next_fire) AS x FROM planner_calendar WHERE next_fire IS NOT NULL UNION ALL SELECT MIN(snooze_until) FROM planner_calendar WHERE snooze_until IS NOT NULL)"),
-    due: db.prepare("SELECT * FROM planner_calendar WHERE (next_fire IS NOT NULL AND next_fire <= ?) OR (snooze_until IS NOT NULL AND snooze_until <= ?) ORDER BY start"),
-    timed: db.prepare("SELECT * FROM planner_calendar WHERE all_day = 0"),
-  };
+export function calendarCache({ ctx, st, scheduler, settings, now, emit, cancelRinging, active }) {
+  const cal = st.cal;
 
   /** The moment a cached event should ring, or null: never all-day, never twice for one start, never once it has begun. */
   const ringAt = (r, t, s) => {
@@ -80,29 +63,29 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
     return [...new Map(both.map(e => [String(e.id), e])).values()];
   };
 
-  /** Put one event in the cache; a moved start is a new ring, the same start is not. @returns {"added"|"changed"|"same"|null} */
-  const upsert = (ev, account, t, s) => {
+  /** Put one event in the copy; a moved start is a new ring, the same start is not. @returns {Promise<"added"|"changed"|"same"|null>} */
+  const upsert = async (ev, account, t, s) => {
     if (!ev || ev.id === undefined) return null;
     const { start, end, all_day } = times(ev, s.timezone);
     if (start == null) return null;
-    const id = rowId(account, String(ev.id));
-    const old = /** @type {any} */ (q.row.get(id));
+    const old = cal.ofAccount(account).find(r => r.event_id === String(ev.id));
     const title = String(ev.title ?? "").slice(0, 500), where = ev.where ? String(ev.where).slice(0, 500) : null, url = ev.url ? String(ev.url) : null;
     if (!old) {
-      const r = { id, account, event_id: String(ev.id), start, end, all_day: all_day ? 1 : 0, rung_start: null };
-      q.insert.run(id, account, String(ev.id), title, start, end, all_day ? 1 : 0, where, url, t, ringAt(r, t, s));
+      const r = { account, event_id: String(ev.id), title, start, end, all_day: all_day ? 1 : 0, where_: where, url, synced_at: t, rung_start: null, snooze_until: null };
+      const id = await cal.insert({ ...r, next_fire: null });
+      cal.patch(id, { next_fire: ringAt({ ...r, id }, t, s) });
       return "added";
     }
     const moved = old.start !== start || Boolean(old.all_day) !== all_day;
     const r = { ...old, start, end, all_day: all_day ? 1 : 0 };
     // The same start keeps what it had: a pending ring, a snooze, or the fact it already rang.
     const next = moved ? ringAt(r, t, s) : old.next_fire;
-    q.update.run(title, start, end, all_day ? 1 : 0, where, url, t, next, moved ? null : old.snooze_until, id);
     const same = !moved && old.title === title && (old.end ?? null) === end && (old.where_ ?? null) === where && (old.url ?? null) === url;
+    cal.patch(old.id, { title, start, end, all_day: all_day ? 1 : 0, where_: where, url, synced_at: t, next_fire: next, snooze_until: moved ? null : old.snooze_until });
     return same ? "same" : "changed";
   };
 
-  const drop = id => { cancelRinging(id); q.drop.run(id); };
+  const drop = id => { cancelRinging(id); cal.drop(id); };
 
   // ---- Sync ----------------------------------------------------------------------------------
 
@@ -136,9 +119,9 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
     connected = names.length > 0;
     let removed = 0;
     // An account that is gone takes its events with it.
-    for (const { account } of /** @type {any[]} */ (q.accounts.all())) {
+    for (const account of cal.accounts()) {
       if (names.includes(String(account))) continue;
-      for (const { id } of /** @type {any[]} */ (q.ofAccount.all(account))) { drop(String(id)); removed++; }
+      for (const { id } of cal.ofAccount(account)) { drop(String(id)); removed++; }
     }
     const from = t - BEHIND, to = t + AHEAD;
     const errors = [], counts = { added: 0, changed: 0 };
@@ -154,13 +137,13 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
       const s = settings();
       const seen = new Set();
       for (const ev of list) {
-        const k = upsert(ev, account, t, s);
+        const k = await upsert(ev, account, t, s);
         if (!k) continue;
-        seen.add(rowId(account, String(ev.id)));
+        seen.add(String(ev.id));
         events++;
         if (k === "added") counts.added++; else if (k === "changed") counts.changed++;
       }
-      for (const { id } of /** @type {any[]} */ (q.ofAccount.all(account))) if (!seen.has(String(id))) { drop(String(id)); removed++; }
+      for (const r of cal.ofAccount(account)) if (!seen.has(String(r.event_id))) { drop(String(r.id)); removed++; }
     }
     const synced_at = now();
     st.state.set("calendar", { synced_at, from, to, accounts: names, errors });
@@ -185,31 +168,32 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
   /** Ring what is due: a start event_lead minutes away, or a snooze that ran out. */
   const fireDue = t => {
     const s = settings();
-    for (const r of /** @type {any[]} */ (q.due.all(t, t))) {
+    const due = cal.rows().filter(r => (r.next_fire != null && r.next_fire <= t) || (r.snooze_until != null && r.snooze_until <= t)).sort((a, b) => a.start - b.start);
+    for (const r of due) {
       const fromSnooze = r.snooze_until != null && r.snooze_until <= t;
       const fromLead = r.next_fire != null && r.next_fire <= t;
-      if (fromLead) db.prepare("UPDATE planner_calendar SET next_fire = NULL WHERE id = ?").run(r.id);
-      if (fromSnooze) db.prepare("UPDATE planner_calendar SET snooze_until = NULL WHERE id = ?").run(r.id);
-      let due;
-      if (fromSnooze) due = r.snooze_until;
+      if (fromLead) cal.patch(r.id, { next_fire: null });
+      if (fromSnooze) cal.patch(r.id, { snooze_until: null });
+      let at;
+      if (fromSnooze) at = r.snooze_until;
       else {
         if (r.all_day || r.rung_start === r.start) continue;
-        db.prepare("UPDATE planner_calendar SET rung_start = ? WHERE id = ?").run(r.start, r.id);
-        due = r.start - s.event_lead * 60_000;
+        cal.patch(r.id, { rung_start: r.start });
+        at = r.start - s.event_lead * 60_000;
         // Begun already (vyred was down), or rung before under this id: kept quiet.
-        if (t >= r.start || q.firedFor.get(r.id, due)) continue;
+        if (t >= r.start || st.firingAt(r.id, at)) continue;
       }
       // Late means late for the moment it was set to ring (a sync that found it inside the lead rings at once).
-      const meant = fromSnooze ? r.snooze_until : Math.max(due, r.next_fire);
-      db.prepare("UPDATE planner_firings SET state = 'superseded', next_ring = NULL WHERE item = ? AND state = 'ringing'").run(r.id);
-      const f = { id: newId("f"), item: r.id, kind: "event", due, ring: 1, missed: t - meant > LATE_MS, state: "ringing", fired_at: t, next_ring: null };
+      const meant = fromSnooze ? r.snooze_until : Math.max(at, r.next_fire);
+      st.supersede(r.id);
+      const f = { id: newId("f"), item: r.id, kind: "event", due: at, ring: 1, missed: t - meant > LATE_MS, state: "ringing", fired_at: t, next_ring: null };
       st.insertFiring(f);
-      emit("planner.fired", { firing: f.id, key: ringKey(r.id, due), item: r.id, kind: "event", title: r.title ?? "", due, ring: 1, missed: f.missed,
+      emit("planner.fired", { firing: f.id, key: ringKey(r.id, at), item: r.id, kind: "event", title: r.title ?? "", due: at, ring: 1, missed: f.missed,
         actions: ["done", "snooze"], account: r.account, start: r.start });
     }
   };
   scheduler.hook({
-    next: () => { const r = /** @type {any} */ (q.next.get()); return r && r.x != null ? Number(r.x) : null; },
+    next: () => { let at = null; for (const r of cal.rows()) for (const x of [r.next_fire, r.snooze_until]) if (x != null && (at == null || x < at)) at = x; return at; },
     run: t => fireDue(t),
   });
 
@@ -218,18 +202,29 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
     /** A settled promise for tests and callers that want the background sync done. */
     settled: async () => { while (running) { try { await running; } catch {} } },
     connected: () => connected,
-    row: id => /** @type {any} */ (q.row.get(String(id))),
-    upsert: (ev, account) => { const r = upsert(ev, account, now(), settings()); scheduler.arm(); return r; },
-    /** A new event_lead moves every pending ring. */
-    relead() {
+    row: id => cal.row(String(id)),
+    upsert: async (ev, account) => { const r = await upsert(ev, account, now(), settings()); scheduler.arm(); return r; },
+    /** After a start: each event's ring state from the firings kept with it (what already rang, a snooze still waiting), and the next ring. */
+    prime() {
       const t = now(), s = settings();
-      for (const r of /** @type {any[]} */ (q.timed.all())) {
-        db.prepare("UPDATE planner_calendar SET next_fire = ? WHERE id = ?").run(ringAt(r, t, s), r.id);
+      for (const r of cal.rows()) {
+        if (r.all_day) continue;
+        const at = r.start - s.event_lead * 60_000;
+        const rang = Boolean(st.firingAt(r.id, at));
+        const newest = st.firingsOf(r.id, 1)[0];
+        const snooze = newest && newest.state === "acked" && newest.action === "snooze" && newest.until != null && newest.until > t ? newest.until : null;
+        cal.patch(r.id, { rung_start: rang ? r.start : null, snooze_until: snooze, next_fire: rang ? null : ringAt({ ...r, rung_start: null }, t, s) });
       }
       scheduler.arm();
     },
-    snooze(id, until) { db.prepare("UPDATE planner_calendar SET snooze_until = ? WHERE id = ?").run(until, String(id)); scheduler.arm(); },
-    clearSnooze(id) { db.prepare("UPDATE planner_calendar SET snooze_until = NULL WHERE id = ?").run(String(id)); scheduler.arm(); },
+    /** A new event_lead moves every pending ring. */
+    relead() {
+      const t = now(), s = settings();
+      for (const r of cal.rows()) if (!r.all_day) cal.patch(r.id, { next_fire: ringAt(r, t, s) });
+      scheduler.arm();
+    },
+    snooze(id, until) { cal.patch(String(id), { snooze_until: until }); scheduler.arm(); },
+    clearSnooze(id) { cal.patch(String(id), { snooze_until: null }); scheduler.arm(); },
     /** Start sync on account changes and look once at start. */
     watch() {
       const offs = [];

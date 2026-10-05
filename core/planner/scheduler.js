@@ -43,7 +43,7 @@ export function nextFire(item, after, s) {
 
 export class Scheduler {
   /**
-   * @param {{ db: import("node:sqlite").DatabaseSync, st: ReturnType<typeof import("./store.js").store>, settings: () => Settings,
+   * @param {{ st: ReturnType<typeof import("./store.js").store>, settings: () => Settings,
    *   fired: (firing: any, item: any) => void, log: (m: string) => void, now?: () => number,
    *   setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void }} deps
    */
@@ -73,11 +73,7 @@ export class Scheduler {
 
   /** The earliest moment anything is waiting for, or null. */
   nextMoment() {
-    const r = /** @type {any} */ (this.d.db.prepare(`SELECT MIN(x) AS x FROM (
-      SELECT MIN(next_fire) AS x FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND next_fire IS NOT NULL
-      UNION ALL SELECT MIN(snooze_until) FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND snooze_until IS NOT NULL
-      UNION ALL SELECT MIN(next_ring) FROM planner_firings WHERE state = 'ringing' AND next_ring IS NOT NULL)`).get());
-    let at = r && r.x != null ? Number(r.x) : null;
+    let at = this.d.st.earliest();
     for (const h of this.hooks) { const n = h.next(this.now()); if (n != null && (at == null || n < at)) at = n; }
     return at;
   }
@@ -111,10 +107,8 @@ export class Scheduler {
     if (this.idle) return;
     const now = this.now();
     const s = this.d.settings();
-    const { db, st } = this.d;
-    const due = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE state = 'open' AND deleted_at IS NULL
-      AND ((next_fire IS NOT NULL AND next_fire <= ?) OR (snooze_until IS NOT NULL AND snooze_until <= ?)) ORDER BY COALESCE(snooze_until, next_fire)`).all(now, now));
-    for (const item of due) {
+    const { st } = this.d;
+    for (const item of st.itemsDue(now)) {
       try { this.fireItem(item, now, s); }
       catch (e) {
         // A row that cannot be scheduled must not wake us again and again.
@@ -122,8 +116,7 @@ export class Scheduler {
         this.d.log(`planner: item ${item.id} could not fire (${/** @type {Error} */ (e).message}); it is left unscheduled`);
       }
     }
-    const rings = /** @type {any[]} */ (db.prepare("SELECT * FROM planner_firings WHERE state = 'ringing' AND next_ring IS NOT NULL AND next_ring <= ?").all(now));
-    for (const f of rings) {
+    for (const f of st.ringsDue(now)) {
       const ring = f.ring + 1;
       const more = ring < 1 + s.escalate_max;
       st.patchFiring(f.id, { ring, next_ring: more ? now + s.escalate_after * 60_000 : null });
@@ -163,7 +156,7 @@ export class Scheduler {
     const pre = st.firingAt(item.id, dueAt);
     if (pre && pre.state === "acked") return;
     // A new ring for an item replaces one still ringing from before.
-    this.d.db.prepare("UPDATE planner_firings SET state = 'superseded', next_ring = NULL WHERE item = ? AND state = 'ringing'").run(item.id);
+    st.supersede(item.id);
     const missed = now - dueAt > LATE_MS;
     // A task runs quietly once (team-lead, 2026-09-28): it is not an alarm nobody answered, it is
     // an instruction that already ran (runTask, on this same fired()) - escalating it would run
