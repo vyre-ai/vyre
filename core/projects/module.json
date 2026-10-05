@@ -103,6 +103,16 @@
         "effect": "read"
       },
       {
+        "name": "projects.access.pending",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "projects.access.restore",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "projects.access.list",
         "reach": "anyone",
         "effect": "read"

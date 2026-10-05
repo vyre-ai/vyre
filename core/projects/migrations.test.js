@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "./projects.js";
 
-test("the fifth step moves each project's home into projects_folders, drops the home column and the access tables, and loses no project", () => {
+test("the fifth step moves each project's home into projects_folders, drops the home column, keeps the old access rows as projects_access_legacy, and loses no project", () => {
   assert.equal(MIGRATIONS.length, 5, "four released steps and the hub's");
   const db = new DatabaseSync(":memory:");
   for (const m of MIGRATIONS.slice(0, 4)) db.exec(m);
@@ -16,6 +16,7 @@ test("the fifth step moves each project's home into projects_folders, drops the 
   assert.deepEqual(db.prepare("SELECT slug, name FROM projects_projects").all().map(r => ({ ...r })), [{ slug: "rivera", name: "Rivera" }]);
   assert.deepEqual(db.prepare("SELECT path, project, kind FROM projects_folders").all().map(r => ({ ...r })), [{ path: "/home/alex/Work/rivera", project: "rivera", kind: "home" }]);
   assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name IN ('projects_access', 'projects_access_seeded')").all().length, 0);
+  assert.deepEqual(db.prepare("SELECT project, agent, status FROM projects_access_legacy").all().map(r => ({ ...r })), [{ project: "rivera", agent: "kit", status: "granted" }], "the access rows wait for the person's approval");
   assert.throws(() => db.prepare("SELECT home FROM projects_projects").all(), /no such column/);
   // a fresh box runs all five and ends the same
   const fresh = new DatabaseSync(":memory:");

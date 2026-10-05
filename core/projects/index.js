@@ -369,6 +369,42 @@ export default {
         return { project, agent: a, granted: uid ? await mayReach(K, uid, urn) : false };
       },
     });
+    // What agents could reach before reach became a kernel grant: the old rows wait in projects_access_legacy until the person approves carrying them over. A grant needs the person's own proof, so
+    // neither the migration nor a start can make one. `granted` rows become grants (an agent by its stable id); an explicit revoke is never re-granted; a row with no agent was the project's default
+    // for any agent with no row of its own. Afterwards the holding table is emptied.
+    const legacyRows = () => { try { return /** @type {any[]} */ (ctx.store.db.prepare("SELECT project, agent, status FROM projects_access_legacy").all()); } catch { return []; } };
+    ctx.tool("projects.access.pending", {
+      description: "What agents could reach before reach became a kernel grant, still waiting for your approval to carry over: { rows, grants }. Read only.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async () => { const rows = legacyRows(); return { pending: rows.length, rows: rows.map(r => ({ project: r.project, agent: r.agent || "(every agent)", status: r.status })) }; },
+    });
+    ctx.tool("projects.access.restore", {
+      description: "Carry what your agents could reach before into kernel grants, in your own call: every granted row becomes a project.reach grant (an agent by its stable id), an explicit revoke stays revoked, and the old rows are then cleared. { restored, skipped }.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async (_i, meta = {}) => {
+        needKernel();
+        const rows = legacyRows();
+        const live = (await agentsList()).filter((/** @type {any} */ a) => a.kind !== "assistant");
+        const own = new Set(rows.filter(r => r.agent).map(r => `${r.project}\u0000${String(r.agent).toLowerCase()}`));
+        let restored = 0, skipped = 0;
+        /** @param {string} project @param {string} name */
+        const grant = async (project, name) => {
+          const uid = await uidOf(name.toLowerCase());
+          if (!uid) { skipped++; return; }
+          let urn; try { urn = await urnOfSlug(project); } catch { skipped++; return; }
+          await grantReach(K, meta, { urn, agent: uid }); restored++;
+        };
+        for (const r of rows) {
+          if (r.status !== "granted") { skipped++; continue; }
+          if (r.agent) await grant(String(r.project), String(r.agent));
+          else for (const a of live) { if (!own.has(`${r.project}\u0000${String(a.name).toLowerCase()}`)) await grant(String(r.project), String(a.name)); }
+        }
+        try { ctx.store.db.exec("DELETE FROM projects_access_legacy"); } catch { /* no table: nothing to clear */ }
+        return { restored, skipped };
+      },
+    });
     ctx.tool("projects.access.list", {
       description: "Every project reach grant on record, for a project or every project, for the owner to review who can reach what.",
       input: { type: "object", properties: { project: str } },

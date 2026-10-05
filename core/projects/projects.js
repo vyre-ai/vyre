@@ -122,7 +122,7 @@ export const MIGRATIONS = [
   );
   `,
   // Step 4 (the Project hub, team/0.3/DESIGN-project-hub.md): a project is a Project RECORD now. The folders on this computer move into a per-machine table (a path is a fact about one
-  // computer, so it never sits on the shared record), the home column leaves projects_projects, and the agent-access tables are gone: reach to a project is a kernel grant (action
+  // computer, so it never sits on the shared record), the home column leaves projects_projects, and the agent-access table is kept as projects_access_legacy until its rows are carried into kernel grants: reach to a project is a kernel grant (action
   // project.reach), the one permission system. Appended after the released steps, never edited into them.
   `
   CREATE TABLE projects_folders (
@@ -140,7 +140,8 @@ export const MIGRATIONS = [
   INSERT INTO projects_projects_new (slug, name, spec, at) SELECT slug, name, spec, at FROM projects_projects;
   DROP TABLE projects_projects;
   ALTER TABLE projects_projects_new RENAME TO projects_projects;
-  DROP TABLE IF EXISTS projects_access;
+  -- the old per-agent access rows are KEPT until the person's own approval carries them into kernel grants (projects.access.restore); a grant needs the person's proof, so a migration cannot make it
+  ALTER TABLE projects_access RENAME TO projects_access_legacy;
   DROP TABLE IF EXISTS projects_access_seeded;
   `,
 ];
