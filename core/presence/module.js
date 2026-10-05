@@ -15,6 +15,17 @@ import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
 
 // A paired phone reaches presence.person.start-paired, pair-challenge and rotate over its relay or tailnet channel: only those labels, never a model, a guest or MCP.
+/**
+ * Is this caller one of the owner's own paired Wink devices? `wink.device.record` answers null for a stranger, an unconfirmed device and a removed one (and only the presence module may ask), so the
+ * answer rests on what the owner confirmed, not on a tailnet login or any label a request carries.
+ * @param {(tool: string, input: any) => Promise<any>} call @returns {(caller: string) => Promise<boolean>}
+ */
+export const ownerDeviceOf = call => async caller => {
+  const m = /^device:([a-z0-9_-]{4,64})$/.exec(String(caller || ""));
+  if (!m) return false;
+  const r = await call("wink.device.record", { id: m[1] }).catch(() => null);
+  return Boolean(r && r.data && r.data.id === m[1] && r.data.confirmed === true && r.data.owner);
+};
 const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -24,7 +35,9 @@ export default {
   async start(ctx) {
     // Rows only: challenges and nonces live in vyred's own verifier, not in this one.
     // `softwareOk`: a development-kind build behind VYRE_SEAL_SOFTWARE takes a device key as presence (marked software); a release-kind one never does (PW-1), and a device key opens no session there (PS-1).
-    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
+    // The owner's own device: a paired Wink device the owner confirmed, never a label a request names.
+    const ownerDevice = ownerDeviceOf(ctx.call);
+        const presence = new Presence({ db: ctx.store.db, ownerDevice, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
 
     ctx.tool("presence.keys", {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
