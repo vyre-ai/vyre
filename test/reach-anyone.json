@@ -1928,6 +1928,14 @@
   "work.tools": {
    "module": "work",
    "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "connectors.declared": {
+   "module": "connectors",
+   "reason": "read-only, no value: lists the shipped declarations and whether a credential exists; a model sees only names and operation kinds (guard: holds no secret or host beyond the public base host)"
+  },
+  "connectors.logging": {
+   "module": "connectors",
+   "reason": "read-only recipe that writes nothing: the watcher and Flow it returns are made only through watchers.preset (asked, held) and flows.define (a person approves), so nothing runs from this call (guard: checked input, no side effect)"
   }
  }
 }
