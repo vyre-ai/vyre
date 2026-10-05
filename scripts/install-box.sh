@@ -721,7 +721,7 @@ write_kernel_env() {
   fi
   chmod 600 "$TMP/vyre.kernel"
   grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
-  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=twenty\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
   put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
 }
 
