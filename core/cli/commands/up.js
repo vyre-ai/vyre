@@ -30,6 +30,7 @@ import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
 import { findAssistant } from "./assistant.js";
+import { pairHere } from "./pair-here.js";
 import { build, label } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
@@ -286,6 +287,12 @@ async function run(args, deps) {
   // A server with its kernel on has no first-run page to open: pairing is the way in (the installer shows the code, `vyre call wink.server.code`). A refusal of the old link is not a failed start.
   if (link.error && link.error.code !== "no_such_tool") {
     if (json) return done({ url: null, pending: false, paired: false, note: "pair from your device" });
+    // Not paired yet and on a terminal: show the pairing here, the same one the installer shows (pair-here.js); a server that is already paired just says so.
+    const io = deps.io || terminal;
+    if (io.tty && !keep) {
+      const st = await callTool("wink.server.status", {});
+      if (!(st.data && st.data.owned)) { await pairHere({ tool: callTool, io, say, ...(deps.sleep ? { sleep: deps.sleep } : {}) }); return 0; }
+    }
     say(dim("  Pair this server from your Vyre app: the installer shows the code, or run vyre call wink.server.code '{\"qr\":true}'"));
     return 0;
   }

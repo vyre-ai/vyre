@@ -750,6 +750,9 @@ write_code() {
 PAIRED=0; PAIRED_NAME=""; PAIRED_DEVICE=""
 tool() { dk env "VYRE_DIR=$DIR" "$WRAPPER" call "$@" 2>/dev/null | tr -d '\n'; }
 json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\(\\([^\"\\\\]\\|\\\\.\\)*\\)\".*/\\1/p"; }
+json_num() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\\([0-9][0-9]*\\).*/\\1/p"; }
+# minutes left until a time given in milliseconds, at least one
+mins() { m=$(( ($1 / 1000 - $(date +%s) + 30) / 60 )); [ "$m" -ge 1 ] || m=1; printf '%s' "$m"; }
 pair_server() {
   [ "$DRY" = 0 ] && [ "$LINK_ONLY" = 0 ] || return 0
   tries=0
@@ -772,10 +775,42 @@ pair_server() {
     [ -z "$art" ] || printf '%s\n' "$art"
     say "  Long code: $BOLD$qr$RESET"
     say "  It is good for five minutes."
+    # The short typed code beside them (on unless the kill switch is set): the app types it, shows a code of its own, and the person types that back here.
+    TYPED=$(json_str "$out" code); ctries=$(json_num "$out" code_tries); cexp=$(json_num "$out" code_expires)
+    if [ -n "$TYPED" ]; then
+      say "  Or type this code in your app: ${BOLD}$TYPED${RESET}"
+      say "  The typed code is good for $(mins "${cexp:-0}") minutes and closes after ${ctries:-3} wrong tries."
+    fi
     if [ -n "${VYRE_PAIR_TO:-}" ]; then say "  This install is for ${BOLD}${VYRE_PAIR_TO}${RESET} only. Finish setting up on that identity's device."; return 0; fi
     if [ "$YES" = 1 ] || ! (: </dev/tty) 2>/dev/null; then say "  Finish setting up on your device once it has paired."; return 0; fi
-    end=$(( $(date +%s) + 300 ))
+    if [ -n "$TYPED" ]; then end=$(( $(date +%s) + 600 )); else end=$(( $(date +%s) + 300 )); fi
     while [ "$(date +%s)" -lt "$end" ]; do
+      if [ -n "$TYPED" ]; then
+        cs=$(tool wink.code.status '{}' || true)
+        cc=$(json_str "$cs" code); cst=$(json_str "$cs" state); cof=$(json_str "$cs" offer)
+        if [ -n "$cc" ] && [ "$cc" != "$TYPED" ]; then
+          say "  The typed code closed: its time ran out, or it had ${ctries:-3} wrong tries."
+          say "  A new typed code is showing: ${BOLD}$cc${RESET}  (good for $(mins "$(json_num "$cs" expires)") minutes)"; TYPED=$cc
+        fi
+        if [ "$cst" = found ] && [ -n "$cof" ]; then
+          say "  Your app typed the code and now shows a code of its own."
+          printf '%sType the code your app shows: %s' "$BEACON" "$RESET" >/dev/tty
+          read -r typed </dev/tty || typed=""
+          typed=$(printf '%s' "$typed" | tr -cd 'A-Za-z0-9 -')
+          r=$(tool wink.server.confirm "{\"offer\":\"$cof\",\"typed\":\"$typed\"}" || true)
+          case "$r" in
+            *'"ok": true'*|*'"ok":true'*) say "  The codes match. Your app finishes the pairing." ;;
+            *) say "  That is not the code your app shows, so this typed code is closed."
+               # a wrong ack closes the code and a fresh one replaces it with no tap
+               w=0; while [ "$w" -lt 6 ]; do
+                 sleep 1; ns=$(tool wink.code.status '{}' || true); nc=$(json_str "$ns" code)
+                 if [ -n "$nc" ] && [ "$nc" != "$TYPED" ]; then say "  A new typed code is showing: ${BOLD}$nc${RESET}  (good for $(mins "$(json_num "$ns" expires)") minutes)"; TYPED=$nc; break; fi
+                 w=$((w + 1))
+               done ;;
+          esac
+          continue
+        fi
+      fi
       q=$(tool wink.server.pairing '{}' || true)
       case "$q" in
         *'"asking": true'*|*'"asking":true'*)

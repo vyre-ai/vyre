@@ -199,7 +199,7 @@ export function createWink(inject = {}) {
       shown = { code: made.code, expires: made.expires };
       writeOffer(codeOffer, "offered", {});
       ctx.events.emit("wink.offered", { offer: codeOffer, flow, via: "code", expires: made.expires });
-      return { offer: codeOffer, code: made.code, expires: made.expires };
+      return { offer: codeOffer, code: made.code, expires: made.expires, tries: MAX_ATTEMPTS };
     };
     /** The person typed back the code the other device shows. @param {string} offerId @param {string} typed */
     const ackOffer = async (offerId, typed, presence = null) => {
