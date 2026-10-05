@@ -62,6 +62,8 @@ export const KIND_OFFERS = Object.freeze({ web: ["access"], phone: ["access"], c
 export const FLOW_KIND = Object.freeze({ W1: "phone", W2: "computer", W3: "server" });
 /** Roles that may add a server or storage device to a space. */
 export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
+/** The callers that may read a device's record: the presence module, the daemon and the approvals queue. */
+const RECORD_ASKERS = ["module:presence", "module:vyred", "module:approvals"];
 if (!ADMIN_ROLES.every(r => ROLE_IDS.includes(r))) throw new Error("wink: ADMIN_ROLES must be roles of the contract");
 
 export const MIGRATIONS = [
