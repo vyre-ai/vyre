@@ -45,6 +45,8 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     }
   }
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
+  // The relay says the owner removed this device: it forgets everything it held and pairs again.
+  if (r.error?.code === "relay_removed") await (await import("../identity/removed")).ifRemoved("relay_removed");
   // A kernel act a person signs (a rule, say), asked from the web app: the paired phone approves it ("Approve on your phone"), then the act goes again with the proof it signed.
   if (r.error && Platform.OS === "web" && phoneRoute(name, r.error, input)) {
     const space = typeof input.space === "string" && input.space ? input.space : String(((await call<{ space?: string }>("records.me")).data as { space?: string } | undefined)?.space ?? "");

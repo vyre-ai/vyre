@@ -1,7 +1,7 @@
 // The composer (design idea 5). Never disabled: while a turn is on, Send says Queue and the message
 // waits above the composer until it is picked up. `@` people and assistants, `#` records (a record
-// with sealed fields carries a chip that says so), `/` commands. Attachments, photos and voice are
-// callbacks. A model switcher with the fit score, and a "runs on" chip. On a phone it grows to a
+// with sealed fields carries a chip that says so), `/` commands. Attachments and photos are
+// callbacks (voice capture has no control until it exists: team/BACKLOG.md). A model switcher with the fit score, and a "runs on" chip. On a phone it grows to a
 // sheet with 44 px targets when it is focused or holds text; on a desktop it is the prototype's
 // card with the bar under the input.
 
@@ -39,7 +39,6 @@ export type ComposerProps = {
   onCancelEdit?: () => void;
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
-  onVoice?: () => void;
   phone: boolean;
   autoFocus?: boolean;
   /** Called on every keystroke with performance.now(); the perf script reads it. */
@@ -222,7 +221,6 @@ export function ChatComposer(p: ComposerProps) {
             <>
               <Tool big={big} icon="file" label="Attach a file" onPress={p.onAttachFile} />
               <Tool big={big} icon="eye" label="Attach a photo" onPress={p.onAttachPhoto} />
-              <Tool big={big} icon="mic" label="Dictate" onPress={p.onVoice} />
               <Tool big={big} icon="chat" label="Mention a person or assistant" onPress={() => insert("@")} />
               <Tool big={big} icon="todo" label="Tag a record" onPress={() => insert("#")} />
             </>

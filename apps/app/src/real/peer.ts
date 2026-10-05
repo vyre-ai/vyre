@@ -40,6 +40,8 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
   try { return (await p.call(tool, input)) as T; }
   catch (e) {
     const code = (e as { code?: string })?.code;
+    // the relay says the owner removed this device: it forgets everything it held and pairs again (a refused sign-in or an unreachable server never does this)
+    if (code === "relay_removed") { await (await import("../identity/removed")).ifRemoved(code); throw e; }
     // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
     if (code === "person_session_required" && (await renewSession())) { p = await openPeer(); return (await p.call(tool, input)) as T; }
     // a closed connection is reopened once; anything the server answered is the answer

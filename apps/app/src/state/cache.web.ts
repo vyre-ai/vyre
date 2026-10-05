@@ -32,4 +32,9 @@ export const viewCache = {
       // A full or refused store: the view still works, it only opens from the box next time.
     }
   },
+  async clear(): Promise<void> {
+    // The wipe deletes the databases themselves (src/identity/wipe-web.js); this drops the open handle's copy.
+    store = null;
+    storeFor = "";
+  },
 };

@@ -404,7 +404,6 @@ export const KEYMAP = Object.freeze([
   { id: "thinking", keys: ["Alt+T"], label: "⌥T", does: "Thinking on or off", tap: "The thinking chip" },
   { id: "thinking-view", keys: ["Ctrl+O"], label: "⌃O", does: "Show or hide the thinking" },
   { id: "tasks", keys: ["Ctrl+B"], label: "⌃B", does: "Background tasks", tap: "The tasks pill" },
-  { id: "voice", keys: ["Ctrl+M"], label: "⌃M", does: "Tap to talk, hold to push-to-talk", tap: "The mic button" },
   { id: "paste", keys: ["Mod+V"], label: "⌘V", does: "Paste an image" },
   { id: "command", keys: [], prefix: "/", label: "/", does: "Commands and skills" },
   { id: "mention", keys: [], prefix: "@", label: "@", does: "Files in the project" },
