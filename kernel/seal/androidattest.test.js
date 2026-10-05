@@ -144,9 +144,38 @@ const offered = (/** @type {any} */ w, /** @type {string} */ publicKey, /** @typ
   return { publicKey, enclave: p.toString("base64url"), agree: "A", attest: Buffer.from(JSON.stringify({ format: "android-key", chain: a.chain })).toString("base64url") };
 };
 
+test("android revocation: a certificate on Google's status list, an unreachable list and a malformed one all fail closed; a clean list passes and is cached for an hour", async () => {
+  const w = world(), hash = sha("rev"), a = w.attest(hash);
+  const serials = a.chain.map(c => new crypto.X509Certificate(Buffer.from(c, "base64")).serialNumber);
+  let calls = 0, clock = 1_000_000;
+  const mk = (/** @type {() => Promise<any>} */ f) => verifier(w, { now: () => clock, fetchStatus: async () => { calls++; return f(); } });
+  const clean = mk(async () => ({ entries: { deadbeef: { status: "REVOKED" } } }));
+  assert.equal(await clean.revoked({ chain: a.chain }), false);
+  assert.equal(await clean.revoked({ chain: a.chain }), false);
+  assert.equal(calls, 1, "cached");
+  clock += 3_600_001;
+  assert.equal(await clean.revoked({ chain: a.chain }), false);
+  assert.equal(calls, 2, "refetched after an hour");
+  // the leaf's serial on the list (spelled lowercase, no leading zeros, as Google does)
+  const listed = mk(async () => ({ entries: { [serials[0].toLowerCase().replace(/^0+/, "")]: { status: "REVOKED", reason: "KEY_COMPROMISE" } } }));
+  assert.equal(await listed.revoked({ chain: a.chain }), true);
+  assert.equal(await mk(async () => { throw new Error("offline"); }).revoked({ chain: a.chain }), true, "unreachable: fail closed");
+  assert.equal(await mk(async () => ({ nope: 1 })).revoked({ chain: a.chain }), true, "malformed: fail closed");
+  assert.equal(await mk(async () => ({ entries: [] })).revoked({ chain: a.chain }), true, "an array is not the list");
+});
+
+test("entry proof (android): a revoked attestation proves nothing", async () => {
+  const w = world(), pub = Buffer.alloc(32, 5).toString("base64url");
+  const e = offered(w, pub), chain = JSON.parse(Buffer.from(e.attest, "base64url").toString()).chain;
+  const leaf = new crypto.X509Certificate(Buffer.from(chain[0], "base64")).serialNumber.toLowerCase().replace(/^0+/, "");
+  assert.equal(await entryProof({ android: verifier(w, { fetchStatus: async () => ({ entries: {} }) }), apple: appAttestVerifier() })(e), true);
+  assert.equal(await entryProof({ android: verifier(w, { fetchStatus: async () => ({ entries: { [leaf]: { status: "REVOKED" } } }) }), apple: appAttestVerifier() })(e), false);
+  assert.equal(await entryProof({ android: verifier(w, { fetchStatus: async () => { throw new Error("offline"); } }), apple: appAttestVerifier() })(e), false);
+});
+
 test("entry proof (android): the attestation names this entry's key and chip key; one made for another entry proves nothing, and nothing is proven while the verifier is closed", async () => {
   const w = world(), pub = Buffer.alloc(32, 5).toString("base64url"), other = Buffer.alloc(32, 6).toString("base64url");
-  const proof = entryProof({ android: verifier(w), apple: appAttestVerifier() });
+  const proof = entryProof({ android: verifier(w, { fetchStatus: async () => ({ entries: {} }) }), apple: appAttestVerifier() });
   assert.equal(await proof(offered(w, pub)), true);
   assert.equal(await proof(offered(w, pub, { boundTo: other })), false, "made for another entry's key");
   const e = offered(w, pub);

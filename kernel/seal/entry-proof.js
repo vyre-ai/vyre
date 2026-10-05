@@ -4,7 +4,7 @@
 //
 // The attestation names THIS enrolment: clientDataHash = SHA256("vyre-enrol\n" + "entry:" + <the entry's Ed25519 key, base64url> + "\n" + <the chip key's SPKI as base64 text>), the same hash the sealing enrol builds
 // (appattest.js enrolClientData) with a token that is the entry's own key, so an attestation made for one entry or one chip key proves nothing for another. The offered `attest` is base64url of JSON
-// { format: "apple-appattest", keyId, attestation } (the CBOR attestation object, base64url) or { format: "android-key", chain: [base64 DER certificate, leaf first] }. It is verified here and NOT stored on the list.
+// { format: "apple-appattest", keyId, attestation } (the CBOR attestation object, base64url) or { format: "android-key", chain: [base64 DER certificate, leaf first] }. It is verified here (Android also against Google's revocation list) and NOT stored on the list.
 // Each verifier is closed until its real-device fixture passes (APPATTEST_VERIFIED, ANDROID_ATTEST_VERIFIED): while closed, nothing is proven and every paired entry stays web.
 import { appAttestVerifier, enrolClientData } from "./appattest.js";
 import { androidAttestVerifier } from "./androidattest.js";
@@ -30,7 +30,7 @@ export function entryProof({ apple = appAttestVerifier(), android = androidAttes
       const a = JSON.parse(Buffer.from(entry.attest, "base64url").toString("utf8"));
       if (!a || typeof a !== "object") return false;
       if (a.format === "apple-appattest") return apple.enrol({ attestation: a.attestation, key_id: a.keyId }, spkiB64(point), entryToken(entry.publicKey)) !== null;
-      if (a.format === "android-key") return android.check(a, point, entryClientData(entry.publicKey, point)) !== null;
+      if (a.format === "android-key") return android.check(a, point, entryClientData(entry.publicKey, point)) !== null && !(await android.revoked(a));
       return false;
     } catch { return false; }
   };

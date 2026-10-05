@@ -2,7 +2,7 @@
 // kernel/seal/androidattest.js: the Android Keystore key attestation verifier (node: built-ins only, like the rest of kernel/seal). An Android app makes its presence key in the Keystore (StrongBox or the TEE), asks for
 // an attestation with the challenge set to clientDataHash, and gets back a certificate chain (leaf first) whose leaf carries the key description extension. Every check is OFFLINE against Google's pinned attestation roots:
 // the chain verifies to a pinned root, the leaf's public key is the key being enrolled, the challenge is the hash that names this enrolment, the key was GENERATED in secure hardware (security level TEE or StrongBox),
-// the device is locked and booted verified, and the app is one of the pinned application ids. Revocation (Google's attestation status list) is NOT checked here: it needs the network, and a stolen key's chain verifies until then.
+// the device is locked and booted verified, and the app is one of the pinned application ids. Revocation is a separate, async step (notRevoked): Google's attestation status list, fetched and cached for an hour; a list that cannot be fetched or read fails closed.
 // The exact encoding of a real leaf (field order, tag numbers) is checked against Google's documented schema, not against real device bytes: release acceptance is closed by ANDROID_ATTEST_VERIFIED until a real
 // attestation fixture passes (the same shape as APPATTEST_VERIFIED, AA-3).
 import crypto from "node:crypto";
@@ -131,6 +131,11 @@ mD/vFDkzF+wm7cyWpQpCVQ==
 -----END CERTIFICATE-----
 `,
 ]);
+/** Google's attestation status list: the serial numbers of revoked attestation certificates. */
+export const GOOGLE_STATUS_URL = "https://android.googleapis.com/attestation/status";
+const STATUS_TTL_MS = 3_600_000;
+/** A serial as the list spells it: lowercase hex without leading zeros. @param {string} hex */
+const serialKey = hex => String(hex).toLowerCase().replace(/^0+/, "") || "0";
 const KEY_DESCRIPTION_OID = "1.3.6.1.4.1.11129.2.1.17";
 const sha256 = (/** @type {Buffer | string} */ b) => crypto.createHash("sha256").update(b).digest();
 
@@ -253,12 +258,32 @@ export function verifyAttestation({ chain, clientDataHash, point, now, appIds, r
  * The verifier an entry proof plugs in. `dev` allows extra roots and app ids (tests, a development build) and opens the verifier without the release flag.
  * @param {{ dev?: boolean, testRootsPem?: string[], extraAppIds?: { pkg: string, cert: string }[], now?: () => number }} [o]
  */
-export function androidAttestVerifier({ dev = false, testRootsPem = [], extraAppIds = [], now = Date.now } = {}) {
+export function androidAttestVerifier({ dev = false, testRootsPem = [], extraAppIds = [], now = Date.now, fetchStatus = /** @type {null | (() => Promise<any>)} */ (null) } = {}) {
   const roots = [...GOOGLE_ROOTS_PEM, ...(dev ? testRootsPem : [])].map(p => new crypto.X509Certificate(p));
   const appIds = [...ANDROID_APP_IDS, ...(dev ? extraAppIds : [])];
   const open = dev || ANDROID_ATTEST_VERIFIED;
+  /** @type {{ at: number, revoked: Set<string> } | null} */
+  let status = null;
+  const getStatus = async () => {
+    if (status && now() - status.at < STATUS_TTL_MS) return status.revoked;
+    const body = fetchStatus ? await fetchStatus() : await (await fetch(GOOGLE_STATUS_URL, { signal: AbortSignal.timeout(5000) })).json();
+    const entries = body && typeof body === "object" ? body.entries : null;
+    if (!entries || typeof entries !== "object" || Array.isArray(entries)) throw new Refuse("bad_status");
+    status = { at: now(), revoked: new Set(Object.keys(entries).map(serialKey)) };
+    return status.revoked;
+  };
   return {
     appIds, dev, open,
+    /**
+     * Is any certificate of the chain on Google's revocation list? True means revoked, or the list could not be fetched or read (fail closed: a chain nobody could check proves nothing).
+     * @param {any} a {chain: base64 DER certs} @returns {Promise<boolean>}
+     */
+    async revoked(a) {
+      try {
+        const revoked = await getStatus();
+        return a.chain.some((/** @type {string} */ c) => revoked.has(serialKey(new crypto.X509Certificate(Buffer.from(c, "base64")).serialNumber)));
+      } catch { return true; }
+    },
     /** @param {any} a {chain: base64 DER certs, leaf first} @param {Buffer} point the raw 65-byte key being proved @param {Buffer} clientDataHash @returns {{ level: "tee" | "strongbox" } | null} null for any refusal, never a throw */
     check(a, point, clientDataHash) {
       try {
