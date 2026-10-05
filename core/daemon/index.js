@@ -261,6 +261,8 @@ async function startLocked(opts, root, p, release) {
     const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
+      // The registered tools a Flow's call step may run (their module said so with flowAction), and the one way to run one: as the person, through the registry.
+      flowTools: () => registry.flowTools(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }) });
     registry.deps.flowsHost = flowsHost;

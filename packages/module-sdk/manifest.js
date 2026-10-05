@@ -164,6 +164,14 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   for (const t of entries) {
     if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && t.outward !== true && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
   }
+  // A tool a Flow may call says so with a risk, and an outward one is marked outward too (so the one yes holds it); only Vyre's own modules offer one for now.
+  for (const t of entries) {
+    if (!TYPES.object(t) || typeof t.name !== "string" || t.flowAction === undefined) continue;
+    if (!TYPES.object(t.flowAction) || (t.flowAction.risk !== "read" && t.flowAction.risk !== "outward")) out.push(`tool "${t.name}": flowAction is { "risk": "read" | "outward" }`);
+    else if (t.flowAction.risk === "outward" && !t.outward) out.push(`tool "${t.name}": a flowAction with risk "outward" must be marked outward: true`);
+    else if (t.flowAction.risk === "read" && t.outward) out.push(`tool "${t.name}": an outward tool's flowAction risk is "outward"`);
+    if (!firstParty) out.push(`tool "${t.name}": flowAction is built in only; an added module can't offer a Flow step yet`);
+  }
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.
   if (!firstParty) {
@@ -301,6 +309,8 @@ export function toolEntries(m) {
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
+    // A tool a Flow's call step may run: `flowAction: { risk: "read" | "outward" }` (an outward one is also `outward: true`, so it is held for a yes before it runs).
+    if (TYPES.object(t.flowAction) && (t.flowAction.risk === "read" || t.flowAction.risk === "outward")) extra.flowAction = { risk: t.flowAction.risk };
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }

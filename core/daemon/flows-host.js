@@ -57,6 +57,9 @@ export function createFlowsHost(o) {
     const catalog = async () => {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
+      // A registered tool its module offers as a Flow step (flowAction) is an action a call step may name: read runs at once, outward is held for a yes first. `tool: true` says the runner
+      // does not ask the kernel's action table about it: the person's approval is the yes, and the tool's own module gates the rest.
+      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true };
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {} };
     };
@@ -64,6 +67,24 @@ export function createFlowsHost(o) {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
     const ports = {
+      // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
+      // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
+      call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string }} */ opts = {}) => {
+        if (!o.callFlow || !o.flowTools) throw Object.assign(new Error("this home has no way to run a module's tool from a Flow"), { code: "unavailable" });
+        const tool = (o.flowTools() || []).find((/** @type {any} */ t) => t.name === action);
+        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run`), { code: "denied" });
+        const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+        if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });
+        if (tool.risk === "outward") {
+          if (!opts.approval || !opts.bind || !k.spendApproval || !k.spendApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true })) {
+            throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
+          }
+        }
+        const session = await k.surfaces.open(personChain(person.actor.id), { ttl_ms: 60_000 });
+        const r = await o.callFlow(action, input, { token: session.token });
+        if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code)), { code: r.error.code || "failed" });
+        return r ? r.data : null;
+      },
       // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
       sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
