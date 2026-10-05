@@ -379,9 +379,9 @@
       "kind": "project",
       "fields": [
         {
-          "name": "title",
+          "name": "name",
           "kind": "text",
-          "label": "Title",
+          "label": "Name",
           "required": true
         },
         {
@@ -389,7 +389,7 @@
           "kind": "link",
           "label": "Client",
           "required": true,
-          "to": "client"
+          "to": "contact"
         },
         {
           "name": "practice_area",
@@ -569,7 +569,7 @@
       "label": "Projects by stage",
       "groupBy": "stage",
       "columns": [
-        "title",
+        "name",
         "client",
         "practice_area",
         "owner",

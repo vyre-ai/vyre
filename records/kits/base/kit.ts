@@ -1,5 +1,6 @@
 // The base Kit: the objects every firm starts from. One Contact per person; what a person is to the firm (a Lead, a Client, a Subscriber) is a role type
 // linked to that Contact, so a person who was a Lead and became a Client is still one record with two roles. Appointments and Projects link to the same Contact.
+// The Project is the core Project (one project type for the whole Space); this Kit adds practice area, the per-area stages and the fields that apply to one area.
 // Practice area is a choice field. A Project follows its own stages by practice area (a personal injury case and an estate plan are not the same journey),
 // and a field that only applies to one area shows, and is required, only there.
 //
@@ -80,8 +81,9 @@ export const Project = defineType({
   icon: "IconBriefcase",
   kind: "project",
   fields: {
-    title: defineField.text({ label: "Title", required: true }),
-    client: defineField.link({ to: "client", label: "Client", required: true }),
+    // `name` and `client` are the core Project's own (records/core-types.js, DESIGN-project-hub.md); they are written here so the Kit reads whole, and the core ones win.
+    name: defineField.text({ label: "Name", required: true }),
+    client: defineField.link({ to: "contact", label: "Client", required: true }),
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     owner: defineField.actor({ label: "Owner" }),
     due: defineField.date({ label: "Due" }),
@@ -100,7 +102,7 @@ export const Project = defineType({
 export const LeadsBoard = defineView({ name: "leads_board", type: "board", of: "lead", label: "Leads by stage", groupBy: "stage", columns: ["contact", "practice_area", "source"] });
 export const AppointmentsCalendar = defineView({ name: "appointments_calendar", type: "calendar", of: "appointment", label: "Appointments", dateField: "starts", filter: 'stage != "Cancelled"' });
 export const ClientsList = defineView({ name: "clients_list", type: "list", of: "client", label: "Clients", columns: ["contact", "practice_area", "stage", "since"], sort: { field: "since", dir: "desc" } });
-export const ProjectsBoard = defineView({ name: "projects_board", type: "board", of: "project", label: "Projects by stage", groupBy: "stage", columns: ["title", "client", "practice_area", "owner", "due"] });
+export const ProjectsBoard = defineView({ name: "projects_board", type: "board", of: "project", label: "Projects by stage", groupBy: "stage", columns: ["name", "client", "practice_area", "owner", "due"] });
 
 export default defineKit({
   id: "base",

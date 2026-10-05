@@ -294,7 +294,7 @@ export class TwentyStore {
       }
       // The type's stored views are the Records' own views too (stores/twenty/views.js): written whenever the definition's views are new, changed or gone.
       if ((def.views && def.views.length) || (known && known.def.views && known.def.views.length)) {
-        const all = await this.#t(() => this.client.gql("metadata", "query ObjF { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { id name } } } } } } }"));
+        const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }`));
         const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
         if (o) for (const c of await syncViews(this.client, { id: o.id, fields: new Map(o.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node.id])) }, p, this.space, known ? known.def : undefined)) changes.push(c);
       }
