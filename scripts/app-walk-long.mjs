@@ -130,7 +130,8 @@ await scenario("L: the browser start screen pairs with the long code and three w
   let asking = null, last = null;
   for (let i = 0; i < 40 && !asking; i++) { const p = await box("wink.phone.pairing", {}); last = p; if (p.data?.asking) asking = p.data; else await new Promise((r) => setTimeout(r, 1000)); }
   need(asking, `the owner was never asked (wink.phone.pairing): ${JSON.stringify(last).slice(0, 300)}`);
-  const idx = (asking.choices || []).findIndex((ch) => ch.join(" ").toLowerCase() === pageWords);
+  const flat = (ch) => (Array.isArray(ch) ? ch.join(" ") : typeof ch === "string" ? ch : Array.isArray(ch?.words) ? ch.words.join(" ") : String(ch?.words ?? "")).toLowerCase();
+  const idx = (asking.choices || []).findIndex((ch) => flat(ch) === pageWords);
   need(idx >= 0, `the page's words (${pageWords}) are not among the owner's choices ${JSON.stringify(asking.choices)}`);
   const ans = await withYes("wink.phone.pair.answer", { yes: true, pick: idx + 1 });
   need(!ans.error, `the owner's yes was refused: ${JSON.stringify(ans.error).slice(0, 200)}`);
