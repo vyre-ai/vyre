@@ -1156,8 +1156,8 @@ test("the My Cloud upgrade end to end: a space made on the person's server has a
   assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
   // the hosted space has its key from creation, and the directory names it with that key
   const home = device.kernel.id.space;
-  const resolved = await dcall("spaces.resolve", { name: "mycloudup" });
-  assert.ok(!resolved.error && resolved.data.id, JSON.stringify(resolved).slice(0, 200));
+  const resolved = await dcall("spaces.identity.resolve", { name: "mycloudup" });
+  assert.ok(!resolved.error && resolved.data.kind === "space" && resolved.data.spaceId === id, JSON.stringify(resolved).slice(0, 300));
   // Personal records on this device's own home kernel
   const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "body", kind: "text", label: "Body" }] };
   assert.ok(!(await dcall("records.define", { space: home, diff: { add_types: [NOTE] } })).error);
