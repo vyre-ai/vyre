@@ -49,13 +49,13 @@ for (const kind of ["sqlite", "twenty"]) {
     const res = await r.merge(chain, "contact", a.id, b.id).catch(e => { console.log("MERGE FAIL", kind, e.code, e.message, e.stack.split("\n").slice(1,4).join(" | ")); throw e; });
     assert.equal(res.relinked, 3);
     const urns = async m => (await r.get(chain, "matter", m.id)).data.contacts.map(x => x.urn).sort();
-    assert.deepEqual(await urns(m1), [a.urn]);
-    assert.deepEqual(await urns(m2), [a.urn, c.urn].sort());
-    assert.deepEqual(await urns(m3), [a.urn], "a matter that had both ends with one link, never a repeat");
+    assert.deepEqual(await urns(m1), [a.urn], "m1 after merge");
+    assert.deepEqual(await urns(m2), [a.urn, c.urn].sort(), "m2 after merge");
+    assert.deepEqual(await urns(m3), [a.urn], "m3: a matter that had both ends with one link, never a repeat");
     const back = await r.unmerge(chain, res.merge_id);
     assert.equal(back.relinked, 3);
-    assert.deepEqual(await urns(m1), [b.urn]);
-    assert.deepEqual(await urns(m2), [b.urn, c.urn].sort());
-    assert.deepEqual(await urns(m3), [a.urn, b.urn].sort());
+    assert.deepEqual(await urns(m1), [b.urn], "m1 after unmerge");
+    assert.deepEqual(await urns(m2), [b.urn, c.urn].sort(), "m2 after unmerge");
+    assert.deepEqual(await urns(m3), [a.urn, b.urn].sort(), "m3 after unmerge");
   });
 }
