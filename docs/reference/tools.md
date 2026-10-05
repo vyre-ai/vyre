@@ -11959,7 +11959,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
 
 ### `wink.server.call`
 
-Call one tool on the paired server, as this computer's person: { device?, tool, input?, proof? } -> { result }. `device` defaults to the paired server; `proof` is a presence proof the server asked for, sent in the input. Answers server_unreachable when the server is away. Never for a model or a module acting for one.
+Call one tool on the paired server, as this computer's person: { device?, tool, input?, proof? } -> the server tool's own answer (as link.call gave it). `device` defaults to the paired server; `proof` is a presence proof the server asked for, sent in the input. Answers server_unreachable when the server is away. Never for a model or a module acting for one.
 
 - Input:
   - `tool` string, required
@@ -12022,7 +12022,7 @@ What this server was handed when it was adopted, to reach its home: { home, box,
 
 ### `wink.server.health`
 
-How this computer reaches its paired server right now, for the menu bar: { reach: relay | none, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.
+How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.
 
 - Input:
   - `fresh` boolean
