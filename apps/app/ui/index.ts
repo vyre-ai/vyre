@@ -8,6 +8,8 @@ export { Icon, ICON_NAMES } from "./components/Icon";
 export type { IconName } from "./components/Icon";
 export { Button, IconButton } from "./components/Button";
 export { Chip } from "./components/Chip";
+export { ProviderBadge } from "./components/ProviderBadge";
+export { providerName, providerOfModel } from "./marks/provider.js";
 export { Fab } from "./components/Fab";
 export { Card, Divider } from "./components/Card";
 export { SectionLabel } from "./components/SectionLabel";

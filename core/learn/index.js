@@ -815,7 +815,7 @@ export default {
 
     const ASK = "Tell the user this in one line and ask whether to keep it. Their next message decides: a plain yes keeps it, a plain no drops it. Do not call any Vyre tool for this; accepting a lesson is the user's alone.";
     /** Where a reply cannot accept (no person typing at a terminal): where the user accepts instead. */
-    const elsewhere = id => `the user accepts it from a terminal (\`vyre learn accept ${id}\`), the Deck or the Capsule`;
+    const elsewhere = id => `the user accepts it with a tap in the Vyre app, from a terminal (\`vyre learn accept ${id}\`), the Deck or the Capsule`;
     const ASK_ELSEWHERE = id => `Tell the user this in one line: it is not in force until ${elsewhere(id)}. A reply here does not accept it. Do not call any Vyre tool for this; accepting a lesson is the user's alone.`;
 
     ctx.tool("learn.signal", {
