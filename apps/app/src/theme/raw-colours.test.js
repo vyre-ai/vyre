@@ -18,11 +18,7 @@ export const EXCEPTIONS = Object.freeze({
   "src/store-core/tokens-v3.js": "the token source: the one place the look's colours are defined, which every role is read from",
   "src/terminal/xterm/xterm.js": "xterm, third-party code copied in as it is",
   "src/terminal/xterm/xterm.css": "xterm, third-party code copied in as it is",
-  "ui/marks/art/agent2.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
-  "ui/marks/art/characters.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
-  "ui/marks/art/creature.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
-  "ui/marks/art/emblem.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
-  "ui/marks/art/identity.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
+  "src/native/wink-scan-page.generated.js": "a generated file (scripts/build-wink-scan.mjs): the scan page's own black camera backdrop, built into one HTML string, not a screen",
   "ui/marks/source.js": "the avatar illustration (skin, hair, clothes and background palettes): art, drawn the same under either scheme",
 });
 
