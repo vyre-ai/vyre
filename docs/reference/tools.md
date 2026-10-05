@@ -8159,14 +8159,6 @@ The devices of a person you share a space with: each one's id and its key-agreem
   - `person` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
-### `spaces.identity.ecdh`
-
-ECDH with this device's key-agreement key: the shared secret for a peer's ephemeral public point (base64url, 65-byte uncompressed P-256). For first-party modules only.
-
-- Input:
-  - `epk` string, required
-- Callers: other modules only (internal: `vyre call` answers no_such_tool)
-
 ### `spaces.identity.enrol`
 
 Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.
@@ -8341,6 +8333,15 @@ Check the directory for changes to your list: new sign-ins and removals (each is
 
 - Input: none
 - Callers: any caller
+
+### `spaces.identity.unwrap-drop`
+
+Open a file drop's wrapped key with this device's key-agreement key: the wrap and its associated data in, the unwrapped file key out. Only for a wrap whose associated data starts with vyre-drop-wrap. For first-party modules only.
+
+- Input:
+  - `aad` string, required
+  - `wrap` object, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.invites.accept`
 
