@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): Drive reads files.drive.space.list's real extras (core/files/space-drive.js): `names` shows a folder by its name (a project's name, a chat's title) and `folders` lists a project's chat folders with `open`, greyed and not opened when false (the guessed entry fields are gone). "Set up My Cloud" goes to /u/setup/server (native-core's setup question). Merged work/ui f4fde8fdc.
+
 - feat(app): the user's names for spaces. A personal space with no server (the box's tier "basic") is "Personal"; a personal space on the person's own server (tier "cloud") is "My Cloud"; a team space keeps its own name with a small "Cloud" tag in the switcher. The Basic gate reads only the box's tier field. Gated places say "This needs a Cloud space" with a "Set up My Cloud" button; the backup line reads "Not backed up: join a team or set up My Cloud" and takes the destination from memory.backup.status ({ to, last, state }). The Spaces screen and Devices use the same names.
 
 - fix(app): no Tailscale in the app. This computer drops the guests, agent-node and Tailnet Lock cards and the funnel lines in Webhooks, and gets a Wink network card from network.wink.status (each space's link, the path, speed and devices, the relay, a second VPN, clock skew); a device's direct path reads "Direct". feat(app): in Drive, a chat folder the caller is not in (open: false) shows its title greyed and does not open.

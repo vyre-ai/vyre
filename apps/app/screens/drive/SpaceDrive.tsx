@@ -23,7 +23,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
 
   const load = useCallback(() => {
     setErr("");
-    spaceList(undefined, prefix).then((r) => { setItems(children(r.entries, prefix)); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
+    spaceList(undefined, prefix).then((r) => { setItems(children(r.entries, prefix, { names: r.names, folders: r.folders })); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
   }, [prefix]);
   useEffect(() => { setItems(null); load(); }, [load]);
 

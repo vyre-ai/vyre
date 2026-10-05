@@ -86,15 +86,12 @@ test("shared links: the words, the order, the address, and the three calls to th
   assert.deepEqual(seen[1].input, { space: "spc_x", path: "a/b", version: 2, days: 3 });
 });
 
-test("a chat folder the caller is not in keeps its title, is locked, and a folder the caller is in is not", async () => {
+test("files.drive.space.list's real extras: names show a folder by its name, folders carry open, and a chat the caller is not in is locked", async () => {
   const { children } = await import("./space-model.ts");
-  const items = children([
-    { path: "chat/chat_1", title: "Lease reply", open: false, dir: true },
-    { path: "chat/chat_2/notes.md", size: 10 },
-    { path: "chat/chat_2", title: "Intake", open: true, dir: true },
-    { path: "plain/a.txt", size: 1 },
-  ], "chat");
-  assert.deepEqual(items.map((i) => [i.name, !!i.locked]), [["Intake", false], ["Lease reply", true]]);
-  const top = children([{ path: "chat/chat_1", title: "Lease reply", open: false, dir: true }, { path: "plain/a.txt", size: 1 }], "");
-  assert.deepEqual(top.map((i) => i.name), ["chat", "plain"]);
+  // core/files/space-drive.js answers { prefix, entries, next, names, folders }: names keyed by folder path, folders for Projects/<id>/chat/.
+  const top = children([{ path: "Projects/pa/brief.md", size: 4 }], "Projects", { names: { "Projects/pa": "Probate Alpha" } });
+  assert.deepEqual(top.map((i) => [i.name, i.path, i.dir]), [["Probate Alpha", "Projects/pa", true]]);
+  const chats = children([], "Projects/pa/chat", { folders: [{ path: "Projects/pa/chat/s1", name: "Draft the welcome email", open: true }, { path: "Projects/pa/chat/s2", name: "Private strategy chat", open: false }] });
+  assert.deepEqual(chats.map((i) => [i.name, !!i.locked]), [["Draft the welcome email", false], ["Private strategy chat", true]]);
+  assert.equal(chats[1].path, "Projects/pa/chat/s2");
 });

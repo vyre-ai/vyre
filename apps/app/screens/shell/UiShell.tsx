@@ -9,6 +9,7 @@ import { useShell } from "./shared";
 import { loadReal } from "./real";
 import { whoIsThere } from "./gate.js";
 import { gatedPath } from "./basic.js";
+import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
 import { call, signIn } from "../../src/api/box";
 import { startSpace } from "./real-model";
@@ -66,7 +67,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />
-      ) : needsServer ? <NeedsServer teams={teams} onOpenTeam={(id) => { setShowing(id); }} onAddServer={() => router.push("/u/spaces" as never)} /> : children}
+      ) : needsServer ? <NeedsServer teams={teams} onOpenTeam={(id) => { setShowing(id); }} onAddServer={() => router.push(SERVER_SETUP_ROUTE as never)} /> : children}
       <ApprovalSheet />
       <FindHost />
     </Shell>
