@@ -332,9 +332,11 @@ test("V3: the stream does not hold, retry or queue: the Switchboard queues anoth
   const states = () => watcher.frames.filter(f => f.type === "chat.user-message" && f.data.text === "QUEUEDONE").map(f => [f.data.state, f.data.queued_id]);
   await until(() => states().some(x => x[0] === "queued"), "the waiting state");
   assert.deepEqual(states().find(x => x[0] === "queued"), ["queued", qid], "shown as waiting for the current reply, by the Switchboard's queued_id");
+  // the fake claude now echoes even a long text in a few hundred ms, so the turn can end while this runs: the claim is checked at the moment the message shows waiting, before the turn it waits for ends
+  const askedWhileWaiting = w.asked.map(a => a.asker);
   await sleep(400);
   assert.equal(sends.length, 1, "the stream sent once: no hold, no retry, no polling");
-  assert.deepEqual(w.asked.map(a => a.asker), [CAROL], "carol's turn is still the only one that opened a session");
+  assert.deepEqual(askedWhileWaiting, [CAROL], "carol's turn is the only one that opened a session while the message waits");
   await until(() => repliesOf(watcher.frames).includes("echo: QUEUEDONE"), "the queued message's turn", 40_000);
   assert.equal(sends.length, 1, "still one send");
   assert.ok(states().some(x => x[0] === "picked-up" && x[1] === qid), "and it shows picked up when its turn started");
