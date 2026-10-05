@@ -103,7 +103,7 @@ jobs:
           echo '{"private":true}' > package.json
           npm i --no-audit --no-fund --no-package-lock playwright@1
           npx playwright install --with-deps chromium
-      - name: Render check (the sample world: every main screen draws at phone and desktop width)
+      - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock
           node scripts/render-check.mjs --dist dist-mock --out "$RUNNER_TEMP/render"
