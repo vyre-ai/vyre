@@ -971,7 +971,11 @@ export default {
           try { const t = h.hosted === false ? await h.gateway.leases.issue(null, { device: kdev, device_key: kdev }) : await h.gateway.leases.issue(k.chain, { device: kdev, device_key: kdev }); removedBefore = Boolean(t && t.revoked); } catch { /* the probe could not be asked: the lender's own record decides */ }
         }
         if (on && removedBefore && h.gateway.leases && typeof h.gateway.leases.reinstate === "function") {
-          await withYes(kc => (h.hosted === false ? (kc.proof && kc.proof.presence !== undefined ? h.gateway.leases.reinstate(null, { member, device: kdev }, kc.proof) : h.gateway.leases.reinstate(null, { member, device: kdev })) : h.gateway.leases.reinstate(kc.chain, { member, device: kdev, proof: kc.proof && kc.proof.presence })));
+          // The development stand-in for Face ID (a development build only) is not a proof the sealing process can check, so it cannot reinstate: the lend still goes through, as it did before the reinstate existed, and says so
+          const standIn = (/** @type {any} */ p) => Boolean(p) && (p.method === "stand-in" || (p.presence && p.presence.method === "stand-in"));
+          try {
+            await withYes(kc => { if (standIn(kc.proof)) throw Object.assign(new Error("stand-in"), { code: "stand_in" }); return (h.hosted === false ? (kc.proof && kc.proof.presence !== undefined ? h.gateway.leases.reinstate(null, { member, device: kdev }, kc.proof) : h.gateway.leases.reinstate(null, { member, device: kdev })) : h.gateway.leases.reinstate(kc.chain, { member, device: kdev, proof: kc.proof && kc.proof.presence })); });
+          } catch (e) { if (/** @type {any} */ (e).code === "stand_in") ctx.log.warn("lend: the development stand-in for Face ID cannot reinstate a removed computer's lease; use a real presence proof"); else throw e; }
         }
       } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
       return kdev;
