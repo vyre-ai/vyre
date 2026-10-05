@@ -1477,3 +1477,14 @@ test("agree key and held web: a web-held entry that carries agree at genesis or 
   const op = await C_.makeOp(state, { type: "agree", target: k.eid, agree: k.agree }, { by: k.eid, ts: w.clock.t + 1, sign: m => crypto.sign(null, Buffer.from(m), privateKeyOf(k.privateKey)) });
   await assert.rejects(C_.applyOp(state, op, { now: w.clock.t + 1 }), e => e.code === "web_key" || e.code === "exists");
 });
+
+test("spaces.identity.devices answers a module caller (memory reads it with ctx.call): the home person's own devices with their points, no private field", async t => {
+  world(t);
+  const d = await device(t);
+  const made = await d.ok("spaces.identity.create", { name: "devmod" });
+  const r = await d.call("spaces.identity.devices", { person: made.id }, "module:memory");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.equal(r.data.devices.length, 1);
+  assert.deepEqual(Object.keys(r.data.devices[0]).sort(), ["agree", "device"]);
+  assert.equal(r.data.devices[0].agree, fileIdentityStore(d.space).agree());
+});
