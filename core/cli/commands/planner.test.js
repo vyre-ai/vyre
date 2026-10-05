@@ -26,6 +26,10 @@ const run = (root, args) => new Promise(resolve =>
     (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr })));
 
 async function world(t) {
+  // The kernel on, with this development tree counted as first party (the rule the daemon tests of records.* use): the planner keeps its records there.
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, planner: { timezone: KHI } }));
@@ -36,7 +40,7 @@ async function world(t) {
   let seq = 0;
   seams.set(root, { now: () => t0.t, setTimer: (fn, ms) => { timers.set(++seq, { at: t0.t + ms, fn }); return seq; }, clearTimer: id => { timers.delete(id); } });
   t.after(() => seams.delete(root));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const advance = ms => {
     const end = t0.t + ms;
@@ -108,7 +112,7 @@ test("planner cli: alarms, timers and reminders in the planner's zone", async t 
   assert.equal(none.code, 1);
   assert.match(none.out, /could not read a time in "buy flour"/);
 
-  const snz = await vyre("snooze", /** @type {string} */ (/(i_\S+)/.exec(r1.out))[1], "15");
+  const snz = await vyre("snooze", /** @type {string} */ (/([0-9a-f]{8}-[0-9a-f-]{27})/.exec(r1.out))[1], "15");
   assert.equal(snz.code, 0, snz.out);
   assert.match(snz.out, /snoozed call juno until 10:15/);
 });
@@ -142,7 +146,7 @@ test("planner cli: todos by list, notes pinned first, and the agenda", async t =
 
   await vyre("notes", "add", "kit", "prefers", "mornings");
   const n2 = await vyre("notes", "add", "the", "printer", "code", "is", "in", "the", "drawer");
-  const printer = /** @type {string} */ (/(i_\S+)/.exec(n2.out))[1];
+  const printer = /** @type {string} */ (/([0-9a-f]{8}-[0-9a-f-]{27})/.exec(n2.out))[1];
   assert.ok(!(await tool("planner.update", { item: printer, pinned: true, body: "ask alex for the spare key", tags: ["office"] })).error);
   const notes = await vyre("notes");
   assert.equal(notes.code, 0, notes.out);
@@ -172,18 +176,17 @@ test("planner cli: todos by list, notes pinned first, and the agenda", async t =
   t.diagnostic("vyre agenda tomorrow:\n" + tomorrow.out + "\nvyre todo:\n" + (await vyre("todo")).out + "\nvyre agenda:\n" + today.out);
 });
 
-const idIn = out => /** @type {string} */ ((/(i_\S+)/.exec(out) || [])[1]);
+const idIn = out => /** @type {string} */ ((/([0-9a-f]{8}-[0-9a-f-]{27})/.exec(out) || [])[1]);
 
 test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, and the wrong kind refused", async t => {
   const { vyre, tool } = await world(t);
 
   const td = idIn((await vyre("todo", "add", "buy", "flour")).out);
+  // A to-do is a Task: its words are fixed once made, so an edit is refused in plain words and the to-do stays as it was.
   const e1 = await vyre("todo", "edit", td, "buy", "rye", "flour", "!high", "by", "friday");
-  assert.equal(e1.code, 0, e1.out);
-  assert.match(e1.out, /todo buy rye flour\s+!!!\s+due Fri 25 Sep/);
-  const ej = JSON.parse((await vyre("todo", "edit", td, "buy", "spelt", "--json")).out);
-  assert.equal(ej.title, "buy spelt");
-  assert.equal(ej.priority, 3, "words without a priority keep it");
+  assert.notEqual(e1.code, 0);
+  assert.match(e1.out, /fixed once made/);
+  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy flour");
   assert.equal((await vyre("todo", "edit", td)).code, 2, "edit needs the new words");
 
   const nt = idIn((await vyre("notes", "add", "kit", "prefers", "mornings")).out);
@@ -223,10 +226,10 @@ test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, a
   const wrong = await vyre("alarm", "rm", td);
   assert.equal(wrong.code, 1);
   assert.match(wrong.out, /is a todo, not an alarm/);
-  assert.match(wrong.out, /next: vyre todo rm i_/);
+  assert.match(wrong.out, /next: vyre todo rm [0-9a-f]{8}-/);
   const wj = JSON.parse((await vyre("notes", "rm", al, "--json")).out);
   assert.equal(wj.error.code, "bad_input");
-  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy spelt");
+  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy flour");
 
   for (const [cmd, id] of [["todo", td], ["notes", nt], ["alarm", al], ["timer", tm], ["remind", rm]]) {
     const r = await vyre(cmd, "rm", id);
@@ -235,7 +238,7 @@ test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, a
   }
   const gone = await tool("planner.get", { item: td });
   assert.ok(gone.error || gone.data.item.deleted_at, "the todo is deleted");
-  assert.doesNotMatch((await vyre("todo")).out, /spelt/);
+  assert.doesNotMatch((await vyre("todo")).out, /buy flour/);
   assert.doesNotMatch((await vyre("notes")).out, /afternoons/);
   assert.equal(JSON.parse((await vyre("alarm", "--json")).out).alarms.length, 1, "only the weekday alarm is left");
   const again = await vyre("todo", "rm", "i_nope");
@@ -412,7 +415,7 @@ test("planner cli: --view frames draw each list as a table, a note as a card, an
   assert.equal(td.view.title, "Todos");
   assert.deepEqual(keys(td), ["title", "priority", "due", "list"]);
   assert.deepEqual(td.view.rows.map(r => [r.title, r.priority, r.due]), [["buy flour", "!!!", ""], ["call kit", "", "Fri 25 Sep"]]);
-  assert.ok(td.view.rows.every(r => /^i_/.test(r.id)), "each row keeps its id");
+  assert.ok(td.view.rows.every(r => /^[0-9a-f]{8}-/.test(r.id)), "each row keeps its id");
 
   const nl = await view("notes", "list");
   assert.deepEqual([nl.view.kind, ...keys(nl)], ["table", "title", "pinned", "updated", "id"]);
@@ -426,7 +429,7 @@ test("planner cli: --view frames draw each list as a table, a note as a card, an
   assert.equal(ag.view.title, "Thu 24 Sep · today · Asia/Karachi");
   assert.deepEqual(keys(ag), ["time", "kind", "title", "note"]);
   assert.deepEqual(ag.view.rows.map(r => [r.time, r.kind, r.title]), [["10:01", "timer", "bread"], ["18:00", "reminder", "call juno"]]);
-  assert.ok(ag.view.rows.every(r => /^i_/.test(r.id)));
+  assert.ok(ag.view.rows.every(r => /^[0-9a-f]{8}-/.test(r.id)));
   const tw = await view("agenda", "tomorrow");
   assert.equal(tw.view.title, "Fri 25 Sep · tomorrow · Asia/Karachi");
   assert.deepEqual(tw.view.rows.map(r => [r.time, r.kind, r.title]), [["07:00", "alarm", "Alarm"], ["due", "todo", "call kit"]], "todos due that day follow the entries");

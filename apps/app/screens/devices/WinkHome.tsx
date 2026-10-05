@@ -5,7 +5,7 @@ import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 
 const VERBS: { id: string; icon: IconName; title: string; body: string; href: string }[] = [
-  { id: "add", icon: "plus", title: "Add", body: "A phone, a computer or a server of yours. The new device shows a ring and your phone scans it.", href: "/u/wink/add" },
+  { id: "add", icon: "plus", title: "Add", body: "A phone or a computer of yours. The new device types the code your phone shows.", href: "/u/wink/add" },
   { id: "invite", icon: "share", title: "Invite", body: "Someone to a space. They read one card and tap Join.", href: "/u/wink/invite" },
   { id: "lend", icon: "laptop", title: "Share a computer", body: "Lend a computer to a space. One card, two yeses: the space allows it and you allow it.", href: "/u/wink/lend" },
 ];

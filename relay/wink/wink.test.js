@@ -19,7 +19,7 @@ test("specifiers: static, dynamic and new URL() imports, relative only", () => {
 
 test("the page loads the scanner, the relay client and the haptics, and never the Deck's API client, router or avatars", () => {
   const files = closure();
-  for (const f of ["deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/pair-ticket.js", "deck/js/haptics.js", "relay/client/client.js", "deck/vyrecode/decode-core2.js", "relay/wink/page.js", "relay/wink/flow.js", ENTRY]) assert.ok(files.includes(f), f);
+  for (const f of ["deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/pair-ticket.js", "deck/js/haptics.js", "relay/client/client.js", "lib/wink-code/decode-core2.js", "relay/wink/page.js", "relay/wink/flow.js", ENTRY]) assert.ok(files.includes(f), f);
   assert.ok(!files.includes("deck/js/avatars.js") && !files.includes("deck/js/pair-scan.js"), "no avatar renderer, no Deck sheet: the card has no picture");
   assert.ok(!files.includes("deck/js/api.js"), "no Deck API client: the page has no box to call");
   assert.ok(!files.some(f => f === "deck/js/app.js" || f.startsWith("deck/views/") && f !== "deck/views/pair-scan.js"), "no Deck shell or view");

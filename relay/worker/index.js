@@ -1,4 +1,5 @@
 // @ts-check
+/* global WebSocketPair, WebSocketRequestResponsePair -- Cloudflare Worker runtime globals */
 // The relay on Cloudflare (ADR 0026, section 2): a Worker in front and one Durable Object per route
 // id. The same protocol as relay/node/server.js, message for message, so core/relay/link.js runs
 // against either unchanged.

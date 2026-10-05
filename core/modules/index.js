@@ -1408,6 +1408,18 @@ export class Registry {
         const mo = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward)), dev = deviceIdOf(String(caller)), plain = plainFieldsOf(input);
         if (mo && dev && plain) { const r = await yes(mo, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) approved = { method: "approval", keyId: null }; }
       }
+      // One yes, the direct form: `x-vyre-presence: yes proof=<base64url of the owner key's proof>` over exactly this call (the act word and fields signOf gives it, in the owner's chain). yes() asks the sealing process,
+      // which takes a software key on a development build only; a release build answers software_key and nothing runs. Only the tools MOMENT_OPS lists, never from a module, and only for the home's owner.
+      if (!approved && proof && proof.method === "yes" && !String(caller).startsWith("module:") && typeof this.deps.ownerChain === "function") {
+        const mo = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward)), plain = plainFieldsOf(input);
+        /** @type {any} */ let decoded = null;
+        try { decoded = JSON.parse(Buffer.from(String(proof.proof || ""), "base64url").toString("utf8")); } catch { /* not a proof */ }
+        if (mo && plain && decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
+          const r = await yes(mo, { chain: await this.deps.ownerChain(), op: tool, fields: plain }, decoded);
+          if (r.ok) approved = { method: r.strength === "real" ? "yes" : "software", keyId: null };
+          else return { error: { code: r.reason === "software_key" ? "software_key" : "presence_required", message: r.reason === "software_key" ? "this key is software; approve this in Vyre on your phone" : `that approval does not stand (${r.reason})`, methods: [] } };
+        }
+      }
       if (approved) meta = { ...meta, presence: approved };
       else {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });

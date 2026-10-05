@@ -455,5 +455,16 @@ export class KitManager {
     return { removed: kitId, flows_stopped: Object.keys(row.flows || {}).length, types_removed: removedTypes, types_kept: keptTypes, note: keptTypes.length ? `Kept ${keptTypes.join(", ")}: they still hold records.` : "" };
   }
 
+  /**
+   * What an update to an installed Kit would change, read only: the parts added, changed and removed, the widenings (a part that can do more than before)
+   * and the risks. Asks nobody and writes nothing; the update itself is `propose`, which the approver answers. `installed: false` when the Kit is not in the space.
+   * @param {any} kit
+   */
+  async diff(kit) {
+    const installed = await this.store.get(kit.id);
+    if (!installed || installed.status === "removed") return { installed: false, from: null, to: kit.version, newer: false, diff: null };
+    return { installed: true, from: installed.version, to: kit.version, newer: kit.version > installed.version, diff: diffKits(installed.kit, kit, await this.catalogFn()) };
+  }
+
   async list() { return (await this.store.list()).map((/** @type {any} */ r) => ({ id: r.kit_id, version: r.version, status: r.status, by: r.by, at: r.at })); }
 }

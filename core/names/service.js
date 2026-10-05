@@ -14,7 +14,7 @@ import tls from "node:tls";
 import path from "node:path";
 import { identifier } from "./identity.js";
 import { hostedOrigins } from "../config/index.js";
-import { verdict, codeHash, base32 } from "./rules.js";
+import { verdict, base32 } from "./rules.js";
 
 const HSTS = "max-age=31536000";
 
@@ -160,13 +160,10 @@ export function names(deps) {
     return { set: async (fqdn, value) => { const n = label(fqdn); await dir.acme(n, value); return n; }, clear: n => dir.acmeClear(n) };
   };
   const v4 = s => s.node && s.node.ips.find(a => a.includes("."));
-  /** 128 bits, in the same shape the directory hands out: abcd-efgh-... */
-  const newCode = () => base32(crypto.randomBytes(16)).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
-
   /**
    * Reserve the name, point it at this box, get its certificate, start serving. In the background.
    * With the directory the reservation comes first and is quick: it answers before Tailscale is up
-   * ("Found and named"), with the one-time recovery code when the name is new. Run it again once
+   * ("Found and named"). Run it again once
    * the tailnet is connected and it carries on to the address and the certificate.
    * @param {string} [raw]
    */
@@ -201,16 +198,14 @@ export function names(deps) {
 
   /** @param {string} name */
   async function claimNamed(name) {
-    if (working) return { ...status(), recoveryCode: null };
+    if (working) return status();
     const fqdn = `${name}.${domain()}`;
     state.phase = "dns"; state.why = null;
-    let code = null;
     try {
       const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
-      code = r.code;
       deps.save({ name, network: { via: "vyre.run" } });
-      if (code) ctx.events.emit("name.claimed", { name: fqdn });
-    } catch (e) { fail(e); return { ...status(), recoveryCode: null }; }
+      if (r.fresh) ctx.events.emit("name.claimed", { name: fqdn });
+    } catch (e) { fail(e); return status(); }
     working = (async () => {
       const s = await tailscale();
       const ip = v4(s);
@@ -227,8 +222,7 @@ export function names(deps) {
       deps.save({ network: { address: address(fqdn) } });
       state.phase = "serving";
     })().catch(fail).finally(() => { working = null; });
-    // The code is the answer to this one call. It is not in status(), an event or a log.
-    return { ...status(), recoveryCode: code };
+    return status();
   }
 
   /** The tailnet's own name, with `tailscale cert`, when there is no vyre.run name. */
@@ -489,54 +483,21 @@ export function names(deps) {
     servers = [];
   }
 
-  // ---- recovery ----
-
-  /**
-   * A reinstalled box takes its name back with the recovery code. The directory holds a 72-hour
-   * pending rebind that the old box cancels by itself if it is still online, and tells the owner's
-   * devices about (name.recovery-pending). The code is the only authority, which is why the setup
-   * channel of a new install can call this too (names.recover.code). Returns the NEW recovery
-   * code, shown once: it takes over when the rebind lands.
-   * @param {{ name?: string, code: string }} r
-   */
-  async function recover(r) {
-    if (!dir) throw new Error("recovery needs the name directory");
-    const c = checkName(r.name || ctx.config.name);
-    if (!c.valid) throw new Error(c.why || "no name");
-    if (!r.code || typeof r.code !== "string") throw new Error("the recovery code is needed");
-    const next = newCode();
-    const out = await dir.recover({ name: c.name, code: r.code, next: codeHash(c.name, next) });
-    deps.save({ network: { recovering: c.name } });
-    return { name: c.name, pendingUntil: out.pendingUntil, recoveryCode: next };
-  }
-
   let told = 0;
   /**
-   * Ask the directory how this box's name stands. Run at start and hourly. A pending recovery of a
-   * name this box holds is cancelled here, with no click: a box that is online is the owner. A
-   * recovery this box asked for is adopted once it lands.
+   * Ask the directory how this box's name stands. Run at start and hourly.
    */
   async function watch() {
     if (!dir) return null;
-    // Only a box that holds a name here, or is taking one back, has anything to watch. A box that
+    // Only a box that holds a name here has anything to watch. A box that
     // never claimed one makes no request to the directory, and starts nothing (no route key made,
     // no signature, no outbound connection) just because vyred is running.
-    if (net().via !== "vyre.run" && !net().recovering) return null;
+    if (net().via !== "vyre.run") return null;
     const m = await dir.mine();
     // Support moved this box's name to another server (an operator rebind): tell the person once.
     if (!m.name && m.moved && ctx.config.name === m.moved.name && told !== m.moved.at) {
       told = m.moved.at;
       ctx.events.emit("name.moved", { name: `${m.moved.name}.${domain()}`, at: m.moved.at });
-    }
-    if (m.name && m.pending) {
-      const fqdn = m.fqdn || `${m.name}.${domain()}`;
-      if (m.pending.eta !== told) { told = m.pending.eta; ctx.events.emit("name.recovery-pending", { name: fqdn, eta: m.pending.eta }); }
-      await dir.cancel(m.name);
-      ctx.events.emit("name.recovery-cancelled", { name: fqdn });
-    }
-    if (m.name && net().recovering === m.name && ctx.config.name !== m.name) {
-      deps.save({ name: m.name, network: { via: "vyre.run", recovering: null } });
-      ctx.events.emit("name.recovered", { name: m.fqdn || `${m.name}.${domain()}` });
     }
     return m;
   }
@@ -642,7 +603,7 @@ export function names(deps) {
     }
   }
 
-  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, recover, watch, domainCheck, serveDomain,
+  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, watch, domainCheck, serveDomain,
     connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
 }
 
