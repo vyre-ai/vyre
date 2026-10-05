@@ -6,6 +6,7 @@
 // it holds only what the grant names: memory and recall reads, the sessions of the person's projects, and memory.remember (a pending suggestion). Every other tool, read or write, is refused for it
 // with `not_in_grant`, decided HERE (`pluginagent.allows`, asked by the daemon's route for every call and every tool listing), never tool by tool. `pluginagent.revoke` ends it. A decline or a revoke
 // means no until the person turns it back on (`pluginagent.on`, from Access); an ask nobody answers expires after 24 h and the next one waits 7 days. The key is never kept here, only its hash.
+import { grantReach } from "../../lib/project-reach.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -108,14 +109,11 @@ export default {
         const computer = ask ? String(ask.computer) : computerName();
         const agent = `claude-code-${slug(computer)}`;
         const k = ctx.kernel && ctx.kernel.grants ? ctx.kernel : null;
-        // The Space's own act first, so a refusal (no presence, not the owner) leaves nothing half made.
-        if (k) {
-          const chain = await k.chain(meta);
-          const given = k.proofFrom(meta);
-          await k.grants.addActor(chain, { kind: "agent", id: agent, space: k.space }, given || {});
-        }
+        // The agent holds grants only by its stable id (agents.uid), which exists once the agents module has made it; a refusal below leaves an agent with no grant, never one with a grant it should not have.
         const made = await ctx.call("agents.create", { name: agent, projects: "*", personal: true });
         if (made && made.error) throw refuse(String(made.error.message || "the agent could not be made"), String(made.error.code || "failed"));
+        // "every project" is ONE kernel grant, made here in the person's own call with their proof (the agents module made the agent from a module call, which carries no person)
+        if (k) { const u = await ctx.call("agents.uid", { name: agent }); if (!u || !u.data) throw refuse("the agent has no id", "failed"); await grantReach(k, meta, { urn: `vyre://${k.space}/project/*`, agent: String(u.data.uid) }); }
         const agentId = made && made.data && made.data.id ? String(made.data.id) : null;
         const key = crypto.randomBytes(32).toString("base64url");
         const file = keyPath();
@@ -150,10 +148,8 @@ export default {
         db.prepare("DELETE FROM pluginagent_agents WHERE agent = ?").run(String(a.agent));
         setState("off", "1");
         try { fs.rmSync(keyPath(), { force: true }); } catch { /* the hash is gone: the key is already dead */ }
-        const k = ctx.kernel && ctx.kernel.grants && typeof ctx.kernel.grants.removeActor === "function" ? ctx.kernel : null;
-        if (k) { try { await k.grants.removeActor(await k.chain(meta), { kind: "agent", id: String(a.agent), space: k.space }, k.proofFrom(meta) || {}); } catch { /* not an actor (any more): nothing to remove */ } }
         // The person's own act (revoke needs presence): the delete runs as the person's surface that revoked (a device as "local", above), not as this module, so agents.delete's person-only rule is what decides.
-        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as });
+        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as, relay: meta });
         // not_found: that agent (or one with that id) is already gone, or the name is someone else's agent now: not ours to delete.
         if (gone && gone.error && gone.error.code !== "not_found") throw refuse(`Claude Code's reach is off, but its agent could not be removed: ${gone.error.message}`, String(gone.error.code || "failed"));
         try { ctx.events.emit("pluginagent.revoked", { agent: String(a.agent) }); } catch { /* an event never decides */ }

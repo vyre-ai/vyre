@@ -44,7 +44,7 @@ function client(t, w, port, session) {
   /** @type {any[]} */ const frames = [];
   const c = connect({
     open: async ({ from }) => {
-      const o = (await w.tool("stream.open", { session, from }, "deck")).data;
+      const o = (await w.tool("stream.open", { chat: session, from }, "deck")).data;
       return wsDuplex(`ws://127.0.0.1:${port}${o.path}`);
     },
     onFrame: f => frames.push(f),
@@ -119,11 +119,11 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   const bash = await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash"), "the Bash ask");
   await w.tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   await w.finished(id);
-  await until(async () => (await w.tool("stream.open", { session: id }, "deck")).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
+  await until(async () => (await w.tool("stream.open", { chat: id }, "deck")).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
 
   // A client that was never cut off reads the same log from the start.
   const whole = client(t, w, port, id);
-  const head = (await w.tool("stream.open", { session: id }, "deck")).data.head;
+  const head = (await w.tool("stream.open", { chat: id }, "deck")).data.head;
   await until(() => whole.c.last === head, "the uninterrupted client", 8000);
   assert.equal(cut.c.last, head);
   // A replay may merge a run of deltas into one frame (span), so the frames can differ in count; the
@@ -175,7 +175,7 @@ test("live: a session that began before the stream (an empty log) is seeded from
   const db = new DatabaseSync(config.paths(w.root).db);
   try { db.exec("DELETE FROM stream_frames"); } finally { db.close(); }
   await w.restart();
-  const o = (await w.tool("stream.open", { session: id, from: 0 }, "deck")).data;
+  const o = (await w.tool("stream.open", { chat: id, from: 0 }, "deck")).data;
   assert.ok(o.head > 0, "the log was seeded");
   const { port } = await serve(t, w);
   const seen = client(t, w, port, id);

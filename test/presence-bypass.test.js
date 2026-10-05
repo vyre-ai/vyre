@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { Presence, inputHash } from "../core/presence/index.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, kernelCaller } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BIN = path.join(ROOT, "bin", "vyre");
@@ -271,6 +271,7 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
 
 test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
   const b = await box(t);
+
   const refused = async (tool, input, caller) => {
     const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
     assert.equal(r.status, 403, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
@@ -291,6 +292,11 @@ test("bypass: making or changing an agent is a person's, with no passkey; the as
   assert.ok(!(await call("agents.list", {}, { root: b.root, caller: "cli" })).data.some(a => a.name === "ledger"), "nothing was made");
   // A person changes anything, with no proof: credentials and budget, projects, skills, its computer.
   for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: false }]) {
+    if (change.projects) {
+      // giving an agent a project is a kernel grant, a person's own call with their device's facts and no passkey (a bare label is never a person)
+      for (const [caller, who] of [["deck", { name: "kit" }], ["cli", { agent: "kit" }]]) { const r = await kernelCaller(b.d, b.root, caller)("agents.update", { ...who, ...change }); assert.equal(r.error, undefined, `agents.update ${caller}: ${JSON.stringify(r.error)}`); }
+      continue;
+    }
     await allowed("agents.update", { name: "kit", ...change }, "deck");
     await allowed("agents.update", { agent: "kit", ...change }, "cli");
   }

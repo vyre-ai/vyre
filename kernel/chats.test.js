@@ -580,3 +580,26 @@ test("CH-8b: every read action in the gateway's table is the room's view under a
   }
   assert.ok(walked >= 4, `walked ${walked} read actions`);
 });
+
+test("the person's own assistant is never listed: it acts as its person, so a chat checks the PERSON; a non-member's assistant is refused everywhere", async () => {
+  const { k, bob, carol, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const mine = (person, session) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session });
+  const group = await C.create(bob, { people: [CAROL] });
+  assert.deepEqual([...group.assistants], [], "the assistant is not in the list");
+  // read: the assistant of a person in the chat reads it; the assistant of someone outside does not
+  assert.equal(C.read(mine(BOB, "a1"), group.id).id, group.id);
+  assert.equal(C.read(mine(CAROL, "a2"), group.id).id, group.id);
+  assert.throws(() => C.read(mine(OWNER, "a3"), group.id), { code: "not_found" }, "an owner's assistant, the owner not being in the chat");
+  assert.throws(() => C.read(mine(ADA, "a4"), group.id), { code: "not_found" }, "an admin's assistant, the admin not being in the chat");
+  // open a session and write: the same
+  const t = await k.surfaces.open(bob, { chat: group.id, agent: "assistant" });
+  assert.equal((await stream.chats.append(t.token, { body: "from bob's assistant" })).chat, group.id);
+  await assert.rejects(() => k.surfaces.open(k.chains.fromFacts({ kind: "device", device_key_id: "d-a", person: ADA, path: "direct" }), { chat: group.id, agent: "assistant" }), { code: "not_found" });
+  // a named agent that is not listed is still refused (the exemption is the default assistant only)
+  const tk = await k.surfaces.open(bob, { chat: group.id, agent: "kit" });
+  await assert.rejects(() => stream.chats.append(tk.token, { body: "from unlisted kit" }), { code: "not_found" });
+  // the person leaves: their assistant's session loses the chat at once
+  await C.change(carol, group.id, { remove_people: [BOB] });
+  await assert.rejects(() => stream.chats.append(t.token, { body: "after bob left" }), { code: "not_found" });
+});

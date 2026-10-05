@@ -56,11 +56,16 @@ export interface Chain {
   readonly built_at: Ms;
   /** Set when the chain was restored from a stored job. */
   readonly job?: string;
+  /** `"assistant"` when the person's default assistant acts for them: the chain is the person's own, marked, never a second principal. The kernel event's actor stays the person and carries `acted_via: "assistant"`. */
+  readonly via?: 'assistant';
+  /** A model slot's `provider/model#n` (the Switchboard's): the person's chain plus an agent hop `model:<that>`. */
+  readonly model?: string;
 }
 
 /** What the Surfaces door verified about a connection. The chain builder takes only this. */
 export type SurfaceFacts =
   | { readonly kind: 'socket'; readonly surface: Surface; readonly uid: number; readonly pid: number | null; readonly inside_model_process: boolean; readonly capsule_verified: boolean }
+  | { readonly kind: 'model_slot'; readonly person?: string; readonly session: string; readonly model: string; readonly vouched: true }
   | { readonly kind: 'device'; readonly device_key_id: string; readonly person: string; readonly session?: string; readonly path: 'direct' | 'relay' | 'wink' }
   | { readonly kind: 'agent_session'; readonly agent: string; readonly session: string; readonly thread: string; readonly vouched: boolean }
   | { readonly kind: 'module'; readonly module: string; readonly first_party: boolean; readonly inbound?: Chain }

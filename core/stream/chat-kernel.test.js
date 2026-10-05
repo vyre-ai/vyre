@@ -98,7 +98,7 @@ const tick = (ms = 40) => new Promise(r => setTimeout(r, ms));
 /** The chat of bob and carol with kit and juno listed; bob asks kit. */
 async function asked(/** @type {any} */ w, people = [CAROL], assistants = ["kit"]) {
   const chat = await w.C.create(w.chains.bob, { people, assistants });
-  const sent = ok(await w.as("bob")("stream.send", { session: chat.id, text: "what is the fee?", to: ["assistant:kit"], cwd: "/tmp" }));
+  const sent = ok(await w.as("bob")("stream.send", { chat: chat.id, text: "what is the fee?", to: ["assistant:kit"], cwd: "/tmp" }));
   await w.idle();
   const th = w.threads().started[0];
   assert.ok(th, "the assistant's thread started");
@@ -151,7 +151,7 @@ test("a reply the kernel refuses at open is shown nowhere (the assistant was rem
   assert.equal(w.kernelMsgs().length, 1, "the kernel wrote no reply");
   // and the live socket saw none of it either
   /** @type {any[]} */ const got = [];
-  const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { session: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+  const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
   t.after(() => c.close());
   await tick(150);
   assert.ok(!JSON.stringify(got).includes("SECRET-PARTIAL"));
@@ -177,7 +177,7 @@ test("on the kernel's own appendOpen and mayReceive: a person who joins while a 
   const { chat, thread } = await asked(w);
   const live = (/** @type {string} */ who) => {
     /** @type {any[]} */ const got = [];
-    const c = connect({ open: async ({ from }) => { const o = ok(await w.as(who)("stream.open", { session: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+    const c = connect({ open: async ({ from }) => { const o = ok(await w.as(who)("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
     t.after(() => c.close());
     return got;
   };
@@ -191,7 +191,7 @@ test("on the kernel's own appendOpen and mayReceive: a person who joins while a 
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, delta: "TWO-SECRET" }, { thread });
   w.events.emit("threads", "thread.text", { message: "m1", block: 0, done: true }, { thread });
   await w.idle();
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "and the retainer?", to: ["assistant:kit"], cwd: "/tmp", message: "q2" }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "and the retainer?", to: ["assistant:kit"], cwd: "/tmp", message: "q2" }));
   await w.idle();
   w.events.emit("threads", "thread.text", { message: "m2", block: 0, delta: "The retainer " }, { thread });
   w.events.emit("threads", "thread.text", { message: "m2", block: 0, delta: "is two thousand." }, { thread });
@@ -228,7 +228,7 @@ test("the token's chat is fixed: a turn in chat A cannot be redirected into chat
 test("stream.send with a token cannot add a person or an assistant, listed or not; membership is the kernel's change by a person acting directly", async t => {
   const w = await world(t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "hello", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "hello", to: [] }));
   const grp = w.stream().groups;
   const before = JSON.stringify([...grp.people(chat.id)].sort());
   for (const [what, input] of /** @type {[string, any][]} */ ([
@@ -238,7 +238,7 @@ test("stream.send with a token cannot add a person or an assistant, listed or no
     ["a listed person", { people: [`person:${CAROL}`] }],
     ["a model", { assistants: ["model:x"] }],
   ])) {
-    assert.equal(codeOf(await w.as("bob")("stream.send", { session: chat.id, text: `add ${what}`, to: [], ...input })), "bad_input", what);
+    assert.equal(codeOf(await w.as("bob")("stream.send", { chat: chat.id, text: `add ${what}`, to: [], ...input })), "bad_input", what);
   }
   assert.equal(JSON.stringify([...grp.people(chat.id)].sort()), before);
   assert.deepEqual(w.C.read(w.chains.bob, chat.id).assistants, ["kit"], "the kernel's list did not move");
@@ -250,37 +250,37 @@ test("stream.send with a token cannot add a person or an assistant, listed or no
   await assert.rejects(() => w.C.change(kitChain, chat.id, { add_people: [ADA] }), e => ["chain_not_person", "not_found"].includes(/** @type {any} */ (e).code));
   // a person acting directly changes it, and the stream follows the kernel
   await w.C.change(w.chains.bob, chat.id, { add_people: [ADA], add_assistants: ["juno"] });
-  ok(await w.as("ada")("stream.send", { session: chat.id, text: "now me", to: [] }));
+  ok(await w.as("ada")("stream.send", { chat: chat.id, text: "now me", to: [] }));
   assert.ok(grp.people(chat.id).has(`person:${ADA}`));
   assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.participant-joined" && f.data.who === "assistant:juno"), "a listed assistant is mirrored into the group");
   await w.C.change(w.chains.bob, chat.id, { remove_assistants: ["juno"] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "bye juno", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "bye juno", to: [] }));
   assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.participant-left" && f.data.who === "assistant:juno"));
 });
 
 test("an unlisted assistant is refused: it cannot read or speak in a chat that does not list it, and a call with no session is not a chat call", async t => {
   const w = await world(t);
   const chat = await w.C.create(w.chains.ada, { people: [], assistants: [] });
-  assert.equal(codeOf(await w.as("adaKit")("stream.open", { session: chat.id })), "not_found", "ada's assistant is not listed in ada's chat");
-  assert.equal(codeOf(await w.as("adaKit")("stream.send", { session: chat.id, text: "hi", to: [] })), "not_found");
+  assert.equal(codeOf(await w.as("adaKit")("stream.open", { chat: chat.id })), "not_found", "ada's assistant is not listed in ada's chat");
+  assert.equal(codeOf(await w.as("adaKit")("stream.send", { chat: chat.id, text: "hi", to: [] })), "not_found");
   const listed = await w.C.create(w.chains.ada, { assistants: ["kit"] });
-  assert.equal(codeOf(await w.as("adaKit")("stream.open", { session: listed.id })), "ok", "listed, for the person it acts for, who is in the chat");
+  assert.equal(codeOf(await w.as("adaKit")("stream.open", { chat: listed.id })), "ok", "listed, for the person it acts for, who is in the chat");
   // the kernel's kernel-side: an assistant session for an unlisted agent cannot append
   const tok = (await w.k.surfaces.open(w.chains.ada, { chat: chat.id, agent: "kit" })).token;
   await assert.rejects(() => w.k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } }).chats.append(tok, { body: "x" }), { code: "not_found" });
   // kernel on, no session token on the call: the 0.2 group path is closed
-  const r = await w.reg.call("stream.send", { session: chat.id, text: "hi", to: [] }, "deck", {});
+  const r = await w.reg.call("stream.send", { chat: chat.id, text: "hi", to: [] }, "deck", {});
   assert.equal(codeOf(r), "person_session_required");
-  const o = await w.reg.call("stream.open", { session: chat.id }, "deck", {});
+  const o = await w.reg.call("stream.open", { chat: chat.id }, "deck", {});
   assert.equal(codeOf(o), "not_found");
 });
 
 test("a person's words the kernel refuses are not stored: the sender left the chat between the open and the send", async t => {
   const w = await world(t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL] });
-  ok(await w.as("carol")("stream.send", { session: chat.id, text: "first", to: [] }));
+  ok(await w.as("carol")("stream.send", { chat: chat.id, text: "first", to: [] }));
   await w.C.change(w.chains.bob, chat.id, { remove_people: [CAROL] });
-  assert.equal(codeOf(await w.as("carol")("stream.send", { session: chat.id, text: "after leaving", to: [] })), "not_found");
+  assert.equal(codeOf(await w.as("carol")("stream.send", { chat: chat.id, text: "after leaving", to: [] })), "not_found");
   assert.ok(!JSON.stringify(w.frames(chat.id)).includes("after leaving"));
   assert.equal(w.kernelMsgs().length, 1);
 });
@@ -288,7 +288,7 @@ test("a person's words the kernel refuses are not stored: the sender left the ch
 test("a retry of the same message id while the first is still being written is one message", async t => {
   const w = await world(t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL] });
-  const [a, b] = await Promise.all([1, 2].map(() => w.as("bob")("stream.send", { session: chat.id, text: "once", to: [], message: "m_once" })));
+  const [a, b] = await Promise.all([1, 2].map(() => w.as("bob")("stream.send", { chat: chat.id, text: "once", to: [], message: "m_once" })));
   ok(a); ok(b);
   assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.user-message").length, 1);
   assert.equal(w.kernelMsgs().length, 1, "the kernel was asked once");
@@ -322,7 +322,7 @@ test("a room of more than one person: an assistant's field value is dropped (aga
   assert.ok(seen === null || seen.restricted.includes("ssn"), "a sealed field is never a value for the room");
   // one person and an assistant: the same reply keeps the card
   const solo = await w.C.create(w.chains.bob, { assistants: ["kit"] });
-  ok(await w.as("bob")("stream.send", { session: solo.id, text: "fee?", to: ["assistant:kit"], cwd: "/tmp" }));
+  ok(await w.as("bob")("stream.send", { chat: solo.id, text: "fee?", to: ["assistant:kit"], cwd: "/tmp" }));
   await w.idle();
   const th2 = w.threads().started.at(-1).id;
   stand(w, solo.id);
@@ -339,12 +339,12 @@ test("a cited field is the kernel's own records.get for the viewer: a value, the
   const rec = await R.create(w.chains.owner, "contact", { name: "Jane", fee: { amount: 4200, currency: "USD" }, ssn: { sealed: "ssn", ref: "sv_SECRET", present: true, valid_format: true, set_at: 1, hint: "6789" } });
   const urn = `vyre://${SPACE}/contact/${rec.id}`;
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "go", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "go", to: [] }));
   const log = w.stream().logs.get(chat.id);
   const cite = (/** @type {string} */ field) => ({ block: "field-ref", record: urn, field, label: field });
   log.append("text-done", { message: "m9", blocks: [cite("name"), cite("fee"), cite("ssn"), cite("nonesuch"), { block: "field-ref", record: `vyre://${SPACE}/contact/nonexistent`, field: "name", label: "gone" }] }, { author: "assistant:kit", acts_for: `person:${BOB}`, message: "m9" });
   /** @type {any[]} */ const got = [];
-  const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { session: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+  const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
   t.after(() => c.close());
   const end = Date.now() + 5000;
   while (!got.some(f => f.type === "session.text-done" && f.data.message === "m9") && Date.now() < end) await tick(10);
@@ -372,7 +372,7 @@ test("after a restart the assistant has no session token: its reply waits, shows
   await tick(80); // not idle(): the assistant's queue is waiting for a session, on purpose
   assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit").length, 0, "nothing is shown without a kernel session");
   assert.equal(w.kernelMsgs().length, 1);
-  ok(await w.as("bob")("stream.open", { session: chat.id }));
+  ok(await w.as("bob")("stream.open", { chat: chat.id }));
   await tick(50);
   await w.idle();
   assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.text-done" && f.author === "assistant:kit"));

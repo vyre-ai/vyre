@@ -26,7 +26,7 @@ async function boot(extra = {}) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "twh-")); dirs.push(dir);
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
   const secret = crypto.randomBytes(16).toString("hex");
-  const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
+  const store = createTwentyStore({ client, space: SPACE, dir, webhookSecret: secret, graceMs: 0 });
   fake.deliver = async (payload, headers, raw) => { await store.handleWebhook(Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), raw); };
   await store.registerWebhook("fn:store");
   const host = createRecordsHost({ space: SPACE, owner: "per_owner", store, ...extra });
@@ -48,6 +48,7 @@ test("the Kit's types and the core types are defined through the gateway, and th
 
 test("a record is created, read and updated through kernel.records with authorize and events", async () => {
   const { host } = await boot();
+  await host.defineCore();
   await host.installKit(kit);
   const c = host.ownerChain();
   const rec = await host.kernel.records.create(c, "contact", { name: "Sam Rivera", email: "sam@example.test" });
@@ -63,6 +64,7 @@ test("a record is created, read and updated through kernel.records with authoriz
 
 test("a chain with no grant is refused and a model never holds the owner's authority", async () => {
   const { host } = await boot();
+  await host.defineCore();
   await host.installKit(kit);
   const agent = host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true });
   const got = await host.kernel.records.query(agent, "contact", { page: { limit: 5 } }).then((p) => p.rows.length, (e) => e.code);
@@ -73,6 +75,7 @@ test("a chain with no grant is refused and a model never holds the owner's autho
 
 test("a sealed field holds only a reference in Twenty and in the log", async () => {
   const { host, store } = await boot();
+  await host.defineCore();
   await host.installKit(kit);
   const ref = { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 };
   const rec = await host.kernel.records.create(host.ownerChain(), "contact", { name: "Pat", ssn: ref });
@@ -101,6 +104,7 @@ test("template, playbook and team-member records round trip, with actors and lin
 
 test("a payment through the Stripe handler runs the Kit's Flow on the runner and writes the contact and matter in Twenty", async () => {
   const { host, store } = await boot();
+  await host.defineCore();
   await host.installKit(kit);
   const handle = createStripeHandler({ secret: "whsec_test_x", host, now: () => 1791000100_000 });
   const ev = { id: "evt_1", type: "checkout.session.completed", livemode: false, created: 1791000000, data: { object: { id: "cs_1", payment_status: "paid", payment_intent: "pi_1", amount_total: 350000, currency: "usd", customer: "cus_1", customer_details: { email: "sam@example.test", name: "Sam Rivera" } } } };

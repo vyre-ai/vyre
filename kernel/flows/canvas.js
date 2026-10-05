@@ -6,6 +6,7 @@
 import { printFlow, parseFlowText } from "./text.js";
 import { compileFlow } from "./compile.js";
 import { describeTrigger, kindOf, whyRan } from "./triggers.js";
+import { describeSchedule } from "./schedule-words.js";
 export { describeTrigger };
 import { canonical, flowHash, walkSteps, BLOCK_KINDS } from "./schema.js";
 
@@ -57,13 +58,13 @@ export function describeStep(s, cat) {
 
 /**
  * The Flow as nodes and edges, with a simple top-to-bottom layout (x is the lane, y the row). A decide has a `then` and an `else` lane, a repeat an inside lane.
- * @param {any} flow @param {import('./compile.js').Catalog} cat
+ * @param {any} flow @param {import('./compile.js').Catalog} cat @param {{ person?: string, now?: number }} [view] the reader's zone and the time, so a schedule shows its next run on both clocks
  */
-export function graph(flow, cat) {
+export function graph(flow, cat, view = {}) {
   const compiled = compileFlow(flow, cat);
   const risky = new Set(compiled.effects.outward.map(o => o.step));
   const sealed = new Set(compiled.effects.sealed_uses.map(u => u.path.replace(/\.[^.]*$/, "")));
-  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", trigger_kind: (kindOf(flow.trigger) || {}).kind, label: describeTrigger(flow.trigger), icon: (kindOf(flow.trigger) || {}).icon || "bolt", x: 0, y: 0, lane: 0 }];
+  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", trigger_kind: (kindOf(flow.trigger) || {}).kind, label: view.now !== undefined ? describeSchedule(flow.trigger, { space: /** @type {any} */ (cat).tz, person: view.person, now: view.now }) : describeTrigger(flow.trigger), icon: (kindOf(flow.trigger) || {}).icon || "bolt", x: 0, y: 0, lane: 0 }];
   /** @type {any[]} */ const edges = [];
   let row = 1;
   /** @param {any[]} steps @param {number} lane @param {string} from @param {string} edgeKind @returns {string} the last node id in this lane */

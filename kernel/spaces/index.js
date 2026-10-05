@@ -48,7 +48,7 @@ export function createSpaceKernels(cfg) {
     const hooks = cfg.stageFactory ? { onStageEnter: (/** @type {any} */ e) => (late.stages ? late.stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (late.stages ? late.stages.stageTasks(u, st) : []) } : {};
     const spaceDb = cfg.openDb(path.join(d, "kernel.db"));
     dbs.set(id, spaceDb);
-    const booted = tell(await boot({ db: spaceDb, space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+    const booted = tell(await boot({ db: spaceDb, space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), ...(cfg.basic ? { basic: cfg.basic } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
       // A hosted Space that takes the claimed identity as its owner keeps that beside its own id, like the home's (the log is the truth at boot; the file follows it).
       onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { try { fs.writeFileSync(f, JSON.stringify({ ...meta, owner: to, previous_owner: from }), { mode: 0o600 }); } catch { /* the next boot rewrites it from the log */ } },
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
@@ -115,8 +115,8 @@ export function createSpaceKernels(cfg) {
       if (typeof cfg.audit === "function") await cfg.audit("space.hosting", { space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}) });
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
-      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), ...(o.accept_builtin_store === true ? { accept_builtin_store: true } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
-      // a Space that cannot be opened (the box cannot run its store and the person has not agreed to the built-in one) is not left half made
+      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
+      // a Space that cannot be opened (the box cannot run its record store, Twenty) is not left half made
       let k;
       try { k = await open(id); } catch (e) { fs.rmSync(d, { recursive: true, force: true }); throw e; }
       live.set(id, k);

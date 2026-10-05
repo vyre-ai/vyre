@@ -54,6 +54,8 @@ function mapError(e, data) {
   const msg = String(e.message ?? "error");
   const sub = e.extensions?.subCode ?? e.extensions?.code ?? "";
   if (sub === "RECORD_NOT_FOUND" || /^Record not found/i.test(msg)) return new StoreError("not_found", "No such record", { twenty: msg });
+  // a link to a record that is not there: Twenty enforces the relation's foreign key (checked before the unique-value clash below, whose pattern would match "violates")
+  if (/foreign key/i.test(msg)) return new StoreError("invalid", "A link names a record that does not exist", { twenty: msg });
   // a clash on the id (the primary key) is `id_exists`; a clash on a unique field the Space asked for is `unique_violation`
   if (/pkey|primary key/i.test(msg)) return new StoreError("id_exists", "A record with that id already exists", { twenty: msg });
   if (/duplicate|unique|already exists|violates/i.test(msg) || sub === "RECORD_ALREADY_EXISTS") return new StoreError("unique_violation", "Another record already has that unique value", { twenty: msg });
