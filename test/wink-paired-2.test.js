@@ -416,20 +416,17 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
 
-test("host-here on a server too small for the larger store asks for the owner's word, in the kernel's words, and hosts only when asked again with it", async t => {
+test("host-here on a server that cannot run Twenty refuses in the kernel's words and hosts nothing", async t => {
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const session = links.sessionFor("srv");
   const sp = f.w.d.kernel.spaces;
-  spacesHooks.storePlan = async () => ({ store: "sqlite", confirm: { text: "This server is small: the space will use the built-in store.", choices: ["create", "cancel"] } });
+  spacesHooks.storePlan = async () => ({ store: "none", confirm: { text: "This server cannot run the record store (Twenty), so the space was not made here.", choices: ["server", "cancel"] } });
   t.after(() => { spacesHooks.storePlan = null; });
   const before = sp.list().length;
-  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "needs_store_confirmation" && /built-in store/.test(e.message));
+  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "store_unavailable" && /cannot run the record store/.test(e.message));
   assert.equal(sp.list().length, before, "nothing was hosted before the owner agreed");
-  const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
-  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
-  assert.ok(sp.hosts(made.space));
 });
 
 test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
