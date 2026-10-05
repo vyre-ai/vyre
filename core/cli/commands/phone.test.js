@@ -125,6 +125,7 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const text = lines.join("\n");
   assert.match(text, /Pairing a phone with the box \(vyre\.tail0000\.ts\.net\)/);
+  if (/Confirmed · the QR works once/.test(text)) assert.match(text, /This device can't sign in as you until you confirm it from Devices\./, "a pairing by the offer says it is not confirmed yet");
   assert.match(text, /Network\s+Tailscale, tailnet tail0000/);
   assert.match(text, /This box has no relay yet, so the phone pairs over Tailscale/, "the relay is the default; no relay tool on this box");
   assert.match(text, new RegExp(`Open Vyre\\s+${BOX.replace(/\./g, "\\.")}`));
