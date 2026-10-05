@@ -378,8 +378,19 @@ case "${1:-}" in
   run|start)
     jobflag=0; [ "$1" != run ] || jobflag=1
     if [ -f "$SIZEF" ]; then read_size; else size 1; write_size 1 "$jobflag"; fi
-    if [ "$1" = run ]; then exec colima start --foreground --vm-type vz --cpu "$CPUS" --memory "$MEM" --disk 40; fi
-    exec colima start --cpu "$CPUS" --memory "$MEM" --disk 40
+    [ "$1" = run ] || exec colima start --cpu "$CPUS" --memory "$MEM" --disk 40
+    # The job's own run. Stopping Colima for a resize ends the foreground `colima start` with exit 0, and launchd does not relaunch a job that exits 0, so this loop does it:
+    # a restart flag left by `resize` means "start again at the size now on file"; anything else is the end of the job with Colima's own exit code (0: someone stopped it).
+    while :; do
+      read_size
+      colima start --foreground --vm-type vz --cpu "$CPUS" --memory "$MEM" --disk 40 &
+      pid=$!
+      trap 'kill "$pid" 2>/dev/null' TERM INT
+      rc=0; wait "$pid" || rc=$?
+      trap - TERM INT
+      if [ -f "$VHOME/colima-restart" ]; then rm -f "$VHOME/colima-restart"; continue; fi
+      exit "$rc"
+    done
     ;;
   room|resize)
     n=${2:-}; [ "$n" -ge 1 ] 2>/dev/null || { echo "usage: vyre-runtime $1 <spaces>" >&2; exit 2; }
@@ -395,6 +406,7 @@ case "${1:-}" in
     echo "Making room for a new space"
     write_size "$n"
     # Stopping Colima is the restart: its job (the LaunchDaemon, the LaunchAgent) brings it back through `run` at the size just written. Without a job (brew services) start it here.
+    [ "$(job_now)" != 1 ] || : >"$VHOME/colima-restart"
     colima stop >/dev/null 2>&1 || true
     if [ "$(job_now)" = 1 ]; then i=0; until colima status >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -lt 30 ] || break; sleep 2; done; fi
     colima status >/dev/null 2>&1 || colima start --cpu "$CPUS" --memory "$MEM" --disk 40 >/dev/null 2>&1 || { echo "$json" | sed 's/"ok":true/"ok":false/'; exit 4; }
