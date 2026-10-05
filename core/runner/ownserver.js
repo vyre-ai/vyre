@@ -1,5 +1,5 @@
 // @ts-check
-// A session on the person's own server, made as safe as a lent one (docs/work/runner.md "Own-server sessions"). The provider's own transcript
+// A session on the person's own server, made as safe as a lent one (team/archive/work-journals/runner.md "Own-server sessions"). The provider's own transcript
 // (`<id>.jsonl`, appended by Claude Code with no fsync) is sealed at every turn into the same checkpoint store a lent session uses, and after a
 // crash or power cut `recover` puts the file back to exactly the last whole turn, so `claude --resume` starts from a history that is complete.
 //

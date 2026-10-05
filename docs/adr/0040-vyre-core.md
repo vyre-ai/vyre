@@ -10,7 +10,7 @@ status: draft
 
 ## Context
 
-The setsid work (docs/work/e2e.md, 28 Sep) closed a real ancestry escape: a model's shell could
+The setsid work (team/archive/work-journals/e2e.md, 28 Sep) closed a real ancestry escape: a model's shell could
 `setsid -f` its way past vyred's "is this really the person" check and act as the owner for every
 person-only tool. Fixing that surfaced a systemic problem underneath it, which the reviewer named
 while signing off the fix rather than blocking on it (work/e2e-setsid b0bcbb6a's review):

@@ -23,7 +23,7 @@ function fakeGoogle() {
       const tok = u.searchParams.get("syncToken");
       if (tok && g.expireToken) { g.expireToken = false; return { status: 410, body: {} }; }
       const since = tok ? Number(tok.replace("t", "")) : 0;
-      return { status: 200, body: { items: [...g.events.values()].filter((e) => e.updated > since && (tok || e.status !== "cancelled")), nextSyncToken: `t${g.rev}` } };
+      return { status: 200, body: { items: [...g.events.values()].filter((e) => e.updated > since && (tok || e.status !== "cancelled")), nextSyncToken: `t${g.rev}`, ...(g.zone ? { timeZone: g.zone } : {}) } };
     }
     if (method === "POST") { const id = body.id ?? `g${g.events.size + 1}`; if (g.events.has(id)) return { status: 409, body: {} }; const e = stamp({ ...body, id }); g.events.set(id, e); return { status: 200, body: e }; }
     if (method === "PATCH") {
@@ -60,7 +60,7 @@ async function rig(over = {}) {
 
 test("the Event type is a core type with the fields the calendar needs", () => {
   const e = CORE_TYPES.find((t) => t.name === "event");
-  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes"]);
+  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes", "url", "rrule"]);
 });
 
 test("google shapes: timed, all-day, attendees, and back", () => {
@@ -69,6 +69,33 @@ test("google shapes: timed, all-day, attendees, and back", () => {
   const day = fromGoogle({ id: "b", summary: "Deadline", start: { date: "2026-10-09" }, end: { date: "2026-10-10" } }, "x");
   assert.equal(day.all_day, true); assert.equal(toGoogle(day).start.date, "2026-10-09");
   assert.equal(fromGoogle({ id: "c" }, "x"), null);
+  // the event's own page on its calendar is the record's link, not a line in its notes
+  assert.equal(fromGoogle({ id: "d", summary: "x", start: { date: "2026-10-09" }, htmlLink: "https://www.google.com/calendar/event?eid=abc" }, "g").url, "https://www.google.com/calendar/event?eid=abc");
+  assert.equal(fromGoogle({ id: "e", summary: "x", start: { date: "2026-10-09" }, htmlLink: "javascript:1" }, "g").url, undefined);
+});
+
+test("an event keeps the zone it was made in: its own, else the calendar's; an all-day event has none; a push writes it back", async () => {
+  // a California meeting: stored as UTC, with the zone, so a screen can show "9:00 am PT" and the viewer's own time
+  const own = fromGoogle({ id: "a", summary: "Signing", ...timed("a", "Signing", "09") }, "x", "America/New_York");
+  assert.deepEqual([own.starts_at, own.time_zone], ["2026-10-06T16:00:00.000Z", "America/Los_Angeles"], "the event's own zone wins over the calendar's");
+  const bare = fromGoogle({ id: "b", summary: "Call", start: { dateTime: "2026-10-06T09:00:00-07:00" }, end: { dateTime: "2026-10-06T10:00:00-07:00" } }, "x", "America/Los_Angeles");
+  assert.equal(bare.time_zone, "America/Los_Angeles", "an event that names none takes the calendar's zone");
+  assert.equal(fromGoogle({ id: "c", summary: "Call", start: { dateTime: "2026-10-06T16:00:00Z" }, end: { dateTime: "2026-10-06T17:00:00Z" } }, "x").time_zone, undefined, "no zone anywhere: none is made up");
+  const day = fromGoogle({ id: "d", summary: "Deadline", start: { date: "2026-10-09" }, end: { date: "2026-10-10" } }, "x", "America/Los_Angeles");
+  assert.equal(day.time_zone, undefined, "an all-day event is date only");
+  assert.deepEqual(toGoogle(own).start, { dateTime: "2026-10-06T16:00:00.000Z", timeZone: "America/Los_Angeles" });
+  assert.deepEqual(toGoogle({ ...own, time_zone: undefined }).start, { dateTime: "2026-10-06T16:00:00.000Z" }, "and none is invented on the way out");
+  // through a real pull and push
+  const { google, sync, events, host } = await rig({ policy: () => "allow" });
+  google.zone = "America/Los_Angeles";
+  google.put({ id: "g1", summary: "Closing", status: "confirmed", start: { dateTime: "2026-10-06T09:00:00-07:00" }, end: { dateTime: "2026-10-06T10:00:00-07:00" } });
+  await sync.pull();
+  const row = (await events())[0];
+  assert.deepEqual([row.data.starts_at, row.data.time_zone], ["2026-10-06T16:00:00.000Z", "America/Los_Angeles"]);
+  await host.kernel.records.create(host.ownerChain(), "event", { title: "Hearing", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", time_zone: "America/Los_Angeles", source: "vyre" });
+  await sync.push();
+  const sent = [...google.events.values()].find((e) => e.summary === "Hearing");
+  assert.equal(sent.start.timeZone, "America/Los_Angeles");
 });
 
 test("pull makes records, then an incremental pull updates and removes", async () => {

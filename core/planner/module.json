@@ -15,6 +15,7 @@
     {"name": "planner.dismiss", "effect": "write", "reach": "anyone"},
     {"name": "planner.delete", "effect": "write", "reach": "anyone"},
     {"name": "planner.agenda", "effect": "read", "reach": "anyone"},
+    {"name": "planner.bin", "effect": "read", "reach": "anyone"},
     {"name": "planner.upcoming", "effect": "read", "reach": "anyone"},
     {"name": "planner.parse", "effect": "read", "reach": "anyone"},
     {"name": "planner.settings", "effect": "write", "reach": "person"},
@@ -30,6 +31,7 @@
         "records.create",
         "records.update",
         "records.remove",
+        "records.restore",
         "events.read",
         "tasks.request",
         "tasks.read",
@@ -41,13 +43,35 @@
         "planner_firing/*",
         "planner_state/*",
         "event/*",
-        "task/*"
+        "task/*",
+        "project/*"
       ],
       "types": [
         {
           "name": "reminder",
           "label": "Reminder",
           "icon": "IconBell",
+          "views": [
+            {
+              "name": "reminders_calendar",
+              "type": "calendar",
+              "of": "reminder",
+              "label": "Calendar",
+              "dateField": "at"
+            },
+            {
+              "name": "reminders_list",
+              "type": "list",
+              "of": "reminder",
+              "label": "List",
+              "sort": [
+                {
+                  "field": "at",
+                  "dir": "asc"
+                }
+              ]
+            }
+          ],
           "fields": [
             {
               "name": "title",
@@ -91,17 +115,38 @@
             {
               "name": "floating",
               "kind": "boolean",
-              "label": "Follows the planner's zone"
+              "label": "Follows the planner's zone",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "wall",
               "kind": "text",
-              "label": "Time of day (HH:MM)"
+              "label": "Time of day (HH:MM)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "date",
               "kind": "text",
-              "label": "Date (YYYY-MM-DD)"
+              "label": "Date (YYYY-MM-DD)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "repeat",
@@ -121,7 +166,14 @@
             {
               "name": "next_fire",
               "kind": "number",
-              "label": "Next ring (ms, the planner's own)"
+              "label": "Next ring (ms, the planner's own)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "body",
@@ -161,25 +213,53 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
@@ -189,6 +269,11 @@
               "label": "Done"
             },
             {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
+            },
+            {
               "name": "waits_on",
               "kind": "text",
               "label": "Runs when this item is done"
@@ -196,12 +281,26 @@
             {
               "name": "run_count",
               "kind": "number",
-              "label": "Times run"
+              "label": "Times run",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "last_result",
               "kind": "text",
-              "label": "Last result"
+              "label": "Last result",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "paused",
@@ -211,7 +310,14 @@
             {
               "name": "waits_on_fired",
               "kind": "number",
-              "label": "Last completion it ran for"
+              "label": "Last completion it ran for",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             }
           ]
         },
@@ -275,25 +381,53 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
@@ -301,6 +435,11 @@
               "name": "done_at",
               "kind": "datetime",
               "label": "Done"
+            },
+            {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
             }
           ]
         },
@@ -399,79 +538,6 @@
               "kind": "text",
               "label": "Value (JSON)",
               "required": true
-            }
-          ]
-        },
-        {
-          "name": "event",
-          "label": "Event",
-          "icon": "IconCalendarEvent",
-          "fields": [
-            {
-              "name": "title",
-              "kind": "text",
-              "label": "Title",
-              "required": true
-            },
-            {
-              "name": "starts_at",
-              "kind": "datetime",
-              "label": "Starts",
-              "required": true
-            },
-            {
-              "name": "ends_at",
-              "kind": "datetime",
-              "label": "Ends"
-            },
-            {
-              "name": "all_day",
-              "kind": "boolean",
-              "label": "All day"
-            },
-            {
-              "name": "time_zone",
-              "kind": "text",
-              "label": "Time zone"
-            },
-            {
-              "name": "place",
-              "kind": "text",
-              "label": "Place"
-            },
-            {
-              "name": "people",
-              "kind": "emails",
-              "label": "People (email addresses)"
-            },
-            {
-              "name": "record",
-              "kind": "link",
-              "label": "Belongs to"
-            },
-            {
-              "name": "source",
-              "kind": "choice",
-              "label": "Came from",
-              "options": [
-                "vyre",
-                "google"
-              ]
-            },
-            {
-              "name": "calendar",
-              "kind": "text",
-              "label": "Outside calendar (route)"
-            },
-            {
-              "name": "external_id",
-              "kind": "text",
-              "label": "Outside id"
-            },
-            {
-              "name": "notes",
-              "kind": "rich_text",
-              "label": "Notes"
             }
           ]
         }

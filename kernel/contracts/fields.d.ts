@@ -52,8 +52,12 @@ export interface FieldDefinition {
   readonly description?: string;
   /** For `choice`, `multi_choice` and `stage`. */
   readonly options?: readonly string[];
-  /** For `link` (a reference to another record): the target record type. */
+  /** For `link` (a reference to another record): the target record type. Without it the link names any record (the urn), is never a list and has no inverse. */
   readonly to?: string;
+  /** For `link` with `to`: the value is a list of references (many-to-many), each record at most once. */
+  readonly many?: boolean;
+  /** For `link` with `to`: the named field this link shows on the target type ("Leads" on a Contact). The gateway fills it in at define time; an explicit one is checked against the target's fields and other inverses. */
+  readonly inverse?: { readonly name: string; readonly label: string };
   readonly seal?: SealConfig;
   /** Among the type's live records no two hold the same non-null value. Kinds text, number, url, choice, date, datetime. A store enforces it atomically (store error `unique_violation`). */
   readonly unique?: boolean;
@@ -70,6 +74,10 @@ export interface FieldDefinition {
   readonly visible_if?: string;
   /** Required only while this Expression is true and the field is visible (`stage == "Signed"`). A write that leaves it empty then is refused. Never together with `required`. */
   readonly required_if?: string;
+  /** Written only by the named service (`kernel`: the tasks service, for a task's status); a write by any other chain is refused. The type says so, the gateway enforces it. */
+  readonly owned_by?: 'kernel';
+  /** A text field that must hold a particular form: `time_zone` is an IANA zone name (`America/Los_Angeles`). */
+  readonly format?: 'time_zone';
   readonly computed?: { readonly expr: string } | { readonly over: { readonly type: string; readonly via: string; readonly fn: 'count' | 'sum' | 'min' | 'max' | 'avg'; readonly field?: string; readonly where?: unknown } };
 }
 

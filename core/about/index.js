@@ -76,7 +76,11 @@ export default {
     };
 
     const compute = async () => {
-      const [agents, projects, me] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.profile", { limit: 12 })]);
+      const [agents, projects, st] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.identity.status")]);
+      // A person who keeps their identity memory sealed on a server has none of it in a file: this text is written to the disk in the clear, so it carries no fact of theirs then (their session gets
+      // those through the brief, in process). Only a home that keeps no sealed identity memory writes the profile lines.
+      const sealed = Boolean(st && st.kept && st.kept !== "none");
+      const me = sealed ? null : await ask("memory.profile", { limit: 12 });
       const profile = workFacts(me && me.facts);
       // The names from onboarding's step 1, straight from config: onboard.status would read the network.
       const you = (ctx.config && ctx.config.onboard) || null;

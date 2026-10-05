@@ -141,7 +141,7 @@ test("planner cli: todos by list, notes pinned first, and the agenda", async t =
   const done = await vyre("todo", "done", flour.id);
   assert.equal(done.code, 0, done.out);
   assert.match(done.out, /done buy flour/);
-  assert.doesNotMatch((await vyre("todo")).out, /buy flour/);
+  assert.doesNotMatch((await vyre("todo")).out, /spelt/);
   assert.equal((await vyre("todo", "frob")).code, 2);
 
   await vyre("notes", "add", "kit", "prefers", "mornings");
@@ -182,11 +182,12 @@ test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, a
   const { vyre, tool } = await world(t);
 
   const td = idIn((await vyre("todo", "add", "buy", "flour")).out);
-  // A to-do is a Task: its words are fixed once made, so an edit is refused in plain words and the to-do stays as it was.
   const e1 = await vyre("todo", "edit", td, "buy", "rye", "flour", "!high", "by", "friday");
-  assert.notEqual(e1.code, 0);
-  assert.match(e1.out, /fixed once made/);
-  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy flour");
+  assert.equal(e1.code, 0, e1.out);
+  assert.match(e1.out, /todo buy rye flour\s+!!!\s+due Fri 25 Sep/);
+  const ej = JSON.parse((await vyre("todo", "edit", td, "buy", "spelt", "--json")).out);
+  assert.equal(ej.title, "buy spelt");
+  assert.equal(ej.priority, 3, "words without a priority keep it");
   assert.equal((await vyre("todo", "edit", td)).code, 2, "edit needs the new words");
 
   const nt = idIn((await vyre("notes", "add", "kit", "prefers", "mornings")).out);
@@ -229,7 +230,7 @@ test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, a
   assert.match(wrong.out, /next: vyre todo rm [0-9a-f]{8}-/);
   const wj = JSON.parse((await vyre("notes", "rm", al, "--json")).out);
   assert.equal(wj.error.code, "bad_input");
-  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy flour");
+  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy spelt");
 
   for (const [cmd, id] of [["todo", td], ["notes", nt], ["alarm", al], ["timer", tm], ["remind", rm]]) {
     const r = await vyre(cmd, "rm", id);
@@ -238,7 +239,7 @@ test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, a
   }
   const gone = await tool("planner.get", { item: td });
   assert.ok(gone.error || gone.data.item.deleted_at, "the todo is deleted");
-  assert.doesNotMatch((await vyre("todo")).out, /buy flour/);
+  assert.doesNotMatch((await vyre("todo")).out, /spelt/);
   assert.doesNotMatch((await vyre("notes")).out, /afternoons/);
   assert.equal(JSON.parse((await vyre("alarm", "--json")).out).alarms.length, 1, "only the weekday alarm is left");
   const again = await vyre("todo", "rm", "i_nope");

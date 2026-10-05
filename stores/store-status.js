@@ -2,17 +2,18 @@
 // Which record store a server is using, for `vyre status` and /v1/health (launch's update proof asserts it): the store in use (built-in or Twenty), where that choice came from
 // (VYRE_STORE set, or the default), and the number of records it sees. When VYRE_STORE asks for Twenty and this server is not on it, or the Twenty it is on does not answer, it says so in
 // `note` and never falls back quietly. Reads only.
+import { storeMode } from "./twenty/space-store.js";
 import fs from "node:fs";
 import path from "node:path";
 
 /**
- * @param {{ root: string, store?: any, env?: Record<string, string | undefined> }} o `root` is the vyred home; `store` is the kernel's record store (kernel.store)
- * @returns {Promise<{ store: "builtin" | "twenty", from: "VYRE_STORE" | "default", mode: string, records: number | null, reachable: boolean, note?: string }>}
+ * @param {{ root: string, store?: any, server?: boolean, env?: Record<string, string | undefined> }} o `root` is the vyred home; `store` is the kernel's record store (kernel.store)
+ * @returns {Promise<{ store: "builtin" | "twenty", from: "VYRE_STORE" | "default", mode: string, records: number | null, reachable: boolean, unavailable?: { reason: string, since: string, attempts: number, next_try_at?: string }, note?: string }>}
  */
 export async function storeStatus(o) {
   const env = o.env ?? process.env;
   const asked = env.VYRE_STORE;
-  const mode = asked || "sqlite";
+  const mode = storeMode(env, { server: o.server });
   const from = asked ? "VYRE_STORE" : "default";
   const store = o.store;
   const inUse = store && (store.kind === "twenty" || (typeof store.constructor === "function" && store.constructor.name === "TwentyStore")) ? "twenty" : "builtin";
@@ -27,6 +28,12 @@ export async function storeStatus(o) {
     const chosen = JSON.parse(fs.readFileSync(path.join(o.root, "kernel", "store.json"), "utf8"));
     if (chosen && chosen.kind === "twenty" && inUse !== "twenty") notes.push("this home was set up on Twenty, and this server is running on the built-in store: the records counted here are the built-in store's");
   } catch { /* no choice recorded: the default */ }
+  // a store that could not be set up and is being tried again: one plain state, with the reason and when the next try is (never a crash, never an empty list)
+  /** @type {any} */ let unavailable = null;
+  try {
+    const st = JSON.parse(fs.readFileSync(path.join(o.root, "kernel", "store-state.json"), "utf8"));
+    if (st && st.state === "unavailable") { unavailable = { reason: st.reason, since: st.since, attempts: st.attempts, ...(st.next_try_at ? { next_try_at: st.next_try_at } : {}) }; reachable = false; notes.push(`the record store is not available yet: ${st.reason}`); }
+  } catch { /* none */ }
   let records = null;
   if (store && reachable) {
     try {
@@ -34,5 +41,5 @@ export async function storeStatus(o) {
       for (const t of await store.types()) { const r = await store.aggregate(t.name, { measures: [{ fn: "count" }] }); records += Number(r && r[0] && r[0].values && r[0].values.count) || 0; }
     } catch (e) { records = null; notes.push(`the records could not be counted: ${/** @type {Error} */ (e).message}`); }
   }
-  return { store: inUse, from, mode, records, reachable, ...(notes.length ? { note: notes.join("; ") } : {}) };
+  return { store: inUse, from, mode, records, reachable, ...(unavailable ? { unavailable } : {}), ...(notes.length ? { note: notes.join("; ") } : {}) };
 }

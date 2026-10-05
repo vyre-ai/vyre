@@ -161,18 +161,18 @@ test("one credential for Gmail and Calendar: a Flow's call reaches the host its 
   const hosts = [];
   const m = await mk(t, { "gmail.googleapis.com": { handle: r => { hosts.push("gmail"); return g.handle(r); } }, "www.googleapis.com": { handle: r => { hosts.push("calendar"); return g.handle(r); } } });
   const gm = { ...DECLARATIONS.gmail, auth: { type: "bearer" } }, ca = { ...DECLARATIONS["google-calendar"], auth: { type: "bearer" } };
-  await m.v.put({ name: "google-api", kind: "api-credential", fields: { config: JSON.stringify(toCredentialConfig([gm, ca], { item: undefined })), secret: TOKEN } }, "cli");
+  await m.v.put({ name: "mail-and-calendar", kind: "api-credential", fields: { config: JSON.stringify(toCredentialConfig([gm, ca], { item: undefined })), secret: TOKEN } }, "cli");
   g.addMessage({ from: "jane@client.test", subject: "Hi" });
   g.putEvent({ id: "e1", summary: "Signing", start: { dateTime: "2026-10-08T16:00:00Z" }, end: { dateTime: "2026-10-08T17:00:00Z" } });
-  const list = await m.run("vault.service.forward", { connector: "google-api", request: buildRequest(gm, "messages.list", {}), idem: "r:1" });
+  const list = await m.run("vault.service.forward", { connector: "mail-and-calendar", request: buildRequest(gm, "messages.list", {}), idem: "r:1" });
   assert.equal(list.status, 200); assert.equal(body(list).messages.length, 1);
-  const ev = await m.run("vault.service.forward", { connector: "google-api", request: buildRequest(ca, "events.list", { params: { calendar: "primary" } }), idem: "r:2" });
+  const ev = await m.run("vault.service.forward", { connector: "mail-and-calendar", request: buildRequest(ca, "events.list", { params: { calendar: "primary" } }), idem: "r:2" });
   assert.equal(ev.status, 200); assert.equal(body(ev).items.length, 1);
   assert.deepEqual(hosts, ["gmail", "calendar"], "each call went to the host its route is on");
-  const draft = await m.run("vault.service.forward", { connector: "google-api", request: buildRequest(gm, "drafts.create", { body: { raw: "UkFX" } }), idem: "r:3" });
+  const draft = await m.run("vault.service.forward", { connector: "mail-and-calendar", request: buildRequest(gm, "drafts.create", { body: { raw: "UkFX" } }), idem: "r:3" });
   assert.equal(draft.status, 200, "a draft is not held");
-  assert.equal((await m.run("vault.service.forward", { connector: "google-api", request: buildRequest(gm, "messages.send", { body: { raw: "UkFX" } }), idem: "r:4" })).held, "task_1");
-  await assert.rejects(m.run("vault.service.forward", { connector: "google-api", request: { method: "GET", path: "/drive/v3/files" }, idem: "r:5" }), /not open to this caller/);
+  assert.equal((await m.run("vault.service.forward", { connector: "mail-and-calendar", request: buildRequest(gm, "messages.send", { body: { raw: "UkFX" } }), idem: "r:4" })).held, "task_1");
+  await assert.rejects(m.run("vault.service.forward", { connector: "mail-and-calendar", request: { method: "GET", path: "/drive/v3/files" }, idem: "r:5" }), /not open to this caller/);
 });
 
 test("a connector may not name one of the vault's own headers as its idempotency header", async () => {

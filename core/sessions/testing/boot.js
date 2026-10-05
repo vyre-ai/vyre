@@ -86,8 +86,10 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   const events = async id => (await tool("threads.get", { thread: id, limit: 500 })).data.events;
   const finished = async (id, n = 1) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n} of ${id.slice(0, 8)}`);
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
+  /** Every prompt an ACP agent received, as the blocks it arrived in (the fake agent logs them when FAKE_ACP_LOG is set). */
+  const acpPrompts = () => { try { return fs.readFileSync(process.env.FAKE_ACP_LOG || "", "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(x => x.prompt).map(x => x.prompt); } catch { return []; } };
   const internal = (name, input = {}) => d.registry.call(name, input, "module:vyred");
-  return { root, d, work, tool, internal, launches, events, finished, said, transcripts };
+  return { root, d, work, tool, internal, launches, events, finished, said, acpPrompts, transcripts };
 }
 
 /**

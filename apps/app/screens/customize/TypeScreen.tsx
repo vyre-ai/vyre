@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, EmptyState, Field, Menu, Row, Sheet, Switch, Text, showToast, Banner, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useTypes } from "./state";
-import { KINDS, addField, addStage, callThemCases, fieldLine, kindLabel, moveStage, rename, renameStage, sealField } from "./logic.js";
+import { CONDITION_HELP, KINDS, addField, addStage, callThemCases, fieldLine, kindLabel, moveStage, rename, renameStage, sealField } from "./logic.js";
 import type { TypeDef } from "./logic.js";
 
 /** One type: its names, fields, stages and whether it holds work. Edits apply at once, on every view of the type. */
@@ -40,6 +40,7 @@ export function TypeScreen() {
         <Card flush>
           {t.fields.map((f, i) => <View key={f.key}>{i ? <Divider /> : null}<Row title={f.label} sub={fieldLine(f)} end={f.sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : undefined} onPress={() => setEdit(f.key)} /></View>)}
         </Card>
+        {t.fields.some((f) => f.rule) ? <Text size="caption" tone="label">{CONDITION_HELP}</Text> : null}
         <View className="flex-row"><Button size="sm" icon="plus" label="Add a field" onPress={() => setField({ label: "", kind: "text" })} /></View>
       </Group>
       {t.stages.length || t.fields.some((f) => f.kind === "stage") ? (

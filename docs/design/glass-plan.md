@@ -57,12 +57,12 @@ still leak:
 - **computerd `/fs` routes** are computers-image surface, not glass's own -- contributed to the
   computers image rather than owned by glass. Fine as a documented contract, but it means glass
   can't ship or version independently of the computers image. Freeze the route shapes in
-  `docs/work/computers.md` explicitly as glass's contract, the way vault's fill contract is now
+  `team/archive/work-journals/computers.md` explicitly as glass's contract, the way vault's fill contract is now
   written down.
 - **`computers.shield`/`computers.helper`** are computers tools glass calls; the vault fill
   contract adds a third caller (vault) to the same shield. That's the registry working as
   intended -- but glass's `guard.js` (denied-path list) needs to stay equal to `link`'s copy per
-  `docs/work/glass.md`'s "Needs from others", which is a manual sync today, not enforced by a
+  `team/archive/work-journals/glass.md`'s "Needs from others", which is a manual sync today, not enforced by a
   test. Add a same-file/checksum test so drift fails CI instead of getting found in review.
 - **presence** (`PERSON_ONLY`) is enforced in the module loader, not in glass itself -- correct
   per the registry model, but `computers.takeover`/`glass.take` declaring their own `presence` at
@@ -133,7 +133,7 @@ still leak:
    Measure via RFB's existing frame timestamps plus a round-trip ping tool -- the same sampling
    loop item 1 needs, shared rather than built twice.
 6. **Input fidelity** (M): keyboard shortcuts through noVNC's domkeytable/keysymdef are vendored
-   and presumably complete; clipboard is called out in `docs/work/glass.md`'s Next as
+   and presumably complete; clipboard is called out in `team/archive/work-journals/glass.md`'s Next as
    "clipboard to the holder only while shielded" -- still open. Two-way clipboard, IME support
    (noVNC's input layer is keysym-based, which is lossy for IME composition -- needs explicit
    testing with CJK input), and scroll fidelity (trackpad vs wheel) are all unverified.

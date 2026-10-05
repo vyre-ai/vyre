@@ -1,13 +1,13 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
-import { viewDefOf } from "./view-defs.js";
+import { viewDefOf, storedViewsOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
-export { viewDefOf, fieldStates };
+export { viewDefOf, storedViewsOf, fieldStates };
 
 /** The field of a type by name. @param {any} def @param {string} name */
 export const fieldOf = (def, name) => (def.fields || []).find((/** @type {any} */ f) => f.name === name);
@@ -24,8 +24,25 @@ export const isSealedField = (f) => f.kind === "sealed" || !!f.seal;
 /** The first letters of a title, for a person-like type's tile. @param {string} s */
 export const initialsOf = (s) => String(s).split(/[\s.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
+/** The Space's own bookkeeping (Flow definitions and state, installed Kits and the proposals waiting for a yes, goals): records, but never a screen of the person's. @param {any} t a type definition */
+export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$)/.test(String(t.name));
+
 /** Only the rows a view's stored `filter` (an Expression over the record's fields) holds for; every row when it has none. @param {any[]} rows @param {string | undefined} filter */
 export const viewRows = (rows, filter) => (filter ? rows.filter((r) => holds(filter, r?.data || {})) : rows);
+
+/**
+ * A view's stored filter in the words a person reads ("Stage is Intake and Fee is at least 100"), for the Filtered row. Names that are fields become their labels,
+ * the operators become words, quotes go. An expression this does not recognise is shown as it is written. @param {any} def @param {string} src
+ */
+export function filterWords(def, src) {
+  const label = (/** @type {string} */ n) => fieldOf(def, n)?.label || n;
+  return String(src)
+    .replace(/"([^"]*)"|'([^']*)'/g, (_m, a, b) => `\u0001${a ?? b}\u0002`)
+    .replace(/\bnot empty\((\w+)\)/g, (_m, n) => `${label(n)} is filled in`).replace(/\bempty\((\w+)\)/g, (_m, n) => `${label(n)} is empty`)
+    .replace(/\b([a-z][a-z0-9_]*)\b(?=\s*(==|!=|>=|<=|>|<))/g, (_m, n) => label(n))
+    .replace(/==/g, "is").replace(/!=/g, "is not").replace(/>=/g, "is at least").replace(/<=/g, "is at most").replace(/>/g, "is more than").replace(/</g, "is less than")
+    .replace(/\u0001|\u0002/g, "").replace(/\s+/g, " ").trim();
+}
 
 /** The columns of the list: the definition's, in order, only those the type has. @param {any} def @param {any} [vd] */
 export function listColumns(def, vd = viewDefOf(def)) {

@@ -4,9 +4,12 @@
 
 // the Space's Event records, so neither has a type here.
 //
-// Times a person reads (`at`, `snooze_until`, `done_at`) are datetimes. The engine's own moments (`next_fire`, `created`, `updated`) are numbers in ms.
+// Times a person reads (`at`, `snooze_until`, `done_at`, `removed_at`) are datetimes. The engine's own moments (`next_fire`, `created`, `updated`) are numbers in ms.
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
+/** The engine's own bookkeeping: a field no role sees or writes (`hidden_from`, the contract's one way to hide a field from people), so a record page, table or form lists only what a person sets. The planner's own chain has no role and reads and writes it. */
+const ALL_ROLES = ["owner", "admin", "manager", "member", "temp"];
+const hide = (/** @type {any} */ f) => ({ ...f, hidden_from: ALL_ROLES });
 const num = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "number", label, ...more });
 const bool = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, kind: "boolean", label });
 const when = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, kind: "datetime", label });
@@ -17,22 +20,26 @@ export const ITEM_STATES = ["open", "done", "cancelled"];
 /** What a Reminder and a Note share: how a person files and finds them. */
 const FILING = [text("list", "List"), num("priority", "Priority (0 to 3)"), bool("pinned", "Pinned"), text("tags", "Tags (a JSON list)"), text("project", "Project"), text("thread", "Thread")];
 /** Who added it, as the planner keeps it: `source` is the caller, `added_by` an agent's name (empty for the person and their assistant). */
-const MADE = [text("source", "Added by (caller)"), text("added_by", "Added by (agent)"), num("created", "Created (ms)"), num("updated", "Updated (ms)"), when("deleted_at", "Deleted"), when("done_at", "Done")];
+const MADE = [hide(text("source", "Added by (caller)")), hide(text("added_by", "Added by (agent)")), hide(num("created", "Created (ms)")), hide(num("updated", "Updated (ms)")), when("removed_at", "Deleted"), when("done_at", "Done"),
+  // Set on a record the one-time import (legacy.js) made from the planner's old tables: the old id, so a re-run after a crash finds what it already carried.
+  text("legacy_id", "Carried from the old planner (its id)")];
 
 /** An alarm, a timer, a reminder, or a /later task that runs an instruction at a time. */
 export const REMINDER = {
   name: "reminder", label: "Reminder", icon: "IconBell",
+  // The views a client offers for this type before anyone makes one: the same shape as defineView (records/language/sdk.js). A calendar needs the date field it is laid out by.
+  views: [{ name: "reminders_calendar", type: "calendar", of: "reminder", label: "Calendar", dateField: "at" }, { name: "reminders_list", type: "list", of: "reminder", label: "List", sort: [{ field: "at", dir: "asc" }] }],
   fields: [
     text("title", "Title", { required: true }),
     { name: "kind", kind: "choice", label: "Kind", options: REMINDER_KINDS, required: true },
     { name: "state", kind: "choice", label: "State", options: ITEM_STATES, required: true },
     when("at", "Rings at"),
-    text("tz", "Time zone"), bool("floating", "Follows the planner's zone"), text("wall", "Time of day (HH:MM)"), text("date", "Date (YYYY-MM-DD)"),
+    text("tz", "Time zone"), hide(bool("floating", "Follows the planner's zone")), hide(text("wall", "Time of day (HH:MM)")), hide(text("date", "Date (YYYY-MM-DD)")),
     text("repeat", "Repeat rule (JSON)"), num("duration_ms", "Timer length (ms)"),
-    when("snooze_until", "Snoozed until"), num("next_fire", "Next ring (ms, the planner's own)"),
+    when("snooze_until", "Snoozed until"), hide(num("next_fire", "Next ring (ms, the planner's own)")),
     { name: "body", kind: "rich_text", label: "Notes or the instruction a task runs" },
     ...FILING, ...MADE,
-    text("waits_on", "Runs when this item is done"), num("run_count", "Times run"), text("last_result", "Last result"), bool("paused", "Paused"), num("waits_on_fired", "Last completion it ran for"),
+    text("waits_on", "Runs when this item is done"), hide(num("run_count", "Times run")), hide(text("last_result", "Last result")), bool("paused", "Paused"), hide(num("waits_on_fired", "Last completion it ran for")),
   ],
 };
 

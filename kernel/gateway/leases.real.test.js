@@ -74,3 +74,25 @@ test("real process, L-5: another member naming the same device id cannot refuse-
   assert.equal(await code(r.L.reinstate(carol, { member: BOB, device: "dev_laptop", proof: {} })), "not_allowed");
   await r.L.revoke(r.bob, { member: BOB, device: "dev_laptop" }); assert.equal(await r.live(r.bob, lease.id), false, "bob himself may");
 });
+
+test("real process: a computer whose member was removed from the Space entirely, lent again, is reinstated by an admin's yes and then runs: the old key opens nothing, and without the reinstate it still does not", async t => {
+  const r = await rig(t), accept = await r.both(), lease = await r.L.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.equal(await r.live(r.bob, lease.id), true);
+  // the member is removed from the Space: everything they held ends at once
+  await r.g.removeMember(r.owner, { person: BOB }, { presence: proof("grants.role", { remove: BOB }, `vyre://${SPACE}/member/${BOB}`) }); await new Promise(res => setTimeout(res, 50));
+  assert.equal(await r.live(r.bob, lease.id), false);
+  void accept;
+  // the Space takes them back and the computer is lent again (both Offers made new)
+  const role = { person: BOB, role: "member" };
+  await r.g.setRole(r.owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  await r.both();
+  assert.deepEqual(await r.L.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { revoked: true }, "lent again, and still no lease: the removal stands until it is reinstated");
+  // an admin's yes (a hardware proof the real process checks, over this member and this computer) reinstates it
+  const ownerKey = signer(OWNER); await enrolDevice(r.sealer, ownerKey);
+  await r.L.reinstate(r.owner, { member: BOB, device: "dev_laptop", proof: ownerKey.proof(r.owner, "lease.reinstate", { member: BOB, device: "dev_laptop" }) });
+  const next = await r.L.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.ok(next.id, "a working lease after the reinstate");
+  assert.notEqual(next.key, lease.key, "the key from before the removal opens nothing now");
+  assert.equal(await r.live(r.bob, next.id), true);
+  assert.equal(await r.live(r.bob, lease.id), false);
+});
