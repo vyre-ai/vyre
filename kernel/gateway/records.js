@@ -661,6 +661,8 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
+      // A Basic (device) install holds only the fixed personal types: a custom type needs the person's own server (Pro).
+      if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("pro_required", cfg.basic.refusal);
       checkKinds(diff); await checkRoles(diff); await checkShape(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);

@@ -248,6 +248,9 @@ async function startLocked(opts, root, p, release) {
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
     const { storeMode } = await import("../../stores/twenty/space-store.js");
     const isServerInstall = config.isServer(cfg.machine);
+    // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
+    /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
+    if (!isServerInstall && isPackaged()) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
       storeFor = createStoreFor({ home: root, log, server: isServerInstall });
@@ -325,7 +328,7 @@ async function startLocked(opts, root, p, release) {
       if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;

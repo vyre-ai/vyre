@@ -721,7 +721,7 @@ write_kernel_env() {
   fi
   chmod 600 "$TMP/vyre.kernel"
   grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
-  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=twenty\n' >>"$TMP/vyre.kernel"
   put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
 }
 
@@ -847,7 +847,7 @@ early_one_install() {
 CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
 SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
-# preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person
+# preflight: say plainly what this server can host. A box too small for a Space's record store (Twenty) cannot host a Space, which the person
 # should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
 preflight() {
   mem=""; disk=""
@@ -855,14 +855,14 @@ preflight() {
   d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
   [ -d "$d" ] || d=/
   disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
-  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will use the built-in store unless it finds room."; return 0; fi
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre needs room for a space's record store (Twenty) and has not found out how much there is."; return 0; fi
   fit=$(( (mem - 300) / (SPACE_MEM_MB - 300) )); [ "$fit" -ge 0 ] || fit=0
   if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and the larger store needs $SPACE_DISK_MB MB: Vyre will use the built-in store."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and a space's record store (Twenty) needs $SPACE_DISK_MB MB: this server cannot host a space. Use a bigger disk."
   elif [ "$fit" -ge 1 ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on the larger store (each needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB)."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) (each needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB)."
   else
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. The larger store needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB per space, so Vyre will use the built-in store. Everything works; very large record sets are slower."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. A space's record store (Twenty) needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB, so this server cannot host a space. Use a bigger server."
   fi
 }
 
