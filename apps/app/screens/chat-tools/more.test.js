@@ -113,3 +113,10 @@ test("find's calls, edit, close and suggestions send the Deck's inputs", { skip:
     ["threads.watch", { thread: "t1", until: "either", notify: "deck" }], ["recall.index", {}], ["gate.get", { id: "g1" }],
   ]);
 });
+
+import { activityOf as activityOfVia } from "./more-model.ts";
+test("an artifact activity row the person's assistant made is marked", () => {
+  const rows = activityOfVia({ events: [{ kind: "opened", at: 2, actor: "per_a1", acted_via: "assistant" }, { kind: "shared", at: 1, actor: "per_a1" }] });
+  assert.equal(rows[0].via, "assistant");
+  assert.equal(rows[1].via, undefined);
+});

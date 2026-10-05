@@ -41,10 +41,10 @@ export function RecordsScreen({ type }: { type: string }) {
           <Text size="caption" tone="label">{rows.length} {rows.length === 1 ? def.label.toLowerCase() : vd.plural.toLowerCase()}</Text>
         </View>
       </View>
-      {/* Reminders and Notes live with Records (the app map), and open the planner. */}
+      {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
-        <Button kind="ghost" size="sm" icon="alarm" label="Reminders" onPress={() => router.push("/u/planner" as never)} />
-        <Button kind="ghost" size="sm" icon="edit" label="Notes" onPress={() => router.push("/u/planner" as never)} />
+        <Button kind="ghost" size="sm" icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
+        <Button kind="ghost" size="sm" icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
       </View>
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
       {world.types.length > TABS_MAX

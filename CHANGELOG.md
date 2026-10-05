@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Reminders and Notes in Records open /u/records/reminder and /u/records/note (they are Records types, per the app map), not the planner page. An artifact's activity log marks what the person's assistant did (acted_via), and a task record's acted_via is read from its data.
+
 - feat(app): a space is called by its real name (displayName, label, or its address without .vyre.run); only the personal space is "Home", and a space with no readable name is "Space" with the gap logged. "(Sent by Vyre Assistant)" shows after the person's name wherever the event, task or held card carries acted_via: "assistant": record history, Now's recent lines, a task's sentence, the Waiting-on-you row and the phone's approval card. Records gets Reminders and Notes buttons that open the planner.
 
 - refactor(app): src/vendor/deck is gone; what the app uses lives under its own names: chat core and sessions in src/chat/core, the store (mock, gateway adapter, theme, tasks) in src/store-core (alias @vyre/store), the mark art in ui/marks/art, xterm in src/terminal/xterm, Find's command parser in screens/find. Unused copies (a second Wink renderer and payload) are deleted. fix: Metro no longer watches kernel/expr (web-2's lib/expr is the one fix).
