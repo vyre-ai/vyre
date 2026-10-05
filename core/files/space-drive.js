@@ -15,8 +15,8 @@ export const MAX_UPLOAD = 8 * 1024 * 1024;
 
 
 /**
- * The Project hub names its Drive folders by id (Projects/<project id>/chat|made/<session id>/), so a screen shows the project's and the session's own names over them. Answered for the folders the
- * entries are in, under the caller's own chain (a record the caller cannot read has no name here, and the id shows). { "Projects/<id>": "Rivera Estate", "Projects/<id>/chat/<thread>": "Draft the welcome email" }.
+ * The Project hub names its Drive folders by id (Projects/<project id>/chat|made/<chat id>/), so a screen shows the project's and the chat's own names over them. Answered for the folders the
+ * entries are in, under the caller's own chain (a record the caller cannot read has no name here, and the id shows). { "Projects/<id>": "Rivera Estate", "Projects/<id>/chat/<chat id>": "Draft the welcome email" }.
  * @param {any} d @param {any[]} entries @returns {Promise<Record<string, string>>}
  */
 async function namesOf(d, entries) {
@@ -36,7 +36,7 @@ async function namesOf(d, entries) {
       if (!seen.has(folder)) {
         seen.add(folder);
         try {
-          const page = await d.gateway.records.query(d.chain, "session-summary", { filter: { field: "thread", op: "eq", value: m[3] }, page: { limit: 1 } });
+          const page = await d.gateway.records.query(d.chain, "chat-record", { filter: { field: "chat", op: "eq", value: m[3] }, page: { limit: 1 } });
           const rec = page.rows[0];
           if (rec && rec.data.title) names[folder] = String(rec.data.title);
         } catch { /* not readable: the id shows */ }
@@ -47,7 +47,7 @@ async function namesOf(d, entries) {
 }
 
 /**
- * The session folders of a project, for a screen that lists `Projects/<id>/chat` or `.../made`: each session record the caller may read (they are visible to the project) as a folder with its own name
+ * The chat folders of a project, for a screen that lists `Projects/<id>/chat` or `.../made`: each chat record the caller may read (they are visible to the project) as a folder with its own name
  * and whether the caller may open it. A chat the caller is not in still shows its name, and `open: false` tells the screen not to offer it; the kernel refuses the open all the same. A project the
  * caller cannot read has no records to show, so it is not here at all, not even as an id.
  * @param {any} d @param {any} drive @param {string} prefix @returns {Promise<{ path: string, name: string, open: boolean }[]>}
@@ -59,14 +59,14 @@ async function foldersOf(d, drive, prefix) {
   try {
     const project = await d.gateway.records.get(d.chain, "project", m[1]);
     if (!project) return [];
-    const page = await d.gateway.records.query(d.chain, "session-summary", { filter: { field: "project", op: "eq", value: { urn: project.urn } }, page: { limit: 200 } });
+    const page = await d.gateway.records.query(d.chain, "chat-record", { filter: { field: "project", op: "eq", value: { urn: project.urn } }, page: { limit: 200 } });
     for (const rec of page.rows) {
-      const thread = String(rec.data.thread || "");
-      if (!thread) continue;
-      const path = `Projects/${m[1]}/${m[2]}/${thread}`;
+      const chat = String(rec.data.chat || "");
+      if (!chat) continue;
+      const path = `Projects/${m[1]}/${m[2]}/${chat}`;
       let open = true;
       try { await drive.listPage(d.chain, `${path}/`, { limit: 1 }); } catch { open = false; }
-      out.push({ path, name: String(rec.data.title || thread), open });
+      out.push({ path, name: String(rec.data.title || chat), open });
     }
   } catch { /* nothing readable here */ }
   return out;

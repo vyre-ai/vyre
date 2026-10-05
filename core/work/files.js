@@ -1,11 +1,11 @@
 // @ts-check
 // Every file of a project lands in the project's Drive folder (the user, 6 Oct 2026). The Project hub (core/work/hub.js) makes the folder, Projects/<slug>/; this saves into it and keeps one
-// record for each file, linked from its session and its Project:
+// record for each file, linked from its chat and its Project:
 //
-//   Projects/<slug>/chat/<session folder>/<name>   what the person dropped into a chat (a pasted image, an attachment)
-//   Projects/<slug>/made/<session folder>/<name>   what a model made (an image, a document, a page, a code output)
+//   Projects/<project id>/chat/<chat id>/<name>   what the person dropped into a chat (a pasted image, an attachment)
+//   Projects/<project id>/made/<chat id>/<name>   what a model made (an image, a document, a page, a code output)
 //
-// <session folder> is the session's id (the Project hub names folders by id, never by title: hub.sessionFolder), and the project root is the Project record's own `drive_path`. A rename never moves anything;
+// <chat id> is the chat's kernel id (the Project hub names folders by id, never by title: hub.chatFolder), and a chat's folders are readable only by the people in it (the kernel decides, from chat membership), and the project root is the Project record's own `drive_path`. A rename never moves anything;
 // the one move is "Move to project", which the Drive reports as `file.moved` and `onMoved` follows.
 // The bytes go through the kernel's Drive under the work module's own service chain (the Drive's grants and log apply); the record is a `project-file` (records/core-types.js). A file is saved once:
 // its key is the thread, the kind and the content hash (or the artifact it is a version of), so a second look at the same bytes changes nothing, and a new version of an artifact is a new Drive version of
@@ -13,7 +13,7 @@
 
 import crypto from "node:crypto";
 
-const FILE = "project-file", SUMMARY = "session-summary", PROJECT = "project";
+const FILE = "project-file", PROJECT = "project";
 export const MAX_FILE = 100 * 1024 * 1024;
 export const KINDS = ["chat", "made"];
 
@@ -26,7 +26,7 @@ export function safeName(raw, fallback = "file") {
 }
 
 /**
- * @param {{ kernel: any, hub: { sessionRecord: Function, sessionFolder: Function, projectOf: Function, onStarted: Function, ensureProject: Function }, call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} o
+ * @param {{ kernel: any, hub: { chatRecord: Function, ensureChatRecord: Function, chatFolder: Function, projectOf: Function }, call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} o
  */
 export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
   const log = (/** @type {string} */ m) => { if (process.env.DEBUGFILES) console.log("FILESLOG " + m); log0(m); };
@@ -35,25 +35,20 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
   const idOf = (/** @type {string} */ urn) => String(urn).split("/").pop() || "";
   const dec = new TextDecoder();
 
-  /** The session record and Project record a thread belongs to; the summary is made from what threads knows when the hub has not seen the thread yet. @param {string} thread */
+  /** The chat record and Project record a thread's files belong to: the thread's chat (threads.chat-of), its `chat-record`, and that record's Project. @param {string} thread */
   async function contextOf(thread) {
-    let summary = await hub.sessionRecord(thread);
-    if (!summary && call) {
-      try { const r = await call("threads.get", { thread, limit: 1 }); const t = r && (r.data || r); const th = t && (t.thread || t);
-        if (th && th.id) summary = await hub.onStarted({ thread, name: th.name, project: th.project, cwd: th.cwd, provider: th.provider, model: th.model, agent: th.agent }); } catch { /* unknown thread */ }
-    }
-    if (!summary) return null;
-    /** @type {any} */ let project = null;
-    if (summary.data.project && summary.data.project.urn) project = await hub.projectOf(summary.data.project.urn);
-    if (!project && call) {
-      try { const r = await call("threads.get", { thread, limit: 1 }); const th = r && ((r.data && (r.data.thread || r.data)) || r); const slug = th && th.project;
-        if (slug) { project = await hub.ensureProject(String(slug)); if (project) summary = await kernel.records.update(chain(), SUMMARY, summary.id, { project: { urn: project.urn } }, summary.version); } } catch { /* no project */ }
-    }
-    return project ? { summary, project } : null;
+    if (!call) return null;
+    let chat = null;
+    try { const r = await call("threads.chat-of", { thread }); const d = r && (r.data || r); chat = d && typeof d.chat === "string" ? d.chat : null; } catch { /* unknown thread */ }
+    if (!chat) return null;
+    const rec = (await hub.chatRecord(chat)) || (await hub.ensureChatRecord(chat, {}));
+    if (!rec) return null;
+    const project = rec.data.project && rec.data.project.urn ? await hub.projectOf(rec.data.project.urn) : null;
+    return project ? { chat, rec, project } : null;
   }
 
   /**
-   * Save one file of a session into its project's folder.
+   * Save one file of a chat (reached by one of its threads) into its project's folder.
    * @param {{ thread: string, kind: "chat" | "made", name: string, bytes: Uint8Array, mime?: string, source?: string, artifact?: string, key?: string }} f
    * @returns {Promise<{ path: string, record: any, created: boolean, version: number } | null>} null when the thread has no project or the file could not be kept
    */
@@ -65,9 +60,9 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
       const ctx = await contextOf(String(f.thread));
       if (!ctx) return null;
       const sha = crypto.createHash("sha256").update(f.bytes).digest("hex");
-      const key = f.key || `${f.thread}:${f.kind}:${sha}`;
+      const key = f.key || `${ctx.chat}:${f.kind}:${sha}`;
       const have = await find(FILE, "key", key);
-      const folder = `${ctx.project.data.drive_path || `Projects/${ctx.project.data.slug}`}/${f.kind}/${hub.sessionFolder(ctx.summary)}`;
+      const folder = `${ctx.rec.data.drive || ctx.project.data.drive_path || `Projects/${ctx.project.id}`}/${f.kind}/${hub.chatFolder(ctx.chat)}`;
       if (have) {
         if (have.data.sha256 === sha) return { path: have.data.path, record: have, created: false, version: 0 };
         // a new version of the same thing (an artifact edited): the same path, a new Drive version, the record follows
@@ -81,7 +76,7 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
       const put = await kernel.drive.put(chain(), path, f.bytes, { base: null });
       const rec = await kernel.records.create(chain(), FILE, {
         name, path, kind: f.kind, size: f.bytes.length, sha256: sha, key, thread: String(f.thread), ...(f.mime ? { mime: String(f.mime).slice(0, 100) } : {}), ...(f.source ? { source: String(f.source).slice(0, 200) } : {}),
-        ...(f.artifact ? { artifact: String(f.artifact) } : {}), project: { urn: ctx.project.urn }, session: { urn: ctx.summary.urn },
+        ...(f.artifact ? { artifact: String(f.artifact) } : {}), project: { urn: ctx.project.urn }, chat: { urn: ctx.rec.urn },
       });
       return { path, record: rec, created: true, version: put.version };
     } catch (e) { log(`project files: could not save ${String(f && f.name).slice(0, 60)} for ${String(f && f.thread).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
@@ -99,13 +94,13 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
   }
 
   /**
-   * The Drive moved a folder (a session filed under another Project): rewrite the prefix on the records of the files under it, and point each at its session's Project now.
+   * The Drive moved a folder (a chat filed under another Project): rewrite the prefix on the records of the files under it, and point each at its chat's Project now.
    * @param {{ from: string, to: string }} m
    */
   async function onMoved(m) {
     if (!m || typeof m.from !== "string" || typeof m.to !== "string") return { updated: 0 };
     let updated = 0, after = null;
-    // the Project whose folder the files are in now (the session's own link is moved after the Drive, so the path is the truth)
+    // the Project whose folder the files are in now (the chat's own link is moved after the Drive, so the path is the truth)
     const projects = (await kernel.records.query(chain(), PROJECT, { page: { limit: 500 } })).rows;
     const now = projects.find((/** @type {any} */ p) => p.data.drive_path && (m.to === p.data.drive_path || m.to.startsWith(p.data.drive_path + "/"))) || null;
     for (let page = 0; page < 50; page++) {

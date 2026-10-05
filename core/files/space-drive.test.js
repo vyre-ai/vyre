@@ -118,7 +118,7 @@ test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad 
   assert.equal(await code(run("files.drive.space.list", { limit: -1 })), "bad_input");
 });
 
-/** A gateway for the listing rules: a Drive that answers only what a caller may read, and records the same way. `member` says which projects and chats the caller is in. */
+/** A gateway for the listing rules: a Drive that answers only what a caller may read, and records the same way. GAP: this is a fake; the real kernel's refusal of a chat the caller is not in (flows' chat folder rule, kernel/grants) is tested in that work, not here. `member` says which projects and chats the caller is in. */
 function listingRig(member) {
   const files = ["Projects/pa/chat/s1/a.png", "Projects/pa/chat/s2/b.png", "Projects/pa/made/s1/c.md", "Projects/pb/chat/s9/d.png"];
   const canRead = (/** @type {string} */ p) => { const m = /^Projects\/([^/]+)(?:\/(?:chat|made)\/([^/]+))?/.exec(p); return Boolean(m && member.projects.includes(m[1]) && (!m[2] || member.chats.includes(m[2]))); };
@@ -130,7 +130,7 @@ function listingRig(member) {
     },
   };
   const projects = { pa: { urn: `vyre://${SPACE}/project/pa`, data: { name: "Rivera Estate" } }, pb: { urn: `vyre://${SPACE}/project/pb`, data: { name: "Secret Matter" } } };
-  const sessions = [{ data: { thread: "s1", title: "Draft the welcome email", project: { urn: projects.pa.urn } } }, { data: { thread: "s2", title: "Private strategy chat", project: { urn: projects.pa.urn } } }, { data: { thread: "s9", title: "Other firm session", project: { urn: projects.pb.urn } } }];
+  const sessions = [{ data: { chat: "s1", title: "Draft the welcome email", project: { urn: projects.pa.urn } } }, { data: { chat: "s2", title: "Private strategy chat", project: { urn: projects.pa.urn } } }, { data: { chat: "s9", title: "Other firm session", project: { urn: projects.pb.urn } } }];
   const records = {
     async get(c, type, id) { if (type !== "project" || !member.projects.includes(id)) return null; return projects[id]; },
     async query(c, type, spec) { const urn = spec.filter && spec.filter.value && spec.filter.value.urn; return { rows: member.projects.some(id => projects[id].urn === urn) ? sessions.filter(s => s.data.project.urn === urn) : [], next_cursor: null }; },

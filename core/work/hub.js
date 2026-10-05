@@ -1,24 +1,25 @@
 // @ts-check
-// The Project hub (team/0.3/DESIGN-project-hub.md): a Project is one record, and every session is a record linked to it. This is the writing side, in the work module (it already holds a kernel
-// handle and writes records under its own service chain).
+// The Project hub (team/0.3/DESIGN-project-hub.md) and the Chat record (DESIGN-one-chat.md, CONTRACT-one-chat.md): a Project is one record, and every chat is a record linked to it. This is the writing
+// side, in the work module (it already holds a kernel handle and writes records under its own service chain).
 //
-// The INDEX is what must be exact: every project and every session, with its ids, its start and end times, its Drive folder, and where its transcript file is (which machine, which path) plus the kernel
-// address the transcript and checkpoints are kept under. A summary text is optional and, when there is none, a plain line of facts. Nothing here holds transcript text.
+// A Chat record holds only what an admin may see: that the chat exists, its title, who is in it (a mirror of the kernel's list), when, its status and where it lives. Never messages, transcripts, models,
+// providers or a summary; those are the engine's and come back to participants through `work.chat.get`. The INDEX is what must be exact: every chat with its kernel id, times and Drive folder.
 //
 //   createProject(chain, { name, repo?, client? })    the record, its short name, its Drive folder NAMED BY ITS ID (Projects/<id>: a rename never touches Drive), its memory scope
-//   generalProject()                                  the Space's default project: a session started with no project lands here
-//   onStarted / onStopped                             the switchboard's and the Harness's session events, as a session summary record linked to its Project
-//   moveSession(thread, project, by)                  "Move to project": the record's link, and the session's two Drive folders moved under the other project, as the person who moved it
-//   renameProject / renameSession                     a name changed anywhere reaches every other place (the record, the old project list, the thread), ids unchanged; Drive is never touched
+//   generalProject()                                  the Space's default project: a chat started with no project lands here
+//   onChatCreated / onChatChanged                     the kernel's `chat.created` and `chat.changed`: the record and its mirrored people and agents
+//   onStarted / onChatLinked / onStopped              the switchboard's and the Harness's run events: title, project, status, last active
+//   moveChat(chat, project, by)                       "Move to project": the record's link, and the chat's two Drive folders moved under the other project, as the person who moved it
+//   renameProject / renameChat                        a name changed anywhere reaches every other place (the record, the old project list, every run's name), ids unchanged; Drive is never touched
 //
 // Renames settle because each side compares before it writes: a side that already has the new name does nothing, so two sides that both sync names cannot ping-pong.
 
 import os from "node:os";
 import { slugify, SLUG_RE } from "../../lib/project-id.js";
 
-const PROJECT = "project", SUMMARY = "session-summary", GENERAL = "general";
+const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
-const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [SUMMARY]: ["thread", "transcript", "transcript_file", "machine", "drive", "started", "ended"] };
+const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "started", "last_active", "status", "drive", "location"] };
 /** The only part of the Drive the hub ever moves. */
 const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
 
@@ -52,6 +53,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     // The marker is the CALLER's own write (drive.write on its chain): a person who cannot write Drive cannot make a project, and the record is taken back so none is left half made.
     try { await folderMarker(rec, caller || chain(), true); }
     catch (e) { await kernel.records.remove(caller || chain(), PROJECT, rec.id).catch(() => {}); throw e; }
+    // this computer learns of it: a local row and a home folder for the sessions that start here
+    await tool("projects.adopt", { slug: s, name: nm });
     return rec;
   }
 
@@ -62,14 +65,22 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     catch (e) { if (strict) throw e; log(`project hub: no Drive folder marker for ${rec.data.slug} (${/** @type {Error} */ (e).message})`); }
   }
 
+  /** @type {Map<string, Promise<any>>} one in flight per short name: the project list's event and the projects module's own ask can both arrive at once, and a short name is unique */
+  const making = new Map();
   /** The Project for a slug an older part of the system still names; made from the folder project's name on first sight. @param {string} slug @param {string} [name] */
-  async function ensureProject(slug, name) {
-    if (!slug || !SLUG_RE.test(slug)) return null;
-    const have = await find(PROJECT, "slug", slug);
-    if (have) return have;
-    let nm = name;
-    if (!nm) { const r = await tool("projects.list", {}); const list = (r && r.projects) || []; const hit = Array.isArray(list) ? list.find((/** @type {any} */ p) => p.slug === slug) : null; if (hit) nm = hit.name; }
-    return createProject(chain(), { name: nm || slug, slug });
+  function ensureProject(slug, name) {
+    if (!slug || !SLUG_RE.test(slug)) return Promise.resolve(null);
+    const hit = making.get(slug);
+    if (hit) return hit;
+    const p = (async () => {
+      const have = await find(PROJECT, "slug", slug);
+      if (have) return have;
+      let nm = name;
+      if (!nm) { const r = await tool("projects.list", {}); const list = (r && r.projects) || []; const h = Array.isArray(list) ? list.find((/** @type {any} */ x) => x.slug === slug) : null; if (h) nm = h.name; }
+      return createProject(chain(), { name: nm || slug, slug });
+    })().finally(() => making.delete(slug));
+    making.set(slug, p);
+    return p;
   }
 
   /** The Space's default project, "General": made on first need. A session started without a project is filed here, and "Move to project" files it later. */
@@ -78,68 +89,97 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** A Project's Drive folder: its own field, or (in the instant between its creation and the hub setting it) the same id-named path. @param {any} proj */
   const rootOf = proj => proj.data.drive_path || `Projects/${proj.id}`;
 
-  /** Where a session's transcript file is on this machine, from the index of sessions Recall keeps. @param {string} thread */
-  async function transcriptFile(thread) {
-    const r = await tool("recall.sessions", { ids: [thread], limit: 1, machines: "local" });
-    const row = Array.isArray(r) ? r[0] : null;
-    return row && typeof row.file === "string" ? row.file : null;
-  }
+  const ids = (/** @type {any} */ l) => (Array.isArray(l) ? l : []).map(String).join(",");
+  const findChat = (/** @type {string} */ chat) => find(CHAT, "chat", chat);
+  const rootOf2 = (/** @type {any} */ proj) => rootOf(proj);
+  const locationOf = (/** @type {any} */ proj, /** @type {string} */ chat) => `${rootOf2(proj)}/chat/${chat}/`;
 
-  /** @param {any} p0 the thread.started payload ({ thread, name, cwd, project, agent, provider, model, ... }); the Harness's hook says `session` and knows only the folder */
-  async function onStarted(p0) {
-    let p = p0 && typeof p0.thread !== "string" && typeof p0.session === "string" ? { ...p0, thread: p0.session } : p0;
-    if (!p || typeof p.thread !== "string") return null;
+  /**
+   * The record of a chat, made when first heard of (the kernel's `chat.created`, or a run's start, whichever comes first) and filled by the other. `hints` is what the sender knows.
+   * @param {string} chat @param {{ people?: string[], agents?: string[], title?: string | null, project?: string | null, at?: number }} [hints]
+   */
+  async function ensureChatRecord(chat, hints = {}) {
+    if (typeof chat !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(chat)) return null;
+    const have = await findChat(chat);
+    if (have) return have;
+    const proj = (hints.project ? await ensureProject(String(hints.project)).catch(() => null) : null) || await generalProject();
+    const at = iso(hints.at || now());
     try {
-      if (!p.project && typeof p.cwd === "string") { const hit = await tool("projects.of", { cwd: p.cwd }); if (hit && typeof hit.slug === "string") p = { ...p, project: hit.slug }; }
-      const have = await find(SUMMARY, "thread", p.thread);
-      const file = await transcriptFile(p.thread);
-      if (have) {
-        // a resumed session, or the second of two events for one (the switchboard and the Harness hook): the same record, working, with what it did not know before filled in
-        const proj0 = !have.data.project ? (p.project ? await ensureProject(String(p.project)).catch(() => null) : await generalProject().catch(() => null)) : null;
-        const fill = { status: "working", ended: null, ...(proj0 ? { project: { urn: proj0.urn }, drive: rootOf(proj0) } : {}), ...(!have.data.model && p.model ? { model: String(p.model) } : {}), ...(!have.data.provider && p.provider ? { provider: String(p.provider) } : {}), ...(!have.data.agents && p.agent ? { agents: String(p.agent) } : {}),
-          ...(p.name && (!have.data.title || /session$/i.test(have.data.title)) ? { title: String(p.name).slice(0, 120) } : {}), ...(file && !have.data.transcript_file ? { transcript_file: file, machine } : {}) };
-        return kernel.records.update(chain(), SUMMARY, have.id, fill, have.version);
-      }
-      // every session belongs to a project: the one it ran in, else General
-      const proj = (p.project ? await ensureProject(String(p.project)).catch(() => null) : null) || await generalProject().catch(() => null);
-      let acct = null;
-      const t = (await tool("threads.get", { thread: p.thread, limit: 1 }) || {}).thread;
-      if (t && t.account) acct = t.account;
-      return await kernel.records.create(chain(), SUMMARY, {
-        title: String(p.name || (p.agent ? `${p.agent} session` : "Session")).slice(0, 120), ...(proj ? { project: { urn: proj.urn }, drive: rootOf(proj) } : {}),
-        people: String(kernel.owner || ""), ...(p.agent ? { agents: String(p.agent) } : {}), ...(p.provider ? { provider: String(p.provider) } : {}), ...(p.model ? { model: String(p.model) } : {}), ...(acct ? { account: String(acct) } : {}),
-        started: iso(now()), status: "working", thread: p.thread, transcript: urnOf("session", p.thread), ...(file ? { transcript_file: file, machine } : { machine }),
-      });
-    } catch (e) { log(`project hub: could not write the session record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
+      return await kernel.records.create(chain(), CHAT, { title: String(hints.title || UNTITLED).slice(0, 120), project: { urn: proj.urn }, chat, people: ids(hints.people), agents: ids(hints.agents),
+        started: at, last_active: at, status: "idle", drive: rootOf(proj), location: locationOf(proj, chat) });
+    } catch (e) { const again = await findChat(chat); if (again) return again; throw e; }
   }
 
-  /** @param {any} p0 the thread.stopped payload ({ thread, code, reason }) */
+  /** The kernel's `chat.created`: { chat: { id, people, assistants } }. @param {any} ev */
+  async function onChatCreated(ev) {
+    const c = ev && ev.data && ev.data.chat;
+    if (!c || typeof c.id !== "string") return null;
+    try {
+      const rec = await ensureChatRecord(c.id, { people: c.people, agents: c.assistants });
+      return rec && (rec.data.people !== ids(c.people) || rec.data.agents !== ids(c.assistants)) ? await kernel.records.update(chain(), CHAT, rec.id, { people: ids(c.people), agents: ids(c.assistants) }, rec.version) : rec;
+    } catch (e) { log(`chat record: could not write the record for ${c.id}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+  /** The kernel's `chat.changed`: { id, people, assistants }. The mirror follows; kernel membership is never written from here. @param {any} ev */
+  async function onChatChanged(ev) {
+    const d = ev && ev.data;
+    if (!d || typeof d.id !== "string") return null;
+    try {
+      const rec = await ensureChatRecord(d.id, { people: d.people, agents: d.assistants });
+      if (!rec || (rec.data.people === ids(d.people) && rec.data.agents === ids(d.assistants))) return rec;
+      return await kernel.records.update(chain(), CHAT, rec.id, { people: ids(d.people), agents: ids(d.assistants), last_active: iso(now()) }, rec.version);
+    } catch (e) { log(`chat record: could not follow ${d.id}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+
+  /** A run began in a chat (the switchboard's `thread.started`, which says its chat, name, project and cwd). The chat is working; an untitled one takes the run's name; a chat still in General takes the run's project. @param {any} p */
+  async function onStarted(p) {
+    if (!p || typeof p.chat !== "string") return null;
+    try {
+      let project = p.project ? String(p.project) : null;
+      if (!project && typeof p.cwd === "string") { const hit = await tool("projects.of", { cwd: p.cwd }); if (hit && typeof hit.slug === "string") project = hit.slug; }
+      const rec = await ensureChatRecord(p.chat, { title: p.name || null, project, people: [String(kernel.owner || "")].filter(Boolean), agents: [] });
+      return rec ? await touch(rec, { status: "working", project, title: p.name || null }) : null;
+    } catch (e) { log(`chat record: could not write the record for ${p.chat}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+  /** A terminal session's chat was made (`thread.chat`: { session, chat, cwd }): the same as a start. @param {any} p */
+  async function onChatLinked(p) { return p && typeof p.chat === "string" ? onStarted({ chat: p.chat, cwd: p.cwd, name: null }) : null; }
+
+  /** Fill a chat record with what a run event knows: working or idle, last active, and the title or project it did not have. @param {any} rec @param {{ status?: string, project?: string | null, title?: string | null }} o */
+  async function touch(rec, o) {
+    /** @type {any} */ const patch = { last_active: iso(now()) };
+    if (o.status && rec.data.status !== o.status) patch.status = o.status;
+    if (o.title && (!rec.data.title || rec.data.title === UNTITLED)) patch.title = String(o.title).slice(0, 120);
+    if (o.project) {
+      const general = await generalProject().catch(() => null);
+      const cur = rec.data.project && rec.data.project.urn;
+      if (general && cur === general.urn) { const proj = await ensureProject(o.project).catch(() => null); if (proj && proj.urn !== general.urn) Object.assign(patch, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, rec.data.chat) }); }
+    }
+    return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version);
+  }
+
+  /** A run ended (`thread.stopped`: { thread, code, reason }): the chat is idle, or stopped or failed when the run's end says so and no other run of the chat is still going. @param {any} p0 */
   async function onStopped(p0) {
     const p = p0 && typeof p0.thread !== "string" && typeof p0.session === "string" ? { ...p0, thread: p0.session } : p0;
     if (!p || typeof p.thread !== "string") return null;
     try {
-      const have = await find(SUMMARY, "thread", p.thread);
-      if (!have || have.data.status !== "working") return null; // closed already (the switchboard and the terminal hook can both say it)
-      const t = (await tool("threads.get", { thread: p.thread, limit: 1 }) || {}).thread;
+      const chat = typeof p.chat === "string" ? p.chat : await chatOfThread(p.thread);
+      if (!chat) return null;
+      const rec = await findChat(chat);
+      if (!rec) return null;
+      const others = ((await tool("threads.of-chat", { chat })) || {}).runs || [];
+      if (others.some((/** @type {any} */ r) => r.thread !== p.thread && r.live)) return await touch(rec, { status: "working" });
       const reason = String(p.reason || "");
-      const status = /^exited \d/.test(reason) || reason === "restart" || /without starting/.test(reason) ? "failed" : reason === "stopped" ? "stopped" : "done";
-      const turns = t && Number.isFinite(t.turns) ? t.turns : null;
-      const facts = `${turns === null ? "A session" : `${turns} turn${turns === 1 ? "" : "s"}`}${have.data.model ? ` on ${have.data.model}` : ""}${reason ? `, ended: ${reason.slice(0, 80)}` : ""}.`;
+      const status = /^exited \d/.test(reason) || reason === "restart" || /without starting/.test(reason) ? "failed" : reason === "stopped" ? "stopped" : "idle";
       await syncNameFromTranscript(p.thread);
-      const have2 = await find(SUMMARY, "thread", p.thread) || have;
-      const file = have2.data.transcript_file ? null : await transcriptFile(p.thread);
-      return await kernel.records.update(chain(), SUMMARY, have.id, { status, ended: iso(now()), summary: facts.slice(0, 1500), ...(t && t.model ? { model: String(t.model) } : {}), ...(file ? { transcript_file: file, machine } : {}) }, have2.version);
-    } catch (e) { log(`project hub: could not close the session record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
+      return await touch((await findChat(chat)) || rec, { status });
+    } catch (e) { log(`chat record: could not close the record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
-  /** A session's folder name: its id, which never changes (so a rename never touches Drive). Under its project's folder there are two: what the person dropped in (`chat`) and what a model made (`made`). */
-  const sessionFolder = (/** @type {any} */ rec) => String(rec.data.thread);
+  /** A chat's folder name: its id, which never changes (so a rename never touches Drive). Under its project's folder there are two: what the person dropped in (`chat`) and what a model made (`made`). */
   const KINDS = ["chat", "made"];
-  /** Move a session's two folders under another project's folder, as the PERSON who moved it: the gateway checks drive.read and drive.write on every file and aborts the whole move on one refusal. A missing folder moves nothing. */
-  async function moveSessionFolders(by, /** @type {string} */ fromRoot, /** @type {string} */ name, /** @type {string} */ toRoot) {
+  /** Move a chat's two folders under another project's folder, as the PERSON who moved it: the gateway checks every file of both before either moves. A missing folder moves nothing. @param {any} by */
+  async function moveChatFolders(by, /** @type {string} */ fromRoot, /** @type {string} */ name, /** @type {string} */ toRoot) {
     if (!kernel.drive || typeof kernel.drive.moveFolders !== "function" || fromRoot === toRoot) return;
     if (!underProjects(fromRoot) || !underProjects(toRoot)) return;
-    // both folders are checked, file by file, before either moves: a session is never left split across two projects
     await kernel.drive.moveFolders(by, KINDS.map(k => [`${fromRoot}/${k}/${name}`, `${toRoot}/${k}/${name}`]));
   }
 
@@ -150,21 +190,21 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return find(PROJECT, "slug", r);
   }
 
-  /** "Move to project": the session's record is linked to the other Project and carries its Drive folder; its ids, times and transcript pointer stay exactly as they were. */
-  async function moveSession(thread, projectRef, by) {
-    if (!by) throw Object.assign(new Error("a session is moved by a person"), { code: "not_allowed" });
-    const rec = await find(SUMMARY, "thread", thread);
-    if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
+  /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
+  async function moveChat(chat, projectRef, by) {
+    if (!by) throw Object.assign(new Error("a chat is moved by a person"), { code: "not_allowed" });
+    const rec = await findChat(chat);
+    if (!rec) throw Object.assign(new Error("no record of that chat"), { code: "not_found" });
     const proj = await projectOf(projectRef);
     if (!proj) throw Object.assign(new Error("no such project"), { code: "not_found" });
     if (rec.data.project && rec.data.project.urn === proj.urn) return rec;
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
-    if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveSessionFolders(by, rec.data.drive, sessionFolder(rec), rootOf(proj));
-    const moved = await kernel.records.update(by, SUMMARY, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj) }, rec.version);
-    // the old folder list still counts the session as picked into the project it was in
+    if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));
+    const moved = await kernel.records.update(by, CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
+    // the old folder list still counts each run as picked into the project it was in
     const oldSlug = rec.data.project && rec.data.project.urn ? (await projectOf(rec.data.project.urn).catch(() => null)) : null;
-    await tool("projects.remove-threads", { project: oldSlug && oldSlug.data.slug, threads: [thread] });
-    await tool("projects.add-threads", { project: proj.data.slug, threads: [thread] });
+    const runs = ((await tool("threads.of-chat", { chat })) || {}).runs || [];
+    for (const r of runs) { await tool("projects.remove-threads", { project: oldSlug && oldSlug.data.slug, threads: [r.thread] }); await tool("projects.add-threads", { project: proj.data.slug, threads: [r.thread] }); }
     return moved;
   }
 
@@ -182,26 +222,30 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return cur;
   }
 
-  /** A session's name changed somewhere: the record's title and the thread's name agree. @param {any} rec the session record @param {string} title @param {"record" | "thread"} from */
-  async function renameSession(rec, title, from, by = chain()) {
+  /** A chat's name changed somewhere: the record's title and every run's thread name agree. @param {any} rec the chat record @param {string} title @param {"record" | "thread"} from @param {string} [except] the run the change came from */
+  async function renameChat(rec, title, from, by = chain(), except) {
     const t = String(title || "").trim().slice(0, 120);
     if (!t) return rec;
     let cur = rec;
-    if (cur.data.title !== t) cur = await kernel.records.update(by, SUMMARY, cur.id, { title: t }, cur.version);
-    if (from !== "thread" && cur.data.thread) await tool("threads.rename", { thread: cur.data.thread, name: t });
+    if (cur.data.title !== t) cur = await kernel.records.update(by, CHAT, cur.id, { title: t }, cur.version);
+    const runs = ((await tool("threads.of-chat", { chat: cur.data.chat })) || {}).runs || [];
+    for (const r of runs) if (r.thread !== except && r.name !== t) await tool("threads.rename", { thread: r.thread, name: t });
     return cur;
   }
 
-  /** The last name the transcript showed for each session, so only a CHANGE in it counts as a rename (a stale transcript name never overwrites a title set in Records). @type {Map<string, string>} */
+  /** The last name the transcript showed for each run, so only a CHANGE in it counts as a rename (a stale transcript name never overwrites a title set in Records). @type {Map<string, string>} */
   const seenName = new Map();
+  /** The chat a run belongs to. @param {string} thread */
+  async function chatOfThread(thread) { const r = await tool("threads.chat-of", { thread }); return r && typeof r.chat === "string" ? r.chat : null; }
   /**
-   * A /rename inside Claude Code lands in the transcript, which Recall indexes as the session's name. At each turn's end (and at the session's end) a name that differs from the one last seen
-   * is a rename made there, and the record's title follows. The first look only records the name.
+   * A /rename inside Claude Code lands in the transcript, which Recall indexes as the run's name. At each turn's end (and at the run's end) a name that differs from the one last seen is a rename made
+   * there, and the chat's title follows. The first look only records the name.
    * @param {string} thread
    */
   async function syncNameFromTranscript(thread) {
     try {
-      const rec = await find(SUMMARY, "thread", thread);
+      const chat = await chatOfThread(thread);
+      const rec = chat ? await findChat(chat) : null;
       if (!rec) return null;
       const r = await tool("recall.sessions", { ids: [thread], limit: 1, machines: "local" });
       const row = Array.isArray(r) ? r[0] : null;
@@ -209,20 +253,26 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
       if (!name) return null;
       const before = seenName.get(thread);
       seenName.set(thread, name);
-      if (before === undefined) return name !== rec.data.title && !rec.data.title ? renameSession(rec, name, "thread") : null;
-      return before !== name ? renameSession(rec, name, "thread") : null;
-    } catch (e) { log(`project hub: could not read the transcript's name for ${thread}: ${/** @type {Error} */ (e).message}`); return null; }
+      if (before === undefined) return name !== rec.data.title && (!rec.data.title || rec.data.title === UNTITLED) ? renameChat(rec, name, "thread", chain(), thread) : null;
+      return before !== name ? renameChat(rec, name, "thread", chain(), thread) : null;
+    } catch (e) { log(`chat record: could not read the transcript's name for ${thread}: ${/** @type {Error} */ (e).message}`); return null; }
   }
   const onTurn = async (/** @type {any} */ p) => (p && typeof p.session === "string" ? syncNameFromTranscript(p.session) : null);
 
   /** Events that carry a name change from the other sides: the old project list's `project.changed` and the thread's `thread.renamed`. */
   async function onProjectChanged(p) {
-    if (!p || typeof p.project !== "string" || typeof p.name !== "string") return null;
-    try { const rec = await find(PROJECT, "slug", p.project); return rec ? await renameProject(rec, p.name, "list") : null; } catch (e) { log(`project hub: rename of ${p.project} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
+    if (!p || typeof p.project !== "string") return null;
+    try {
+      const rec = await find(PROJECT, "slug", p.project);
+      if (!rec) return null;
+      // archived or brought back in the project list: the record's status follows
+      if (typeof p.archived === "boolean") { const want = p.archived ? "archived" : "active"; if (rec.data.status !== want) return await kernel.records.update(chain(), PROJECT, rec.id, { status: want, archived_at: p.archived ? iso(now()) : null }, rec.version); return rec; }
+      return typeof p.name === "string" ? await renameProject(rec, p.name, "list") : null;
+    } catch (e) { log(`project hub: rename of ${p.project} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
   }
   async function onThreadRenamed(p) {
     if (!p || typeof p.thread !== "string" || typeof p.name !== "string") return null;
-    try { const rec = await find(SUMMARY, "thread", p.thread); return rec ? await renameSession(rec, p.name, "thread") : null; } catch (e) { log(`project hub: rename of ${p.thread} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
+    try { const chat = typeof p.chat === "string" ? p.chat : await chatOfThread(p.thread); const rec = chat ? await findChat(chat) : null; return rec ? await renameChat(rec, p.name, "thread", chain(), p.thread) : null; } catch (e) { log(`chat record: rename of ${p.thread} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
   }
   /**
    * A record changed in Records itself. A person's edit of a system field is put back and nothing else happens. A name change is only a title: anyone allowed to update the record may rename, and it reaches the project
@@ -232,7 +282,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   async function onRecordChanged(ev) {
     try {
       const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(ev && ev.subject));
-      if (!m || (m[1] !== PROJECT && m[1] !== SUMMARY)) return null;
+      if (!m || (m[1] !== PROJECT && m[1] !== CHAT)) return null;
       const changed = ev.data && Array.isArray(ev.data.changed) ? ev.data.changed : [];
       const mine = /^service:work@/.test(String(ev.actor || ""));
       let rec = await kernel.records.get(chain(), m[1], m[2]);
@@ -246,10 +296,11 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
       }
       if (mine) return null;
       if (m[1] === PROJECT && changed.includes("name")) return await renameProject(rec, rec.data.name, "record");
-      if (m[1] === SUMMARY && changed.includes("title")) return await renameSession(rec, rec.data.title, "record");
+      if (m[1] === CHAT && changed.includes("title")) return await renameChat(rec, rec.data.title, "record");
     } catch (e) { log(`project hub: a change in Records did not reach its other places: ${/** @type {Error} */ (e).message}`); }
     return null;
   }
 
-  return Object.freeze({ createProject, ensureProject, generalProject, onStarted, onStopped, moveSession, renameProject, renameSession, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, sessionFolder, sessionRecord: (/** @type {string} */ thread) => find(SUMMARY, "thread", thread) });
+  const chatRecord = (/** @type {string} */ chat) => findChat(chat);
+  return Object.freeze({ createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
 }
