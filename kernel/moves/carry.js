@@ -1,0 +1,75 @@
+// @ts-check
+// kernel/moves/carry.js: a project's files move from one Space's Drive to another's without anyone reading them. `carryFiles(fromChain, toChain, { entries, move_id })` re-seals each file from the
+// source Space's pool key to the target's, here, inside the home's kernel: the bytes go from the source pool (opened with the source Space's own key) into the target pool (sealed with the target's own
+// key) and nowhere else. They are never returned, never handed to a module and never given to the mover: the answer is only `[{ dest, sha256 }]`, the hash of what is now stored in the target.
+//
+// It runs only for an open move: the kernel's own `project.move_started` for this `move_id` in the source Space, by the same one person who calls it, within a day; and that person must be an owner or
+// an admin of BOTH Spaces (the restore act on the project's folder, the same one the move's survey and inventory rest on). A chat's files are its participants' only: the mover is not one, which is
+// exactly why this is a kernel act and not a read.
+//
+// Resumable: a file already in the target with the entry's hash is not written again, so a move that stopped half way is run again with the same entries and finishes. The source is never changed here
+// (its files are removed only after the target is verified, by the Drive gateway's removeMoved).
+import { KernelError } from "../core/errors.js";
+
+/** The raw Drive of each Space's kernel, kept here and nowhere on the kernel object a module can reach: only this file's carry opens it. @type {WeakMap<object, any>} */
+const cores = new WeakMap();
+/** @param {object} kernel the Space's booted kernel @param {any} drive its Drive (kernel/storage/drive.js) */
+export function holdDrive(kernel, drive) { if (drive) cores.set(kernel, drive); return kernel; }
+
+const DAY = 24 * 60 * 60 * 1000;
+const MAX_ENTRIES = 5000;
+const SAFE = /^Projects\/[^/]+\/.+/;
+
+/**
+ * @param {{ spaceOf: (space: string) => any }} o `spaceOf(id)` is the home's hosted handle for a Space (`spaces.for`): `{ kernel }`, whose log and `gateway.authorize` the carry uses, and whose Drive it holds through `holdDrive`
+ */
+export function createMoves(o) {
+  const one = (/** @type {any} */ chain, /** @type {string} */ what) => {
+    if (!chain || !Array.isArray(chain.hops) || chain.hops.length !== 1 || chain.hops[0].actor.kind !== "person" || typeof chain.space !== "string") throw new KernelError("bad_input", `${what} needs one person's chain`);
+    return String(chain.hops[0].actor.id);
+  };
+  const side = (/** @type {any} */ chain, /** @type {string} */ what) => {
+    const h = o.spaceOf(chain.space);
+    const k = h && h.kernel;
+    if (!k || !cores.get(k) || !k.gateway || typeof k.gateway.authorize !== "function") throw new KernelError("unavailable", `the ${what} Space has no Drive on this home`);
+    return k;
+  };
+  return Object.freeze({
+    /**
+     * @param {any} fromChain the mover's chain in the source Space @param {any} toChain the same person's chain in the target Space
+     * @param {{ entries: { path: string, dest: string, sha256: string, size: number }[], move_id: string }} q
+     * @returns {Promise<{ dest: string, sha256: string }[]>}
+     */
+    async carryFiles(fromChain, toChain, q) {
+      const who = one(fromChain, "a carry"), whoTo = one(toChain, "a carry");
+      if (who !== whoTo) throw new KernelError("not_allowed", "a move is carried by one person in both Spaces");
+      if (!q || typeof q.move_id !== "string" || !Array.isArray(q.entries) || q.entries.length > MAX_ENTRIES) throw new KernelError("bad_input", "name the move and its files");
+      if (fromChain.space === toChain.space) throw new KernelError("bad_input", "a move goes to another Space");
+      const src = side(fromChain, "source"), dst = side(toChain, "target");
+      const ev = typeof src.log.read === "function" ? src.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === q.move_id) : null;
+      if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= DAY)) throw new KernelError("not_found", "no such move");
+      const id = String(ev.subject).split("/").pop();
+      // an owner or admin of both Spaces: the restore act on the project's folder (the move's own survey and inventory ask the same)
+      const may = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ folder) => (await k.gateway.authorize({ chain, action: "drive.restore", resource: `vyre://${chain.space}/file/${folder}` })).effect === "allow";
+      if (!(await may(src, fromChain, `Projects/${id}`))) throw new KernelError("not_found", "no such move");
+      /** @type {{ dest: string, sha256: string }[]} */ const out = [];
+      for (const e of q.entries) {
+        if (!e || typeof e.path !== "string" || typeof e.dest !== "string" || typeof e.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(e.sha256) || !Number.isInteger(e.size)) throw new KernelError("bad_input", "a file to carry names its path, its destination, its hash and its size");
+        if (!e.path.startsWith(`Projects/${id}/`) || !SAFE.test(e.dest) || e.dest.split("/").some(p => p === ".." || p === ".")) throw new KernelError("bad_input", "only the moved project's own files go, into a project folder");
+        const destFolder = e.dest.split("/").slice(0, 2).join("/");
+        if (!(await may(dst, toChain, destFolder))) throw new KernelError("not_found", "that folder is not yours to move into");
+        // resume: already there with this hash
+        let have = null; try { have = cores.get(dst).stat(e.dest, {}); } catch { have = null; }
+        if (have && have.sha256 === e.sha256 && !have.deleted) { out.push({ dest: e.dest, sha256: String(have.sha256) }); continue; }
+        let st; try { st = cores.get(src).stat(e.path, {}); } catch { throw new KernelError("not_found", "a file of the move is not in the source"); }
+        if (st.sha256 !== e.sha256 || Number(st.size) !== e.size) throw new KernelError("conflict", "a file of the move is not what the plan approved");
+        const bytes = await cores.get(src).get(e.path, {});
+        await cores.get(dst).put(e.dest, bytes, { by: `person:${who}`, base: have ? have.version ?? null : null });
+        const now = cores.get(dst).stat(e.dest, {});
+        if (now.sha256 !== e.sha256) throw new KernelError("unavailable", "a carried file did not arrive intact");
+        out.push({ dest: e.dest, sha256: String(now.sha256) });
+      }
+      return out;
+    },
+  });
+}

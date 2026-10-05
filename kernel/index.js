@@ -26,6 +26,7 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { createMoves, holdDrive } from "./moves/carry.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -146,6 +147,8 @@ export async function createKernel(cfg) {
       proofFrom, acceptProofRequest: (/** @type {any} */ card, /** @type {string} */ person) => acceptProofRequest(cfg.space, card, person), proofChainHash: (/** @type {string} */ person) => proofChainHash(cfg.space, person), proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
       leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats ? Object.freeze({ ...gateway.grants.chats, append: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.append(token, message); }, beginTurn: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.beginTurn(token); }, appendOpen: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.appendOpen(token, message); }, ...(needs.room === true ? { roomFor: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.roomFor(token); } } : {}), mayReceive: (/** @type {any} */ chain, /** @type {string} */ messageId) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.mayReceive(chain, messageId); } }) : undefined,
       // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
+      // A project's files move to another Space sealed (kernel/moves/carry.js): the work module asks, the bytes never leave the kernel, the answer is hashes.
+      ...(m.name === "work" ? { moves: Object.freeze({ carryFiles: (/** @type {any} */ from, /** @type {any} */ to, /** @type {any} */ q) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return createMoves({ spaceOf: (/** @type {string} */ id) => spaces.for(id) }).carryFiles(from, to, q); } }) } : {}),
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
@@ -389,5 +392,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }
