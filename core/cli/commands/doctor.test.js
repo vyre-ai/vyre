@@ -41,7 +41,7 @@ function tools({ link = {}, box = {}, status = {} } = {}) {
 }
 
 const deps = (o = {}) => ({
-  role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
+  role: "local", box: BOX, health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
   tool: tools(), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
   modules: async () => ({ data: [{ name: "settings", state: "running" }, { name: "recall", state: "running" }] }),
   ...o,

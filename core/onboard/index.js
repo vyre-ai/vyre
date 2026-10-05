@@ -435,9 +435,9 @@ export default {
         joinOwnerOnly(caller, meta, "adding a device or a server");
         if (action === "relay") return call("relay.pair.start");
         if (action === "verify") {
-          const st = await call("network.wink.status", {});
+          const st = await tryCall("network.wink.status", {});
           const spaces = Array.isArray(st && st.spaces) ? st.spaces : [];
-          const health = { online: spaces.some((/** @type {any} */ x) => x.state === "connected" || x.state === "relayed"), path: (spaces.find((/** @type {any} */ x) => x.path) || {}).path || null, spaces };
+          const health = { online: spaces.some((/** @type {any} */ x) => x.state === "connected" || x.state === "relayed"), path: (spaces.find((/** @type {any} */ x) => x.path) || {}).path || null, spaces, ...(st && st.__error ? { why: st.__error } : {}) };
           if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });
           return health;
         }

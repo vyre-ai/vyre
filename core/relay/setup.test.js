@@ -82,14 +82,14 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
   for (const name of ["network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
   for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.wink.statusx", "network.wink.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
@@ -476,7 +476,7 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
 test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {
   assert.equal(WEB_DENY.test("relay.setup.claim"), true);
   assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
-  for (const ok of ["network.wink.status", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+  for (const ok of ["network.wink.status", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
 // ---- the setup channel, one session, end to end ----

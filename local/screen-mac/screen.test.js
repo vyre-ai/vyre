@@ -98,21 +98,21 @@ test("blind: a password manager gives the app and window title, and its text is 
   assert.equal((await counts(helper)).context, undefined, "the helper was asked for the text of a blind place");
 });
 
-test("blind: the Deck on the paired box, found through link.status and cached for a minute", async t => {
+test("blind: the Deck on the paired box, found through wink.server.call and cached for a minute", async t => {
   const where = { app: { name: "Safari", bundle: "com.apple.Safari", pid: 8 }, window: { title: "Deck" }, url: "https://juno.example.ts.net/deck/vault" };
   const helper = fake(t, { where });
   const asked = [];
   let now = 0;
-  const call = async tool => { asked.push(tool); return { data: { linked: true, box: { address: "https://juno.example.ts.net" } } }; };
+  const call = async tool => { asked.push(tool); return { data: { address: "https://juno.example.ts.net" } }; };
   const s = new Screen({ helper, call, now: () => now });
   const r = /** @type {any} */ (await s.context());
   assert.equal(r.blind, "a Vyre surface in the browser");
   assert.equal("url" in r, false, "a blind answer carried the URL");
   await s.context();
-  assert.deepEqual(asked, ["link.status"]);
+  assert.deepEqual(asked, ["wink.server.call"]);
   now += 61_000;
   await s.context();
-  assert.deepEqual(asked, ["link.status", "link.status"]);
+  assert.deepEqual(asked, ["wink.server.call", "wink.server.call"]);
 });
 
 test("blind: no link means no box, and an ordinary page reads normally", async t => {

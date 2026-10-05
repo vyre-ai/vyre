@@ -33,7 +33,7 @@ const tree = {
   940: { ppid: 1, pgid: 600, args: "vyre threads answer" },
   // An orphan of a shell whose group is gone (nohup .. & under a terminal claude, the shell exited),
   // and the Capsule, which launchd started as its own group.
-  950: { ppid: 1, pgid: 949, args: "sh -c sleep 2; vyre call link.call" }, 951: { ppid: 950, pgid: 949, args: "vyre call link.call" },
+  950: { ppid: 1, pgid: 949, args: "sh -c sleep 2; vyre call wink.server.call" }, 951: { ppid: 950, pgid: 949, args: "vyre call wink.server.call" },
   960: { ppid: 1, pgid: 960, args: "/Applications/Vyre.app/Contents/MacOS/Vyre" },
   // A link vyred cannot read (the process ended mid-walk).
   990: { ppid: 989, args: "vyre threads answer" },
@@ -276,8 +276,8 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // Tools that are not person-only still answer, as the session's own label (the next test).
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
-  // link.call is traced by what it carries: a person's tool inside it is refused as that tool is.
-  const carried = await client(dir, socket, "link.call", { tool: "threads.answer", input: {} }, { underClaude: true });
+  // wink.server.call is traced by what it carries: a person's tool inside it is refused as that tool is.
+  const carried = await client(dir, socket, "wink.server.call", { tool: "threads.answer", input: {} }, { underClaude: true });
   assert.equal(carried.status, 403, JSON.stringify(carried));
   assert.match(carried.body.error.message, /inside a Claude session/);
   // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
@@ -294,23 +294,23 @@ test("peer: a tool with person-only callers is refused under a claude by name al
   const dir = fs.mkdtempSync(path.join(root, "peer-"));
   const socket = d.paths.socket;
 
-  // link.pair is not on PERSON_ONLY's own hand-kept list, and its callers are person surfaces
+  // onboard.link is not on PERSON_ONLY's own hand-kept list, and its callers are person surfaces
   // alone, so this is derived; it names no address at all, so this never reaches its own logic --
   // the floor refuses it first, the same "inside a Claude session" 403 agents.create (which IS on
   // the hand-kept list) gets above.
-  const inside = await client(dir, socket, "link.pair", {}, { underClaude: true });
+  const inside = await client(dir, socket, "onboard.link", {}, { underClaude: true });
   assert.equal(inside.status, 403, JSON.stringify(inside));
   assert.equal(inside.body.error.code, "denied");
   assert.match(inside.body.error.message, /inside a Claude session/);
-  const outside = await client(dir, socket, "link.pair", { box: "https://127.0.0.1:1" });
+  const outside = await client(dir, socket, "onboard.link", { mint: false });
   assert.notEqual(outside.status, 403, JSON.stringify(outside));
 
-  // link.find is opted out (core/presence's OPT_OUT: a read-only tailnet probe). Its callers are
+  // voice.status is opted out (core/presence's OPT_OUT: a read). Its callers are
   // person surfaces too, but personOnly() must say no for it, or this whole mechanism would
-  // block every opted-out tool exactly as it blocks link.pair.
+  // block every opted-out tool exactly as it blocks onboard.link.
   const { personOnly } = await import("../core/presence/index.js");
-  assert.equal(personOnly("link.find", { callers: ["cli", "local", "capsule"] }), false);
-  assert.equal(personOnly("link.pair", { callers: ["cli", "local", "capsule"] }), true);
+  assert.equal(personOnly("voice.status", { callers: ["cli", "local", "capsule"] }), false);
+  assert.equal(personOnly("onboard.link", { callers: ["cli", "local", "capsule"] }), true);
 });
 
 test("peer: a person's label from under a claude is the session's own, for every tool; from outside it stays the person's", async t => {

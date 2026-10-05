@@ -1,13 +1,13 @@
 // @ts-check
-// The waiting module against fake threads, gate, planner and link modules in a temp home. The fakes
+// The waiting module against fake threads, gate and planner modules in a temp home. The fakes
 // answer with the owners' real shapes (core/switchboard/asks.js shape, core/gate/gate.js brief,
-// core/planner/index.js planner.ringing, core/link/box.js link.pending).
+// core/planner/index.js planner.ringing).
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { clean, tally, fromPending } from "./index.js";
+import { clean, tally } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -25,15 +25,14 @@ const HELD = { id: "g1", kind: "send", via: "mail", to: ["dana@harlowlegal.com"]
   agent: "juno", thread: "t-harlow", project: "harlow-legal", at: T + 3000, anchor: { tool_use_id: null, event: 9, thread: "t-harlow", at: T + 3000 },
   presence: { required: true, covered: false, since: null } };
 const RING = { firing: "f1", key: `planner-i1-${Math.floor((T + 2000) / 1000)}`, item: "i1", kind: "reminder", title: "Call alex about the bakery lease", due: T + 2000, ring: 1, missed: false, actions: ["done", "snooze"] };
-const PAIR = { id: "p1", name: "alex's MacBook", login: "alex@example.com", node: "alex-mbp", expires: T + 600_000 };
 
 const fake = (name, tool, key, extra = "") => [name, [tool],
   `export default { async start(ctx) { ctx.tool(${JSON.stringify(tool)}, { effect: "read", ${extra} run: async () => { globalThis.calls[${JSON.stringify(tool)}] = (globalThis.calls[${JSON.stringify(tool)}] || 0) + 1;
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
-const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
+const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing")];
 
 async function world(t, fakes = ALL, data = {}, role = "box") {
-  /** @type {any} */ (globalThis).fake = { asks: [], held: [], ringing: [], pending: [], ...data };
+  /** @type {any} */ (globalThis).fake = { asks: [], held: [], ringing: [], ...data };
   /** @type {any} */ (globalThis).calls = {};
   const home = tempHome(t);
   const root = path.join(home, "mods");
@@ -50,47 +49,33 @@ async function world(t, fakes = ALL, data = {}, role = "box") {
   return { reg, events, said, call, calls: /** @type {any} */ (globalThis).calls, data: /** @type {any} */ (globalThis).fake };
 }
 
-test("waiting.list: the four sources in one list, newest first, with source-prefixed ids and a tally", async t => {
-  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING], pending: [PAIR] });
+test("waiting.list: the three sources in one list, newest first, with source-prefixed ids and a tally", async t => {
+  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING] });
   const r = (await w.call("waiting.list")).data;
-  assert.deepEqual(r.rows.map(x => x.id), ["threads:a2", "gate:g1", "planner:f1", "threads:a1", "link:p1"]);
-  assert.deepEqual(r.rows.map(x => x.kind), ["ask", "draft", "reminder", "ask", "pairing"]);
-  assert.equal(r.count, 5);
-  assert.deepEqual(r.by_kind, { ask: 2, draft: 1, reminder: 1, pairing: 1 });
+  assert.deepEqual(r.rows.map(x => x.id), ["threads:a2", "gate:g1", "planner:f1", "threads:a1"]);
+  assert.deepEqual(r.rows.map(x => x.kind), ["ask", "draft", "reminder", "ask"]);
+  assert.equal(r.count, 4);
+  assert.deepEqual(r.by_kind, { ask: 2, draft: 1, reminder: 1 });
   assert.equal(r.partial, undefined);
   assert.deepEqual(r.rows.find(x => x.id === "gate:g1"), { id: "gate:g1", kind: "draft", title: "Re: the Harlow Legal retainer", detail: "mail to dana@harlowlegal.com",
     project: "harlow-legal", thread: "t-harlow", at: T + 3000, source: "gate", answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] } });
   assert.ok(!JSON.stringify(r).includes("the client asked"), "nothing from the draft beyond the summary");
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { ask: 2, draft: 1, reminder: 1, pairing: 1 } });
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 4, by_kind: { ask: 2, draft: 1, reminder: 1 } });
   for (const who of ["deck", "capsule", "local", "module:push"]) assert.ok((await w.call("waiting.list", {}, who)).data, who);
   assert.equal((await w.call("waiting.list", {}, "mcp")).error.code, "denied", "a model does not read the queue");
 });
 
 test("waiting.list: each kind says which owner tool answers it and what the person still gives", async t => {
-  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING], pending: [PAIR] });
+  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING] });
   const by = Object.fromEntries((await w.call("waiting.list")).data.rows.map(x => [x.id, x]));
   assert.deepEqual(by["threads:a1"].answer, { tool: "threads.answer", input: { ask: "a1" }, fill: ["decision", "answers"] });
   assert.deepEqual(by["threads:a2"].answer, { tool: "threads.answer", input: { ask: "a2" }, fill: ["decision"] });
   assert.deepEqual(by["planner:f1"].answer, { tool: "planner.done", input: { firing: "f1" }, fill: [] });
-  assert.deepEqual(by["link:p1"].answer, { tool: "link.pair.approve", input: {}, fill: ["code"] });
   assert.equal(by["threads:a1"].title, "Which palette should the Northwind Bakery menu use?");
   assert.equal(by["threads:a1"].detail, "kit in Menu redesign");
   assert.equal(by["threads:a1"].thread, "t-harlow");
   assert.equal(by["planner:f1"].title, "Call alex about the bakery lease");
   assert.equal(by["planner:f1"].at, T + 2000, "a ring is dated by when it was due");
-  assert.equal(by["link:p1"].title, `Pair the Mac "alex's MacBook"`);
-  assert.equal(by["link:p1"].at, T, "no created field yet: falls back to its expiry less the box's ten minutes");
-  assert.ok(!JSON.stringify(by["link:p1"]).includes("code\":\""), "never a code");
-});
-
-test("fromPending: a box's real created time wins over the expiry-minus-TTL guess", () => {
-  // core/link/box.js now sends `created`, so the exact request time shows even when it does not
-  // land exactly ten minutes before `expires` (a clock skew, a future TTL change on the box).
-  const withCreated = fromPending([{ id: "p2", name: "alex's iMac", login: "alex@example.com", node: "alex-imac", created: T + 500, expires: T + 900_000 }]);
-  assert.equal(withCreated[0].at, T + 500);
-  // An older box that has not shipped `created` yet still falls back to the ten-minute guess.
-  const withoutCreated = fromPending([{ id: "p3", name: "alex's iPad", login: "alex@example.com", node: "alex-ipad", expires: T + 600_000 }]);
-  assert.equal(withoutCreated[0].at, T);
 });
 
 test("waiting.list: a failing, refused or missing source leaves its name in partial and the rest still show", async t => {
@@ -98,15 +83,15 @@ test("waiting.list: a failing, refused or missing source leaves its name in part
     { asks: [ASK_P], held: new Error("gate broke"), ringing: [RING] });
   const r = (await w.call("waiting.list")).data;
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2"]);
-  assert.deepEqual(r.partial, ["gate", "planner", "link"], "threw, refused module callers, not running here");
-  assert.deepEqual(r.by_kind, { ask: 1, draft: 0, reminder: 0, pairing: 0 });
+  assert.deepEqual(r.partial, ["gate", "planner"], "threw, refused module callers");
+  assert.deepEqual(r.by_kind, { ask: 1, draft: 0, reminder: 0 });
 });
 
 test("waiting.list: limit cuts the rows, never the count", async t => {
-  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING], pending: [PAIR] });
+  const w = await world(t, ALL, { asks: [ASK_Q, ASK_P], held: [HELD], ringing: [RING] });
   const r = (await w.call("waiting.list", { limit: 2 })).data;
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2", "gate:g1"]);
-  assert.equal(r.count, 5);
+  assert.equal(r.count, 4);
 });
 
 test("titles: an owner's summary shaped like a credential is dropped whole, not shown", async t => {
@@ -114,7 +99,7 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
   assert.equal(clean("export API_KEY=" + "x".repeat(10)), "");
   assert.equal(clean("  Bash   npm test "), "Bash npm test");
   assert.equal(clean("a ".repeat(200)).length, 120);
-  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { ask: 2, draft: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { ask: 2, draft: 0, reminder: 0 } });
   const leaky = { ...ASK_P, summary: "Bash deploy --token " + "sk-" + "z".repeat(30) };
   const w = await world(t, ALL, { asks: [leaky] });
   const [row] = (await w.call("waiting.list")).data.rows;
@@ -124,7 +109,7 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
 test("waiting.changed: after the owners' events, coalesced, and only when the count or the kinds move", async t => {
   const w = await world(t, ALL, { asks: [ASK_P] });
   await wait(450);                                              // the first computation at start
-  assert.deepEqual(w.said, [{ count: 1, by_kind: { ask: 1, draft: 0, reminder: 0, pairing: 0 } }]);
+  assert.deepEqual(w.said, [{ count: 1, by_kind: { ask: 1, draft: 0, reminder: 0 } }]);
   const before = w.calls["threads.asks"];
 
   // A burst of events is one computation.
@@ -135,11 +120,11 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   assert.equal(w.calls["threads.asks"], before, "nothing before the debounce");
   await wait(300);
   assert.equal(w.calls["threads.asks"], before + 1, "one computation for six events");
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0, pairing: 0 } });
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0 } });
   assert.equal(w.said.length, 2);
 
   // waiting.count after the event reads the cache, with no call to any owner.
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0, pairing: 0 } });
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0 } });
   assert.equal(w.calls["threads.asks"], before + 1);
 
   // An event that changes nothing recomputes but says nothing.
@@ -153,26 +138,16 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   w.data.ringing = [RING];
   w.events.emit("planner", "planner.fired", { firing: "f1" });
   await wait(450);
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 0, reminder: 1, pairing: 0 } });
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 0, reminder: 1 } });
 
   // Events that never change what waits do not recompute at all.
   const n = w.calls["threads.asks"];
   w.events.emit("planner", "planner.added", { item: "i2" });
-  w.events.emit("link", "link.connected", {});
   w.events.emit("switchboard", "thread.text", { text: "hi" });
   await wait(450);
   assert.equal(w.calls["threads.asks"], n);
 
-  // A pairing request and its approval.
-  w.data.pending = [PAIR];
-  w.events.emit("link", "link.pair-requested", { id: "p1" });
-  await wait(450);
-  assert.equal(w.said.at(-1).by_kind.pairing, 1);
-  w.data.pending = [];
-  w.events.emit("link", "link.paired", { peer: "x" });
-  await wait(450);
-  assert.equal(w.said.at(-1).by_kind.pairing, 0);
-  assert.equal(w.said.length, 5);
+  assert.equal(w.said.length, 3);
 });
 
 test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
@@ -189,9 +164,8 @@ test("fromAsks: an ask from a session on the paired Mac names its machine and is
 });
 
 test("waiting.list on a Mac leaves out the planner, which is the box's over the link", async t => {
-  const w = await world(t, ALL, { ringing: [RING], pending: [PAIR] }, "local");
+  const w = await world(t, ALL, { ringing: [RING] }, "local");
   const r = (await w.call("waiting.list")).data;
   assert.ok(!r.rows.some(x => x.source === "planner"));
-  assert.ok(r.rows.some(x => x.source === "link"));
   assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
 });
