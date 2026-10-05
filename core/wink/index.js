@@ -751,7 +751,7 @@ export function createWink(inject = {}) {
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules");
         if (i.tool !== "wink.drop.offer") throw fail("denied", "only a drop offer goes down a held connection this way");
-        return holds.linkTo(String(i.device)).call(String(i.tool), i.input || {});
+        return holds.linkTo(String(i.device)).call("wink.drop.offer", i.input || {});
       } });
     const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
     const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
