@@ -36,6 +36,8 @@ const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code"]
  * `unattested`: its method is "unattested" and its strength "unattested", never "hardware" and never "attested" (hardware means attested, or it is not said). A software key is not one of these and stays refused on release.
  * An attested key keeps its own mark. Only these signer names: the keys a phone's secure chip holds.
  */
-export const UNATTESTED_SIGNERS = new Set(["secure_enclave", "strongbox"]);
+// A passkey (`webauthn_platform`) is the same kind of key for a browser-only person: a platform authenticator behind user verification, with no attestation to check. Its proof is a WebAuthn assertion that the
+// sealing process checks with the identity chain's own verifier (kernel/identity/chain.js verifyWebAuthn), so it is admitted on release and marked `unattested`, like a phone's chip key.
+export const UNATTESTED_SIGNERS = new Set(["secure_enclave", "strongbox", "webauthn_platform"]);
 /** Is this an unattested key of a signer the release rule admits? @param {{ attested?: boolean, signer?: string }} k */
 export const isUnattestedEnclave = k => k.attested !== true && UNATTESTED_SIGNERS.has(String(k.signer));

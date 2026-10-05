@@ -93,7 +93,7 @@ async function verifySig(pubText, message, sigText) {
  * this one op; the rp id the entry names must hash to the authenticator data's rpIdHash, the origin must be that rp's own https origin, and the user must have been present AND verified.
  * @param {string} pubText a raw uncompressed P-256 point (65 bytes), base64url @param {string} rp @param {Uint8Array} message @param {string} sigText
  */
-async function verifyWebAuthn(pubText, rp, message, sigText) {
+export async function verifyWebAuthn(pubText, rp, message, sigText) {
   try {
     const pub = unb64(pubText), env = unb64(sigText);
     if (!pub || pub.length !== 65 || pub[0] !== 4 || !env || typeof rp !== "string" || !rp) return false;

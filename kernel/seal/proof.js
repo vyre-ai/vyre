@@ -6,8 +6,10 @@ import { proofBytes, payloadHash, sha256b64, bindBytes, joinBytes } from "./wire
 import { bindAttestation, assertProof, assertProofDry } from "./appattest.js";
 import { strengthOf, strengthRefusal, methodOf, UNATTESTED_SIGNERS, isUnattestedEnclave } from "./strength.js";
 // The identity chain verifier lives in kernel/identity (windows authors it, its hash is pinned there): the root of trust for devices.
-import { verifyChain, checkAnswer, pinOf, verifyWith, youngAt } from "../identity/chain.js";
+import { verifyChain, checkAnswer, pinOf, verifyWith, verifyWebAuthn, youngAt } from "../identity/chain.js";
 
+/** A passkey's relying party: the site name it was made for. */
+const RP = /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/;
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 /** A software key, for the automated walk on a development-kind build only (ruling 4, 5 Oct): the process takes it only when started with `allowSoftware`, which main sets only for a development build, and every use is named method "software". */
 export const SOFTWARE = "software";
@@ -20,7 +22,7 @@ export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
   constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, file = null, custody = null } = {}) {
     this.keys = new Map(); this.joined = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware; this.appattest = appattest;
-    this.file = file; this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
+    this.file = file; /** @type {WeakSet<object>} proofs a passkey made that preverify checked */ this.waOk = new WeakSet(); this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
     // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
     // anchored by a sealed marker (a version counter and the persons) in the encrypted store. A file that is missing while the anchor exists, fails its
     // MAC, is older than the anchor or cannot be read puts the whole process in recovery: no key is known and no enrolment is accepted (R-7).
@@ -34,7 +36,7 @@ export class Presence {
       if (raw.mac !== this.custody.mac(raw.body) || anchor === "bad") return this.fail(anchor);
       const j = JSON.parse(raw.body);
       if (!anchor || anchor.v !== j.v || j.v < 1) return this.fail(anchor);
-      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since ?? 0, founder: k.founder ?? true, ...(k.aa ? { aa: k.aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
+      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since ?? 0, founder: k.founder ?? true, ...(k.aa ? { aa: k.aa } : {}), ...(k.rp ? { rp: k.rp } : {}), key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
       for (const p of j.ever) this.ever.add(p);
       for (const [p, x] of Object.entries(j.pins || {})) this.pins.set(p, x);
       for (const d of j.barred || []) this.barred.add(d);
@@ -45,7 +47,7 @@ export class Presence {
   save() {
     if (!this.file) return;
     this.v++;
-    const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since, founder: k.founder, ...(k.aa ? { aa: k.aa } : {}) }]));
+    const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, device: k.device, since: k.since, founder: k.founder, ...(k.aa ? { aa: k.aa } : {}), ...(k.rp ? { rp: k.rp } : {}) }]));
     const pins = Object.fromEntries(this.pins), barred = [...this.barred];
     const body = JSON.stringify({ v: this.v, keys, ever: [...this.ever], pins, barred });
     // The anchor goes first: a crash between the two leaves the file one version behind, which reads as recovery (fail closed), never as a reset.
@@ -65,8 +67,9 @@ export class Presence {
    * must have been started to allow unattested keys (development, and a platform where no attestation exists, said plainly in the card).
    * @returns {{ attested: boolean } | { refused: string }}
    */
-  enrol({ person, key_id, spki, signer, token, attestation, proof, bind, ctx }) {
+  enrol({ person, key_id, spki, signer, rp, token, attestation, proof, bind, ctx }) {
     if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
@@ -91,7 +94,7 @@ export class Presence {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
-    this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
   }
@@ -153,8 +156,9 @@ export class Presence {
    * claim: the chain shows a device entry, added by a signer on the list (the recovery code with its PIN, or two recovery contacts), and that device's
    * chain key vouches for this presence key. The new key is a newcomer for 24 hours. Whoever holds the code (and PIN) can do this: the design's stated limit.
    */
-  async recover({ person, ops, bind, key_id, spki, signer, token, attestation, ctx }) {
+  async recover({ person, ops, bind, key_id, spki, signer, rp, token, attestation, ctx }) {
     if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
@@ -175,7 +179,7 @@ export class Presence {
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
-    this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, pin); this.recovery = [...this.ever].some(p => !this.have(p)); this.save();
     return { attested, device: bind.eid };
   }
@@ -187,8 +191,9 @@ export class Presence {
    * hours, like any first key from chain evidence. A person this process has met before (`known_person`) enrols further devices the ordinary way (a proof from a key already enrolled).
    * @returns {Promise<{ attested: boolean, device: string } | { refused: string }>}
    */
-  async join({ person, ops, bind, invite, key_id, spki, signer, attestation, ctx }) {
+  async join({ person, ops, bind, invite, key_id, spki, signer, rp, attestation, ctx }) {
     if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     if (typeof invite !== "string" || !invite || typeof key_id !== "string" || typeof spki !== "string" || !bind || typeof bind.eid !== "string" || typeof bind.sig !== "string") return { refused: "bad_binding" };
@@ -215,7 +220,7 @@ export class Presence {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
-    this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, ev.pin); this.ever.add(person); this.joined.set(key_id, { person, invite }); this.save();
     return { attested, device: bind.eid };
   }
@@ -234,6 +239,24 @@ export class Presence {
     return { undone: true };
   }
   /** @param {any} proof @param {{ op: string, space: string, fields: any, ctx: any, dry?: boolean }} a `dry`: do every check (key, signature, payload, expiry, the replay lookup, the app key's assertion) and record nothing: the nonce stays unspent and the app key's counter does not move, so the real call that follows still passes once. @returns {string|null} the reason a proof is refused, or null when it stands. */
+  /**
+   * A passkey signs a proof as a WebAuthn assertion (the identity chain's envelope, challenge = SHA-256 of proofBytes). That check is asynchronous (WebCrypto) and `refuse` is not, so every
+   * request is looked through once, first, and each proof-shaped object a webauthn_platform key made is checked HERE with the chain's own verifier and remembered by identity (a WeakSet: nothing a
+   * request says can put an object in it). `refuse` then asks the set. @param {any} req
+   */
+  async preverify(req, depth = 0) {
+    if (!req || typeof req !== "object" || depth > 4) return;
+    if (typeof req.signature === "string" && req.signer === "webauthn_platform" && typeof req.key_id === "string") {
+      const k = this.keys.get(req.key_id);
+      if (k && k.signer === "webauthn_platform" && k.rp) {
+        const raw = Buffer.from(k.spki, "base64").subarray(-65);
+        let ok = false; try { ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; }
+        if (ok) this.waOk.add(req);
+      }
+      return;
+    }
+    for (const v of Array.isArray(req) ? req : Object.values(req)) if (v && typeof v === "object") await this.preverify(v, depth + 1);
+  }
   refuse(proof, { op, space, fields, ctx, dry = false }) {
     if (!proof || typeof proof !== "object") return "no_proof";
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
@@ -253,8 +276,11 @@ export class Presence {
     if (proof.issued_at < this.since || !(proof.issued_at <= t + 5000) || !(proof.expires_at > t) || proof.expires_at - proof.issued_at > MAX_PROOF_LIFE_MS) return "expired";
     let ok = false;
     try {
-      const sig = Buffer.from(proof.signature, "base64url");
-      ok = crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
+      if (k.signer === "webauthn_platform") ok = this.waOk.has(proof); // the assertion was checked in preverify, by the chain's verifier
+      else {
+        const sig = Buffer.from(proof.signature, "base64url");
+        ok = crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
+      }
     } catch { ok = false; }
     if (!ok) return "bad_signature";
     // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.

@@ -212,6 +212,7 @@ export class Sealer {
   }
 
   async handle(req) {
+    await this.presence.preverify(req); // a passkey's assertion is checked once here, with the identity chain's verifier (proof.js refuse reads the result)
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
       case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
