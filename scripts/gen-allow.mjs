@@ -3,6 +3,13 @@
 // Every entry names one tool and gives its own reason: what the tool does, so a reader can see why a person's assistant may call it. PERSON_ONLY tools never appear.
 //   node scripts/gen-allow.mjs           write kernel/golden/allow.json
 //   node scripts/gen-allow.mjs --check   exit 1 when the committed file differs from the generator's output
+//
+// HOW DEVBOX REGENERATES (golden is a generated file; nobody hand-edits a row, and a hand-added row is replaced by the next regeneration): in each batch gate, on a test box after `npm ci` at the root,
+//   1. node scripts/gen-allow.mjs                  rewrites kernel/golden/allow.json (OPEN, ASK_FIRST, DECLARED, flows and memory notes) and kernel/golden/presence.json (ruled presence removals); it throws, naming the tool,
+//                                                  when a tool is classified with no note: add the note here (OPEN_NOTES, DECLARED_NOTES, FLOWS_NOTES, MEMORY_NOTES), never a hand-written row
+//   2. node kernel/golden/index.js --write         re-records kernel/golden/golden.json from the code (about 7 minutes). It REFUSES, and says which cells, when a refusal turned into a run (a weakening: name it in
+//                                                  the lists above or PRESENCE_RULINGS) or an added tool runs for a model, guest or MCP caller (classify it in core/modules/agent-reach.js or declare it here with its commit)
+//   3. commit the three files together with the code that moved them; kernel/golden/allow.test.js and golden.test.js must then pass.
 // A hand-written entry is not allowed: to name an exception, add the tool to a list here with a reason, or classify it in agent-reach.js.
 import fs from "node:fs";
 import path from "node:path";
