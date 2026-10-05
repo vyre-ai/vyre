@@ -23,19 +23,19 @@ test("a Basic device boots on its own store with no Records refusal, and keeps t
   await k.gateway.records.define(o, { add_types: [PROJECT] });
   const made = await k.gateway.records.create(o, "project", { body: "buy milk" });
   assert.equal(made.data.body, "buy milk");
-  assert.equal((await k.gateway.records.query(o, "project", {})).rows.length, 1, "no refusal: records answer");
+  assert.equal((await k.gateway.records.query(o, "project", { page: { limit: 10 } })).rows.length, 1, "no refusal: records answer");
 });
 
-test("on Basic, records.define of a custom type answers: Custom types need your own server (Pro)", async () => {
+test("on Basic, records.define of a custom type answers: Custom types need a Cloud space", async () => {
   const k = await boot({ basic: { allow: basicAllow(), refusal: BASIC_REFUSAL } });
   const o = owner(k);
-  await assert.rejects(() => k.gateway.records.define(o, { add_types: [CONTACT] }), e => e.code === "pro_required" && e.message === "Custom types need your own server (Pro).");
-  await assert.rejects(() => k.gateway.records.define(o, { add_types: [PROJECT, { ...CONTACT, name: "matter" }] }), e => e.code === "pro_required");
-  for (const n of ["def-flow", "flow-run", "def-role", "def-view", "template"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "pro_required", `${n} needs a server`);
-  for (const n of ["task", "reminder", "note"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "pro_required", `${n} needs a server`);
+  await assert.rejects(() => k.gateway.records.define(o, { add_types: [CONTACT] }), e => e.code === "cloud_required" && e.message === "Custom types need a Cloud space.");
+  await assert.rejects(() => k.gateway.records.define(o, { add_types: [PROJECT, { ...CONTACT, name: "matter" }] }), e => e.code === "cloud_required");
+  for (const n of ["def-flow", "flow-run", "def-role", "def-view", "template"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "cloud_required", `${n} needs a server`);
+  for (const n of ["task", "reminder", "note"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "cloud_required", `${n} needs a server`);
   await k.gateway.records.define(o, { add_types: [PROJECT] });
-  await assert.rejects(() => k.gateway.records.define(o, { change_types: [{ ...CONTACT, name: "invoice" }] }), e => e.code === "pro_required");
-  await assert.rejects(() => k.gateway.records.define(o, { remove_types: ["contact"] }), e => e.code === "pro_required");
+  await assert.rejects(() => k.gateway.records.define(o, { change_types: [{ ...CONTACT, name: "invoice" }] }), e => e.code === "cloud_required");
+  await assert.rejects(() => k.gateway.records.define(o, { remove_types: ["contact"] }), e => e.code === "cloud_required");
 });
 
 test("a server or a development build has no such limit", async () => {

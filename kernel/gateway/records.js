@@ -661,13 +661,13 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      // A Basic (device) install holds only the fixed personal types: a custom type needs the person's own server (Pro).
-      if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("pro_required", cfg.basic.refusal);
+      // A Basic (device) install holds only the fixed personal types: a custom type needs a Cloud space.
+      if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("cloud_required", cfg.basic.refusal);
       checkKinds(diff); await checkRoles(diff); await checkShape(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
-      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
+      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
         diff = withInverses(diff, known); }
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
