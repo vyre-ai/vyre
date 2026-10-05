@@ -29,3 +29,9 @@ test("the new thread's id is read from either shape", () => {
   assert.equal(threadIdOf({ thread: { id: "t2" } }), "t2");
   assert.equal(threadIdOf({}), null);
 });
+
+test("a chat started from inside a project names it, and one started anywhere else names none", () => {
+  assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: "harlow" }), { input: { surface: "web", cwd: "/r", project: "harlow" } });
+  assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: "" }), { input: { surface: "web", cwd: "/r" } });
+  assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: null }), { input: { surface: "web", cwd: "/r" } });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agentsList, providers } from "../settings/real";
@@ -11,6 +11,9 @@ import { agentChoices, defaultAccount, startInput, threadIdOf } from "../../src/
 /** /u/chats/new: pick an agent (your assistant is the default), say what you want first if you like, and start. threads.start runs as you, naming the agent and the AI account; the new session opens. */
 export default function NewChatScreen() {
   const router = useRouter();
+  // From a project's Chats card the project comes in the address (?project=<short name>); the chat is filed there.
+  const { project: projectParam } = useLocalSearchParams<{ project?: string }>();
+  const project = typeof projectParam === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(projectParam) ? projectParam : null;
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [account, setAccount] = useState<string | null>(null);
@@ -33,7 +36,7 @@ export default function NewChatScreen() {
   }, []);
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
-    const r = startInput({ agent, account, text, root, surface: SURFACE });
+    const r = startInput({ agent, account, text, root, surface: SURFACE, project });
     if ("error" in r) { setErr(r.error); return; }
     setBusy(true); setErr("");
     try {
@@ -43,7 +46,7 @@ export default function NewChatScreen() {
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };
   return (
-    <Page title="New chat" sub="Who do you want to talk to?" back="/u/chats">
+    <Page title="New chat" sub={project ? `In the project ${project}. Who do you want to talk to?` : "Who do you want to talk to?"} back="/u/chats">
       {loadErr ? <Card><EmptyState title="Your Vyre did not answer" body={loadErr} action={{ label: "Back to Chat", onPress: () => router.replace("/u/chats" as never) }} /></Card>
         : agents === null ? <LoadingState rows={3} />
         : !agents.length ? <Card><EmptyState title="No assistants yet" body="A chat needs an assistant to talk to." action={{ label: "Connect your AI account", onPress: () => router.replace("/u/settings/ai" as never) }} /></Card>

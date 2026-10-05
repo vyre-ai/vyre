@@ -4,6 +4,7 @@ import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
 import { Card, Divider } from "../components/Card";
+import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { EmptyState } from "../components/States";
 import { Row } from "../components/Row";
@@ -71,7 +72,7 @@ function filesOf(def: any, row: any, tasks: any[]): { name: string; sub: string 
  * doing now, each stage's tasks, the team with its doing-now line, linked records, chats and files. A task opens in place; when the last required task of a stage is
  * done the record moves on by itself, and this page redraws from the store.
  */
-export function ProjectView({ world, def, row, events, links, onOpenTask }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void }) {
+export function ProjectView({ world, def, row, events, links, onOpenTask, onNewChat }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void; /** Start a chat in this project (a project with a short name on the box); absent, no button. */ onNewChat?: () => void }) {
   const { width } = useWindowDimensions();
   const { phone } = useUiTheme();
   const tasks = world.tasks.filter((t) => t.record === row.urn);
@@ -99,7 +100,7 @@ export function ProjectView({ world, def, row, events, links, onOpenTask }: { wo
       <Card title="Linked records" flush>
         {links.length ? links.map((l, i) => <View key={l.rec.urn}>{i > 0 ? <Divider /> : null}<Row lead={<Avatar of={{ kind: l.rec.type === "contact" ? "person" : "project", id: l.rec.id, name: recordTitle(world, l.rec) }} />} title={recordTitle(world, l.rec)} sub={l.def?.label || l.field} /></View>) : <EmptyState title="Nothing linked yet" />}
       </Card>
-      <Card title="Chats" flush><EmptyState title="No chats yet" body="Chats about this project will appear here." /></Card>
+      <Card title="Chats" flush actions={onNewChat ? <Button kind="ghost" size="sm" icon="plus" label="New chat" onPress={onNewChat} /> : undefined}><EmptyState title="No chats yet" body="Chats about this project will appear here." /></Card>
       <Card title="Files" flush>
         {files.length ? files.map((f, i) => <View key={f.name}>{i > 0 ? <Divider /> : null}<Row title={f.name} sub={f.sub} /></View>) : <EmptyState title="No files yet" />}
       </Card>

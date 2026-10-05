@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): New project from a GitHub repo, on Projects (the repo picker, then `github.project` clones it fresh and makes the project, and the new project opens), and a New chat button on a project's Chats card that starts a chat in that project (`/u/chats/new?project=<short name>` passes it to `threads.start`).
 - feat(app): Memory's Facts tab on a real box has a "Learned today" filter (facts seen since the start of the day, newest first, with the newest fact's date when there are none) and a line under Ask from `memory.stats`: how many facts from how many sessions, how many learned today, and when Memory last read.
 - docs(work): docs/work/web2.md, the web-2 stream's notes: what is done, the open items and the next step.
 - feat(app): Find also lists file names from the Space Drive and from the chats the person is in (`files.drive.space.search`): a chat's file opens its chat, any other opens the Drive. Names and paths only, and what the person may not read is not there; the box asks the kernel per folder as the caller (work/web2-privacy). A box without the tool just shows no Drive section.

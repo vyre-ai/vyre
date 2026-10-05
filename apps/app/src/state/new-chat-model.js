@@ -25,13 +25,14 @@ export function defaultAccount(providers) {
 
 /**
  * The threads.start input for a chosen agent. `root` is the folder the session starts in (the first root the box lists, files.dirs): threads.start needs one.
- * @param {{ agent: { name: string, kind: string } | null, account: string | null, text: string, root: string | null, surface: string }} o
+ * `project` is a project's short name when the chat starts from inside one (threads.start files the chat there); empty or absent, the box files it in General.
+ * @param {{ agent: { name: string, kind: string } | null, account: string | null, text: string, root: string | null, surface: string, project?: string | null }} o
  * @returns {{ input: Record<string, any> } | { error: string }}
  */
 export function startInput(o) {
   if (!o.root) return { error: "Vyre has no folder to start a chat in yet." };
   const prompt = String(o.text ?? "").trim();
-  return { input: { surface: o.surface, cwd: o.root, ...(prompt ? { prompt } : {}), ...(o.agent ? { agent: o.agent.name, agent_kind: o.agent.kind } : {}), ...(o.account ? { account: o.account } : {}) } };
+  return { input: { surface: o.surface, cwd: o.root, ...(prompt ? { prompt } : {}), ...(o.agent ? { agent: o.agent.name, agent_kind: o.agent.kind } : {}), ...(o.account ? { account: o.account } : {}), ...(o.project ? { project: o.project } : {}) } };
 }
 
 /** The thread's id out of what threads.start answers. @param {any} r */

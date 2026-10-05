@@ -28,7 +28,7 @@ export default function ProjectScreen() {
             <>
               <Segmented label="Project" value={tab} onChange={setTab} options={[["project", "Project"], ["team", "Team"]]} />
               {tab === "team" ? (slug ? <TeamTab project={slug} /> : <EmptyState title="No team here" body="This project has no short name yet, so the box cannot keep a team under it." />)
-                : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} />}
+                : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} onNewChat={slug ? () => go(`/u/chats/new?project=${encodeURIComponent(slug)}`) : undefined} />}
             </>
           )}
         {sheets}
