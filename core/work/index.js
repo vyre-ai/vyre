@@ -279,6 +279,8 @@ export default {
     ctx.tool("work.project.ref", {
       description: "The Project a reference names (its record id, its address or its short name): { id, urn, slug, name }. Nothing is made, and a Project the caller may not read is not found. A part that holds only a short name asks this for the id before it keys anything by it.",
       input: obj({ project: { type: "string" } }, ["project"]),
+      // The person's own surfaces and paired devices, and modules: never a model, a hook or an anonymous caller, who would otherwise be told a Project's id and name.
+      callers: ["cli", "local", "deck", "capsule", "device", "module"],
       run: async (input, extra) => {
         const k = kernelOf();
         const rec = await hubOf().projectOf(String(input.project || ""));

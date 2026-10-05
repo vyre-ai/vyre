@@ -335,3 +335,13 @@ test("one keying scheme: a tool that declares projectArg takes the Project recor
   assert.equal((await raw("projects.context", { project: unknown })).error.code, "not_found");
   assert.equal((await raw("threads.start", { project: unknown, prompt: "x" })).error.code, "not_found");
 });
+
+test("work.project.ref answers a person and a first-party module, and nobody else: an anonymous caller, a model and a hook get nothing", async t => {
+  const { tool, raw, project } = await boot(t);
+  assert.equal((await tool("work.project.ref", { project: project.slug })).id, project.record);
+  for (const caller of ["anonymous", "mcp", "harness", "hook"]) {
+    const r = await raw("work.project.ref", { project: project.slug }, caller);
+    assert.ok(r.error && !r.data, `${caller} is refused`);
+  }
+  assert.equal((await raw("work.project.ref", { project: "no-such-project" })).error.code, "not_found");
+});

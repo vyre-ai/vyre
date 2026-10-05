@@ -1975,7 +1975,7 @@
   },
   "work.project.ref": {
    "module": "work",
-   "reason": "read-only; the record is read again under the caller's own chain, so a Project the caller may not read is not found"
+   "reason": "callers list in code (cli, local, deck, capsule, device, module): never a model, a hook or an anonymous caller; the record is read again under the caller's own chain, so a Project the person may not read is not found, and a module is first-party or the registry's own door call"
   },
   "work.project.rename": {
    "module": "work",
