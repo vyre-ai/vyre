@@ -176,6 +176,11 @@
         "effect": "write"
       },
       {
+        "name": "wink.pairing.show",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "wink.phone.scan",
         "reach": "person",
         "effect": "write"

@@ -11,7 +11,7 @@
 //        the same act by the kernel's own request builder (kernel/remote/proof.js proofRequest: create, revoke, narrow, setRole, ruleSet, ruleRemove, inviteCreate, ...), e.g. --call ruleSet --args '[{...the rule}]'. Prefer this
 //        for any grants or rules act: the op, resource and input hash come from the kernel's own table, not a second list.
 //   node scripts/dev-sign-proof.mjs --home <dir> --yes <pair|vault|outward> --tool <tool> [--input '<json>']
-//        ONE YES for a tool call (lib/one-yes.js): the proof for relay.enable, relay.pair.start, wink.phone.open and the other tools a moment lists, over exactly the plain fields of --input. With --header this prints
+//        ONE YES for a tool call (lib/one-yes.js): the proof for relay.enable, wink.phone.open and the other tools a moment lists, over exactly the plain fields of --input. With --header this prints
 //        the value for `x-vyre-presence`: `yes proof=<base64url>` (a development build takes it as software strength; a release build refuses it with software_key).
 import fs from "node:fs";
 import path from "node:path";

@@ -107,3 +107,24 @@ test("confirm: shows the choices and sends the pick; nothing asking says so; no 
   assert.equal(rx.code, 0);
   assert.deepEqual(x.calls[1], ["wink.server.pair.answer", { yes: false }]);
 });
+
+test("vyre wink ack: needs a terminal, says so when no device is waiting, and types the code back for the offer that is waiting", async () => {
+  const none = deps({ isTTY: false });
+  assert.equal((await capture(() => run(["ack", "WINK-AB12-CD34"], /** @type {any} */ (none.d)))).code, 3, "no terminal, no yes");
+  assert.equal(none.calls.length, 0);
+  const idle = deps({ replies: { "wink.code.status": () => ({ data: { offer: null, code: null, state: null } }) } });
+  const r0 = await capture(() => run(["ack", "WINK-AB12-CD34"], /** @type {any} */ (idle.d)));
+  assert.equal(r0.code, 0);
+  assert.match(r0.out, /No device is waiting/);
+  assert.deepEqual(idle.calls.map(c => c[0]), ["wink.code.status"], "nothing was acked");
+  const waiting = deps({ replies: { "wink.code.status": () => ({ data: { offer: "of_1", code: "WINK-ZZ00-ZZ00", state: "found" } }), "wink.code.ack": () => ({ data: { ok: true } }) } });
+  const r1 = await capture(() => run(["ack", "WINK-AB12-CD34"], /** @type {any} */ (waiting.d)));
+  assert.equal(r1.code, 0);
+  assert.deepEqual(waiting.calls.map(c => c[0]), ["wink.code.status", "wink.code.ack"]);
+  assert.deepEqual(waiting.calls[1][1], { offer: "of_1", typed: "WINK-AB12-CD34" });
+  assert.match(r1.out, /Added/);
+  const wrong = deps({ replies: { "wink.code.status": () => ({ data: { offer: "of_1", state: "found" } }), "wink.code.ack": () => ({ data: { ok: false } }) } });
+  const r2 = await capture(() => run(["ack", "WINK-AB12-CD34"], /** @type {any} */ (wrong.d)));
+  assert.equal(r2.code, 1);
+  assert.match(r2.out, /not the code/);
+});

@@ -617,7 +617,15 @@ export default {
           if (step === "policy") return policy(caller);
           return link(await stepOf("tailscale", caller));
         }
-        if (action === "relay") return call("relay.pair.start");
+        if (action === "relay") {
+          // One way to pair (0.2.9): the typed code, whose ack the owner types back, with its QR as the same pairing in a picture. `url` and `connected` keep the old shape for the page. A relay that does not answer
+          // gives no code (a ticket needs the relay): the page is told `connected: false` at once, never left waiting.
+          const st = await tryCall("relay.status");
+          const connected = Boolean(st && st.connected);
+          if (!connected) return { url: null, expiresAt: null, connected: false };
+          const r = await call("wink.pairing.show");
+          return { url: r && r.qr, expiresAt: r && r.expires, connected, ...(r && r.code ? { code: r.code, code_expires: r.code_expires, code_offer: r.code_offer } : {}) };
+        }
         if (action === "verify") {
           const health = await call("link.health", node ? { node } : {});
           if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });

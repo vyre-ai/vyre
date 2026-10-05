@@ -10,7 +10,7 @@
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
-import { OFFER_NOTE } from "../offer-note.js";
+import { ACK_NOTE } from "../offer-note.js";
 import { personIO } from "./presence.js";
 import { out, dim, bold, colour } from "../style.js";
 import { json, emit, fail, failTool, usage, parse } from "../kit.js";
@@ -96,13 +96,13 @@ export default [
         case "status": return status();
         case "devices": return devices();
         case "pair":
-          return asPerson("relay.pair.start", {}, d => {
-            if (colour) { out(""); for (const l of terminal(qr(d.url))) out(l); out(""); out("  Scan this with your phone's camera. It works once, for 10 minutes."); }
-            else out("  Open this address on your phone (the QR code shows in a colour terminal). It works once, for 10 minutes.");
-            out(dim(`  ${d.url}`));
-            if (!d.connected) out(dim("  the box is not at the relay yet; the code works as soon as it is (vyre relay)"));
-            out(dim(`  ${OFFER_NOTE}`));
-          }, d => ({ kind: "qr", text: String(d.url), caption: `Scan this with your phone's camera. It works once, for 10 minutes.${d.connected ? "" : " The box is not at the relay yet; it works as soon as it is."}` }));
+          return asPerson("wink.phone.open", {}, d => {
+            if (colour && d.qr) { out(""); for (const l of terminal(qr(d.qr))) out(l); out(""); }
+            if (d.code) out(`  Code  ${bold(d.code)}`);
+            out("  It works once, for 10 minutes.");
+            if (d.qr) out(dim(`  ${d.qr}`));
+            out(dim(`  ${ACK_NOTE}`));
+          }, d => ({ kind: "qr", text: String(d.qr || ""), caption: `${d.code ? `Type ${d.code} in the app (Devices, Add a device), or scan this. ` : "Scan this with your phone's camera. "}It works once, for 10 minutes.` }));
         case "remove":
           if (!a) return usage("vyre relay remove needs a device id", "vyre relay devices lists them");
           return asPerson("relay.devices.remove", { id: a }, () => out(`  removed ${a}; its connections are closed`));

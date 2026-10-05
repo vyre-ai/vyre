@@ -1125,10 +1125,6 @@
    "module": "relay",
    "reason": "callers list in the tool: only the onboarding page's caller, and the tool refuses once a device is paired or an owner exists"
   },
-  "relay.pair.start": {
-   "module": "relay",
-   "reason": "the callers list (surfaces, the owner's devices, a module) plus owner() in the tool, which refuses a model, an agent, a hook, a guest and anonymous, and the presence proof the tool requires"
-  },
   "relay.pair.window.close": {
    "module": "relay",
    "reason": "callers limited in code to deck, tailnet"

@@ -200,7 +200,7 @@ async function box(t, { address = "https://alex.example.ts.net", core = macCore(
 
 /** A desktop Vyre pairs with the box as core/relay/redeem.js does, then keeps a channel open to it. */
 async function desktop(t, d, { tailnet = true } = {}) {
-  const minted = await d.registry.call("relay.pair.start", {}, "cli", PROOF);
+  const minted = await d.registry.call("relay.pair.offer", {}, "module:wink");
   assert.ok(minted.data, JSON.stringify(minted.error));
   const url = minted.data.url;
   const root = tempHome(t);
@@ -292,7 +292,7 @@ test("tailnet: a Mac box never mints, before vyre-core", async t => {
 test("tailnet: desktopJoin asks, joins with the key in a file, binds through the box, and remembers it", async t => {
   fakeApi(t, MINTED, async () => CRED);
   const d = await box(t);
-  const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const root = tempHome(t);
   const core = macCore();
   await redeem(url, { root, name: "alex's desktop", tailnet: true, coreKeys: core });
@@ -350,7 +350,7 @@ test("tailnet: a failed node delete never lets the old node back in, even when t
   assert.ok(d.events.since(0, { limit: 1000 }).some(e => e.type === "tailnet.revoke-failed"), "and says so");
 
   // The same desktop pairs again (same key, same device id): its old node is not admitted.
-  const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const again = await redeem(url, { root: desk.root, name: "alex's desktop", tailnet: true, coreKeys: desk.core });
   assert.equal(again.device, device, "the same device id");
   assert.equal((await d.registry.call("relay.devices.tailnet", { stableId: "nDESK1CNTRL" }, "module:names")).data.device, null, "the old node needs a new bind");
@@ -370,17 +370,17 @@ test("redeem with vyre-core: a key file left by an earlier pairing is deleted, a
   const d = await box(t);
   const root = tempHome(t);
   // As an earlier pairing left it: the file key and the record of its device.
-  const first = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "old desktop" });
+  const first = await redeem((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url, { root, name: "old desktop" });
   const keyFile = path.join(root, "relay-device", "key.json");
   assert.ok(fs.existsSync(keyFile), "the file key exists before core");
   const core = macCore() || fakeCoreKeys();
-  const next = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "new desktop", coreKeys: core });
+  const next = await redeem((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url, { root, name: "new desktop", coreKeys: core });
   assert.equal(fs.existsSync(keyFile), false, "the old key file is gone");
   assert.notEqual(next.device, first.device, "core's key is a new device");
   assert.equal(/** @type {any} */ (next).superseded.device, first.device);
   assert.match(/** @type {any} */ (next).superseded.note, /relay\.devices\.remove/);
   // A pairing that never had a file says nothing.
-  const clean = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root: tempHome(t), name: "third", coreKeys: core });
+  const clean = await redeem((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url, { root: tempHome(t), name: "third", coreKeys: core });
   assert.equal(/** @type {any} */ (clean).superseded, undefined);
 });
 

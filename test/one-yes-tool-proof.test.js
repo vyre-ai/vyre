@@ -1,6 +1,6 @@
 import "../scripts/mac-test-guard.mjs";
 // @ts-check
-// One yes, the direct form (user ruling 5 Oct 2026): relay.enable, relay.pair.start and wink.phone.open are pairing-weight moments, so they take a proof signed over the call itself through yes() in lib/one-yes.js
+// One yes, the direct form (user ruling 5 Oct 2026): relay.enable and wink.phone.open are pairing-weight moments, so they take a proof signed over the call itself through yes() in lib/one-yes.js
 // (`x-vyre-presence: yes proof=<base64url>`), in the owner's chain, instead of widening the development stand-in. A software key stands on a development build only; a release build refuses it. The proof is signed
 // the way the walk does it: scripts/dev-enrol-software-key.mjs once, scripts/dev-sign-proof.mjs --yes per call. A real daemon on the real sealing process.
 import test from "node:test";
@@ -15,7 +15,7 @@ import { tempHome } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
-const TOOLS = ["relay.enable", "relay.pair.start", "wink.phone.open"];
+const TOOLS = ["relay.enable", "wink.phone.open"];
 
 /** @param {any} t @param {Record<string, string | undefined>} env */
 function withEnv(t, env) {
@@ -24,7 +24,7 @@ function withEnv(t, env) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 }
 
-test("a software-key proof over the call opens relay.enable, relay.pair.start and wink.phone.open on a development build, once and only for that call", { timeout: 120_000 }, async t => {
+test("a software-key proof over the call opens relay.enable and wink.phone.open on a development build, once and only for that call", { timeout: 120_000 }, async t => {
   withEnv(t, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1", VYRE_KERNEL_PATH_RULE: "1" });
   const root = tempHome(t);
   homeIdentity(root);
@@ -54,7 +54,7 @@ test("a software-key proof over the call opens relay.enable, relay.pair.start an
   assert.equal((await at("relay.disable", {}, bad)).error?.code, "presence_required");
 });
 
-test("a release build refuses the software-key proof for the same three tools", { timeout: 120_000 }, async t => {
+test("a release build refuses the software-key proof for the same tools", { timeout: 120_000 }, async t => {
   // the key is enrolled and the proof signed with the development switches (a person's key is the same either way), then a daemon with no dev switch is asked
   withEnv(t, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1", VYRE_KERNEL_PATH_RULE: "1" });
   const root = tempHome(t);

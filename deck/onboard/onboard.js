@@ -380,7 +380,7 @@ const SCREENS = {
   //         since verify has to be told which server to check reachability against.
   //       - Pair with a code: one call, `relay.join{url, becomeDevice:true}`, straight from this
   //         screen — no separate verify step, since a successful pairing already proves
-  //         reachability. `url` is the pairing code/link (relay.pair.start or
+  //         reachability. `url` is the pairing code/link (wink.phone.open or
   //         onboard.join{action:"relay"}, minted on the server side, pasted here). Shown only
   //         when `onboard.status.can.relayJoin` is true (see js/join-caps.js): false on a Mac
   //         until vyre-core (relay.join itself also refuses there, as a backstop), a missing
@@ -1182,7 +1182,7 @@ const SCREENS = {
     // Same gate as "Pair with a code" (deck/js/join-caps.js) — hidden on a Mac until vyre-core.
     // relay.pair.ticket is built (tailnet, work/tailnet 2990a810, sent to their reviewer, "safe
     // to build against"): mint {} -> {ticket, expiresAt, connected}, HUMAN_ONLY (Touch ID at the
-    // mint, matching relay.pair.start), single-use, refuses on darwin same as relay.join. Not
+    // mint, matching wink.phone.open), single-use, refuses on darwin same as relay.join. Not
     // merged to main yet, so `attempt` answers from deck/fixtures/relay.json's fallback until it
     // is — same "missing tool" pattern every other real-but-unmerged tool in this file uses.
     // relay.paired {device, name, fingerprint} fires the instant a ticket pairing completes: no

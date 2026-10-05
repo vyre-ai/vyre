@@ -1368,35 +1368,48 @@ export function createPairing(o) {
     };
     /** The old ring (relay.pair.ticket) pairs a phone with no words and no yes. Nothing is registered for it until the same three words are confirmed on this computer (a ring phone that cannot show words is let go after 5 minutes). @param {any} p */
     phone.holdRing = async p => holdPhone(p, "");
+    /** wink.phone.open's work, shared with the onboarding page's own call (wink.pairing.show). @param {any} input @param {any} [meta] */
+    const openPhone = async (input, meta = {}) => {
+      owner(meta, "adding a phone");
+      if (input.space) throw fail("identity_only", words("phoneIdentityOnly"));
+      if (input.typed === true) {
+        if (!typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
+        const c = await o.openCode("W1");
+        return { ...c, qr: qrPayload(c.code, await o.relayUrl()) };
+      }
+      /** The typed code beside the QR: the same pairing window, either one pairs one phone and ends the other. A relay with no code to give leaves `code` null and the QR works. @param {any} base */
+      const withCode = async base => {
+        if (!typedOn()) return base;
+        try { const c = await o.openCode("W1"); return { ...base, code: c.code, code_expires: c.expires, code_offer: c.offer }; } catch { return { ...base, code: null }; }
+      };
+      if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) {
+        const now0 = o.codeNow ? o.codeNow() : null;
+        const base = { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
+        return now0 ? { ...base, code: now0.code, code_expires: now0.expires, code_offer: now0.offer } : base;
+      }
+      const seed = crypto.randomBytes(16);
+      const t = /** @type {any} */ (await mint(seed, "phone"));
+      if (!t || t.error) throw fail("unavailable", words("offline"));
+      const qr = phoneQrPayload(seed, await o.relayUrl());
+      phoneTicket = { qr, art: qrArt(qr), until: now() + 5 * 60_000, claimed: false, seed: b64url(seed) };
+      phoneAsk = null;
+      return withCode({ qr, link: qr, art: phoneTicket.art, expires: phoneTicket.until });
+    };
     ctx.tool("wink.phone.open", {
       description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. A short typed code is switched off in this release (`typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).",
       input: obj({ space: str, typed: { type: "boolean" } }),
       presence: { summary: async () => "Show a code to add a phone" },
+      run: (input, meta = {}) => openPhone(input, meta),
+    });
+    // The onboarding page asks through its own tool (a module's call is not a person's surface). Only module:onboard, and only for a person surface at the box (the call's origin), and the page's own tool already needs the person's yes.
+    ctx.tool("wink.pairing.show", {
+      description: "For the onboarding page: show the typed code and QR for adding a phone, as wink.phone.open does. Only the onboard module, acting for a person's own surface.",
+      input: obj({}),
+      internal: true,
       run: async (input, meta = {}) => {
-        owner(meta, "adding a phone");
-        if (input.space) throw fail("identity_only", words("phoneIdentityOnly"));
-        if (input.typed === true) {
-          if (!typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
-          const c = await o.openCode("W1");
-          return { ...c, qr: qrPayload(c.code, await o.relayUrl()) };
-        }
-        /** The typed code beside the QR: the same pairing window, either one pairs one phone and ends the other. A relay with no code to give leaves `code` null and the QR works. @param {any} base */
-        const withCode = async base => {
-          if (!typedOn()) return base;
-          try { const c = await o.openCode("W1"); return { ...base, code: c.code, code_expires: c.expires, code_offer: c.offer }; } catch { return { ...base, code: null }; }
-        };
-        if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) {
-          const now0 = o.codeNow ? o.codeNow() : null;
-          const base = { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
-          return now0 ? { ...base, code: now0.code, code_expires: now0.expires, code_offer: now0.offer } : base;
-        }
-        const seed = crypto.randomBytes(16);
-        const t = /** @type {any} */ (await mint(seed, "phone"));
-        if (!t || t.error) throw fail("unavailable", words("offline"));
-        const qr = phoneQrPayload(seed, await o.relayUrl());
-        phoneTicket = { qr, art: qrArt(qr), until: now() + 5 * 60_000, claimed: false, seed: b64url(seed) };
-        phoneAsk = null;
-        return withCode({ qr, link: qr, art: phoneTicket.art, expires: phoneTicket.until });
+        const origin = String((meta && meta.origin) || "");
+        if (String((meta && meta.caller) || "") !== "module:onboard" || !/^(cli|local|deck|capsule|mobile)$/.test(origin.split(/[\s:]/)[0])) throw fail("denied", "only the onboarding page, acting for you, may ask");
+        return openPhone({}, { ...meta, caller: origin.split(/[\s:]/)[0] });
       },
     });
     /** A phone came in by the typed code (its ack was typed back): the QR is spent too. */

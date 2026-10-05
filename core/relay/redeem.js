@@ -16,7 +16,7 @@ import { pair } from "../../relay/client/client.js";
 import { deviceKeyFor } from "./devicekey.js";
 
 /**
- * @param {string} url the pairing URL a box's relay.pair.start (or onboard.join{action:"relay"}) minted
+ * @param {string} url the pairing URL a box's pairing offer (relay.pair.first on onboarding, or relay.pair.offer) minted
  * @param {{ root: string, name?: string, tailnet?: boolean, coreKeys?: any }} o `coreKeys`: vyre-core's key store, which then holds this device's key
  */
 export async function redeem(url, { root, name, tailnet = false, coreKeys }) {

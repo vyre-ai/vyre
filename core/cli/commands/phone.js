@@ -5,7 +5,7 @@
 //                                          box's address (and a QR of it), the network, a one-time
 //                                          code for the passkey, how to install, then live checks
 //                                          The relay is the default: a single-use QR from
-//                                          relay.pair.start, then Tailscale as an optional last step
+//                                          wink.phone.open (the typed code and its QR), then Tailscale as an optional last step
 //   vyre phone add --tailscale-only        Tailscale on the phone first, and the box's address
 //   vyre phone add --android --usb         the native app over a cable (adb); --wireless for
 //                                          Wireless debugging. The APK comes from the box
@@ -52,7 +52,7 @@ import { execFile } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { callAsPerson } from "../presence.js";
-import { OFFER_NOTE } from "../offer-note.js";
+import { ACK_NOTE } from "../offer-note.js";
 import { personIO } from "./presence.js";
 import * as tailnet from "../tailnet.js";
 import { qr, terminal } from "../qr.js";
@@ -224,22 +224,24 @@ export async function add(flags, deps = {}) {
   // on the box through the link. A box without the relay falls back to Tailscale and says so.
   let code = null, expires = Date.now() + (deps.life ?? CODE_LIFE);
   /** @type {string|null} */ let offer = null;
+  /** The phone's typed code (wink.phone.open): the way to pair; the QR is the same pairing as a picture. @type {string|null} */ let winkCode = null;
   let noRelay = false;
   // From a Mac the box cannot check a proof made here (link.call refuses human-only tools, and a
   // Touch ID on the Mac is not something the box can verify), so pairing happens on the box.
   // TODO(e2e, ADR 0032): the Mac's Secure Enclave device key (approved, after batch 2) will let
-  // the Mac prove human-only calls to the box; then call relay.pair.start through the link here.
+  // the Mac prove human-only calls to the box; then call wink.phone.open through the link here.
   if (!t.local && !flags.tailscaleOnly) {
     return fail("pairing a phone needs you at the box, and this Mac cannot prove that to it",
       { next: "open your box's Deck (Settings, Devices, Add a device), or run vyre phone add on the box itself" });
   }
   if (!flags.tailscaleOnly) {
-    const r = await callAsPerson("relay.pair.start", {}, { io });
+    const r = await callAsPerson("wink.phone.open", {}, { io });
     if (r.error && r.error.code === "no_such_tool") noRelay = true;
     else if (r.error) return failTool(r.error, "vyre phone add --tailscale-only pairs over Tailscale instead");
     else {
-      offer = r.data && r.data.url;
-      if (r.data && r.data.expiresAt && deps.life === undefined) expires = Number(r.data.expiresAt);
+      offer = r.data && r.data.qr;
+      winkCode = r.data && typeof r.data.code === "string" ? r.data.code : null;
+      if (r.data && r.data.expires && deps.life === undefined) expires = Number(r.data.expires);
     }
   }
   if (!offer && t.local) {
@@ -270,7 +272,7 @@ export async function add(flags, deps = {}) {
   const installFor = flags.iphone ? { iphone: install.iphone } : flags.android ? { android: install.android } : install;
   if (json()) {
     const url = offer || pairPage;
-    emit({ box: address, phone, network: offer ? "relay" : "tailscale", url, code, expires,
+    emit({ box: address, phone, network: offer ? "relay" : "tailscale", url, code, expires, ...(winkCode ? { winkCode } : {}),
       install: installFor, ...(app ? { app } : {}), tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
       checks: evaluate(before, before, { address }) },
     { kind: "qr", text: url, caption: offer ? "Scan this with the phone's camera; nothing to install first. It works once, for 10 minutes."
@@ -284,7 +286,8 @@ export async function add(flags, deps = {}) {
   const indent = "                   ";
   out(`  Pairing a phone with the box ${dim("(" + hostOf(address) + ")")}`);
   out(dim(offer ? "  Confirmed · the QR works once, for 10 minutes" : code ? "  Confirmed · the code works once, for 10 minutes" : ""));
-  if (offer) out(dim(`  ${OFFER_NOTE}`));
+  if (offer) out(dim(`  ${ACK_NOTE}`));
+  if (offer && winkCode) out(`  ${pad("Code")}${signal(winkCode)}`);
   if (noRelay && !flags.tailscaleOnly) out(dim("  This box has no relay yet, so the phone pairs over Tailscale"));
   out("");
   out(`  1 ${pad("Which phone?")}${phone || "iPhone or Android"}${phone ? "" : dim("  (--iphone or --android shows one)")}`);
@@ -635,8 +638,8 @@ export async function android(flags, deps = {}) {
   const scan = "Open Vyre on the phone and scan the pairing QR: vyre phone add on the box";
   /** @type {string|null} */ let offer = null, expiresAt = null;
   if (t.local) {
-    const r = await (deps.pair || (() => callAsPerson("relay.pair.start", {}, { io: deps.io || personIO() })))();
-    if (r && r.data && r.data.url) { offer = String(r.data.url); expiresAt = r.data.expiresAt ? Number(r.data.expiresAt) : null; }
+    const r = await (deps.pair || (() => callAsPerson("wink.phone.open", {}, { io: deps.io || personIO() })))();
+    if (r && r.data && (r.data.qr || r.data.url)) { offer = String(r.data.qr || r.data.url); expiresAt = r.data.expires ? Number(r.data.expires) : r.data.expiresAt ? Number(r.data.expiresAt) : null; }
   }
   if (!offer) {
     if (json()) return emit({ ...result, pair: scan });
@@ -657,7 +660,7 @@ export async function android(flags, deps = {}) {
   return new Promise(resolve => {
     let done = false;
     const end = (/** @type {number} */ code, /** @type {string} */ line) => { if (done) return; done = true; stop(); clearTimeout(timer); process.off("SIGINT", onInt); out(line); resolve(code); };
-    onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}\n${dim(`  ${OFFER_NOTE}`)}`);
+    onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}`);
     const onInt = () => end(0, dim("  stopped watching · vyre phone list shows whether it paired"));
     const timer = setTimeout(() => end(EXIT.FAILED, beacon("  the pairing offer ran out before the phone used it") + "\n" + dim("  next: vyre phone add on the box for a new QR")), life);
     process.on("SIGINT", onInt);

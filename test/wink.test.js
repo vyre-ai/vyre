@@ -1378,3 +1378,15 @@ test("typed code, release: a browser with no box pairs to the server by the code
   // a wrong code pairs nothing
   assert.equal((await joinWithCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", name: "x", waitMs: 500, pollMs: 50, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } })).ok, false);
 });
+
+test("one way to pair: the onboarding page's own call (wink.pairing.show) gives the typed code and QR, and only module:onboard acting for a person's surface may ask", async t => {
+  const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const w = await world(t);
+  const shown = await w.d.registry.call("wink.pairing.show", {}, "module:onboard", { origin: "deck" });
+  assert.match(shown.data?.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, JSON.stringify(shown.error));
+  assert.match(shown.data.qr, /^vyre:\/\/wink\//);
+  for (const [caller, meta] of [["module:onboard", { origin: "mcp:agent:kit" }], ["module:onboard", {}], ["module:wink", { origin: "deck" }], ["cli", {}], ["mcp:agent:kit", {}]]) {
+    const r = await w.d.registry.call("wink.pairing.show", {}, caller, meta);
+    assert.ok(r.error, `${caller} ${JSON.stringify(meta)} is refused`);
+  }
+});

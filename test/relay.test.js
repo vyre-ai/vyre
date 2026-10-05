@@ -146,20 +146,20 @@ test("relay: a pairing that asks for it is handed the one-time enrolment grant f
   assert.equal(bare.reply.enroll, undefined);
   bare.ws.close();
   d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://alex.vyre.run:8443" };
-  const minted = await d.registry.call("relay.pair.start", {}, "cli", PROOF);
+  const minted = await d.registry.call("relay.pair.offer", {}, "module:wink");
   const asked = await phone(minted.data.url, { hello: { enroll: true }, presence: false });
   const e = asked.reply.enroll;
   assert.equal(e.rpId, "alex.vyre.run", "the host of the address, no port");
   assert.match(e.grant, /^[A-Za-z0-9_-]{40,}$/);
   assert.ok(e.expires > Date.now() && e.expires <= Date.now() + 5 * 60_000 + 1000);
-  const plain = await phone((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { presence: false });
+  const plain = await phone((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url, { presence: false });
   assert.equal(plain.reply.enroll, undefined, "a pairing that did not ask gets none");
   asked.ws.close(); plain.ws.close();
   // The shared client library asks and validates the same way.
-  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url)), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
   assert.equal(viaClient.enroll?.rpId, "alex.vyre.run");
   assert.match(String(viaClient.enroll?.grant), /^[A-Za-z0-9_-]{40,}$/);
-  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
+  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url)), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
   assert.equal(noAsk.enroll, null);
 });
 
@@ -167,18 +167,18 @@ test("relay: a relayed device is a device; a person's action needs its person se
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   // ADR 0032: without a person session, even a presence proof is not enough.
-  const device = await p.call("relay.pair.start", {}, P);
+  const device = await p.call("wink.phone.open", {}, P);
   assert.equal(device.status, 401, JSON.stringify(device));
   assert.equal(device.error.code, "person_session_required");
   assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own, so it too needs the session (reach person)");
   // Signed in with its own presence key, the device is the person, and presence still decides.
   await p.signIn(d);
-  const bare = await p.call("relay.pair.start");
+  const bare = await p.call("wink.phone.open");
   assert.equal(bare.status, 403);
   assert.equal(bare.error.code, "presence_required");
-  const proved = await p.call("relay.pair.start", {}, P);
+  const proved = await p.call("wink.phone.open", {}, P);
   assert.equal(proved.status, 200, JSON.stringify(proved));
-  assert.ok(parsePairUrl(proved.data.url));
+  assert.ok(proved.data.qr, "the phone gets its QR and typed code");
 });
 
 test("relay: the QR code works once; a stranger's key and a reused code are refused", async t => {
@@ -273,7 +273,7 @@ test("relay: an event stream stays open and delivers events through the channel"
   assert.match(String(head.headers["content-type"]), /text\/event-stream/);
   const chunk = new Promise(res => { s.ondata = c => { if (String(c).includes("device.paired")) res(String(c)); }; });
   // Pair another device from the box: its event reaches alex's phone live.
-  const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   await phone(url, { name: "alex's laptop" });
   assert.match(await chunk, /device\.paired/);
   s.reset("done");
@@ -285,7 +285,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   d.events.on("device.trust-asked", e => asked.push(e.payload || e.data || e));
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
   // The limited browser can reach it (the web deny list does not hold it back) and no presence is needed to ask.
   const first = await web.call("relay.devices.ask-trust");
@@ -329,7 +329,7 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   d.events.on("device.paired", e => seen.push(e));
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
   const list = (await p.call("relay.devices.list")).data.devices;
@@ -343,7 +343,7 @@ test("relay: a browser from the web app is a web device, limited until trusted f
 
   // The web device reads freely but cannot mint devices or lift its own limits, even with presence.
   assert.equal((await web.call("relay.devices.list")).status, 200);
-  const mint = await web.call("relay.pair.start", {}, P);
+  const mint = await web.call("wink.phone.open", {}, P);
   assert.equal(mint.status, 404, JSON.stringify(mint));
   assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404);
   assert.equal((await web.call("vault.reveal", { id: "x" }, P)).status, 404);
@@ -353,7 +353,7 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   const trust = await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P);
   assert.equal(trust.status, 200, JSON.stringify(trust));
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
-  const lifted = await again.call("relay.pair.start", {}, P);
+  const lifted = await again.call("wink.phone.open", {}, P);
   // BR-2 (4 Oct 2026): a browser is web:<id>, never an owner's device, so even trusted it reaches no person tool; its relay limits are lifted and nothing more.
   assert.equal(lifted.error && lifted.error.code, "no_such_tool", JSON.stringify(lifted));
 });
@@ -362,7 +362,7 @@ test("relay: a web device unused past relay.web_expiry_days is removed at its ne
   const { d } = await world(t, { web_expiry_days: 1e-8 });
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const web = await phone(url, { name: "kiosk", hello: { kind: "web" } });
   web.ws.close();
   await new Promise(r => setTimeout(r, 20));
@@ -380,7 +380,7 @@ test("relay: the web app's loader asks the box which build to load, and the owne
   t.after(() => useReleasesFile());
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const web = await phone(url, { name: "Northwind Bakery laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
   const newest = await web.call("relay.web.release");
@@ -432,7 +432,7 @@ test("relay: relay.device.presence names the key a device enrolled, for modules 
   const id = p.reply.device;
   assert.equal((await d.registry.call("relay.device.presence", { id }, "cli")).error.code, "no_such_tool", "not a surface's tool");
   assert.match((await d.registry.call("relay.device.presence", { id }, "module:presence")).data.key, /\S/, "the key enrolled at pairing");
-  const url = await (async () => { await p.signIn(d); return (await p.call("relay.pair.start", {}, P)).data.url; })();
+  const url = await (async () => { await p.signIn(d); return (await d.registry.call("relay.pair.offer", {}, "module:wink")).data.url; })();
   const bare = await phone(url, { name: "kit's tablet", presence: false });
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: bare.reply.device }, "module:presence")).data, { key: null }, "paired without a presence key");
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
@@ -521,13 +521,13 @@ test("relay: relay.join redeems a code minted on another box, and this device sh
 
   // Redeeming a second code from the same device root reuses the same persisted key, so the box
   // sees the same device id again rather than minting a fresh identity every time.
-  const secondUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const secondUrl = (await box.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const again = await device.registry.call("relay.join", { url: secondUrl, name: "kit's laptop" }, "cli", PROOF);
   assert.equal(again.data.device, r.data.device, "the same file-backed key, the same device id");
 
   // becomeDevice degrades cleanly when onboard.machine is not even running (not merged to this
   // branch yet) -- it must still return the pairing result, not throw.
-  const thirdUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const thirdUrl = (await box.registry.call("relay.pair.offer", {}, "module:wink")).data.url;
   const flip = await device.registry.call("relay.join", { url: thirdUrl, becomeDevice: true }, "cli", PROOF);
   assert.equal(flip.error, undefined, JSON.stringify(flip.error));
   assert.equal(flip.data.device, r.data.device);

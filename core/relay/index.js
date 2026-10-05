@@ -94,7 +94,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * Shared by every relay tool that would create or persist a new key on this Mac before vyre-core
  * (ADR 0040) holds it instead: `relay.join` (this device's own identity key,
  * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
- * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
+ * MAC key derive from a ticket held only in this box's process, same as relay.pair.offer's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
  * writable by any process at that uid, the same gap that already keeps relay hosting off by
  * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
@@ -785,13 +785,14 @@ export default {
       return { url: pairUrl({ relay: settings().url, route: route(), box: k().box.pub, secret, name: boxName() }), expiresAt: pairing.exp, connected };
     };
 
-    ctx.tool("relay.pair.start", {
-      description: "Make a QR code that pairs one more device with this box through the relay. The code works once, for 10 minutes; making a new one voids the last.",
+    // The classic one-time pairing offer (a QR or link whose redemption has no owner confirmation of its own) is no way for a person to pair any more (0.2.9, "one way to pair"): `vyre phone`, `vyre relay pair` and
+    // onboarding show the typed code (wink.phone.open), whose ack is the owner's yes. What stays is the mint itself, for the relay's own pairing protocol and its tests, callable by first-party modules only.
+    ctx.tool("relay.pair.offer", {
+      description: "Mint the classic one-time pairing offer through the relay (a link that pairs one device, once, for 10 minutes). Modules only: a person pairs a device with the typed code (wink.phone.open).",
       input: obj(),
-      presence: { summary: async () => "Pair a new device with this box" },
-      // The surfaces, the owner's own devices, and a module (onboard runs this step); owner() below refuses a model, an agent, a hook, a guest and anonymous.
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
-      run: async (_, meta = {}) => { owner(meta.caller, meta, "pairing a device"); return mint(false); },
+      internal: true,
+      callers: ["module"],
+      run: async () => mint(false),
     });
 
     ctx.tool("relay.pair.first", {
@@ -814,7 +815,7 @@ export default {
     // a MAC key that authenticates it, so the relay can neither redeem the pairing itself (it
     // never learns the secret) nor substitute its own record (it never learns the MAC key), nor
     // read the record (sealed under a fourth derived key, so it holds ciphertext only). The
-    // pairing secret this mints is exactly relay.pair.start's own mechanism (`takeLiveSecret`
+    // pairing secret this mints is exactly relay.pair.offer's own mechanism (`takeLiveSecret`
     // above checks both), so redemption and admission are unchanged.
     /** @param {Buffer} [seed] a ticket the asking app chose itself (relay.pair.ticket { seed }): 8 to 32 bytes it keeps to itself until then */
     /** The last ticket minted: its locator (to withdraw it at the relay) and the key of its pending entry. @type {{ loc: string, key: string } | null} */
@@ -891,7 +892,7 @@ export default {
     });
 
     ctx.tool("relay.pair.ticket", {
-      description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
+      description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as a pairing offer's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ seed: str }),
       presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async i => i && i.seed ? "Let the Windows PC that shows this code join this box" : `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
       run: async (input, meta = {}) => {
@@ -1071,7 +1072,7 @@ export default {
     const keyFingerprint = box => { const s = base32(crypto.createHash("sha256").update(box).digest()).slice(0, 8); return `${s.slice(0, 4)} ${s.slice(4)}`; };
 
     ctx.tool("relay.join", {
-      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine): the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).",
+      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (a pairing offer a box minted). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine): the shape onboard.join{action:\"verify\",becomeDevice} uses on the Tailscale path, so the onboarding card calls the same flag either way. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ url: { type: "string", pattern: "^https://vyre\\.run/pair#[A-Za-z0-9_-]+$" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
       // On darwin this always refuses (see macCoreRefusal above), so presence is not required

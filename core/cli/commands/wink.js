@@ -14,7 +14,7 @@ import { out, dim, bold } from "../style.js";
 import { json, emit, fail, failTool, usage, EXIT } from "../kit.js";
 import { newCode, beginInput } from "../../../lib/wink-reset.js";
 
-const USAGE = "vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]";
+const USAGE = "vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] | vyre wink ack [<code>] [--json]";
 
 /** @returns {{ call: typeof call, ensureUp: typeof ensureUp, isTTY: boolean, write: (s: string) => void, ask: (q: string) => Promise<string>, newCode: () => string }} */
 export const realDeps = () => ({
@@ -27,6 +27,7 @@ export const realDeps = () => ({
 /** @param {string[]} args @param {ReturnType<typeof realDeps>} [deps] */
 export async function run(args, deps = realDeps()) {
   if (args[0] === "confirm") return confirmPairing(args.slice(1), deps);
+  if (args[0] === "ack") return ackCode(args.slice(1), deps);
   const flags = args.filter(a => a.startsWith("--") && a !== "--json");
   const pos = args.filter(a => !a.startsWith("--"));
   const begin = flags.includes("--begin"), confirm = flags.includes("--confirm");
@@ -89,11 +90,36 @@ async function confirmPairing(args, deps) {
   return 0;
 }
 
+/**
+ * `vyre wink ack [<code>]`: type back the code a new device shows after it typed this box's WINK code (wink.phone.open, `vyre phone add`, `vyre relay pair`). That ack is the owner's yes: it adds the device.
+ * @param {string[]} args @param {ReturnType<typeof realDeps>} deps
+ */
+async function ackCode(args, deps) {
+  const pos = args.filter(a => a !== "--json");
+  if (pos.length > 1) return usage("vyre wink ack takes the code the device shows", USAGE);
+  if (!deps.isTTY) return fail("this needs a person at a terminal on the box", { code: "no_terminal", exit: EXIT.PRESENCE, next: "run it in your own terminal on the box" });
+  const r0 = await deps.ensureUp();
+  if (!r0.ok) return fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${r0.log}` });
+  const st = await deps.call("wink.code.status", {});
+  if (st.error) return failTool(st.error);
+  const offer = st.data && st.data.offer;
+  if (!offer || st.data.state !== "found") { out("  No device is waiting for its code. Show a code first (vyre phone add), type it on the device, then run this."); return 0; }
+  let typed = pos[0] ? String(pos[0]) : "";
+  if (!typed) typed = await deps.ask("  The code the device shows: ");
+  const r = await deps.call("wink.code.ack", { offer, typed });
+  if (r.error) return failTool(r.error);
+  const ok = Boolean(r.data && r.data.ok);
+  if (json()) return emit({ ok }, { kind: "card", title: ok ? "Device added" : "Code did not match", state: ok ? "ok" : "warn", fields: [] });
+  out(ok ? `  ${bold("Added.")} The device is paired with this box.` : "  That was not the code the device shows. The code is closed; a new one is showing.");
+  return ok ? 0 : 1;
+}
+
 export default {
   name: "wink", order: 47, usage: USAGE,
   verbs: [
     { verb: "reset", summary: "free this server so it can be added again (two steps, at its own terminal)", usage: "--begin | --confirm <code>", person: true },
     { verb: "confirm", summary: "answer the pairing question of this server (at its own terminal)", usage: "[--no]", person: true },
+    { verb: "ack", summary: "type back the code a new device shows: the yes that adds it (at the box's own terminal)", usage: "[<code>]", person: true },
   ],
   summary: "free a server that still belongs to an app you no longer have",
   help: "vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.",

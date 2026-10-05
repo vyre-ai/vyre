@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// BROKEN since 0.2.9 (one way to pair): this walk pairs a browser by the relay.pair.start offer, which is gone. It needs to type the box's WINK code on the page's start screen (wink.phone.open, then the ack) like
+// scripts/app-walk-paired-device.mjs does for a Node device. app-wire to move it.
 // app-walk-paired: a browser PAIRED to a box through a relay (a device caller), asking for the owner's yes and answered by the STAND-IN PHONE (scripts/standin-phone.mjs). TEST ONLY.
 //
 //   node scripts/app-walk-paired.mjs --dist <web export> --socket <home>/.vyre/vyred.sock [--out dir]
