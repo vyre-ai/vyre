@@ -506,7 +506,7 @@ export default {
     // (core/work/memory/lines.js: scrubbed on the way in, so a sealed value is a placeholder), never a second store. Only the user's and the assistant's words come back; tool output stays out.
     ctx.tool("work.chat.span", {
       description: "Read an exact span of a chat you are in, word for word: the lines from..to of each run (or one slot) as the Space's memory kept them, with the line address of each. Sealed values are placeholders. A chat you are not in does not exist for you.",
-      input: obj({ chat: { type: "string" }, slot: { type: "string", description: "one run of the chat, as work.chat.get names it (agent:<id> or model:<provider>/<model>#<n>); all runs when absent" }, from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0, description: "the last line, inclusive; at most 199 lines after from are read in one call" } }, ["chat", "from"]),
+      input: obj({ chat: { type: "string" }, slot: { type: "string", description: "one run of the chat, as work.chat.get names it (agent:<id> or model:<provider>/<model>#<n>), or terminal:<first 8 of a terminal session's id>; all runs and terminal sessions when absent" }, from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0, description: "the last line, inclusive; at most 199 lines after from are read in one call" } }, ["chat", "from"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const chat = String(input.chat);
@@ -517,7 +517,9 @@ export default {
         const to = input.to === undefined ? from + 99 : Number(input.to);
         if (!Number.isInteger(to) || to < from) throw fail("bad_input", "to is the last line, inclusive, and not before from");
         const last = Math.min(to, from + 199);
-        const allRuns = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
+        const of = await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}));
+        // A terminal session in the chat (the user's long Claude Code sessions) is a run too: its id is the lines' session id, and its slot is `terminal:<first 8 of the id>`.
+        const allRuns = [...(of.runs || []), ...((of.terminals || []).map((/** @type {string} */ id) => ({ thread: id, slot: `terminal:${String(id).slice(0, 8)}`, terminal: true })))];
         const slotOf = (/** @type {any} */ r) => r.slot || (r.agent ? `agent:${r.agent}` : null);
         const runs = input.slot ? allRuns.filter((/** @type {any} */ r) => slotOf(r) === String(input.slot)) : allRuns;
         if (input.slot && !runs.length) throw Object.assign(new Error("no such slot in that chat"), { code: "not_found" });
