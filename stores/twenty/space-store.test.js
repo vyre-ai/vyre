@@ -103,3 +103,23 @@ test("opening a Space whose key is inside the rotation window rotates it; a fail
   const r3 = await createStoreFor(base)(SP, { personal: true }).catch((e) => e);
   assert.ok(r3 instanceof Error && r3.code === "unavailable" && /has expired/.test(r3.message), "an expired key stops the Space from starting quietly");
 });
+
+test("storeMode: a device install is Basic (no Twenty, no Docker); VYRE_STORE still overrides", async () => {
+  const { storeMode } = await import("./space-store.js");
+  assert.equal(storeMode({}, { server: false }), "sqlite");
+  assert.equal(storeMode({}, {}), "sqlite");
+  assert.equal(storeMode({ VYRE_STORE: "twenty" }, { server: false }), "twenty");
+  const called = []; const f = createStoreFor({ home: tmp(), server: false, preflight: async () => { called.push(1); return { ok: true, reasons: [] }; } });
+  assert.equal(await f("vyre://spc_aaaaaaaaaaaa"), undefined);
+  assert.equal(called.length, 0);
+});
+
+test("storeMode in a packaged build: a server is always Twenty, a device always Basic, VYRE_STORE ignored", async () => {
+  const { storeMode } = await import("./space-store.js");
+  const pkg = fs.mkdtempSync(path.join(SCRATCH, "pkg-")); // no lib/build-kind.js: a packaged build
+  for (const v of [undefined, "sqlite", "auto", "twenty"]) {
+    const env = v ? { VYRE_STORE: v } : {};
+    assert.equal(storeMode(env, { server: true, root: pkg }), "twenty", `server with ${v}`);
+    assert.equal(storeMode(env, { server: false, root: pkg }), "sqlite", `device with ${v}`);
+  }
+});

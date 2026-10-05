@@ -21,8 +21,16 @@ import { CORE_TYPES } from "../../records/core-types.js";
 import { helperPresent, helperRunner } from "./helper.js";
 import { isPackaged } from "../../kernel/devbuild.js";
 
-/** The record store a Space gets when nothing says otherwise: Twenty in a packaged build (every Space, a desktop home too); a development build keeps the built-in store so the test suites need no Docker. VYRE_STORE overrides. @param {Record<string, string | undefined>} [env] */
-export const storeMode = (env = process.env) => env.VYRE_STORE || (isPackaged() ? "twenty" : "sqlite");
+/**
+ * The record store a Space gets when nothing says otherwise. Two tiers (the user's ruling, 5 Oct): a SERVER install (the person's own always-on server, or a team server) gives every Space its own Twenty; a DEVICE install
+ * (a laptop or desktop that is not a server) is Basic, with no Twenty and no Docker: its records are the device kernel's own index. A development build keeps the built-in store everywhere so the test suites need no Docker.
+ * VYRE_STORE overrides only in a development build. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean, root?: string }} [o] `server`: this install is a server; `root`: read the build kind from that folder (tests)
+ */
+export const storeMode = (env = process.env, o = {}) => {
+  // a packaged build has no override: a server is always Twenty (never sqlite or auto), a device is always Basic (the built-in store, fixed personal types only)
+  if (isPackaged(o.root)) return o.server === true ? "twenty" : "sqlite";
+  return env.VYRE_STORE || "sqlite";
+};
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
@@ -66,11 +74,11 @@ export async function preflight(o) {
  * What a Space created here now would be stored in, to show the person BEFORE it is created. `confirm` is set when the answer is the built-in store
  * on a box that could not run Twenty: show its `text` with its `choices` (create anyway or cancel), and only on "create" call `spaces.host` with
  * `accept_builtin_store: true`. Never creates anything.
- * @param {{ dir: string, mode?: string, helper?: { spool?: string, state?: string } | false, preflight?: typeof preflight }} o
+ * @param {{ dir: string, mode?: string, server?: boolean, helper?: { spool?: string, state?: string } | false, preflight?: typeof preflight }} o
  * @returns {Promise<{ store: "twenty" | "sqlite", reasons: string[], confirm?: { text: string, choices: readonly string[] }, facts?: any }>}
  */
 export async function planStore(o) {
-  const mode = o.mode ?? storeMode();
+  const mode = o.mode ?? storeMode(process.env, { server: o.server });
   if (mode === "sqlite") return { store: "sqlite", reasons: ["VYRE_STORE is sqlite"] };
   const pf = await (o.preflight ?? preflight)({ dir: o.dir, helper: o.helper });
   if (pf.ok) return { store: "twenty", reasons: [], facts: pf.facts };
@@ -87,7 +95,7 @@ export async function planStore(o) {
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
 export function createStoreFor(cfg) {
-  const mode = cfg.mode ?? storeMode();
+  const mode = cfg.mode ?? storeMode(process.env, { server: cfg.server });
   const log = cfg.log ?? (() => {});
   /** @type {any} */
   const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
@@ -146,6 +154,6 @@ export function createStoreFor(cfg) {
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
   };
-  storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
+  storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
 }

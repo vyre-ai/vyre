@@ -2,18 +2,18 @@
 // Which record store a server is using, for `vyre status` and /v1/health (launch's update proof asserts it): the store in use (built-in or Twenty), where that choice came from
 // (VYRE_STORE set, or the default), and the number of records it sees. When VYRE_STORE asks for Twenty and this server is not on it, or the Twenty it is on does not answer, it says so in
 // `note` and never falls back quietly. Reads only.
-import { isPackaged } from "../kernel/devbuild.js";
+import { storeMode } from "./twenty/space-store.js";
 import fs from "node:fs";
 import path from "node:path";
 
 /**
- * @param {{ root: string, store?: any, env?: Record<string, string | undefined> }} o `root` is the vyred home; `store` is the kernel's record store (kernel.store)
+ * @param {{ root: string, store?: any, server?: boolean, env?: Record<string, string | undefined> }} o `root` is the vyred home; `store` is the kernel's record store (kernel.store)
  * @returns {Promise<{ store: "builtin" | "twenty", from: "VYRE_STORE" | "default", mode: string, records: number | null, reachable: boolean, note?: string }>}
  */
 export async function storeStatus(o) {
   const env = o.env ?? process.env;
   const asked = env.VYRE_STORE;
-  const mode = asked || (isPackaged() ? "twenty" : "sqlite");
+  const mode = storeMode(env, { server: o.server });
   const from = asked ? "VYRE_STORE" : "default";
   const store = o.store;
   const inUse = store && (store.kind === "twenty" || (typeof store.constructor === "function" && store.constructor.name === "TwentyStore")) ? "twenty" : "builtin";
