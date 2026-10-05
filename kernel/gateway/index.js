@@ -201,7 +201,9 @@ export function createGateway(cfg) {
   }
 
   return Object.freeze({
-    authorize: authorizer.authorize,
+    // AT-2: `peek` (decide an approved act's check without spending its one use) is the Flows runner's alone, through authorizePeek on the home's own gateway; a module's handle gets this one, which drops it.
+    authorize: (/** @type {any} */ i) => { if (i && typeof i === "object" && "peek" in i) { const { peek: _p, ...rest } = i; return authorizer.authorize(rest); } return authorizer.authorize(i); },
+    authorizePeek: (/** @type {any} */ i) => authorizer.authorize({ ...i, peek: true }),
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     ...(drive ? { drive } : {}),

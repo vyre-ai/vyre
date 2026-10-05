@@ -137,6 +137,15 @@ Your tool's `run` only ever sees an approved call, and `meta.gate` says how it w
 you add has no other way to act as you, because it never holds your credentials: `ctx.vault.request`
 attaches them outside the sandbox, and a write through it is held at the Gate the same way.
 
+## A tool a Flow may run: `flowAction`
+
+A Flow's call step can run a tool only if its module says so: `{ "name": "mail.send", "outward": true, "flowAction": { "risk": "outward" } }`, or `"flowAction": { "risk": "read" }` for a read.
+Only Vyre's own modules offer one for now. The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+
+The runner does not ask the kernel's action table about a Flow tool, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
+otherwise. For an outward tool the Flow's one approval is spent at the call (once, for exactly that input), and that is the only gate beside the tool's own. For a read tool nothing else gates it.
+Every `flowAction` tool is listed with the guard it relies on in `test/flow-action-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a read tool with no gate of its own does not pass review.
+
 ## What a module gets: `ctx`
 
 Every member that reaches outside the module returns a promise. Types are in
