@@ -66,7 +66,8 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
 
   const view = (/** @type {C.State} */ state) => {
     const t = now(), self = me().eid;
-    return state.entries.map(e => ({ eid: e.eid, kind: e.kind, label: e.label || null, since: e.since, self: e.eid === self,
+    const names = typeof store.labels === "function" ? store.labels() : {};
+    return state.entries.map(e => ({ eid: e.eid, kind: e.kind, label: e.label || names[e.eid] || null, since: e.since, self: e.eid === self,
       newcomer: C.youngAt(e, t), trustedAt: C.youngAt(e, t) ? e.since + C.NEWCOMER_MS : null }));
   };
 
@@ -99,7 +100,8 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const pub = Buffer.from(String(publicKey), "base64url");
       if (pub.length !== 32) throw refuse("That is not a device key.", "bad_key");
       const eid = keyId(pub);
-      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey), label: label ? String(label).slice(0, 60) : undefined } });
+      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey) } });
+      if (label && typeof store.setLabel === "function") store.setLabel(eid, String(label)); // the name stays on this device: the public list holds keys only
       emit("identity.entry-added", { name: nameOf(), eid, kind, seq: r.state.seq, at: now() });
       return { eid, seq: r.state.seq };
     },
@@ -151,10 +153,11 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const ck = codeKey(code, password, stretch);
       if (!r.state.entries.some(e => e.kind === "code" && e.eid === ck.eid)) throw refuse("That code (or password) is not the one for this name.", "wrong_code");
       const key = store.newDeviceKey();
-      const op = await C.makeOp(r.state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: deviceLabel ? String(deviceLabel).slice(0, 60) : undefined } }, { by: ck.eid, ts: Math.max(now(), r.state.ts), sign: ck.sign });
+      const op = await C.makeOp(r.state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey } }, { by: ck.eid, ts: Math.max(now(), r.state.ts), sign: ck.sign });
       let next;
       try { next = await C.applyOp(r.state, op, ctx()); await dir.append(name, [op]); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
       store.join(key, [...r.ops, op], name);
+      if (deviceLabel && typeof store.setLabel === "function") store.setLabel(key.eid, String(deviceLabel));
       store.setChain([...r.ops, op], C.pinOf(next));
       store.setAlerted(next.seq);
       emit("identity.recovered", { name, how: "code", seq: next.seq, at: now() });
@@ -166,7 +169,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const r = await dir.resolve(name);
       if (!r.ok || r.kind !== "person") throw refuse(r.ok ? "That name does not belong to a person." : r.why, "not_found");
       const key = store.newDeviceKey();
-      const op = await C.makeOp(r.state, { type: "recover", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: deviceLabel ? String(deviceLabel).slice(0, 60) : undefined } }, { ts: Math.max(now(), r.state.ts) });
+      const op = await C.makeOp(r.state, { type: "recover", entry: { eid: key.eid, kind: "device", pub: key.publicKey } }, { ts: Math.max(now(), r.state.ts) });
       return { request: { name, op }, key, contacts: r.state.entries.filter(e => e.kind === "contact").length };
     },
     /** On a contact's device, after the person approved with Face ID: sign the request if this device holds a contact key for that identity. */

@@ -8,6 +8,7 @@ import { recordMessage } from "../../../../names/worker/id-messages.js";
 import { sealRecord } from "./seal.js";
 import { newCode, codeKey, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
+import { createPasskeyKey } from "./passkey.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
@@ -34,7 +35,7 @@ export async function claimIdentity(o) {
   const key = o.key ?? await generateDeviceKey({ forceSoftware: o.forceSoftware });
   const ts = now();
   const genesis = await C.makeGenesis({
-    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: o.deviceLabel ? String(o.deviceLabel).slice(0, 60) : undefined, ...(o.enclave ? { enclave: o.enclave } : {}) },
+    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(key.alg === "webauthn-es256" ? { alg: key.alg, rp: key.rp } : {}), ...(o.enclave ? { enclave: o.enclave } : {}) },
     code: { eid: ck.eid, kind: "code", pub: ck.publicKey }, nonce: C.b64u(random(12)), ts, sign: m => key.sign(m),
   });
   const state = await C.verifyChain([genesis], { now: ts + 1 });
@@ -55,4 +56,14 @@ export async function claimIdentity(o) {
     throw refuse(plain(e), String(e.code || "directory"));
   }
   return { name, id: state.id, eid: key.eid, ops: [genesis], pin: C.pinOf(state), recoveryCode: code, passwordSet: Boolean(o.password), key, software: key.software, claimed: json.data };
+}
+
+/**
+ * Claim a name from a browser with a PASSKEY as the identity's first device (0.2.9): the person unlocks it (Face ID, Touch ID, Windows Hello or a PIN) to make it, and again to sign the genesis and the claim. It
+ * is a full device, unlike a key a script on the page can reach. Everything else is claimIdentity's.
+ * @param {Omit<Parameters<typeof claimIdentity>[0], "key"> & { rp?: string, webauthn?: { create(o: any): Promise<any>, get(o: any): Promise<any> } }} o
+ */
+export async function claimIdentityWithPasskey(o) {
+  const key = await createPasskeyKey({ rp: o.rp || "app.vyre.run", name: o.name, ...(o.webauthn ? { webauthn: o.webauthn } : {}), ...(o.random ? { random: o.random } : {}) });
+  return claimIdentity({ ...o, key: /** @type {any} */ (key) });
 }

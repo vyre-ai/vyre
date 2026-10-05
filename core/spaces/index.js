@@ -324,7 +324,7 @@ export default {
         const r = await dir.resolve(name);
         if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
         const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
-        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof, e);
       } catch { return false; }
     };
     const personRef = async (/** @type {any} */ value) => {
