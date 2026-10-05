@@ -238,3 +238,15 @@ test("peer race: a forger that sends and exits before the check is a model's, no
   await new Promise(r => setTimeout(r, 500));
   assert.equal(globalThis.__probeMineRan, 0, "a fire-and-forget forger ran a person's tool");
 });
+
+test("peer race: when Vyre could not tell who called, it says which half failed (the kernel gave no pid, or the chain was unreadable)", async () => {
+  const noPid = await asTaken("cli", {}, registry, undefined, { peerPid: async () => null, delayMs: 1, peerRetryMs: 1, alive: () => true });
+  assert.equal(noPid.couldNotTell, true);
+  assert.equal(noPid.why, "peer_pid_unread");
+  const unreadable = await asTaken("cli", {}, registry, undefined, { peerPid: async () => 4242, delayMs: 1, alive: () => true, processTable: () => () => null, insideClaude: () => ({ inside: false, unknown: true, unreadable: true }) });
+  assert.equal(unreadable.couldNotTell, true);
+  assert.equal(unreadable.why, "process_chain_unreadable");
+  const fine = await asTaken("cli", {}, registry, undefined, { peerPid: async () => 4242, delayMs: 1, alive: () => true, insideClaude: () => ({ inside: false }) });
+  assert.equal(fine.couldNotTell, false);
+  assert.equal(fine.why, undefined);
+});
