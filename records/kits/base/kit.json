@@ -4,7 +4,7 @@
   "id": "base",
   "version": 1,
   "label": "Base",
-  "description": "The objects every firm starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, practice area as a choice, and projects that follow their own stages by practice area.",
+  "description": "The objects every firm starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, practice area as a choice, and and a Project with stages.",
   "types": [
     {
       "name": "contact",
@@ -416,25 +416,6 @@
           "label": "Due"
         },
         {
-          "name": "accident_date",
-          "kind": "date",
-          "label": "Accident date",
-          "required_if": "practice_area == \"Personal Injury\"",
-          "visible_if": "practice_area == \"Personal Injury\""
-        },
-        {
-          "name": "trust_name",
-          "kind": "text",
-          "label": "Trust or plan name",
-          "visible_if": "practice_area == \"Estate Planning\""
-        },
-        {
-          "name": "hearing_date",
-          "kind": "date",
-          "label": "Next hearing",
-          "visible_if": "practice_area == \"Family Law\" or practice_area == \"Criminal Defense\""
-        },
-        {
           "name": "stage",
           "kind": "stage",
           "label": "Stage",
@@ -442,15 +423,7 @@
             "Intake",
             "Active",
             "Review",
-            "Done",
-            "Treating",
-            "Demand",
-            "Negotiation",
-            "Settled",
-            "Closed",
-            "Drafting",
-            "Signing",
-            "Funding"
+            "Done"
           ]
         }
       ],
@@ -466,58 +439,6 @@
         },
         {
           "name": "Done"
-        }
-      ],
-      "stage_sets": [
-        {
-          "name": "personal_injury",
-          "when": "practice_area == \"Personal Injury\"",
-          "stages": [
-            {
-              "name": "Intake"
-            },
-            {
-              "name": "Treating"
-            },
-            {
-              "name": "Demand"
-            },
-            {
-              "name": "Negotiation",
-              "enter_if": "not empty(accident_date)"
-            },
-            {
-              "name": "Settled"
-            },
-            {
-              "name": "Closed"
-            }
-          ]
-        },
-        {
-          "name": "estate_planning",
-          "when": "practice_area == \"Estate Planning\"",
-          "stages": [
-            {
-              "name": "Intake"
-            },
-            {
-              "name": "Drafting"
-            },
-            {
-              "name": "Review"
-            },
-            {
-              "name": "Signing",
-              "enter_if": "not empty(trust_name)"
-            },
-            {
-              "name": "Funding"
-            },
-            {
-              "name": "Closed"
-            }
-          ]
         }
       ]
     }

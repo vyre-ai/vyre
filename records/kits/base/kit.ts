@@ -1,8 +1,8 @@
 // The base Kit: the objects every firm starts from. One Contact per person; what a person is to the firm (a Lead, a Client, a Subscriber) is a role type
 // linked to that Contact, so a person who was a Lead and became a Client is still one record with two roles. Appointments and Projects link to the same Contact.
-// The Project is the core Project (one project type for the whole Space); this Kit adds practice area, the per-area stages and the fields that apply to one area.
-// Practice area is a choice field. A Project follows its own stages by practice area (a personal injury case and an estate plan are not the same journey),
-// and a field that only applies to one area shows, and is required, only there.
+// The Project is the core Project (one project type for the whole Space); this Kit adds practice area, owner, due and stages on top of it.
+// Practice area is a choice field. The Kit is generic: the stages by practice area (a personal injury case and an estate plan are not the same journey) and the
+// fields that apply to one area live in the Law firm Kit, which extends this Project.
 //
 // Nothing here is a person's data. Add a practice area by adding an option; add a whole process by adding a stage set.
 import { defineKit, defineType, defineField, defineStage, defineView } from "@vyre/sdk";
@@ -87,15 +87,7 @@ export const Project = defineType({
     practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
     owner: defineField.actor({ label: "Owner" }),
     due: defineField.date({ label: "Due" }),
-    accident_date: defineField.date({ label: "Accident date", visible_if: 'practice_area == "Personal Injury"', required_if: 'practice_area == "Personal Injury"' }),
-    trust_name: defineField.text({ label: "Trust or plan name", visible_if: 'practice_area == "Estate Planning"' }),
-    hearing_date: defineField.date({ label: "Next hearing", visible_if: 'practice_area == "Family Law" or practice_area == "Criminal Defense"' }),
-    stage: defineStage(["Intake", "Active", "Review", "Done"], {
-      sets: [
-        { name: "personal_injury", when: 'practice_area == "Personal Injury"', stages: ["Intake", "Treating", "Demand", { name: "Negotiation", enter_if: "not empty(accident_date)" }, "Settled", "Closed"] },
-        { name: "estate_planning", when: 'practice_area == "Estate Planning"', stages: ["Intake", "Drafting", "Review", { name: "Signing", enter_if: "not empty(trust_name)" }, "Funding", "Closed"] },
-      ],
-    }),
+    stage: defineStage(["Intake", "Active", "Review", "Done"]),
   },
 });
 
@@ -108,6 +100,6 @@ export default defineKit({
   id: "base",
   version: 1,
   label: "Base",
-  description: "The objects every firm starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, practice area as a choice, and projects that follow their own stages by practice area.",
+  description: "The objects every firm starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, practice area as a choice, and and a Project with stages.",
   includes: [Contact, Lead, Appointment, Client, Subscriber, Project, LeadsBoard, AppointmentsCalendar, ClientsList, ProjectsBoard],
 });

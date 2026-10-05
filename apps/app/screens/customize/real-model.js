@@ -6,7 +6,7 @@ import { pluralOf } from "./logic.js";
 /** @typedef {import("./logic.js").TypeDef} TypeDef */
 
 /** The kernel's own types (flow state, goals) are not the person's to customize. @param {any} t */
-export const isOwn = (t) => !/^(def-|flow-|goal$)/.test(String(t.name)) && !t.internal;
+export const isOwn = (t) => !/^(def-|flow-|kit-proposal$|kit-install$|goal$)/.test(String(t.name)) && !t.internal;
 
 /** One kernel type as the screen's. @param {any} t @param {string} space @returns {TypeDef} */
 export function toTypeDef(t, space) {

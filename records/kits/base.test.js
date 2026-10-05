@@ -5,12 +5,14 @@ import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createRecordsHost } from "../host.js";
 import fs from "node:fs";
 const BASE = JSON.parse(fs.readFileSync(new URL("./base/kit.json", import.meta.url), "utf8"));
+const LAW = JSON.parse(fs.readFileSync(new URL("./law-firm/kit.json", import.meta.url), "utf8"));
 
 const SPACE = "spc_baseobjects1";
-async function rig() {
+async function rig(law = false) {
   const host = createRecordsHost({ space: SPACE, owner: "per_owner", store: createMemoryStore() });
   await host.defineCore();
   await host.installKit(BASE);
+  if (law) await host.installKit(LAW);
   const R = host.kernel.records, o = host.ownerChain();
   return { host, R, o };
 }
@@ -34,8 +36,8 @@ test("one Contact, many roles: a person who is a Lead and then a Client is still
   await assert.rejects(() => R.create(o, "lead", { practice_area: "Estate Planning" }), "a lead without a contact is refused");
 });
 
-test("a Project follows the stages of its practice area, and the fields that apply only there are required only there", async () => {
-  const { R, o } = await rig();
+test("the Law firm Kit: a Project follows the stages of its practice area, and the fields that apply only there are required only there", async () => {
+  const { R, o } = await rig(true);
   const c = await R.create(o, "contact", { name: "Casey Lin" });
   const client = await R.create(o, "client", { contact: { urn: c.urn }, practice_area: "Personal Injury", stage: "Active" });
   const base = { client: { urn: c.urn } };
@@ -51,4 +53,12 @@ test("a Project follows the stages of its practice area, and the fields that app
   assert.equal(signing.data.stage, "Signing");
   const other = await R.create(o, "project", { ...base, name: "Misc", practice_area: "Business", stage: "Active" });
   assert.equal(other.data.stage, "Active", "an area with no stage set follows the default stages");
+});
+
+test("the base Project is generic: practice area is a choice and the stages are the same for every area", async () => {
+  const { R, o } = await rig();
+  const c = await R.create(o, "contact", { name: "Casey Lin" });
+  const p = await R.create(o, "project", { client: { urn: c.urn }, name: "Lin v. Acme", practice_area: "Personal Injury", stage: "Intake" });
+  assert.equal((await R.update(o, "project", p.id, { stage: "Active" }, p.version)).data.stage, "Active");
+  await assert.rejects(() => R.update(o, "project", p.id, { stage: "Treating" }, p.version + 1), "a personal injury stage is the Law firm Kit's, not the base's");
 });

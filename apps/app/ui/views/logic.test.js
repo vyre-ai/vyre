@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
+import { MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -179,4 +179,18 @@ test("a type with no stage gets a board on its first choice field", () => {
   const b = boardColumns(lead, [{ data: { practice_area: "PI" } }, { data: {} }], vd);
   assert.deepEqual(b.columns.map((c) => c.id), ["PI", "EP", ""]);
   assert.equal(viewDefOf({ name: "note", label: "Note", fields: [{ name: "title", kind: "text" }] }).board, undefined, "no choice field, no board");
+});
+
+test("the Space's own bookkeeping types are not a screen of the person's", () => {
+  for (const n of ["def-flow", "flow-state", "kit-proposal", "kit-install", "goal"]) assert.equal(isHiddenType({ name: n }), true, n);
+  for (const n of ["contact", "project", "kit", "flowers", "lead"]) assert.equal(isHiddenType({ name: n }), false, n);
+  assert.equal(isHiddenType({ name: "x", internal: true }), true);
+});
+
+test("a stored filter reads as words in the Filtered row", () => {
+  const t = { fields: [{ name: "stage", label: "Stage" }, { name: "fee", label: "Fee" }, { name: "due", label: "Due" }] };
+  assert.equal(filterWords(t, 'stage == "Intake"'), "Stage is Intake");
+  assert.equal(filterWords(t, 'stage != "Closed" and fee >= 100'), "Stage is not Closed and Fee is at least 100");
+  assert.equal(filterWords(t, "not empty(due)"), "Due is filled in");
+  assert.equal(filterWords(t, "empty(due)"), "Due is empty");
 });

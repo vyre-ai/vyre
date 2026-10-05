@@ -1,0 +1,179 @@
+{
+  "kind": "kit",
+  "sdk": 1,
+  "id": "law-firm",
+  "version": 1,
+  "label": "Law firm",
+  "description": "For a law firm: a Project follows its own stages by practice area (personal injury and estate planning to start), with the accident date, trust name and hearing date shown and required only where they apply. Install the base Kit first.",
+  "types": [
+    {
+      "name": "project",
+      "label": "Project",
+      "icon": "IconBriefcase",
+      "kind": "project",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "client",
+          "kind": "link",
+          "label": "Client",
+          "required": true,
+          "to": "contact"
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
+          "name": "owner",
+          "kind": "actor",
+          "label": "Owner"
+        },
+        {
+          "name": "due",
+          "kind": "date",
+          "label": "Due"
+        },
+        {
+          "name": "accident_date",
+          "kind": "date",
+          "label": "Accident date",
+          "required_if": "practice_area == \"Personal Injury\"",
+          "visible_if": "practice_area == \"Personal Injury\""
+        },
+        {
+          "name": "trust_name",
+          "kind": "text",
+          "label": "Trust or plan name",
+          "visible_if": "practice_area == \"Estate Planning\""
+        },
+        {
+          "name": "hearing_date",
+          "kind": "date",
+          "label": "Next hearing",
+          "visible_if": "practice_area == \"Family Law\" or practice_area == \"Criminal Defense\""
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "Intake",
+            "Active",
+            "Review",
+            "Done",
+            "Treating",
+            "Demand",
+            "Negotiation",
+            "Settled",
+            "Closed",
+            "Drafting",
+            "Signing",
+            "Funding"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Intake"
+        },
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Review"
+        },
+        {
+          "name": "Done"
+        }
+      ],
+      "stage_sets": [
+        {
+          "name": "personal_injury",
+          "when": "practice_area == \"Personal Injury\"",
+          "stages": [
+            {
+              "name": "Intake"
+            },
+            {
+              "name": "Treating"
+            },
+            {
+              "name": "Demand"
+            },
+            {
+              "name": "Negotiation",
+              "enter_if": "not empty(accident_date)"
+            },
+            {
+              "name": "Settled"
+            },
+            {
+              "name": "Closed"
+            }
+          ]
+        },
+        {
+          "name": "estate_planning",
+          "when": "practice_area == \"Estate Planning\"",
+          "stages": [
+            {
+              "name": "Intake"
+            },
+            {
+              "name": "Drafting"
+            },
+            {
+              "name": "Review"
+            },
+            {
+              "name": "Signing",
+              "enter_if": "not empty(trust_name)"
+            },
+            {
+              "name": "Funding"
+            },
+            {
+              "name": "Closed"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "templates": [],
+  "roles": [],
+  "flows": [],
+  "views": [
+    {
+      "name": "projects_board",
+      "type": "board",
+      "of": "project",
+      "label": "Projects by stage",
+      "groupBy": "stage",
+      "columns": [
+        "name",
+        "client",
+        "practice_area",
+        "owner",
+        "due"
+      ]
+    }
+  ],
+  "codeSteps": []
+}

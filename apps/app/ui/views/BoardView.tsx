@@ -10,9 +10,9 @@ import { boardColumns, columnOf, titleOf, viewDefOf, viewRows } from "./logic.js
 import { TitleCell, fieldNode } from "./shared";
 
 /** The board: columns by a choice or stage field (they stack on a phone), a card per row, and a card moves by drag on the web or by its menu elsewhere. */
-export function BoardView({ def, rows, env, onOpen, onMove, view }: { def: any; view?: string; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; onMove?: (rec: any, to: string) => void }) {
+export function BoardView({ def, rows, env, onOpen, onMove, view, noFilter }: { def: any; view?: string; noFilter?: boolean; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; onMove?: (rec: any, to: string) => void }) {
   const vd = viewDefOf(def, undefined, view);
-  rows = viewRows(rows, vd.board?.filter);
+  rows = viewRows(rows, noFilter ? undefined : vd.board?.filter);
   const b = boardColumns(def, rows, vd);
   if (!b) return <EmptyState title="No board for this type" body="Its definition has no field to group by." />;
   return (
