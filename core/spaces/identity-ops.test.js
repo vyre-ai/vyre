@@ -3,6 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
@@ -266,4 +267,22 @@ test("a device's name stays on the device that gave it: the public chain holds n
   const C = await import("../../kernel/identity/chain.js");
   const op = await C.makeOp(state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: "leaky name" } }, { by: phone.store.status().eid, ts: w.clock.t, sign: m => phone.store.sign(Buffer.from(m)) });
   await assert.rejects(w.dir.append("alex", [op]), e => /label/.test(String(e.message)) || e.code === "bad_entry");
+});
+
+test("an offered device entry keeps what it carries: agree, enclave and held web are signed into the entry the list takes, and a bad one is refused", async t => {
+  const w = world(t), phone = w.device("phone");
+  await phone.ops.create({ name: "alex", deviceLabel: "phone" });
+  w.clock.t += HOUR;
+  const pt = Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const key = w.device("mac").store.newDeviceKey();
+  await phone.ops.addEntry({ kind: "device", publicKey: key.publicKey, label: "mac", agree: pt, held: "web" });
+  const state = await C.verifyChain(phone.store.ops(), { now: w.clock.t + 1 });
+  const e = state.entries.find(x => x.eid === key.eid);
+  assert.equal(e.agree, pt, "the point is on the list");
+  assert.equal(e.held, "web", "held web is on the list: this key cannot change who speaks for the identity");
+  const k2 = w.device("pc").store.newDeviceKey();
+  await assert.rejects(phone.ops.addEntry({ kind: "device", publicKey: k2.publicKey, agree: "not a point" }), e => e.code === "bad_entry" || /entry|agree|point/i.test(String(e.message)));
+  const { entryExtras } = await import("../wink/pairing.js");
+  assert.deepEqual(entryExtras({ agree: pt, held: true, enclave: "E", label: "x", other: 1 }), { agree: pt, enclave: "E", held: "web" }, "only the three are copied, held true becomes web");
+  assert.deepEqual(entryExtras({ held: "no" }), {}, "a held that is not web or true is dropped");
 });
