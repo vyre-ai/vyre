@@ -1097,12 +1097,8 @@ export default {
           // The agents' project lists hold short names: sessions and the projects module still key by them.
           const slug = await slugOf(tm.project);
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(slug));
-          if (!reaches) {
-            // The person, or the assistant acting on their words (TODO with the P17 gate: require vault.said.match for the assistant).
-            if (!isPerson(meta.caller) && !isAssistant(meta)) throw Object.assign(new Error(`${a.name} has no access to ${slug}; the person, or their assistant on their request, gives an agent a project`), { code: "denied" });
-            const u = await ctx.call("agents.update", { name: a.name, projects: [...(Array.isArray(a.projects) ? a.projects : []), slug] });
-            if (u.error) throw new Error(u.error.message);
-          }
+          // Giving an agent a project is the person's own signed act (agents.update with projects, or projects.access.grant), never a module's: a teammate's role is filled only by an agent that already reaches the project.
+          if (!reaches) throw Object.assign(new Error(`${a.name} has no access to ${slug}: give it the project first (projects.access.grant), then fill the role`), { code: "denied" });
           filler = a.name;
         }
         if ((tm.filler || null) === filler) return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: true };

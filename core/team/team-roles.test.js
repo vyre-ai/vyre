@@ -22,6 +22,7 @@ import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
 // These tests are about the flow around a watcher (the CLI, a hook delivery, a duty), not the wall, and a hosted
 // runner has no bubblewrap profile: use the test seam. Production still fails closed (lib/sandbox/wall.js).
 testHooks.wall = OPEN_WALL;
+import { kernelCaller } from "../../test/helpers.js";
 import { until, boot, git, GIT_ENV, bootGit, realSession, plantHook, commitOnDesign, setTestCommand, recordOf } from "./team-fixture.js";
 
 test("team.retire undo: a teammate just made goes away completely and its role is free again", async t => {
@@ -70,9 +71,9 @@ test("team.retire: a bare mcp caller is refused; a session in the project only w
 });
 
 test("team.role.fill: a session in the project is refused without the person's words (P17); the person's surface fills it", async t => {
-  const { tool, raw, root, project, launches } = await boot(t);
+  const { tool, raw, root, project, launches, d } = await boot(t);
   const agent = `design-${project.slug}`;
-  await tool("agents.create", { name: "kit", projects: [] });
+  assert.equal((await kernelCaller(d, root)("agents.create", { name: "kit", projects: [project.slug] })).error, undefined);
   await tool("team.add", { project: project.record, role: "design" });
   const { session } = await realSession(root, tool, launches, project.slug);
   const viaSession = await call("team.role.fill", { teammate: agent, agent: "kit" }, { root, caller: "mcp", timeout: 20_000, session });
@@ -124,14 +125,15 @@ test("charters: draft saves a version composed from the project's own context, a
 // --- role filler (plan section 14): a role filled by one of the person's agents ---------------------
 
 test("team.role.fill: an agent fills a role, its character and the charter ride the first prompt, a change starts a fresh thread, default goes back", async t => {
-  const { tool, raw, root, project, launches } = await boot(t);
+  const { tool, raw, root, project, launches, d } = await boot(t);
   const agent = `design-${project.slug}`;
-  await tool("agents.create", { name: "kit", projects: [], instructions: "Kit is dry and exact." });
+  // giving an agent a project is the person's own signed act, so the agent is made with it through the person's chain
+  assert.equal((await kernelCaller(d, root)("agents.create", { name: "kit", projects: [project.slug], instructions: "Kit is dry and exact." })).error, undefined);
   await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
   assert.deepEqual((await tool("team.list", { project: project.record }))[0].filler, { kind: "default" });
   assert.equal((await raw("team.role.fill", { teammate: agent, agent: "nobody" })).error.code, "not_found");
   assert.equal((await raw("team.role.fill", { teammate: agent, agent: "kit" }, "mcp")).error.code, "not_asked"); // a bare mcp caller: the asked gate first
-  const r = await tool("team.role.fill", { teammate: agent, agent: "kit" }); // the person gives kit the project as they fill it
+  const r = await tool("team.role.fill", { teammate: agent, agent: "kit" });
   assert.equal(r.filler, "kit");
   assert.equal((await tool("team.role.fill", { teammate: agent, agent: "kit" })).unchanged, true);
   assert.deepEqual((await tool("team.list", { project: project.record }))[0].filler, { kind: "agent", agent: "kit" });
