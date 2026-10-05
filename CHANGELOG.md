@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(wink): a typed-paired, acked device defines a record type (a real DefineDiff) over its own paired session and through the daemon's device facts (callerFacts), on the kernel; records.me answers the owner. Guards the one rule (a confirmed paired device is the person; a change of types needs no extra proof from it).
+
 - feat(cli): `vyre phone` and `vyre relay pair` say, after a pairing by the relay's offer, "This device can't sign in as you until you confirm it from Devices." (that way of pairing has no owner confirmation; the typed code confirms the device itself). 0.3.1 moves them to the typed code and removes the offer path (team/BACKLOG.md).
 
 - feat(wink): a device paired by the typed code can open a person session. `wink.code.ack` is a pair yes moment (it takes the owner's software yes on a development build, like wink.phone.open), the owner's typed-back ack is the confirmation the paired session is granted on (the record is confirmed by the owner, with a key id `ack:<offer>`), and `addThisDevice({ ..., presenceKey })` reports the device's P-256 presence key at pairing: that key, never the Ed25519 identity key, signs presence.person.start-paired. test/wink-paired.test.js covers typed pair, signed ack, start-paired and a person-session call.
