@@ -16,6 +16,7 @@ class GqlError extends Error { constructor(message, code = "BAD_USER_INPUT", sub
 export class FakeTwenty {
   constructor() {
     /** @type {Map<string, any>} */ this.objects = new Map();
+    /** @type {Map<string, any>} views made through the metadata API, by id */ this.views = new Map();
     /** @type {Map<string, Map<string, any>>} */ this.rows = new Map();
     /** @type {any[]} */ this.hooks = [];
     /** @type {{ op: string, variables: any }[]} */ this.requests = [];
@@ -116,6 +117,16 @@ export class FakeTwenty {
         }
         throw new GqlError("Field not found", "NOT_FOUND");
       }
+      // views (stores/twenty/views.js): kept as one row each with the parts that were made for it
+      case "IdxV": return { getViews: [{ id: `idx-${v.o}`, key: "INDEX" }, ...[...this.views.values()].filter((w) => w.objectMetadataId === v.o).map((w) => ({ id: w.id, key: null }))] };
+      case "VFs": return { getViewFields: [] };
+      case "V": return { getViews: [...this.views.values()].filter((w) => w.objectMetadataId === v.o).map((w) => ({ id: w.id })) };
+      case "Gone": case "Re": { this.views.delete(v.id); return { destroyView: true }; }
+      case "MkView": { this.views.set(v.i.id, { ...v.i, viewFields: [], viewSorts: [], viewFilterGroups: [], viewFilters: [] }); return { createView: { id: v.i.id } }; }
+      case "MkVF": { this.views.get(v.i.viewId).viewFields.push(v.i); return { createViewField: { id: "vf" } }; }
+      case "MkVS": { this.views.get(v.i.viewId).viewSorts.push(v.i); return { createViewSort: { id: "vs" } }; }
+      case "MkVFG": { const g = { ...v.i, id: crypto.randomUUID() }; this.views.get(v.i.viewId).viewFilterGroups.push(g); return { createViewFilterGroup: { id: g.id } }; }
+      case "MkVFl": { this.views.get(v.i.viewId).viewFilters.push(v.i); return { createViewFilter: { id: "vfl" } }; }
       case "Hooks": return { webhooks: this.hooks.map((h) => ({ id: h.id, targetUrl: h.targetUrl, description: h.description })) };
       case "NewHook": { const h = { id: crypto.randomUUID(), ...v.i }; this.hooks.push(h); return { createWebhook: { id: h.id } }; }
       case "DelHook": { this.hooks = this.hooks.filter((h) => h.id !== v.id); return { deleteWebhook: { id: v.id } }; }

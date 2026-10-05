@@ -71,3 +71,36 @@ export function spaceDriveRefusal(code: string | undefined, message: string): st
   if (code === "bad_input") return message || "That path is not allowed.";
   return message || "Drive did not answer.";
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------ shared links
+
+/** One row of files.drive.link.list. The bytes are never in it. */
+export type LinkRow = { code: string; url: string; name: string; path: string; version: number | null; size: number; made_at: number; expires: number; opens: number; active: boolean };
+export const LINK_DAYS = 7;
+const DAY = 86_400_000;
+
+/** The line under a link: when it stops, how often it was opened, or that it no longer works. */
+export function linkLine(l: LinkRow, now: number): string {
+  if (!l.active) return l.expires <= now ? `Expired ${dayOf(l.expires)}` : "Stopped";
+  const left = Math.max(1, Math.ceil((l.expires - now) / DAY));
+  const opened = l.opens ? `opened ${l.opens} ${l.opens === 1 ? "time" : "times"}` : "not opened yet";
+  return `Works for ${left} more ${left === 1 ? "day" : "days"}, ${opened}`;
+}
+
+/** Working links first, newest first inside each; the stopped ones follow. */
+export const linksSorted = (rows: LinkRow[]): LinkRow[] => [...rows].sort((a, b) => Number(b.active) - Number(a.active) || b.made_at - a.made_at);
+
+/** The address to copy: the box's own origin and the link's path. */
+export const linkAddress = (origin: string, l: Pick<LinkRow, "url">): string => `${origin.replace(/\/+$/, "")}${l.url.startsWith("/") ? "" : "/"}${l.url}`;
+
+/** What the Ask card says before anything is made. The copy is one version of one file, so a later edit is not shown. */
+export function linkAsk(name: string, days = LINK_DAYS): { title: string; why: string } {
+  return { title: `Share ${name} with a link?`, why: `Anyone with the link can read this version of it for ${days} days. It is a copy, so a later edit is not shown. It is not sealed, so it can leave. You can stop the link at any time.` };
+}
+
+export function linkRefusal(code: string | undefined, message: string): string {
+  if (code === "too_large") return "That file is bigger than 8 MB, so it cannot be shared with a link.";
+  if (code === "not_found") return "That link or file is not there, or you may not read it.";
+  if (code === "no_such_tool") return "This box cannot make links yet. Update your Vyre.";
+  return spaceDriveRefusal(code, message);
+}

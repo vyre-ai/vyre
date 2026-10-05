@@ -3,7 +3,8 @@
 // (team/0.3/DESIGN-tasks.md and DESIGN-native-assistant.md). They are plain kernel TypeDefinitions, stored in the
 // Space's Twenty like any other type, so a Kit can link to them and a view can list them.
 //
-// Tasks are not here: tasks, goals, Flows, runs, grants and the log live in the kernel store (one `task.created`, the kernel's), and Twenty holds business records.
+// Tasks are here as a record type (team/0.3/DESIGN-tasks-records.md): what a person reads, edits, links or reports on is a field of the task record; who may act and what the approvals
+// depend on stay kernel state keyed by the same id. Goals, Flows, runs, grants and the log live in the kernel store.
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
 const choice = (/** @type {string} */ name, /** @type {string} */ label, /** @type {string[]} */ options, /** @type {object} */ more = {}) => ({ name, kind: "choice", label, options, ...more });
@@ -67,6 +68,8 @@ export const EVENT = {
     text("calendar", "Outside calendar (route)"),
     text("external_id", "Outside id"),
     f("rich_text", "notes", "Notes"),
+    f("url", "url", "Link (the event on its calendar)"),
+    text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
   ],
 };
 
@@ -85,6 +88,8 @@ export const CONTACT = {
     f("emails", "other_emails", "Other emails"),
     f("phones", "other_phones", "Other phones"),
     text("job_title", "Job title"),
+    // IANA, e.g. America/Los_Angeles: what their local time is (the assistant's brief and the contact card read it)
+    text("time_zone", "Time zone", { format: "time_zone" }),
     f("link", "organization", "Organization", { to: "organization" }),
     f("address", "address", "Address"),
     f("rich_text", "notes", "Notes"),
@@ -158,6 +163,48 @@ export const PARTICIPANT = {
   ],
 };
 
+
+export const TASK_STATUS = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
+export const TASK_SOURCES = ["gate_hold", "grant_request", "pairing", "kit_install", "reveal_request", "continue_in_space", "flow_step", "assistant_request", "memory_proposal", "manual"];
+
+/**
+ * A task: a to-do, a step a person or an agent does, a thing waiting on a check. The record id is the task id. `status` is owned by the kernel (`owned_by: "kernel"`: written only
+ * by the tasks service, which keeps it in step with the task's state); `stage` is the Space's own pipeline, separate from status, so a Kit or a person can add stages without touching it.
+ * `tags` is one text (a JSON list for now). `stage`, `status` and `record` are written only by the kernel (`owned_by`). The default views are a board by status, a list and a calendar by due; like any type it takes custom fields, stages and views.
+ */
+export const TASK = {
+  name: "task", label: "Task", icon: "IconChecklist",
+  fields: [
+    text("title", "Title", { required: true }),
+    f("rich_text", "note", "Note"),
+    f("datetime", "due", "Due"),
+    choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
+    { name: "stage", kind: "text", label: "Stage", owned_by: "kernel" },
+    f("link", "parent", "Part of", { to: "task" }),
+    f("link", "project", "Project", { to: "project" }),
+    f("link", "record", "About", { owned_by: "kernel" }),
+    f("link", "contact", "Contact", { to: "contact" }),
+    text("repeat", "Repeats"),
+    f("datetime", "repeat_until", "Repeats until"),
+    f("number", "priority", "Priority"),
+    text("list", "List"),
+    text("tags", "Tags"),
+    // the planner's own bookkeeping, hidden from every role (the contract's own hiding); only the kernel service reads it
+    text("planner", "Planner (engine bookkeeping)", { hidden_from: ["owner", "admin", "manager", "member", "temp"] }),
+    f("boolean", "pinned", "Pinned"),
+    text("tz", "Time zone"),
+    f("boolean", "floating", "Same wall time in every zone"),
+    text("wall", "Wall time"),
+    f("date", "date", "Date"),
+    choice("source", "Source", TASK_SOURCES),
+  ],
+  views: [
+    { name: "tasks_board", type: "board", label: "Tasks by status", groupBy: "status", columns: ["title", "due", "priority"] },
+    { name: "tasks_list", type: "list", label: "All tasks", columns: ["title", "status", "due", "project"], sort: { field: "due", dir: "asc" } },
+    { name: "tasks_calendar", type: "calendar", label: "Due dates", dateField: "due" },
+  ],
+};
+
 /**
  * A Project: the one hub for a piece of work (team/0.3/DESIGN-project-hub.md). Its sessions, Drive folder, repo, memory room, people, artifacts and accounts hang off this record. `slug` is the stable
  * key every text column that names a project holds; `drive_path` and `memory_scope` are addresses the kernel writes at create; `repo` is a git remote (a local path lives with the computer, not here).
@@ -226,4 +273,4 @@ export const PROJECT_FILE = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, PROJECT_FILE].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK, PROJECT_FILE].map((t) => Object.freeze(t)));

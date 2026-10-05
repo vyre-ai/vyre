@@ -63,6 +63,12 @@
         "effect": "write"
       },
       {
+        "name": "work.move.serve",
+        "summary": "serve a move to another server from this Space (the spaces module only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.project.ensure",
         "summary": "the Project record for a short name, made if missing (the projects module only)",
         "reach": "modules",
@@ -216,6 +222,7 @@
       "work": true,
       "attrs": true,
       "actions": [
+        "tasks.request",
         "records.read",
         "records.create",
         "records.update",

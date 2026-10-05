@@ -74,21 +74,41 @@ function refuseSensitiveRoot(p) {
 
 export const MIGRATIONS = [
   `
-  -- What this computer keeps of a project: its short name, its name and the rest of the local spec
-  -- (picks, people, watchers, the avatar seed). The project itself is a Project record.
+  -- A cache of the markers: where each project's home is, so a project outside the configured
+  -- roots is still found, and its last-read contents. The marker wins whenever they disagree.
   CREATE TABLE projects_projects (
     slug TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    home TEXT NOT NULL UNIQUE,
     spec TEXT NOT NULL,
     at   INTEGER NOT NULL
   );
-  -- The per-machine folders table: which folders on this computer belong to which project. A path is
-  -- a fact about one computer, so it lives here and never on the shared record. A project has one
-  -- home and any number of other folders; projects.of reads the longest match.
-  CREATE TABLE projects_folders (
-    path    TEXT PRIMARY KEY,
+  `,
+  // Step 1 (federation, Vyre Drive step 3): which agent may reach a project's data at all. Deny
+  // by default; Drive, sync and anything else that serves a project's files or sessions to an
+  // agent asks projects.access.check before serving. Lives here, not appended in index.js, so
+  // core/store's migrate() (which numbers steps by array index) never collides with a step
+  // another team adds to this array later — sessions' next MIGRATIONS step (after e87f63df,
+  // still just the projects_projects table on main as of this write) is told this slot is taken.
+  `
+  CREATE TABLE projects_access (
+    id      TEXT PRIMARY KEY,
     project TEXT NOT NULL,
-    kind    TEXT NOT NULL CHECK (kind IN ('home', 'workspace'))
+    agent   TEXT NOT NULL DEFAULT '',
+    status  TEXT NOT NULL,
+    by      TEXT NOT NULL,
+    at      INTEGER NOT NULL,
+    UNIQUE (project, agent)
+  );
+  `,
+  // Step 2 (federation, reviewer's MEDIUM 2 on 656b3f79): a single-row sentinel recording that
+  // the one-time auto-seed of projects_access from agents.projects has run (core/projects/
+  // index.js), so an upgrade never has to be told about the manual projects.access.migrate tool
+  // for a scoped agent to keep reading what it already could.
+  `
+  CREATE TABLE projects_access_seeded (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at INTEGER NOT NULL
   );
   `,
   // Local version history for a project's folder (github.project.local-init): 'kept' once it is a
@@ -100,6 +120,29 @@ export const MIGRATIONS = [
     state   TEXT NOT NULL,
     at      INTEGER NOT NULL
   );
+  `,
+  // Step 4 (the Project hub, team/0.3/DESIGN-project-hub.md): a project is a Project RECORD now. The folders on this computer move into a per-machine table (a path is a fact about one
+  // computer, so it never sits on the shared record), the home column leaves projects_projects, and the agent-access table is kept as projects_access_legacy until its rows are carried into kernel grants: reach to a project is a kernel grant (action
+  // project.reach), the one permission system. Appended after the released steps, never edited into them.
+  `
+  CREATE TABLE projects_folders (
+    path    TEXT PRIMARY KEY,
+    project TEXT NOT NULL,
+    kind    TEXT NOT NULL CHECK (kind IN ('home', 'workspace'))
+  );
+  INSERT OR IGNORE INTO projects_folders (path, project, kind) SELECT home, slug, 'home' FROM projects_projects;
+  CREATE TABLE projects_projects_new (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    spec TEXT NOT NULL,
+    at   INTEGER NOT NULL
+  );
+  INSERT INTO projects_projects_new (slug, name, spec, at) SELECT slug, name, spec, at FROM projects_projects;
+  DROP TABLE projects_projects;
+  ALTER TABLE projects_projects_new RENAME TO projects_projects;
+  -- the old per-agent access rows are KEPT until the person's own approval carries them into kernel grants (projects.access.restore); a grant needs the person's proof, so a migration cannot make it
+  ALTER TABLE projects_access RENAME TO projects_access_legacy;
+  DROP TABLE IF EXISTS projects_access_seeded;
   `,
 ];
 

@@ -32,6 +32,7 @@ import { sessionTempDir, sessionsRoot, artifactsDirFor, artifactsPathFor } from 
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { recordTags } from "./record-tags.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -1952,8 +1953,11 @@ export class Switchboard {
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     await this.hearActs(id, text, uuid, pasted, rec.project);
     const names = mentionsOf(text, pasted);
-    if (!names.length && !chips.length) return [];
-    const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
+    // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
+    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
+    if (!names.length && !picked.chips.length && !picked.tags.length) return [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
   }
@@ -3395,6 +3399,8 @@ export default {
       kernelSession: ctx.kernelSession || null,
       // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
       chatFor: ctx.chatFor || null,
+      // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
+      recordTags: (/** @type {any[]} */ chips) => recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() }),
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,

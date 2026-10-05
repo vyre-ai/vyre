@@ -39,6 +39,29 @@ export function createMoves(cfg) {
       void who;
       return { move_id };
     },
+    /**
+     * The batch form of `out`, for an upgrade that moves several projects at once: ONE approval and ONE plan hash cover every project. The proof is bound to the target, the plan hash and the sorted
+     * list of projects (kernel/remote/proof.js `moveOutMany`), so the person approves exactly what they were shown. Then each project gets its own `project.move_started` (and move id), and each is
+     * received with the ordinary `in`: single use, the same window, nothing here copies a record. Every project is checked before the proof is spent. At most 100.
+     */
+    async outMany(/** @type {any} */ chain, /** @type {{ to: string, projects: string[], plan_hash: string }} */ i, /** @type {{ presence?: any }} */ o = {}) {
+      person(chain);
+      if (!i || !SPACE.test(String(i.to)) || i.to === space) throw bad("name another Space of this home to move the projects to");
+      if (!HASH.test(String(i.plan_hash))) throw bad("a move names the plan hash the person approved");
+      if (!Array.isArray(i.projects) || i.projects.length < 1 || i.projects.length > 100) throw bad("a batch moves between 1 and 100 projects");
+      const projects = i.projects.map(p => projectOf(p, space));
+      if (new Set(projects).size !== projects.length) throw bad("a project is named once in a batch");
+      const sorted = [...projects].sort();
+      const d = await gate(chain, "project.move_out", `vyre://${space}/project/batch`, { presence: o.presence, input_hash: cfg.sha256(cfg.canonical({ action: "project.move_out", input: { to: i.to, plan_hash: i.plan_hash, projects: sorted } })) });
+      const batch = mintUuid(clock());
+      /** @type {{ project: string, move_id: string }[]} */ const moves = [];
+      for (const project of projects) {
+        const move_id = mintUuid(clock());
+        log.append(chain, { type: "project.move_started", sv: 1, subject: project, data: { move_id, to: i.to, plan_hash: i.plan_hash, batch } }, { decision: d.decision });
+        moves.push({ project, move_id });
+      }
+      return { batch, moves };
+    },
     async in(/** @type {any} */ chain, /** @type {{ from: string, project: string, plan_hash: string, move_id: string }} */ i) {
       const who = person(chain);
       if (!i || !SPACE.test(String(i.from)) || i.from === space) throw bad("name the other Space of this home the project comes from");
@@ -48,10 +71,10 @@ export function createMoves(cfg) {
       const d = await gate(chain, "project.move_in", `vyre://${space}/project/${i.move_id}`);
       if (typeof cfg.evidence !== "function") throw new KernelError("unavailable", "this home cannot read the other Space's log");
       const ev = await cfg.evidence(i.from, i.move_id);
-      // everything the source's event says must be exactly this: the same person, this project, this target, this plan, recent
+      // an event written on the person's behalf by an assistant (`acted_via`) is never the person's own approval (reviewer-3). Everything the source's event says must be exactly this: the same person, this project, this target, this plan, recent
       const said = ev && ev.data;
       const sameActor = ev && typeof ev.actor === "string" && ev.actor.startsWith(`person:${who.id}@`);
-      if (!said || !sameActor || ev.subject !== project || said.to !== space || said.plan_hash !== i.plan_hash || !(clock() - Number(ev.time) <= WINDOW_MS) || !(clock() >= Number(ev.time) - 60_000)) throw new KernelError("not_found", "no such move");
+      if (!said || !sameActor || ev.acted_via !== undefined || ev.subject !== project || said.to !== space || said.plan_hash !== i.plan_hash || !(clock() - Number(ev.time) <= WINDOW_MS) || !(clock() >= Number(ev.time) - 60_000)) throw new KernelError("not_found", "no such move");
       if (log.read({ type: "project.move_in" }).some((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id)) throw new KernelError("invalid", "this move was already received here");
       log.append(chain, { type: "project.move_in", sv: 1, subject: `vyre://${space}/project/${i.move_id}`, data: { move_id: i.move_id, from: i.from, project, plan_hash: i.plan_hash } }, { decision: d.decision });
       return { received: true, move_id: i.move_id };

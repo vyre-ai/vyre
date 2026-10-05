@@ -1,6 +1,7 @@
 // @ts-check
 // client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
 
+import { ZONE_HEADER, systemZone } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import http from "node:http";
 import * as config from "../config/index.js";
@@ -32,7 +33,8 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     const cliToken = /^cli$/.test(caller) && !socket && !headers.authorization ? readSession(root) : null;
     const signedIn = cliToken ? { authorization: `Vyre ${cliToken}` } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      // The zone of the device making the call (a person on the move is in the zone of the device in hand): lib/time reads it as `meta.zone`.
+      headers: { [ZONE_HEADER]: systemZone(), ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });

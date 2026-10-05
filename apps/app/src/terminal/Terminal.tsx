@@ -4,6 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { useUiTheme } from "@vyre/ui";
 import { TerminalFrame, type FrameHandle } from "./TerminalFrame";
 import { MONO, termTheme } from "./theme";
+import { APP_BASE } from "../pwa/model";
 
 export type TermState = { state: "idle" | "connecting" | "live" | "reconnecting" | "ended" | "closed"; offset: number; owner: boolean; cols: number; rows: number; reason?: string };
 
@@ -44,7 +45,7 @@ export type TerminalProps = {
   testID?: string;
 };
 
-export const DEFAULT_FRAME_URL = "/app/term/frame.html";
+export const DEFAULT_FRAME_URL = `${APP_BASE}/term/frame.html`;
 
 /**
  * A terminal: xterm.js drawing the bytes of a term socket (core/term), resumable by byte offset, in the app's colours.

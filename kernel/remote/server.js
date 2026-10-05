@@ -7,7 +7,7 @@
 import { KernelError } from "../core/errors.js";
 import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
-import { proofRequest, PROOF_CALLS } from "./proof.js";
+import { proofRequest, PROOF_CALLS, WIRE_TO_PROOF } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { remoteBinding, payloadHash } from "../core/presence.js";
 import { youngAt } from "../identity/chain.js";
@@ -18,7 +18,6 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /** Gateway paths whose grants call has another name in the proof requests (kernel/remote/proof.js). */
-const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm" });
 
 /**
  * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)

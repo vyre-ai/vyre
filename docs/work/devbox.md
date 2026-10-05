@@ -24,6 +24,18 @@ Open: test/wink.test.js (or wink-paired) leaks timers and does not exit (platfor
 ## Done (5 Oct, 21:2x Z)
 - Trunk 0cc349f41 pushed and deployed: wink-session ccf4fab5d + app-wire cfe3d7968 (wink, wink-paired, wink-paired-2 all exit: 39/22/27 pass), vault-labels d6337e81f, runner 92313423e, wink-rc1 204d07144. Gate each time: merge-check clean (vault merge reports presence/module.js session-* lines absent: superseded, trunk a8649e0e0 removed those tools), lint 0, boot-check ok, smoke 123/0.
 
+## Gate and merge procedure (6 Oct, current)
+- Merge on the Mac (cheap), push the candidate as `work/devbox-cand`, then on a quiet box (testbox3, 5, 6) in `~/vyre-ci/devbox` (a clone; GitHub reads need no credentials): `git fetch -q origin work/devbox-cand && git checkout -q -f FETCH_HEAD && scripts/devbox-gate-box.sh <base-sha>` (merge-check, docs:ref and docs-check, no-undef lint, boot check, bounded smoke, every changed test). Never upload a tree from the Mac.
+- Plus, for any merge touching apps/, lib/ or kernel/: in the clone, `cd apps/app && npm ci && npm run export:web`, then the apps/app suite. Pass = rc 0 and all pass.
+- A run under box load above about 4 gives noise: kernel/adopt.test.js trips the boot check's 100 s cap, records.me answers caller_unknown, chaos and switchboard time out. Re-run on a quiet box before calling it a failure.
+- Docs: after a merge, take trunk's side of docs/index.json and docs/reference/*, regenerate with `npm run docs:ref`, commit the result.
+- Push order each time: gate, `git push origin work/devbox`, `git ls-remote origin work/devbox`, deploy (`~/devbox/src` on testbox, unit vyre-dev), announce the sha to team-lead and walker.
+
+## State (6 Oct)
+- Trunk 854f46cb1 is on origin. Candidate a5b954c46 (flows hub-kernel-on aecc0f8cc, def-watcher-r 57e0b11d6, planner-events 32474b602, web d5f6c481b which deletes deck/) is on `work/devbox-cand`, gated: export:web rc 0, apps/app 1047/1047, boot ok on a quiet box, smoke 128/0; the changed-tests run was still going.
+- Not merged: launch-site 822d63b79 (24 conflicts, launch must merge trunk), windows work/spaces and memory-reb 1f262313a (waiting on windows' release), objects 27fdfbfa5 with platform-2's task writer (waiting on reviewer-3), approval-token, one-google, calendar-live, cleanup 157fa16aa.
+- Known reds on trunk: test/wink.test.js 20 fail (kernel on by default; VYRE_KERNEL=0 gives 47/0; platform), test/boundaries.test.js (new edges), SIGTERM-during-start in core/daemon/main.test.js (flows project-hub), federation-answer (platform).
+
 ## Done (5 Oct, later)
 - Trunk a92ef1d97: windows work/spaces 418a994c3 (invite signer, owner key enrolment). Gate green (merge-check clean, lint 0, boot-check ok, smoke 123/0, wink 39, paired 23, paired-2 27); docs:ref regenerated. Held: outward-flags (reviewer-3 OW-2/3/4).
 

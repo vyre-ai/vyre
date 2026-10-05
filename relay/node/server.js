@@ -256,6 +256,34 @@ export function createRelay(o = {}) {
     req.on("error", () => {});
   }
 
+  // Reach check (core/wink/reach.js): a box that asked its own router for a port asks, from outside, whether the port answers. This is a remote-connect endpoint, so it dials ONLY the
+  // caller's own observed address (a body `addr` that differs is refused), only a public one (unless a test allows a private one), only a port from 1024, one TCP connect with a
+  // short timeout, and a few tries a minute per address. It sends nothing and reads nothing: a connect either completes or it does not.
+  const reachLimit = rateLimiter(o.reach?.perMin ?? 6, 60_000);
+  const reachDial = o.reach?.dial || ((addr, port) => new Promise(resolve => {
+    const s = net.connect({ host: addr, port, timeout: 3000 });
+    s.once("connect", () => { s.destroy(); resolve(true); });
+    s.once("timeout", () => { s.destroy(); resolve(false); });
+    s.once("error", () => resolve(false));
+  }));
+  const publicAddress = a => { const v = String(a).replace(/^::ffff:/, ""); return !(net.isIP(v) === 0 || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|::1$|fe80:|f[cd][0-9a-f]{2}:)/i.test(v) || /^172\.(1[6-9]|2\d|3[01])\./.test(v) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)); };
+  function onReachCheck(req, res) {
+    const reply = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    const ip = addressOf(req).replace(/^::ffff:/, "");
+    if (!reachLimit(ip)) return reply(429, { error: { code: "rate_limited", message: "a few checks a minute" } });
+    let body = "";
+    req.on("data", c => { body += c; if (body.length > 512) req.destroy(); });
+    req.on("end", async () => {
+      let j; try { j = JSON.parse(body); } catch { return reply(400, { error: { code: "bad_input", message: "JSON with a port" } }); }
+      const port = Number(j && j.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return reply(400, { error: { code: "bad_input", message: "a port from 1024 to 65535" } });
+      if (j.addr && String(j.addr).replace(/^::ffff:/, "") !== ip) return reply(400, { error: { code: "not_your_address", message: "the relay only checks the address it sees you at" } });
+      if (!o.reach?.allowPrivate && !publicAddress(ip)) return reply(200, { reachable: false, why: "your address is not a public one" });
+      reply(200, { reachable: Boolean(await reachDial(ip, port)), addr: ip, port });
+    });
+    req.on("error", () => {});
+  }
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
     if (url.pathname === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); return; }
@@ -273,6 +301,7 @@ export function createRelay(o = {}) {
     }
     if (url.pathname === "/v1/wink/code" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onCodeStep(req, res); return; }
     if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
+    if (url.pathname === "/v1/reach/check" && req.method === "POST") { onReachCheck(req, res); return; }
     // The setup mailbox answers any origin too: the page reads it from vyre.run, and its safety is a signature and a sealed stream.
     if (url.pathname === "/v1/setup/mbx" && req.method === "OPTIONS") {
       res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type, x-vyre-setup-key, x-vyre-setup-ts, x-vyre-setup-sig", "access-control-max-age": "600" });

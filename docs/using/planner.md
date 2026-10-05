@@ -11,9 +11,11 @@ status: draft
 The planner keeps your alarms, timers, reminders, todos and notes on your box, with one clock
 that rings them. When something is due, every surface hears it at once: a notification on each
 device that has push on, and a banner in the Deck. Answer it on one and it stops on all of them.
-Your connected Google calendars are copied in too, so the agenda shows your whole day and an
-event reminds you before it starts. A Mac paired with a box sends every change to the box; a Mac
-on its own runs the planner itself.
+The planner has no store of its own: it is built on your Space's records. Alarms, timers and
+reminders are **Reminder** records, notes are **Note** records, todos are **Tasks** assigned to you,
+and the calendar is the Space's **Event** records, the same ones a connected calendar's sync
+writes. Change one in Records, Now or the Calendar and the planner follows. A Mac paired with a box
+sends every change to the box; a Mac on its own runs the planner itself, with the kernel on.
 
 ## Set an alarm, a timer or a reminder from the terminal
 
@@ -45,6 +47,13 @@ vyre notes
 
 `vyre todo` lists open todos by list. Priority is `!low`, `!!` or `!high`. A todo due on a day with
 no time never rings; it shows on that day's agenda and stays there until it is done.
+
+A todo is a Task assigned to you, so it is the same one you see in Now. What a Task has no field for
+(list, priority, tags) is kept with it. You can edit a todo's words, list, priority and time, tick
+it off and open it again, delete it and bring it back, make it part of another todo (`parent`), and
+make it repeat: when you finish a repeating todo, the next one is made for the next time its rule
+names. Give a todo to an assistant with `assignee` (only you can) and that assistant finishes it as
+its own. A todo an assistant adds for you is yours to finish, not the assistant's.
 
 ## See your day
 
@@ -113,13 +122,14 @@ in your zone, and "tomorrow at 9" and "in 20 minutes" work too. `planner.parse` 
 "remind me to call the printer at 6" into `{ kind, title, at, tz }` without adding anything, and
 on a paired Mac it answers on the Mac. `planner.add` with `text` reads and adds in one step.
 
-## Connected calendars
+## Calendar events
 
-When a Google account is connected (see [Connectors](connectors.md)), the planner reads its
-calendars from a day back to 14 days ahead, every 15 minutes, and when you connect or remove an
-account. A timed event rings 10 minutes before it starts; all-day events never ring. The copy is
-read-only: Done, Snooze and dismiss work on its ring, and the event itself stays as it is in
-Google.
+The planner rings for the Space's Event records from a day back to 14 days ahead. A connected
+Google calendar's sync writes them (see [Connectors](connectors.md)), and the planner makes its own
+with `planner.calendar.create` (an event with source `vyre`). It follows the records as they
+change, so nothing polls. A timed event rings 10 minutes before it starts; all-day events never
+ring. Done, Snooze and dismiss work on its ring, and the event itself stays as it is: an outside
+calendar's event is changed on that calendar.
 
 ## Settings
 

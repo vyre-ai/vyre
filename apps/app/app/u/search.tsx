@@ -1,2 +1,2 @@
-import SearchScreen from "../../screens/search/SearchScreen";
-export default SearchScreen;
+import FindScreen from "../../screens/find/FindScreen";
+export default FindScreen;
