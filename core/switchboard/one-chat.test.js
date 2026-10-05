@@ -395,4 +395,12 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   const again = await owner("stream.send", { chat, text: "I mean the first one", reply_to: mine.data.message });
   assert.ok(again.data, JSON.stringify(again.error));
   assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "I mean the first one").pop().data.quote.text, "hello there");
+  // the sending device's time zone rides with the words: on the frame, on the run as the person's current zone, and on thread.sent; an unknown name is dropped, not stored
+  assert.ok((await owner("stream.send", { chat, text: "what time is it?", tz: "Asia/Kuala_Lumpur" })).data);
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "what time is it?").pop().data.tz, "Asia/Kuala_Lumpur");
+  await until(async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.sent" && /what time is it/.test(String(e.payload.text)) && e.payload.tz === "Asia/Kuala_Lumpur"), "thread.sent to say the zone", 30_000);
+  assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur");
+  assert.ok((await owner("stream.send", { chat, text: "and now?", tz: "Mars/Olympus" })).data);
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and now?").pop().data.tz, undefined);
+  assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur", "the last good zone stays");
 });

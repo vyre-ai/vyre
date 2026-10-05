@@ -147,12 +147,16 @@ export const MIGRATIONS = [
    CREATE TABLE threads_terminal_chats (session TEXT PRIMARY KEY, chat TEXT NOT NULL);`,
   // A run with no agent is a model slot in its chat: `model:<provider>/<model>#<n>`, minted here once and never changed (a model switch keeps it), the agent hop its kernel session carries.
   `ALTER TABLE threads_runs ADD COLUMN slot TEXT;`,
+  // The person's current time zone (an IANA name, from the device that sent their last message), so a brief and a clock read the zone they are in now, not the server's.
+  `ALTER TABLE threads_runs ADD COLUMN tz TEXT;`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
+/** Is this an IANA time zone name this runtime knows? @param {string} z */
+export const validZone = z => { if (typeof z !== "string" || !z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
 
 /** The things a provider can do that a person would miss, in the words a notice uses. */
@@ -539,6 +543,10 @@ export class Switchboard {
       const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
       if (row && row.chat) payload = { ...payload, chat: row.chat };
     }
+    if (type === "thread.sent" && payload && payload.tz === undefined) {
+      const row = /** @type {any} */ (this.db.prepare("SELECT tz FROM threads_runs WHERE id = ?").get(thread));
+      if (row && row.tz) payload = { ...payload, tz: row.tz };
+    }
     const where = { thread, project: project || undefined };
     try { return this.deps.emit(type, { thread, ...payload }, where); }
     catch (e) {
@@ -625,7 +633,7 @@ export class Switchboard {
     const holder = this.leases.holder(id);
     // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, status: r.status,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, tz: r.tz || null, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
@@ -3700,6 +3708,7 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
+        tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
@@ -3720,6 +3729,7 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
+        if (typeof i.tz === "string" && validZone(i.tz) && (queuesFor(caller) || firstParty)) sb.db.prepare("UPDATE threads_runs SET tz = ? WHERE id = ?").run(i.tz, i.thread);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey))
           : firstParty && /^module:/.test(String(caller || "")) && typeof i.uuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.uuid) ? i.uuid.toLowerCase() : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.

@@ -8590,6 +8590,7 @@ Say something in a group chat (a stream session with several people and assistan
   - `surface` string
   - `text` string
   - `to` list of string
+  - `tz` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `stream.typing`
@@ -9721,6 +9722,7 @@ Type into a thread. Only the surface holding its lease may type; a free thread i
   - `model` string: Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only.
   - `pasted` list of string: The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does.
   - `surface` string
+  - `tz` string: The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only.
   - `uuid` string: First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key.
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `link`, `link:box`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
