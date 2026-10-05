@@ -468,3 +468,29 @@ test("chain: a label on a device entry is refused where ops are accepted now, an
   const op = await C.makeOp(clean.state, { type: "add", entry: labelled(laptop) }, { by: phone.eid, ts: T0 + H, sign: m => phone.sign(m) });
   await assert.rejects(C.applyOp(clean.state, op, { now: T0 + H, live: true }), e => e.code === "bad_entry");
 });
+
+// `agree`: a device's P-256 key-agreement point (the key a chat key is wrapped to). Part of the signed entry, immutable, device entries only, carried by genesis (enrolment), add (recovery and join) alike.
+const agreePoint = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+
+test("agree: a device entry carries a P-256 agreement point through genesis and a later add; a malformed one, one on a code entry, and a changed one are refused", async () => {
+  const dev = await key("agree-a"), other = await key("agree-b"), code = await key("agree-code");
+  const pt = agreePoint();
+  const g = await C.makeGenesis({ kind: "person", entry: { ...dev.entry("device"), agree: pt }, nonce: "n-agree-001", ts: T0, sign: dev.sign });
+  const state = await C.verifyChain([g], { now: T0 });
+  assert.equal(state.entries.find(e => e.eid === dev.eid).agree, pt, "enrolment: the point is in the verified entry");
+  // a recovery or a join is an add of a device entry: it carries its own point
+  const later = T0 + 48 * H, pt2 = agreePoint();
+  const add = await C.makeOp(state, { type: "add", entry: { ...other.entry("device"), agree: pt2 } }, { by: dev.eid, ts: later, sign: dev.sign });
+  const s2 = await C.applyOp(state, add, { now: later });
+  assert.equal(s2.entries.find(e => e.eid === other.eid).agree, pt2, "an add keeps it");
+  assert.equal(s2.entries.find(e => e.eid === dev.eid).agree, pt, "and nothing changed the first device's");
+  // shape
+  for (const bad of ["", "AAAA", Buffer.alloc(65, 1).toString("base64url"), Buffer.alloc(64, 4).toString("base64url")]) {
+    await refused(C.makeGenesis({ kind: "person", entry: { ...dev.entry("device"), agree: bad }, nonce: "n-agree-bad1", ts: T0, sign: dev.sign }).then(x => C.verifyChain([x], { now: T0 })), "bad_entry");
+  }
+  const badAdd = await C.makeOp(state, { type: "add", entry: { ...code.entry("code"), agree: pt } }, { by: dev.eid, ts: later, sign: dev.sign });
+  await refused(C.applyOp(state, badAdd, { now: later }), "bad_entry");
+  // it is part of the signed entry: a different point under the same signature is a different genesis, so the id (and the signature) no longer match
+  const g2 = JSON.parse(JSON.stringify(g)); g2.entry.agree = agreePoint();
+  await assert.rejects(() => C.verifyChain([g2], { now: T0 }));
+});
