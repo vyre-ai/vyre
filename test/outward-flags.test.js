@@ -141,7 +141,7 @@ test("a tool that says `asks: true` is outward and names the test that proves it
 });
 
 test("every outward tool the registry holds is bound to its exact input: a card carries a digest of the whole input, and a changed input has another digest", async () => {
-  const { holdFields } = await import("../core/approvals/index.js");
+  const { holdFields } = await import("../core/modules/index.js");
   const held = tools.filter(t => t.outward === true && !t.asks).map(t => t.name);
   assert.ok(held.length > 10, `found the registry-held outward tools (${held.length})`);
   for (const name of held) {
