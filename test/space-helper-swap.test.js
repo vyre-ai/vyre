@@ -44,7 +44,7 @@ function run(o = {}) {
 test("encrypted swap: a small server with cryptsetup gets a dm-crypt plain mapping keyed from /dev/urandom, mkswap and swapon on the mapping, and crypttab so every boot makes a new key", { skip: !LINUX }, () => {
   const r = run();
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.calls, /cryptsetup open --type plain --cipher aes-xts-plain64 --key-size 512 --key-file \/dev\/urandom --keyfile-size 64 \/dev\/loop9 vyre-swap/);
+  assert.match(r.calls, /cryptsetup open --type plain --cipher aes-xts-plain64 --key-size 512 --key-file \/dev\/urandom --keyfile-size 64 \/dev\/loop9 vyre-swap/, `log: ${r.log} stderr: ${r.stderr}`);
   assert.match(r.calls, /mkswap .*\/dm\/vyre-swap/);
   assert.match(r.calls, /swapon .*\/dm\/vyre-swap/);
   assert.ok(!/swapon [^\n]*swapfile/.test(r.calls), "the plain file is never swapped on directly");
