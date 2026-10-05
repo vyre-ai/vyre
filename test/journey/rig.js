@@ -120,10 +120,8 @@ export async function makeRig(o = {}) {
   }
   fs.writeFileSync(d("mirror", "SHA256SUMS"), sums.join("\n") + "\n");
 
-  // fakes: the Mac's ssh, open and tailscale; the box's tailscale and claude; the server's PATH
+  // fakes: the Mac's ssh and open; the box's claude; the server's PATH
   shim(d("fakes", "ssh"), "ssh.mjs");
-  shim(d("fakes", "tailscale-mac"), "tailscale.mjs", "mac");
-  shim(d("fakes", "tailscale-box"), "tailscale.mjs", "box");
   exe(d("fakes", "open"), `#!/bin/sh\nprintf '%s\\n' "$1" >> "${d("state", "opened")}"\n`);
   exe(d("fakes", "claude"), CLAUDE);
   shim(d("srv", "fakebin", "docker"), "docker.mjs");

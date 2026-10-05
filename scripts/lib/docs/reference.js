@@ -257,7 +257,6 @@ const ENV_MEANING = {
   SOCKET: "The path of vyred's socket, for the Capsule.",
   SSH_BIN: "The `ssh` binary to run.",
   SUPERVISOR: "What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it.",
-  TAILSCALE_BIN: "The `tailscale` binary to run. A path that does not exist means no tailnet.",
   TAILSCALE_UP_FLAGS: "Extra flags for `tailscale up`, space separated.",
   TEXT_PRUNE_MS: "How long a thread's streamed text events are kept before they are pruned.",
   THREAD: "The session id of a headless thread vyred runs.",

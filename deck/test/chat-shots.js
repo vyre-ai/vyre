@@ -48,7 +48,7 @@ async function stopAll() {
 process.on("SIGINT", () => { stopAll().then(() => process.exit(1)); });
 process.on("SIGTERM", () => { stopAll().then(() => process.exit(1)); });
 
-const env = { ...process.env, CHAT_DEMO: "1", VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: path.join(HERE, "fake-tailscale.js") };
+const env = { ...process.env, CHAT_DEMO: "1", VYRE_NO_DIALOGS: "1" };
 const world = spawn("nice", ["-n", "15", process.execPath, path.join(HERE, "world.js"), String(PORT)], { env, stdio: ["ignore", "pipe", "inherit"] });
 started.push(world);
 const base = await new Promise((resolve, reject) => {
