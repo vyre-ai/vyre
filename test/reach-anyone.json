@@ -1085,6 +1085,14 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
+  "publish.edge.down": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.up": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
   "publish.flow": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
