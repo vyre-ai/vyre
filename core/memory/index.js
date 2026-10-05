@@ -1337,7 +1337,7 @@ export default {
       callers: idCallers,
       description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it, which servers the person has given it to, and where it was moved to. For the person and their assistant.",
       input: { type: "object", properties: { ...agentField } },
-      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return { ...(identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }), ...(ctx.kernel && typeof ctx.kernel.space === "string" ? { space: ctx.kernel.space } : {}) }; },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return { ...(identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }), ...(identity && ctx.kernel && typeof ctx.kernel.space === "string" ? { space: ctx.kernel.space } : {}) }; },
     });
     ctx.tool("memory.identity.enroll", {
       effect: "write",
