@@ -22,7 +22,7 @@ function world(/** @type {any} */ t) {
   let unlocked = false; const seen = { signed: /** @type {any[]} */ ([]) };
   /** The tools as the server answers them, over the real home. */
   const call = async (/** @type {string} */ tool, /** @type {any} */ i = {}) => {
-    if (tool === "memory.identity.status") return { id: home.id, server: fingerprint(server.publicJwk), server_key: server.publicJwk, granted: home.grants() };
+    if (tool === "memory.identity.status") return { id: home.id, space: "spc_host", server: fingerprint(server.publicJwk), server_key: server.publicJwk, granted: home.grants() };
     if (tool === "memory.identity.grant") {
       if (!i.proof || i.proof.signed !== true) throw Object.assign(new Error("denied"), { code: "denied" });
       home.addGrant({ server: server.name, fp: fingerprint(server.publicJwk) }); return { granted: home.grants() };
@@ -48,7 +48,8 @@ test("grant: one yes signs the vault moment for this identity and server, pins t
   const want = yesRequest({ id: "per_alex", server: r.fp });
   assert.equal(req.op, "task.vault_use");
   assert.deepEqual(req.fields, want.fields);
-  assert.equal(req.payload_hash, payloadHash(req.op, "spc_team", req.fields), "the hash is over exactly what is shown");
+  assert.equal(req.space, "spc_host", "signed over the Space the server names, not the one the screen showed");
+  assert.equal(req.payload_hash, payloadHash(req.op, "spc_host", req.fields), "the hash is over exactly what is shown");
   assert.equal(req.prompt, grantLine("Juniper Studio"));
   assert.equal(w.home.grants().length, 1);
 });

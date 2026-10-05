@@ -33,7 +33,9 @@ export async function grantServer(o) {
   // The key to pin must be the one whose fingerprint the grant will name: a server cannot have the person say yes to one key and be answered under another.
   if (fingerprint(st.server_key) !== st.server) throw fail("bad_key", "This server's key does not match its name. Nothing was granted.");
   const sign = yesRequest(st);
-  const proof = await o.signer.signPresence({ op: sign.op, space: o.space, fields: sign.fields, payload_hash: payloadHash(sign.op, o.space, sign.fields), prompt: grantLine(o.name), person: o.person });
+  // The Space the sealing process checks the proof against is the one the server names in its status (the person's chain's own Space); the caller's space is the fallback for an older server.
+  const space = typeof st.space === "string" && st.space ? st.space : o.space;
+  const proof = await o.signer.signPresence({ op: sign.op, space, fields: sign.fields, payload_hash: payloadHash(sign.op, space, sign.fields), prompt: grantLine(o.name), person: o.person });
   const done = await o.call("memory.identity.grant", { proof });
   if (!Array.isArray(done?.granted) || !done.granted.some((/** @type {any} */ g) => g && g.fp === st.server)) throw fail("not_granted", "The server did not take the yes.");
   await o.pins.set(st.server, { x: st.server_key.x, y: st.server_key.y });
