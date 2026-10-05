@@ -53,7 +53,7 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
   await dev.start(space);
   const link = dev.connect(space);
   t.after(() => link.close());
-  const r = await until(async () => { await home.syncPolicy().catch(() => {}); try { return await link.call("about.text", { q: 1 }, { timeoutMs: 15_000 }); } catch { return null; } }, 150_000, `a call to cross (${logs.slice(-6).join(" | ")})`);
+  const r = await until(async () => { await home.syncPolicy().catch(() => {}); try { return await link.call("about.text", { q: 1 }, { timeoutMs: 15_000 }); } catch { return null; } }, 150_000, `a call to cross (${logs.filter(l => !/http request|poll\.go/.test(l)).slice(-30).join(" | ")})`);
   assert.equal(r.caller, `device:${eid}`);
   assert.equal(link.status().path, "direct", "the call crossed the Wink network, not the relay");
   assert.equal(served.at(-1).caller, `device:${eid}`);
