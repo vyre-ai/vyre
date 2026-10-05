@@ -156,3 +156,21 @@ Pages: docs/using/spaces.md, private-chats.md, time-zones.md, and "Reply to a me
 Pending (the page does not claim these): (1) the box side of the Personal backup line (memory.backup.status, memory-042 ac20200f2, unmerged; the app already shows "Backed up, encrypted, to <space>"); (2) chat keys wired in the daemon (memory-chat3 unmerged, reviewer-5 says on hold), so private-chats.md deploys only with it; (3) the AI brief's time line (lib/time timeLine exists but nothing in core calls it on app-wire) and message timestamps in chat showing both clocks (show.js is used by settings, assistants, memory, planner, artifacts, flows, drive; chat messages were not found); (4) the spaces.time-zone.set tool the Home time zone control calls was not found in core on app-wire; (5) the Personal to My Cloud upgrade (core/work/project-move-remote.js on hub-kernel-on) has no page; (6) windows' a94dad661 and 3903d602b: a device install is always Personal, Twenty only on a server install (the spaces page says so in plain words).
 
 Pending from network (work/network 901a83bd4, not in this branch yet): `vyre up` on a server says "not paired yet. Pair this server from your Vyre app: run vyre call wink.server.code '{"qr":true}' here, then scan the QR or paste the long code." or "paired to <space>"; `vyre up --print-link` prints VYRE_PAIRED=<space> or VYRE_PAIR=<command>, never a link (924439443, 3f04ae52a). When that merges, update docs/using/cli.md (the `vyre up` line) and install.md. The install.sh last line no longer says "or open the link above" (bad361ad9), and the Twenty pull bug is fixed (f50498282).
+
+## Draft, not published: "Move up to My Cloud" (spaces.md, after the My Cloud section)
+
+Publish only when windows' upgrade sha merges to devbox (A2-0 gate). Grounded in core/work/project-move-remote.js on work/hub-kernel-on (the upgrade is built on the remote project move); check every line against windows' merged build and the app screen before it goes in.
+
+> ## Move up to My Cloud
+>
+> A Personal space can move to My Cloud when you get a server. You keep one space and one history: your projects come with their records and files, your private chats, and your memory.
+>
+> **What comes with you.** Records, files, private chats and memory. Everything stays encrypted on the way: your new server fetches it from the old home straight, and nothing passes through us. Memory and private chats go sealed to a key your new space makes.
+>
+> **One approval.** You approve the move once, and your approval covers exactly the list you were shown. If a project changes after you approved, the move stops and asks again.
+>
+> **Nothing is lost on a bad move.** The new server checks the counts and every file against the list. If anything does not match, nothing is removed from Personal. A dropped connection resumes where it stopped.
+>
+> **The move report.** When it finishes, Vyre tells you what moved (records and files per project), anything left behind with the reason, and anything this version cannot carry yet. What cannot move stays in Personal; nothing is dropped without being listed.
+
+Open before publishing: whether the report lists "the project's memory room" and "the Work engine's session lines" as not carried (the code names both when a build lacks them); whether one approval covers all projects (batch moves.out hash) or one per project; the exact screen label.
