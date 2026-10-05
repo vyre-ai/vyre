@@ -34,7 +34,8 @@ async function boot(/** @type {import("node:test").TestContext} */ t) {
   writeModule(mods, "zzflow", MANIFEST, SRC);
   globalThis.__zzflow = [];
   t.after(() => { delete globalThis.__zzflow; });
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, presence: present, log: (/** @type {string} */ m) => { lines.push(String(m)); }, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const space = d.kernel.id.space;
   const host = d.registry.deps.flowsHost.get(space);
@@ -47,7 +48,7 @@ async function boot(/** @type {import("node:test").TestContext} */ t) {
     return r.data;
   };
   const calls = () => /** @type {any[]} */ (globalThis.__zzflow);
-  return { d, host, admin, space, install, calls };
+  return { d, host, admin, space, install, calls, lines };
 }
 const flowOf = (/** @type {string} */ space, /** @type {string} */ action, /** @type {any} */ input) => ({ format: 1, name: `step_${action.split(".")[1]}`, label: `Run ${action}`, authorship: "human", trigger: { on: "manual" },
   steps: [{ id: "c", kind: "call", action, resource: `vyre://${space}/tool/${action}`, input }] });
@@ -73,7 +74,7 @@ test("a read tool runs at once as the Flow's person; a tool with no flowAction i
 });
 
 test("an outward tool is held for the person's yes, then goes out exactly once", { timeout: 120_000 }, async t => {
-  const { d, host, admin, install, calls, space } = await boot(t);
+  const { d, host, admin, install, calls, space, lines } = await boot(t);
   const gw = d.kernel.gateway;
   const flow = await install(flowOf(space, "zzflow.notify", { to: "sam@example.com", body: "hello" }));
   await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: {} });
@@ -82,7 +83,7 @@ test("an outward tool is held for the person's yes, then goes out exactly once",
   assert.equal(calls().filter(x => x.tool === "notify").length, 0, "nothing goes out before the yes");
   const row = await gw.ask.get(admin, task.id);
   await gw.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
-  await until(async () => calls().find(c => c.tool === "notify"), "the approved tool to run");
+  await until(async () => calls().find(c => c.tool === "notify"), "the approved tool to run").catch(async e => { const runs = await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }).catch((/** @type {any} */ x) => String(x)); throw new Error(`${e.message}: runs ${JSON.stringify(runs).slice(0, 900)} log ${lines.slice(-12).join(" | ").slice(0, 900)}`); });
   await new Promise(r => setTimeout(r, 1000));
   const sent = calls().filter(x => x.tool === "notify");
   assert.equal(sent.length, 1, "exactly once");
