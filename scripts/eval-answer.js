@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 // eval-answer: does memory answer questions about the user's own life, and does it stay quiet
-// when it does not know? (docs/work/memory-iq.md)
+// when it does not know? (team/archive/work-journals/memory-iq.md)
 //
 //   node scripts/eval-answer.js          the synthetic personal world, as a report
 //   node scripts/eval-answer.js --json   the same, as JSON

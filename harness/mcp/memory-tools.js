@@ -1,5 +1,5 @@
 // @ts-check
-// The five memory tools every session is offered (docs/work/iq.md, plan 3.1A), in the words an
+// The five memory tools every session is offered (team/archive/work-journals/iq.md, plan 3.1A), in the words an
 // agent uses: memory_ask, memory_search, memory_decisions, memory_remember, memory_correct. Each
 // maps onto a vyred tool. Nothing here decides what a caller may see: vyred reads the caller's
 // identity and reach itself (memory's guard), so a project named here only ever narrows.

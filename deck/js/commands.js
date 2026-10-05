@@ -1,6 +1,6 @@
 // @ts-check
 // What Find's box does on Enter, read from the words: the same grammar as the Mac Lumen and the
-// native apps (team mobile, apps/CONTRACT.md), tried in this order, ignoring case:
+// native apps (team mobile, team/archive/CONTRACT-native-apps.md), tried in this order, ignoring case:
 //
 //   @<agent> <text>                                    ask that agent
 //   (tell|ping|notify) me when [the] <session> [thread] [is] (done|finishes|finished|asks)

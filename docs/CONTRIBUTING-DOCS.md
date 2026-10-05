@@ -22,7 +22,7 @@ A page is a `.md` file under `docs/`, in the folder of its section: `get-started
 | `docs/using/vault.md` | `/using/vault` | `/using/vault.md` |
 | `docs/architecture/index.md` | `/architecture/` | `/architecture/index.md` |
 
-Three folders are internal and never published, whatever is in them: `docs/work/` (workstream notes), `docs/proposals/` and `docs/design/boards/`. They are listed under `unpublished` in `docs/nav.json`. A published page may not link into them.
+Two folders are internal and never published, whatever is in them: `docs/proposals/` and `docs/design/boards/`. They are listed under `unpublished` in `docs/nav.json`. A published page may not link into them.
 
 ## Front matter
 

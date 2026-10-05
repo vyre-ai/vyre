@@ -255,12 +255,9 @@ async function startLocked(opts, root, p, release) {
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
     const { storeMode } = await import("../../stores/twenty/space-store.js");
     const isServerInstall = config.isServer(cfg.machine);
-    // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
-    /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
-    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -345,7 +342,7 @@ async function startLocked(opts, root, p, release) {
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(basic ? { basic } : {}), modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
@@ -374,9 +371,11 @@ async function startLocked(opts, root, p, release) {
         return out.data;
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
-    // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
-    stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
+    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+    // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
+    // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
+    if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
@@ -416,38 +415,6 @@ async function startLocked(opts, root, p, release) {
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
-    // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
-    // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
-    // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
-    // Chat record (its mirror of who is in a chat). Only the event's own facts (ids), nothing is written back.
-    try {
-      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-chats", { type: "chat.*" }, (/** @type {any} */ e) => {
-        if (e && (e.type === "chat.created" || e.type === "chat.changed")) { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } }
-      });
-    } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
-    // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
-    const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
-      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
-      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
-      return isAssistant ? "assistant" : (q.agent || undefined);
-    };
-    registry.deps.chatFor = async (/** @type {{ thread: string, agent: string | null, agent_kind?: string | null, name?: string | null, project?: string | null }} */ q) => {
-      const person = await personChainFor(kernel.id.owner);
-      const grants = kernel.gateway.grants;
-      // The person's own assistant is identity-level and private: never a listed participant (its acts are the person's, marked via: "assistant"). Any other agent that runs in a Space is an actor of
-      // that Space; one that is not yet is registered through the kernel's own registration (grants.addActor), which asks whatever the gate asks. A refusal there is the run's chat refusal, never an
-      // owner-only chat that quietly drops the agent.
-      const a = q.agent_kind === "assistant" ? undefined : await kernelAgentOf({ agent: q.agent, rec: { agent_kind: q.agent_kind } });
-      const isAssistant = a === "assistant";
-      const listed = a && !isAssistant ? [a] : [];
-      const make = () => grants.chats.create(person, { assistants: listed });
-      try { return String((await make()).id); }
-      catch (e) {
-        if (!listed.length || !/belongs to the Space/.test(String(e && /** @type {any} */ (e).message))) throw e;
-        await grants.addActor(person, { kind: "agent", id: listed[0], space: kernel.id.space }, {});
-        return String((await make()).id);
-      }
-    };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -457,15 +424,11 @@ async function startLocked(opts, root, p, release) {
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
-      // A run with no agent is a model slot in its chat (team/0.3/DESIGN-one-chat.md): its token's agent hop is the slot id the switchboard minted, narrowed to the run's Project. It acts on the person's own
-      // chain, holds nothing of its own, and ends with its person's place in the chat. A run in no chat is as before.
-      let kernelAgent = await kernelAgentOf(q);
-      let project;
-      if (!kernelAgent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) {
-        kernelAgent = q.rec.slot;
-        if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project;
-      }
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), ...(project ? { project } : {}), ...(kernelAgent && kernelAgent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      // lib/kernel-session names a session for the agent it was started as and a plain session "session" (nobody's assistant), so the home's assistant must be named here as the Space's one assistant actor, not left to a default.
+      const kernelAgent = isAssistant ? "assistant" : (q.agent || undefined);
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -901,7 +864,7 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
  * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
- * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * proved its session), for every tool: a label is only a claim (team/archive/work-journals/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]

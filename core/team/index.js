@@ -657,7 +657,7 @@ export default {
         // inside untrusted, nonce'd text a UI should never parse to correlate a reply with its
         // ask, so the id also travels as its own field. Harmless until threads.post's own input
         // and sb.post carry it through to thread.sent/thread.queued and threads_inbox (sessions'
-        // pickup, docs/work/teammates.md "Needs from others"); threads.post's checkInput ignores
+        // pickup, team/archive/work-journals/teammates.md "Needs from others"); threads.post's checkInput ignores
         // an undeclared property today, so this is forward-compatible, not a functional change
         // yet.
         try { await ctx.call("threads.post", { thread: req.reply_to, text: tag, kind: "teammate-result", from: req.teammate, request: req.id }); } catch (e) { ctx.log?.(`team: could not post ${req.id}'s result to ${req.reply_to}: ${/** @type {Error} */ (e).message}`); }

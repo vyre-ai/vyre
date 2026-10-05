@@ -1,5 +1,5 @@
 # The agent computer: a desktop, Chrome and a terminal, reached only over the internal Docker
-# network (docs/work/computers.md, ADR 0003). Nothing here is published on the host; vyred is the
+# network (team/archive/work-journals/computers.md, ADR 0003). Nothing here is published on the host; vyred is the
 # only thing that ever dials in, to 5900 (Xvnc, VNC auth) and 7000 (computerd, bearer token).
 # Chrome has no debugging port at all: entrypoint.sh's launcher starts it with
 # --remote-debugging-pipe, over a pair of named FIFOs computerd opens its own ends of, and

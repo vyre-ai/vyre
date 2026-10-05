@@ -8,7 +8,7 @@ package (gone from current Debian). One process per call, invoked by computerd a
 and talked to over stdout as one line of JSON: AT-SPI's D-Bus calls are synchronous enough, and
 there is no reason to keep a Python process warm across the small, bursty calls computerd makes.
 
-Three subcommands, matching the routes in docs/work/computers.md's computerd table:
+Three subcommands, matching the routes in team/archive/work-journals/computers.md's computerd table:
 
   atspi.py apps                         -> [{name, pid, windows: [title]}]
   atspi.py tree [--app NAME]            -> {window, nodes: [...]}   (no --app: the focused app)

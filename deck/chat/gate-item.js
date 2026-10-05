@@ -1,6 +1,6 @@
 // @ts-check
 // A held Gate item, inline: exactly what Send will send, editable in place, never behind a
-// separate Edit surface (docs/work/gate-chat.md's pivot note; this carries the Mattermost-era
+// separate Edit surface (team/archive/work-journals/gate-chat.md's pivot note; this carries the Mattermost-era
 // rule forward). Shape matched to Lumen's (capsule teammate, 2026-09-27): a HELD FOR YOU
 // badge, a To/Subject grid, a hairline, the body, everything contenteditable plaintext-only with
 // a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.

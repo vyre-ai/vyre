@@ -9,7 +9,7 @@
 // a copy made a moment before the Capsule opened is there on the first keystroke.
 //
 // 750 ms is the Electron helper's interval, kept: two copies in under a second are the one case a
-// slower poll loses, and the cost of this rate was measured (the lead's docs/work/capsule.md
+// slower poll loses, and the cost of this rate was measured (the lead's team/archive/work-journals/capsule.md
 // carries the number): about 80 wakeups a minute of one integer read each.
 //
 // Never recorded, and never even read past its type list: items marked concealed, transient or
