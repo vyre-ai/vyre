@@ -49,7 +49,7 @@ function Detail({ id, onShared }: { id: string; onShared: () => void }) {
       {!versions ? <LoadingState rows={1} /> : <Text tone="muted">{versions.length ? `${versions.length} ${versions.length === 1 ? "version" : "versions"}, latest v${Math.max(...versions.map((v) => v.v))}` : "One version"}</Text>}
       {problem ? <Banner tone="warn">{problem}</Banner> : null}
       {link ? <Text selectable>{link}</Text> : null}
-      <View className="flex-row gap-s2 self-start"><Button size="sm" label="Open" onPress={() => router.push(`/u/shared/${encodeURIComponent(id)}` as never)} /><Button size="sm" label={link ? "Make another link" : "Create a link (7 days)"} disabled={busy} onPress={share} /></View>
+      <View className="flex-row gap-s2 self-start"><Button size="sm" label="Open" onPress={() => router.push(`/a/${encodeURIComponent(id)}` as never)} /><Button size="sm" label={link ? "Make another link" : "Create a link (7 days)"} disabled={busy} onPress={share} /></View>
     </View>
   );
 }
