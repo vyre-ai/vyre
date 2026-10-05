@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the calendar has no fallback for a box without planner.agenda: it shows the refusal plainly in a banner. A url field is drawn as a link that opens its http or https address (anything else reads as text), so an Event's url shows as a link on the record page.
+
 - feat(app): the calendar shows a repeating Event's occurrences from the box (planner.agenda { from, to } for the visible window), replacing the event's single first-date item; the app expands no rule itself. A box without planner.agenda shows the event once.
 
 - refactor(app): Drive is one screen. The mock build feeds the same tabs (Space, Shared, Box folders, On your computer) from the sample world through a fake box (screens/drive/mock-box.ts), so the second sample screen and its own "Shared links" tab are gone (4 tests).
