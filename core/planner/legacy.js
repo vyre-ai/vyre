@@ -55,14 +55,19 @@ export async function importLegacy({ db, K, log }) {
   const already = carried.size;
   const fail = (/** @type {string} */ what, /** @type {any} */ e) => { failed++; log(`planner: ${what} was not carried (${e && e.message})`); };
 
-  for (const row of rows) {
+  // An old to-do could sit under any item; a Task's parent is another Task. So a to-do goes in after the to-do it sat under, and keeps the nesting only when that one is carried too.
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const depth = (/** @type {any} */ r) => { let d = 0; for (let x = r; x && x.parent && byId.has(x.parent) && d < 50; x = byId.get(x.parent)) d++; return d; };
+  const order = rows.map((r, i) => ({ r, i, d: r.kind === "todo" ? depth(r) : 0 })).sort((a, b) => a.d - b.d || a.i - b.i).map(x => x.r);
+  for (const row of order) {
     if (carried.has(row.id)) continue;
     if (row.kind === "todo" && row.state !== "open") continue;
     // A title is required of a record; an old row with none gets what the planner would have called it.
     const r = row.title ? row : { ...row, title: row.kind === "alarm" ? "Alarm" : row.kind === "timer" ? "Timer" : "(no title)" };
     try {
       if (r.kind === "todo") {
-        const spec = toTaskSpec(r, doer);
+        const under = r.parent ? carried.get(r.parent) : null;
+        const spec = toTaskSpec({ ...r, parent: under && under.type === "task" ? under.id : null }, doer);
         spec.form.planner.legacy_id = r.id;
         const t = await K.tasks.request(chain(), spec);
         carried.set(r.id, { type: "task", id: t.id });
