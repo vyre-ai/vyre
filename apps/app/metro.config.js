@@ -32,7 +32,7 @@ const ALIASES = [
 ];
 // Folders the shared files import by relative path (deck/ui reaches ../../kernel/contracts and ../../lib/theme).
 // ui/marks reaches the Deck's mark generators (deck/vendor/vyrecode) and the seed rule (lib/avatar-seed) by relative path.
-const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../deck/vendor/vyrecode"), path.resolve(here, "../../deck/vyrecode"), path.resolve(here, "../../lib/avatar-seed")];
+const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../deck/vendor/vyrecode"), path.resolve(here, "../../deck/vyrecode"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code")];
 
 const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir), ...EXTRA_WATCH];

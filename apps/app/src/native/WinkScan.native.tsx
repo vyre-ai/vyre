@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { WebView } from "react-native-webview";
+import { useTheme } from "../theme/theme";
 import { WINK_SCAN_HTML } from "./wink-scan-page.generated.js";
 import { readScanMessage, type WinkScanEvent } from "./wink-scan-model";
 
@@ -12,6 +13,7 @@ import { readScanMessage, type WinkScanEvent } from "./wink-scan-model";
 export const canReadDrawnCode = true;
 
 export function WinkScan({ onEvent, style }: { onEvent: (e: WinkScanEvent) => void; style?: object }) {
+  const { color } = useTheme();
   const done = useRef(false);
   const handle = useCallback((raw: string) => {
     const e = readScanMessage(raw);
@@ -25,7 +27,7 @@ export function WinkScan({ onEvent, style }: { onEvent: (e: WinkScanEvent) => vo
       source={{ html: WINK_SCAN_HTML, baseUrl: "https://vyre.run/" }}
       originWhitelist={["https://vyre.run", "about:blank"]}
       onMessage={(e) => handle(e.nativeEvent.data)}
-      style={[{ flex: 1, backgroundColor: "#000" }, style]}
+      style={[{ flex: 1, backgroundColor: color.bg }, style]}
       javaScriptEnabled
       allowsInlineMediaPlayback
       mediaPlaybackRequiresUserAction={false}

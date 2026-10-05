@@ -70,7 +70,7 @@ test("tokens: every output names the root folder that must exist before it is wr
 import { cssV2 } from "../scripts/lib/tokens.js";
 import { checkV2, tokens as shippedTokens } from "../lib/theme/index.js";
 import { emblem } from "../deck/vendor/vyrecode/emblem.js";
-import { PROJECT_COLORS } from "../deck/vendor/vyrecode/identity.js";
+import { PROJECT_COLORS } from "../lib/wink-code/identity.js";
 
 test("tokens v2: both schemes name the same roles, every one a colour, and v1 is untouched", () => {
   assert.deepEqual(Object.keys(t.v2.color.dark), Object.keys(t.v2.color.paper));
