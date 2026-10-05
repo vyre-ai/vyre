@@ -26,7 +26,7 @@ const okBase = u => { try { const x = new URL(u); return x.protocol === "https:"
 
 /**
  * The provider side of the inference door for this driver: register it as `drivers[id]` in the door. The door has already scanned the
- * messages; this only makes the HTTP call (not streamed: the door answers whole, see docs/work/door-retrofit.md) with the key the caller
+ * messages; this only makes the HTTP call (not streamed: the door answers whole, see team/archive/work-journals/door-retrofit.md) with the key the caller
  * passes in `credential`, which the door never logs. The key is never in an error it raises.
  * @param {{ baseUrl?: string, fetch?: typeof fetch, lookup?: any, idleMs?: number }} [entry]
  */

@@ -7,7 +7,7 @@
 // checks it against core/computers/driver/policy.js, and forwards its own re-serialisation of
 // what it checked, never the caller's bytes.
 //
-// HOTFIX (see docs/work/computers.md and the incident it closes): the internal network this
+// HOTFIX (see team/archive/work-journals/computers.md and the incident it closes): the internal network this
 // listens on is not a strong enough boundary on its own -- a session's sandbox can share it (a
 // spawner that runs sessions in the same netns as vyred, for one). Every request needs
 // `Authorization: Bearer <token>`, checked in constant time, matching a secret only vyred's own

@@ -2,7 +2,7 @@
 // The adapter between wink storage devices and the vault team's pool engine (origin/work/sealing: kernel/storage/pool.js, backends.js).
 //
 // The engine is a library: a `Pool` holds nodes (a node is a backend: put, get, del, ping) and places encrypted chunks on them. This file is the only
-// place that connects the two, through the seam documented in storage/index.js and docs/work/tailnet.md:
+// place that connects the two, through the seam documented in storage/index.js and team/archive/work-journals/tailnet.md:
 //   poolOffers()      -> a node is added to the pool for every live offer (once)
 //   getCredentials()  -> the backend for it is built from the access details; they pass through this function and nowhere else
 //   setUsed()         -> what the pool says each node holds is written back to the offer

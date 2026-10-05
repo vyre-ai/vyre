@@ -338,7 +338,7 @@ export default {
         const r = await dir.resolve(name);
         if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
         const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
-        return Boolean(e) && await C.verifyWith(e.pub, message, proof, e);
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
       } catch { return false; }
     };
     const personRef = async (/** @type {any} */ value) => {
@@ -721,7 +721,7 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, storeChoice: { type: "string", enum: ["server", "create", "cancel"] } }, ["name", "home"]), async (i, meta) => {
+      obj({ name: str, displayName: str, home: HOME, storeChoice: { type: "string", enum: ["server", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
@@ -738,7 +738,7 @@ export default {
           const prec = prior ? /** @type {any} */ (await kv.get(`space-create/${prior.id}`)) : null;
           if (prior && prec && prec.status !== "cancelled" && prec.status !== "done") { spaceId = prior.id; resumed = true; } }
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
-        // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
+        // it answers in the kernel's own words and offers the person's server; nothing is made here without Twenty.
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
         // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
         let remoteServer = null;
@@ -751,11 +751,11 @@ export default {
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
           let made;
-          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}), ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
+          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}) }, meta); }
           catch (e) {
-            if (/** @type {any} */ (e).code === "needs_store_confirmation") {
+            if (/** @type {any} */ (e).code === "store_unavailable") {
               if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
-              return { status: "needs_confirmation", confirm: { text: String(/** @type {any} */ (e).message), choices: ["create", "cancel"] } };
+              return { status: "needs_confirmation", confirm: { text: String(/** @type {any} */ (e).message), choices: ["cancel"] } };
             }
             throw e;
           }
@@ -768,11 +768,11 @@ export default {
           const confirm = plan && plan.confirm ? plan.confirm : null;
           if (confirm) {
             if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
-            // the record store cannot run here: nothing is made, and the person's server is offered (the built-in store only when the owner names it)
+            // the record store cannot run here: nothing is made, and the person's server is offered
             if (i.storeChoice === "server") return { status: "use_server", reason: "Pair your server and make the space there: choose it as the home." };
-            if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: confirm.choices || ["server", "cancel"] } };
+            return { status: "needs_confirmation", confirm: { text: confirm.text, choices: confirm.choices || ["server", "cancel"] } };
           }
-          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          const hosted = await KS.host({ owner: s.id, name: label });
           spaceId = hosted.space || hosted.id;
         }
         if (resumed && !spaces.get(spaceId)) resumed = false;
@@ -1220,12 +1220,12 @@ export default {
         if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
         if (K.spaces.hosts(i.id) === true) { const have = files.keys.load(i.id); return { space: i.id, existed: true, ...(have ? { rootPublic: have.publicKey } : {}) }; }
       }
-      // A server too small for the larger store needs the owner's word first, in the kernel's own words (the same confirmation a local creation shows). The refusal carries that text; asking again with acceptBuiltinStore hosts it.
+      // A server that cannot run the record store (Twenty) hosts nothing: the refusal carries the kernel's own words.
       const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
       const confirm = plan && plan.confirm ? plan.confirm : null;
-      if (confirm && i.acceptBuiltinStore !== true) throw refuse(String(confirm.text || "This server needs your OK to use the built-in store."), "needs_store_confirmation");
+      if (confirm) throw refuse(String(confirm.text || "This server cannot run the record store (Twenty)."), "store_unavailable");
       let h;
-      try { h = await K.spaces.host({ owner: K.owner, name: label, ...(confirm ? { accept_builtin_store: true } : {}), ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
+      try { h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
       const id = h.space || h.id;
       // The space's key as a joiner can check it: made and held HERE (spaces/<id>/root.key, 0600), never returned. Its public half goes into the owner-signed directory record as `rootPublic`,
       // and a joiner's device asks this server to sign a fresh nonce with it (spaces.attest, answered inside grants.invites.get) before it shows the join card.

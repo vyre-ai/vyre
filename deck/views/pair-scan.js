@@ -1,7 +1,7 @@
 // @ts-check
 // Scan your avatar to pair your phone: the redeem flow's pure state machine (no DOM, no calls,
 // no crypto - deck/js/pair-scan.js wires this to the camera and deck/js/pair-ticket.js). See
-// docs/work/pwa.md's "Phone-side contract" for the full flow.
+// team/archive/work-journals/pwa.md's "Phone-side contract" for the full flow.
 //
 // The real shape now (tailnet's split, work/tailnet 13852c7a): scan -> resolveTicket() (look up
 // and verify, no pairing) -> show "Pair with <name> (<fingerprint>)?" -> the person confirms ->

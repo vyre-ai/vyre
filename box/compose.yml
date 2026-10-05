@@ -85,7 +85,7 @@ services:
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
       # Spaces' Twenty stores (box/vyre space-helper): vyred drops `req-<id>` files in the spool, a root path unit acts on them from its own copies, and the
-      # answers come back as status-<id> files in the read-only folder. No socket, no secret, no path in a request. Linux only; see docs/work/space-helper.md.
+      # answers come back as status-<id> files in the read-only folder. No socket, no secret, no path in a request. Linux only; see team/archive/work-journals/space-helper.md.
       - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/spool:/run/vyre-spaces
       - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/status:/run/vyre-spaces-state:ro
       # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.

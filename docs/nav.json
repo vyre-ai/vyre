@@ -208,5 +208,5 @@
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],
-  "unpublished": ["work/", "proposals/", "design/boards/"]
+  "unpublished": ["proposals/", "design/boards/"]
 }

@@ -3,7 +3,7 @@
 // The Electron Capsule spawned `mdfind` per keystroke: 155 to 480 ms, most of it the spawn and a
 // full gather before the first line. An NSMetadataQuery made once is re-aimed by setting its
 // predicate, which restarts the gather in the same process, and its first batch lands in 8 to
-// 115 ms (measured on this Mac, docs/work/capsule.md). So a search takes what the first batches
+// 115 ms (measured on this Mac, team/archive/work-journals/capsule.md). So a search takes what the first batches
 // bring, as soon as it has enough good rows (or the gather finishes, or the deadline passes), and
 // then stops the query: a two-letter name search can match a hundred thousand items, and letting
 // the gather run on after the rows are drawn is CPU spent on nothing. The next keystroke starts

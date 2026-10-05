@@ -222,7 +222,6 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pair", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
-  ["work.engineer.approve", "would let an assistant widen its own authority: approves the assistant's own proposal"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
 ]);
 
@@ -361,8 +360,6 @@ export const OPEN = new Set([
   "wink.storage.discover",
   "wink.storage.offers",
   "wink.storage.status",
-  "work.engineer.revise",
-  "work.engineer.talk",
   "work.team.add",
 ]);
 

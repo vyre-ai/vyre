@@ -8,7 +8,7 @@
 // One redemption, not a kept-open connection: this runs the pairing handshake and returns what
 // the box said (its name, this device's id, whether presence enrolled), then closes the channel.
 // Staying connected afterward is connect()'s job (relay/client/client.js), not wired in here yet
-// (docs/work/tailnet.md "Doing").
+// (team/archive/work-journals/tailnet.md "Doing").
 
 import fs from "node:fs";
 import path from "node:path";
