@@ -9,7 +9,8 @@ export function moduleActionPort({ registry, owner }) {
     if (!registry.flowActionTools || !registry.flowActionTools.has(action)) throw Object.assign(new Error(`${action} is not a tool a Flow may call`), { code: "unavailable" });
     // The Flow runs for the person who approved it. Origin "cli" is the OWNER's own surface, so it is claimed only when the run's chain is the owner; an admin's run carries a class
     // no tool's callers list names, so a module tool that builds its own chain from the origin never acts as the owner for an admin.
-    const who = chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id;
+    const person = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
+    const who = person && person.actor.id;
     const origin = owner && who && who === owner() ? "cli" : "flow-member";
     const r = await registry.call(action, input && typeof input === "object" ? input : {}, "module:flows", { origin });
     if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code)), { code: String(r.error.code || "failed") });
