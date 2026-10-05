@@ -12,7 +12,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { installLine, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -78,7 +78,7 @@ function NameField({ value, onChange, label, also, space, real, onRetry }: { val
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-export function InstallScreen({ start, link: linkIn, external }: { start?: "create" | "join" | "phone" | "connect"; link?: string; external?: boolean }) {
+export function InstallScreen({ start, link: linkIn, external }: { start?: "create" | "join" | "phone" | "connect" | "server"; link?: string; external?: boolean }) {
   const router = useRouter();
   const first = !start;
   // Each device offers only what it can do: a phone holds the key and connects, a Mac can host Vyre, a browser holds nothing (DESIGN-first-run-per-platform).
@@ -266,8 +266,37 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   if (step === "welcome") {
     body = (
       <Page title={WELCOME.title} sub={WELCOME.line}>
-        <Button kind="primary" label={WELCOME.start} onPress={() => setStep("name")} />
+        <Button kind="primary" label={WELCOME.start} onPress={() => setStep("question")} />
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
+      </Page>
+    );
+  } else if (step === "question") {
+    // Setup's one question. Joining a team is a name and a typed code; my own server sets up My Cloud.
+    body = (
+      <Page title={QUESTION.title}>
+        <Card flush>
+          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => setStep("name")} />
+          <Divider />
+          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => setStep("mycloud")} />
+        </Card>
+      </Page>
+    );
+  } else if (step === "mycloud") {
+    // Set up My Cloud: a phone shares the setup link (no install line on a phone); a computer or browser shows the line. Then the server's code is typed here.
+    body = (
+      <Page title={MY_CLOUD.title} sub={MY_CLOUD.line}>
+        {isPhone(dk) ? (
+          <>
+            <Text tone="muted">{MY_CLOUD.linePhone}</Text>
+            <Button kind="primary" label={MY_CLOUD.send} onPress={() => { Share.share({ message: MY_CLOUD.share }).catch(() => {}); }} />
+          </>
+        ) : (
+          <>
+            <Text tone="muted">{MY_CLOUD.lineComputer}</Text>
+            <CopyLine text={installLine(shell()?.version)} />
+          </>
+        )}
+        {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep(first ? "spaces" : "done"); }} />}
       </Page>
     );
   } else if (step === "browser" || (step === "name" && !MOCK && claimBlocked())) {

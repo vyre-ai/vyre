@@ -5,8 +5,8 @@
 import Foundation
 
 let firstRunSuite = Suite("first run") { t in
-    t.test("no choice and no vyred asks where Vyre should run; no choice with vyred running leaves the menu-bar app as it was") {
-        t.eq(FirstRun.decide(vyredUp: false, remembered: nil), .askWhere)
+    t.test("no choice and no vyred opens the app window as a client (the page asks the one question); no choice with vyred running leaves the menu-bar app as it was") {
+        t.eq(FirstRun.decide(vyredUp: false, remembered: nil), .openApp(boxless: true))
         t.eq(FirstRun.decide(vyredUp: true, remembered: nil), .nothing)
     }
 
