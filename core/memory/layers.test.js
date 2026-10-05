@@ -85,7 +85,7 @@ test("layers: a project agent cannot retrieve another project's memory, is not e
   }
 
   // 5. A bare model session is the person's own Claude Code (memory's existing rule: it reads as the person), so it follows as they do; a guest or an unknown tailnet peer does not.
-  assert.equal((await ask("memory.follow", { marker: "Harlow", question: "intake" }, "mcp")).error, undefined);
+  assert.equal((await ask("memory.follow", { marker: "Harlow", question: "intake" }, "deck")).error, undefined);   // the person at their own surface; a bare model session carries no chain (the kernel is on)
   assert.ok((await ask("memory.follow", { marker: "Harlow", question: "intake" }, "tailnet-guest:bob")).error, "a guest has no layer to follow from");
 });
 

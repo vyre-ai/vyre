@@ -7,8 +7,9 @@ import { Phone } from "./home.js";
 
 const root = process.argv[2];
 const device = JSON.parse(process.env.CHILD_PHONE || "{}");
-configureYes({ softwareOk: () => true, verify: async () => null });
 const d = await start({ root, log: () => {} });
+// after the daemon starts: it configures the yes verifier itself, and a test stands in for the sealing process's proof check
+configureYes({ softwareOk: () => true, verify: async () => null });
 import { as } from "./test-facts.js";
 const ask = (tool, input, caller = "cli") => as(d, tool, input, caller);
 const must = async (tool, input, caller) => { const r = await ask(tool, input, caller); if (r.error) throw new Error(`${tool}: ${JSON.stringify(r.error)}`); return r.data; };
