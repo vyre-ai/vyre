@@ -846,6 +846,13 @@ early_one_install() {
 # The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
 CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
 SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
+# A server under 6 GB (stores/twenty/provision.js TINY_BELOW_MB) runs one Space on the tiny profile, measured at 2221 MB peak plus 300 MB headroom
+# (stores/twenty/space-store.js requireFor; test/install-box-v2.test.js keeps the numbers equal). VYRE_SPACE_MEM_MB still overrides.
+SPACE_MEM_TINY_MB=2521
+if [ -z "${VYRE_SPACE_MEM_MB:-}" ] && [ -r /proc/meminfo ]; then
+  total_mb=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)
+  if [ -n "$total_mb" ] && [ "$total_mb" -lt 6144 ]; then SPACE_MEM_MB=$SPACE_MEM_TINY_MB; fi
+fi
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
 # preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person
 # should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
