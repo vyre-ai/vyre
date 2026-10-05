@@ -65,7 +65,8 @@ export function createLegacyGates(cfg) {
         allowed = !(from && from.dir && def.module !== (from.manifest && from.manifest.name) && !reg.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules"));
         break;
       }
-      case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
+      // the same test the registry's inline rule makes: only an older kind word (send, post, pay, delete) or an ask-first tool is held here; a plain `outward: true` goes on to the one yes's hold in the approvals queue
+      case "outward": allowed = !((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
       case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
       case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
