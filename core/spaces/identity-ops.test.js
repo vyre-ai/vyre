@@ -13,7 +13,6 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import * as C from "../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { fileIdentityStore, privateKeyOf } from "./identity.js";
-import crypto from "node:crypto";
 import { createIdentityOps } from "./identity-ops.js";
 import { newCode, codeKey, normalizeCode, codeLooksRight } from "./recovery.js";
 
