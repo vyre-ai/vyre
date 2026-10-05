@@ -185,10 +185,16 @@ export const DECLARED = Object.freeze({
   "work.session.rename": "f990f0d36",
   "presence.remove": "235da322d",
   "planner.bin": "49f105dbe",
+  "recall.links": "e8a4645fd",
+  "recall.pointers": "e8a4645fd",
+  "recall.turn": "e8a4645fd",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "recall.turn": "a read of one past session's turns, word for word; callers are READERS and the body holds a model to its own project's sessions (reach() and readableSession in core/recall/index.js), the same guard as recall.search",
+  "recall.links": "a read of the turns that touched a file, commit or url; callers are READERS and the body holds a model to its own project's folders (reach() and inFolders in core/recall/index.js), the same guard as recall.search",
+  "recall.pointers": "the rollover split of a thread's own windows for Vyre's seed; callers are OWNERS_ONLY (core/recall/index.js), so a cli label such as agent:kit is the cli surface, not a model's session",
   "apps.list": "a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
   "apps.targets": "a read of the notes and lists inside one app; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
   "apps.send": "sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module",
