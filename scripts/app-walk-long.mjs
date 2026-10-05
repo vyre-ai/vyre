@@ -121,16 +121,25 @@ await scenario("L: the browser start screen pairs with the long code and three w
   await c.pg.getByPlaceholder("vyre://wink/2?...").first().fill(o.data.link);
   await c.pg.getByText("Continue", { exact: true }).first().click();
   await c.pg.waitForFunction(() => /same three words|three words/i.test(document.body.innerText), null, { timeout: 40000 });
+  // the page shows its three words (the add-device step) once the relay has carried its request to the owner
+  const words = async () => { const t = await c.pg.locator("body").innerText(); const m = t.match(/\n([a-z]+ [a-z]+ [a-z]+)\n/i); return m ? m[1].toLowerCase() : null; };
+  let pageWords = null;
+  for (let i = 0; i < 40 && !pageWords; i++) { pageWords = await words(); if (!pageWords) await new Promise((r) => setTimeout(r, 1000)); }
   await c.shot("words");
-  const pageWords = await c.text();
-  // the owner's side: it is asked the same question; the script answers with the words the page shows
-  let asking = null;
-  let last = null;
+  need(pageWords, `the page never showed three words: ${(await c.text()).slice(0, 300)}`);
+  let asking = null, last = null;
   for (let i = 0; i < 40 && !asking; i++) { const p = await box("wink.phone.pairing", {}); last = p; if (p.data?.asking) asking = p.data; else await new Promise((r) => setTimeout(r, 1000)); }
   need(asking, `the owner was never asked (wink.phone.pairing): ${JSON.stringify(last).slice(0, 300)}`);
-  console.log("OWNER ASKED", JSON.stringify(asking).slice(0, 400));
-  console.log("PAGE", pageWords.slice(0, 500));
-  return "words step reached";
+  const idx = (asking.choices || []).findIndex((ch) => ch.join(" ").toLowerCase() === pageWords);
+  need(idx >= 0, `the page's words (${pageWords}) are not among the owner's choices ${JSON.stringify(asking.choices)}`);
+  const ans = await withYes("wink.phone.pair.answer", { yes: true, pick: idx + 1 });
+  need(!ans.error, `the owner's yes was refused: ${JSON.stringify(ans.error).slice(0, 200)}`);
+  await c.pg.waitForFunction(() => /Your spaces|Create a space|Nothing was added|did not work|does not hold|not on the list|already holds/.test(document.body.innerText), null, { timeout: 60000 });
+  await c.shot("end");
+  const end = (await c.text()).slice(0, 260);
+  console.log("PAGE END:", end);
+  need(/Your spaces|Create a space/.test(end) || /does not hold|not on the list/.test(end), `the join ended in: ${end}`);
+  return `words ${pageWords}, the owner picked ${idx + 1}`;
 });
 
 await browser.close(); sa.close(); sb.close();
