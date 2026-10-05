@@ -29,7 +29,7 @@ test("draft stream: only a caller that asked gets draft lines, then the result; 
     ctx.tool("say.via", { input: { type: "object" }, run: async () => (await ctx.call("say.it", {})).data });
     return {};
   } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const live = /** @type {any} */ (await raw(root, "application/x-ndjson"));
   assert.match(live.type, /x-ndjson/, live.body);

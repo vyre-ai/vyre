@@ -2369,7 +2369,7 @@
     {"kind":"env","name":"VYRE_SEAL_SOFTWARE","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SEAL_UNATTESTED","definedIn":"scripts/admin-anchor-reset.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SERVER_DIR","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_SESSION_SANDBOX_OFF","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_SESSION_SANDBOX_OFF","definedIn":"core/daemon/index.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_DRIVER","definedIn":"core/sessions/config.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_SDK_DIR","definedIn":"core/sessions/config.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_SDK_INSTALL","definedIn":"core/sessions/sdk.js","page":"reference/config.md#environment-variables","mentions":[]},
