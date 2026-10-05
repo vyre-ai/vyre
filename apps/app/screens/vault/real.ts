@@ -3,4 +3,4 @@
 import { callT as call } from "../../src/real/call-tool";
 import { vaultSource } from "./source";
 
-export const { listReal, usesReal, revealReal, revokeReal, stateReal, unlockReal, unlockPersonalReal, putReal, grantReal } = vaultSource(call);
+export const { listReal, usesReal, revealReal, revokeReal, stateReal, unlockReal, unlockPersonalReal, putReal, grantReal, revealHeldReal } = vaultSource(call);

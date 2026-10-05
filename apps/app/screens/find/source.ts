@@ -1,5 +1,5 @@
-// Find's calls on a real vyred, over an injected `call`: the lists loaded once on open (agents.list, projects.catalog, threads.list, projects.list), the three searches per query
-// (recall.search, files.search, memory.relevant), a file preview, and the commands Enter runs (agents.ask, threads.send, threads.watch). Vault items are never searched here:
+// Find's calls on a real vyred, over an injected `call`: the lists loaded once on open (agents.list, projects.catalog, threads.list, projects.list), the searches per query
+// (recall.search, files.search, memory.relevant, and mentions.search for vault names, Drive, artifacts and GitHub), a file preview, and the commands Enter runs (agents.ask, threads.send, threads.watch). Vault items are never searched here:
 // they stay behind the Vault.
 import { MIN, pickAgents, pickProjects, pickSessions, type Command } from "./model.ts";
 
@@ -14,12 +14,13 @@ export function findSource(call: Call, surface: string) {
       const agents = pickAgents(al.data);
       return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data) };
     },
-    /** The three searches for a query; each answers on its own so the screen draws as they come. */
-    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void }) {
+    /** The searches for a query; each answers on its own so the screen draws as they come. */
+    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void }) {
       if (q.length < MIN) return;
       void call("recall.search", { q, limit: 20 }).then(on.recall);
       void call("files.search", { q, limit: 20 }).then(on.files);
       void call("memory.relevant", { text: q, limit: 5 }).then(on.memory);
+      void call("mentions.search", { q, limit: 8 }).then(on.mentions);
     },
     preview: (path: string, source: string) => call("files.preview", { path, ...(source === "mac" || source === "box" ? { source } : {}) }),
     /** Ask an agent; the thread it landed in comes back so the screen can open it. */

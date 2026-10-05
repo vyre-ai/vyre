@@ -2,17 +2,16 @@
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld, useStore } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
-import { grantReal, listReal, putReal, revealReal, revokeReal, stateReal, unlockPersonalReal, unlockReal, usesReal } from "./real";
+import { grantReal, listReal, putReal, revealHeldReal, revealReal, revokeReal, stateReal, unlockPersonalReal, unlockReal, usesReal } from "./real";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
 import { DevicesPage, EditSheet, ItemHistory, PassesPage, SharedPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
-import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
 import { NEW_KINDS, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
@@ -22,7 +21,6 @@ export default function RealVault() {
   const phone = usePhone();
   const [tab, setTab] = useState<Tab | "Held">("Login");
   const [sharing, setSharing] = useState<Share | null>(null);
-  const store = useStore();
   const records = useRecordsWorld();
   const held = records.data ? heldFields(records.data.types, records.data.byType) : [];
   const [heldShown, setHeldShown] = useState<{ id: string; value: string } | null>(null);
@@ -76,8 +74,8 @@ export default function RealVault() {
     revokeReal(item.id, who).then(() => { showToast(`${who} no longer has ${item.name}.`); load(); }).catch((e) => showToast(say(e, "That did not work.")));
 
   const revealHeld = (h: { id: string; urn: string; field: string }) => {
-    store.reveal(h.urn, h.field, REVEAL_PURPOSE, simulatedProof({ decision: "reveal" }))
-      .then((r: any) => { hide(); setHeldShown({ id: h.id, value: String(r.value ?? "") }); timer.current = setTimeout(hide, REVEAL_MS); })
+    revealHeldReal(h.urn, h.field, REVEAL_PURPOSE)
+      .then((value) => { hide(); setHeldShown({ id: h.id, value }); timer.current = setTimeout(hide, REVEAL_MS); })
       .catch((e: unknown) => showToast(revealRefusal((e as { code?: string }).code, say(e, ""), Platform.OS === "web" ? (howApprove() === "touchid" ? "touchid" : "browser") : "phone")));
   };
   const doShare = (item: RealItem) => {

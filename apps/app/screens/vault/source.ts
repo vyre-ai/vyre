@@ -36,6 +36,11 @@ export function vaultSource(call: Call) {
     /** Add an item: a person's own call, the box asks for presence on this exact save. The value goes to the box and is not kept here. */
     putReal: (input: Record<string, unknown>) => ask<unknown>("vault.put", input),
     /** Let a module (or one of its watchers) use an item: a person's own call, the box asks presence on this exact grant. The module never sees the value. */
+    /** Show a held field's value once, to the person: records.reveal is a person's own act, so the box asks for presence on this exact call and the app's call answers it (the passkey, or the phone's yes), as vault.reveal does. The value goes back to the caller's state only. */
+    async revealHeldReal(urn: string, field: string, purpose: string): Promise<string> {
+      const r = await ask<{ value?: unknown; field?: { value?: unknown } }>("records.reveal", { urn, field, purpose });
+      return String(r?.value ?? r?.field?.value ?? "");
+    },
     grantReal: (input: Record<string, unknown>) => ask<{ grant?: { status?: string } }>("vault.grant", input),
     /** Taking access away is always allowed: no proof asked. */
     async revokeReal(name: string, module: string): Promise<void> {

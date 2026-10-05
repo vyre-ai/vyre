@@ -58,3 +58,15 @@ test("share goes through vault.grant on the box and nothing else", { skip: !stri
   assert.deepEqual(seen, [{ tool: "vault.grant", input: { name: "Gmail", module: "mail" } }]);
   assert.equal(r.grant?.status, "active");
 });
+
+test("a held field's reveal is records.reveal with the purpose, answered by the app's own presence, and no simulated proof anywhere", { skip: !strip }, async () => {
+  const { vaultSource } = await import("./source.ts");
+  /** @type {any[]} */ const seen = [];
+  const src = vaultSource(async (tool, input) => { seen.push({ tool, input }); return { data: { value: "123-45-6789" } }; });
+  assert.equal(await src.revealHeldReal("urn:x", "ssn", "view"), "123-45-6789");
+  assert.deepEqual(seen, [{ tool: "records.reveal", input: { urn: "urn:x", field: "ssn", purpose: "view" } }]);
+  const wrapped = vaultSource(async () => ({ data: { field: { value: "abc" } } }));
+  assert.equal(await wrapped.revealHeldReal("u", "f", "p"), "abc");
+  const { readFileSync } = await import("node:fs");
+  assert.equal(readFileSync(new URL("./RealVault.tsx", import.meta.url), "utf8").includes("simulatedProof"), false);
+});

@@ -67,7 +67,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 export type Row = { key: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
-export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown };
+export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown };
 
 const where = (base: Base, slug: string | null, cwd?: string | null): string => (slug ? base.projects.find((p) => p.slug === slug)?.name ?? slug : String(cwd || "").split("/").filter(Boolean).pop() || "");
 
@@ -107,6 +107,20 @@ export function fileHits(d: unknown): { rows: Row[]; notes: string[] } {
 }
 export const factHits = (d: unknown): Row[] => arr(d).filter((f) => f.text).map((f, i) => ({ key: `m:${i}:${String(f.text).slice(0, 20)}`, kind: "memory", title: String(f.text), sub: str(f.ref?.name) || str(f.source), href: "/u/memory", fact: true }));
 
+/** Where a mentions.search result opens; null reads only. */
+export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/drive" : null);
+/** mentions.search: names the box can find beyond what Find already searches (vault names, Drive, artifacts, GitHub), one section per kind. Records and sessions are Find's own, so they are left out;
+ * a provider that was late or locked is named in a note. Names only, never a value. */
+export function mentionSections(d: unknown): { sections: Section[]; note: string } {
+  const o = (d && typeof d === "object" ? d : {}) as { groups?: unknown; unavailable?: unknown };
+  const sections = arr(o.groups).filter((g) => Array.isArray(g.items) && g.items.length && g.kind !== "record" && g.kind !== "session").map((g): Section => {
+    const kind = String(g.kind);
+    return { key: `m:${kind}`, label: str(g.label) || kind, rows: arr(g.items).filter((i) => i.id !== undefined && i.name !== undefined).map((i): Row => ({ key: `m:${kind}:${i.id}`, kind: "mention", title: String(i.name), sub: str(i.hint), ...(mentionRoute(kind) ? { href: mentionRoute(kind)! } : {}) })) };
+  }).filter((s) => s.rows.length);
+  const down = (Array.isArray(o.unavailable) ? o.unavailable : []).filter((x): x is string => typeof x === "string");
+  return { sections, note: down.length ? `${down.join(", ")} did not answer in time.` : "" };
+}
+
 /** A path's folder, kept short: "~/work/site", or the last two folders after an ellipsis. */
 export function shortDir(p: unknown): string {
   const s = String(p || "").replace(/^\/(Users|home)\/[^/]+/, "~");
@@ -140,6 +154,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("people")) { add("people", "People", peopleHits(base, q)); if (sc === "all") add("records", "Records", recordHits(base, q)); }
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
   if (want("memory") && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
+  if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   return out;
 }
 
@@ -182,3 +197,10 @@ export function previewOf(f: { kind: string }, d: unknown): { kind: "image"; uri
   if (typeof o.text === "string") return { kind: "text", text: o.text, truncated: o.truncated === true };
   return { kind: "none", note: o.note ? `No preview: ${String(o.note)}.` : "No preview for this file." };
 }
+
+/** The rows in the order they are drawn, for the arrow keys: each section's shown rows (or all when it is open), or, with an empty box, the recent chats then the places. */
+export function flatRows(secs: Section[], open: Record<string, boolean>, idleRows: Row[] = []): Row[] {
+  return secs.length ? secs.flatMap((s) => (open[s.key] ? s.rows : s.rows.slice(0, SHOW))) : idleRows;
+}
+/** The highlighted row after an arrow key: Down from nothing is the first, Up from the first is nothing (back to the box). */
+export const stepHi = (hi: number, key: "ArrowDown" | "ArrowUp", n: number): number => (n ? (key === "ArrowDown" ? Math.min(n - 1, hi + 1) : Math.max(-1, hi - 1)) : -1);

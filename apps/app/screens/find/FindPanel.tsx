@@ -2,12 +2,12 @@
 // the places. Enter runs what the line says: "@kit ..." asks that agent, "tell <chat> to ..." types into a chat and watches it, "watch <chat>" watches it, anything else asks the assistant; a
 // line under the box says which. The same panel is the /u/search page on every device and the Cmd-K command bar on desktop and web.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, View } from "react-native";
+import { Image, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, Text, useRecordsWorld, type IconName } from "@vyre/ui";
 import { NAV } from "../shell/nav";
 import { find } from "./source-real";
-import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, idle, missingNote, planLine, previewOf, readCommand, recordRows, sections, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
+import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
 
 const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName };
@@ -26,6 +26,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const [chosen, setChosen] = useState<string | null>(null);
   const [done, setDone] = useState("");
   const [preview, setPreview] = useState<{ file: FileHit; state: ReturnType<typeof previewOf> | "loading" } | null>(null);
+  const [hi, setHi] = useState(-1);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         if (n !== seq.current) return;
         if (r.error) setErrs((e) => ({ ...e, [key]: label })); else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched.") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
@@ -62,6 +63,23 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const { cmd, chosen: target } = useMemo(() => readCommand(line, all, chosen), [line, all, chosen]);
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   const idleNow = useMemo(() => idle(all, recents), [all, recents]);
+  const flat = useMemo(() => flatRows(secs, open, [...idleNow.chats, ...idleNow.places]), [secs, open, idleNow]);
+  const flatRef = useRef(flat);
+  flatRef.current = flat;
+  useEffect(() => setHi(-1), [line, scope]);
+  // Arrow keys move the highlight through the rows, as in the Deck's Find; Enter opens the highlighted one. Escape (and Up from the first row) goes back to the box. Web only: a phone has no arrow keys.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (!flatRef.current.length) return;
+      e.preventDefault();
+      setHi((h) => stepHi(h, e.key as "ArrowDown" | "ArrowUp", flatRef.current.length));
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+  const mentionNote = fetched.mentions !== undefined && line.length >= MIN ? mentionSections(fetched.mentions).note : "";
   const assistant = all.assistant || "the assistant";
   const targetName = target ? String(target.name || target.id.slice(0, 8)) : "";
 
@@ -75,6 +93,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   };
 
   const run = async () => {
+    if (hi >= 0 && flatRef.current[hi]) { pick(flatRef.current[hi]); return; }
     if (!line) return;
     remember();
     try {
@@ -101,11 +120,11 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   };
 
   const hit = (r: Hit) => (
-    <Row key={r.key} dense lead={<Icon name={ICON[r.kind] ?? "file"} size={16} tone="label" />} title={r.title}
+    <Row key={r.key} dense selected={flat[hi]?.key === r.key} lead={<Icon name={ICON[r.kind] ?? "file"} size={16} tone="label" />} title={r.title}
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
       state={r.right} onPress={() => pick(r)} />
   );
-  const pending = line.length >= MIN && (["recall", "files", "memory"] as const).some((k) => fetched[k] === undefined && !errs[k]);
+  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
       <Composer label="Find or ask" placeholder={`Ask ${assistant}, find, or run`} value={q} onChangeText={setQ} onSend={() => void run()} sendLabel="Run" />
@@ -139,7 +158,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
           })}
           {pending ? <Text size="caption" tone="faint">Looking.</Text> : null}
           {!pending && !secs.length && loaded ? <Card><EmptyState title="Nothing found" body={`Nothing matches "${line}". Enter asks ${assistant}.`} /></Card> : null}
-          {Object.values(errs).map((e) => <Text key={e} size="caption" tone="faint">{e}</Text>)}
+          {[...Object.values(errs).filter(Boolean), ...(mentionNote ? [mentionNote] : [])].map((e) => <Text key={e} size="caption" tone="faint">{e}</Text>)}
         </View>
       )}
       <Sheet open={!!preview} onClose={() => setPreview(null)} title={preview?.file.name}>

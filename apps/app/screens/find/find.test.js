@@ -44,18 +44,18 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.deepEqual([none.agents, none.assistant], [[], null]);
 });
 
-test("search: three tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
+test("search: four tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
   const { findSource } = await import("./source.ts");
   const b = box();
   const s = findSource(b.call, "web");
   const got = [];
-  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m") };
+  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m"), mentions: () => got.push("x") };
   s.search("a", on);
   assert.equal(b.seen.length, 0);
   s.search("harlow", on);
   await new Promise((r) => setTimeout(r, 5));
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "harlow", limit: 20 }], ["files.search", { q: "harlow", limit: 20 }], ["memory.relevant", { text: "harlow", limit: 5 }]]);
-  assert.deepEqual(got.sort(), ["f", "m", "r"]);
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "harlow", limit: 20 }], ["files.search", { q: "harlow", limit: 20 }], ["memory.relevant", { text: "harlow", limit: 5 }], ["mentions.search", { q: "harlow", limit: 8 }]]);
+  assert.deepEqual(got.sort(), ["f", "m", "r", "x"]);
   await s.preview("/a/b.txt", "mac"); await s.preview("/a/c.txt", "other");
   assert.deepEqual(b.seen.slice(-2).map((x) => x.input), [{ path: "/a/b.txt", source: "mac" }, { path: "/a/c.txt" }]);
 });
@@ -205,4 +205,30 @@ test("words: ago, short folders, missing tool", { skip: !strip }, async () => {
   assert.equal(missingNote({ message: "Nope" }), "Nope");
   assert.equal(hasAll("Harlow Legal", words("legal harl")), true);
   assert.equal(hasAll("Harlow", words("legal")), false);
+});
+
+test("mentions: vault names, Drive, artifacts and GitHub as their own sections; records and sessions left to Find; a late provider is named", { skip: !strip }, async () => {
+  const { mentionSections, sections, mentionRoute } = await import("./model.ts");
+  const b = await base();
+  const d = { groups: [{ kind: "record", label: "Records", items: [{ id: "r1", name: "dup" }] }, { kind: "session", label: "Sessions", items: [{ id: "s1", name: "dup" }] },
+    { kind: "vault", label: "Vault", items: [{ id: "v1", name: "Gmail", hint: "login" }, { name: "no id" }] }, { kind: "github", label: "GitHub", items: [{ id: "g1", name: "acme/site", hint: "repo" }] }, { kind: "drive", label: "Drive", items: [] }], unavailable: ["artifacts", 3] };
+  const m = mentionSections(d);
+  assert.deepEqual(m.sections.map((x) => [x.key, x.rows.map((r) => [r.title, r.sub, r.href])]), [["m:vault", [["Gmail", "login", "/u/vault"]]], ["m:github", [["acme/site", "repo", undefined]]]]);
+  assert.equal(m.note, "artifacts did not answer in time.");
+  assert.equal(mentionRoute("drive"), "/u/drive");
+  assert.equal(mentionRoute("github"), null);
+  assert.deepEqual(mentionSections(null), { sections: [], note: "" });
+  assert.deepEqual(sections(b, "gmail", "all", { mentions: d }).map((x) => x.key), ["m:vault", "m:github"]);
+  assert.deepEqual(sections(b, "gmail", "chats", { mentions: d }).map((x) => x.key), []);
+  assert.deepEqual(sections(b, "gmail", "all", {}).map((x) => x.key), []);
+});
+
+test("arrow keys: rows in drawn order (a section's first five unless open, else the idle list), Down from nothing is the first, Up from the first is the box", { skip: !strip }, async () => {
+  const { flatRows, stepHi } = await import("./model.ts");
+  const rows = (/** @type {string} */ p, /** @type {number} */ n) => Array.from({ length: n }, (_, i) => ({ key: `${p}${i}`, title: `${p}${i}`, kind: "chat" }));
+  const secs = [{ key: "a", label: "A", rows: rows("a", 7) }, { key: "b", label: "B", rows: rows("b", 2) }];
+  assert.deepEqual(flatRows(secs, {}).map((r) => r.key), ["a0", "a1", "a2", "a3", "a4", "b0", "b1"]);
+  assert.equal(flatRows(secs, { a: true }).length, 9);
+  assert.deepEqual(flatRows([], {}, rows("i", 2)).map((r) => r.key), ["i0", "i1"]);
+  assert.deepEqual([stepHi(-1, "ArrowDown", 3), stepHi(0, "ArrowDown", 3), stepHi(2, "ArrowDown", 3), stepHi(0, "ArrowUp", 3), stepHi(2, "ArrowUp", 3), stepHi(-1, "ArrowDown", 0)], [0, 1, 2, -1, 1, -1]);
 });
