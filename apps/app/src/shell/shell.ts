@@ -28,7 +28,15 @@ export type MacShell = {
   onCommand(fn: (name: string) => void): () => void;
 };
 
-/** The shell the page runs in, or null. */
+/** The identity key of the shell the page runs in, on a Mac (the app's window) or on Windows (the app's panel): the same four calls, a seed that never reaches the page. null in a browser or a phone. */
+export type ShellIdentity = NonNullable<MacShell["identity"]>;
+export function shellIdentity(): ShellIdentity | null {
+  const w = typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: { kind?: string; identity?: ShellIdentity } });
+  const s = w?.__vyreShell;
+  return s && (s.kind === "mac" || s.kind === "windows") && s.identity ? s.identity : null;
+}
+
+/** The shell the page runs in, or null. (The Mac app's window: the one with a menu bar, Touch ID presence and notices. The Windows panel has none of those, only the identity key: `shellIdentity`.) */
 export function shell(): MacShell | null {
   const w = typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: MacShell });
   return w?.__vyreShell?.kind === "mac" ? w.__vyreShell : null;

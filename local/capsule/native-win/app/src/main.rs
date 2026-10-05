@@ -6,6 +6,8 @@
 //! panel, a WebView2 on the person's own server with no capability, a navigation allowlist and
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
+mod ncrypt;
+
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -54,7 +56,24 @@ fn taskbar_is_light() -> bool {
 #[cfg(not(windows))]
 fn taskbar_is_light() -> bool { false }
 
-const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { value: Object.freeze({ platform: "windows" }), writable: false, configurable: false });"#;
+/// What the main panel (the person's own server's page) is told about this shell, as frozen data and four calls. The calls are the identity key's (identity_public, identity_sign) and the TPM
+/// key's (enclave_public, enclave_sign): the page gets public keys and signatures, never a seed. They are the same shape as the Mac app's window.__vyreShell.identity, so the page runs one way.
+/// Only these four commands are permitted to the panel (capabilities/main-identity.json), and each refuses unless it is called from the pinned origin (`from_pinned`).
+fn shell_signal(version: &str) -> String {
+    let v = serde_json::to_string(version).unwrap_or_else(|_| "\"\"".into());
+    format!(r#"(function () {{
+  Object.defineProperty(window, "__VYRE_SHELL__", {{ value: Object.freeze({{ platform: "windows" }}), writable: false, configurable: false }});
+  var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (!inv) return;
+  var identity = Object.freeze({{
+    public: function (create) {{ return inv("identity_public", {{ create: !!create }}); }},
+    sign: function (message) {{ return inv("identity_sign", {{ message: message }}); }},
+    enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
+    enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }}
+  }});
+  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: false, version: {v}, identity: identity }}), writable: false, configurable: false }});
+}})();"#)
+}
 
 struct Live {
     hotkey: Mutex<String>,
@@ -114,7 +133,7 @@ fn show_panel(app: &AppHandle, path: &str) {
     let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(pin.url_for(path).parse().expect("pinned url")))
         .title(APP_NAME)
         .inner_size(560.0, 720.0)
-        .initialization_script(SHELL_SIGNAL)
+        .initialization_script(shell_signal(&app.package_info().version.to_string()))
         .on_navigation(move |url| {
             if nav_pin.allows(url.as_str()) { return true; }
             open_external(&nav_app, url.as_str());
@@ -316,6 +335,72 @@ async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Opt
     Ok(())
 }
 
+/// The identity key's and the TPM key's commands are the main panel's only ones, and only from the pinned origin: the capability lets the panel call them, and this refuses any other page
+/// (a navigation that slipped past, a frame) before a key is touched.
+fn from_pinned(app: &AppHandle, webview: &tauri::Webview) -> Result<(), String> {
+    if webview.label() != "main" { return Err("Not allowed here.".into()); }
+    let url = webview.url().map_err(|_| "Not allowed here.".to_string())?;
+    match pinned(app) { Some(pin) if pin.allows(url.as_str()) => Ok(()), _ => Err("Not allowed here.".into()) }
+}
+
+fn identity_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_data_dir().map(|d| d.join("identity.key")).map_err(|e| e.to_string())
+}
+
+static IDENTITY_LOCK: Mutex<()> = Mutex::new(());
+
+/// The Ed25519 identity seed, DPAPI-protected on this computer; made once with `create`. It never leaves Rust.
+fn identity_seed(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
+    let _guard = IDENTITY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = identity_path(app)?;
+    if path.exists() {
+        let raw = protect(&std::fs::read(&path).map_err(|e| e.to_string())?, false)?;
+        return raw.try_into().map_err(|_| "The identity key file is damaged.".to_string());
+    }
+    if !create { return Err("There is no key on this computer.".into()); }
+    use rand::RngCore;
+    let mut k = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut k);
+    let dir = path.parent().unwrap();
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("identity.key.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(k)
+}
+
+fn unb64u(s: &str) -> Result<Vec<u8>, String> { use base64::Engine; base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s.trim_end_matches('=')).map_err(|_| "That is not a message to sign.".to_string()) }
+
+#[tauri::command]
+fn identity_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    Ok(b64u(&vyre_capsule_win::identity::public_key(&identity_seed(&app, create)?)))
+}
+
+#[tauri::command]
+fn identity_sign(app: AppHandle, webview: tauri::Webview, message: String) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    let m = unb64u(&message)?;
+    if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
+    Ok(b64u(&vyre_capsule_win::identity::sign(&identity_seed(&app, false)?, &m)))
+}
+
+#[tauri::command]
+fn enclave_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    Ok(b64u(&ncrypt::public_point(create)?))
+}
+
+/// The TPM key signs only after Windows has asked the person (Windows Hello). `prompt` is the words the page gave for it; Windows shows its own.
+#[tauri::command]
+fn enclave_sign(app: AppHandle, webview: tauri::Webview, message: String, prompt: Option<String>) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    let _ = prompt;
+    let m = unb64u(&message)?;
+    if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
+    Ok(b64u(&ncrypt::sign(&m)?))
+}
+
 /// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
 #[tauri::command]
 fn get_link(app: AppHandle) -> Option<serde_json::Value> {
@@ -444,7 +529,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, enclave_public, enclave_sign, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });

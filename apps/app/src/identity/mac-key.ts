@@ -1,14 +1,14 @@
-// The identity key of the Mac app's window: the page asks the shell (window.__vyreShell.identity, Host/MacIdentity.swift) for the public key and for signatures over the bytes of a chain
+// The identity key of the Mac app's window and of the Windows app's panel (same four calls; the name is the Mac's, the first to have it): the page asks the shell (window.__vyreShell.identity, Host/MacIdentity.swift) for the public key and for signatures over the bytes of a chain
 // operation; the Ed25519 seed stays in the Mac's Keychain and never reaches this page. The result is a DeviceKey like the phone's and the browser's, so claim, recover and add-device
 // take it as they take any other. A Mac key signs a list change alone (the chain asks for an enclave signature only of an entry that names an enclave key).
 
 import { b64u, eidOf } from "../../../../kernel/identity/chain.js";
-import { shell } from "../shell/shell.ts";
+import { shellIdentity } from "../shell/shell.ts";
 import type { DeviceKey } from "./keys.js";
 import { lowS } from "../../modules/vyre-signer/presence-proof.js";
 
 /** Does this page run in the Mac app's window, which can keep an identity key for it? */
-export const macKeyAvailable = (): boolean => !!shell()?.identity;
+export const macKeyAvailable = (): boolean => !!shellIdentity();
 
 const unb64u = (s: string): Uint8Array => {
   const t = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -21,7 +21,7 @@ export const MAC_KEPT = { kind: "mac-keychain" } as const;
 
 /** This Mac's identity key. `create` makes it when it is missing (a claim or a recovery); without it a missing key is null. */
 export async function macDeviceKey(create = false): Promise<DeviceKey | null> {
-  const id = shell()?.identity;
+  const id = shellIdentity();
   if (!id) return null;
   let pub: string;
   try { pub = await id.public(create); } catch { return null; }
@@ -40,14 +40,14 @@ export async function macDeviceKey(create = false): Promise<DeviceKey | null> {
  * which then keeps an Ed25519 entry that signs alone. `create` makes the key the first time (a claim or a recovery).
  */
 export async function macEnclavePublic(create = false): Promise<string | null> {
-  const id = shell()?.identity;
+  const id = shellIdentity();
   if (!id?.enclavePublic) return null;
   try { return await id.enclavePublic(create); } catch { return null; }
 }
 
 /** The enclave key's signature over `message`, behind Touch ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig`. Rejects with the shell's words when declined. */
 export async function macEnclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
-  const id = shell()?.identity;
+  const id = shellIdentity();
   if (!id?.enclaveSign) throw Object.assign(new Error("This Mac has no Secure Enclave key to sign with."), { code: "ERR_NO_ENCLAVE" });
   return lowS(unb64u(await id.enclaveSign(b64u(message), prompt)));
 }
