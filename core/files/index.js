@@ -22,7 +22,7 @@ import { guard, Refused } from "./safety.js";
 import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
-import { drop } from "./drop.js";
+import { dropWink } from "./drop-wink.js";
 import { drive } from "./drive.js";
 import { registerSpaceDrive } from "./space-drive.js";
 import { dirs } from "./dirs.js";
@@ -403,8 +403,8 @@ export default {
       },
     });
 
-    // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
-    const dropped = drop(ctx, { role, g, cfg });
+    // VyreDrop over Wink: files.send and files.receive on a computer, the held-for-you drops on the server (drop-wink.js).
+    const dropped = dropWink(ctx, { role, g, cfg });
     // VyreDrive (Taildrive underneath): the box's chosen folders, mounted on the paired Mac (drive.js).
     drive(ctx, { role, guard: g, roots });
     // The Space's own Drive for the app: upload, versions, restore (core/files/space-drive.js).

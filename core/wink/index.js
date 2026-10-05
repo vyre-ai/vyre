@@ -745,6 +745,14 @@ export function createWink(inject = {}) {
     // that passes `inject.pool` / `inject.bridge` / `inject.poolBackend` replaces them.
     const kst = ctx.kernel && ctx.kernel.storage ? ctx.kernel.storage : null;
     const br = inject.bridge || (kst ? { createBridge: kst.createBridge, backendFor: kst.backendFor, home: () => pairing.homeServerId() } : null);
+    // VyreDrop (core/files/drop-wink.js): the id of the server this computer is paired to, and, on the server, a call down the connection a computer holds (only the drop offer: nothing else goes down it this way).
+    ctx.tool("wink.home.id", { description: "The id of the server this computer is paired to, or null.", input: obj(), run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => { if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules"); return { device: pairing.homeServerId() }; } });
+    ctx.tool("wink.device.call", { description: "Tell a connected computer something down the connection it holds (a drop is waiting). Only wink.drop.offer.", input: obj({ device: str, tool: str, input: { type: "object" } }, ["device", "tool"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules");
+        if (i.tool !== "wink.drop.offer") throw fail("denied", "only a drop offer goes down a held connection this way");
+        return holds.linkTo(String(i.device)).call(String(i.tool), i.input || {});
+      } });
     const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
     const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
       // On a computer that serves a drive for its server, the offer's row is at the server, not here: the secret the server sealed to this computer and the one caller it answers are what bind a frame to the offer.
@@ -761,6 +769,14 @@ export function createWink(inject = {}) {
     // The home's one message that is not storage: a grant for this computer ended, so the runner stops the Space's sessions here and deletes the local work and keys now (core/runner, runner.revoke).
     const lentRevokedFn = lentRevoked({ call: (t, i) => ctx.call(t, i), log: m => ctx.log(m) });
     serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ from) => {
+      if (tool === "wink.drop.offer") {
+        // a drop waits for this computer on the server: only the server this computer is paired to may say so
+        if (!from || from !== pairing.homeServerId()) throw fail("denied", "only the server this computer is paired to can offer a file");
+        const id = input && typeof input.id === "string" ? input.id : "";
+        if (!/^[a-z0-9]{20,40}$/.test(id)) throw fail("bad_input", "a drop's id");
+        await ctx.call("files.drop.offered", { id });
+        return { ok: true };
+      }
       if (tool !== "wink.lent.revoked") return serveBridge(tool, input);
       return lentRevokedFn(input, from);
     };

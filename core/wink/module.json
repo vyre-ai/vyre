@@ -58,7 +58,8 @@
         "effect": "write"
       },
       {
-        "name": "wink.invite", "outward": true,
+        "name": "wink.invite",
+        "outward": true,
         "reach": "person",
         "effect": "write"
       },
@@ -128,7 +129,8 @@
         "effect": "read"
       },
       {
-        "name": "wink.server.status", "effect": "read",
+        "name": "wink.server.status",
+        "effect": "read",
         "reach": "person"
       },
       {
@@ -291,6 +293,14 @@
       {
         "name": "wink.device.paired",
         "reach": "modules"
+      },
+      {
+        "name": "wink.home.id",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.call",
+        "reach": "modules"
       }
     ]
   },
@@ -328,7 +338,9 @@
       "storage.removed",
       "storage.unreachable",
       "wink.relay-applied",
-      "wink.network-changed", "wink.device-needs-repair"],
+      "wink.network-changed",
+      "wink.device-needs-repair"
+    ],
     "on": [
       "relay.code-asked",
       "relay.invite-redeemed",
@@ -345,6 +357,8 @@
     "vault": [
       "per-storage"
     ],
-    "daemon": ["dataStores"]
+    "daemon": [
+      "dataStores"
+    ]
   }
 }
