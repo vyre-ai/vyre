@@ -170,7 +170,7 @@ export async function addHolders(doc, k, o) {
 
 /** Remove holders: rotate to `keep` only, and delete the removed holders' wraps from every epoch. @param {RingDoc} doc @param {Keys} k @param {{ keep: Record<string, any>, drop: string[] }} o */
 export async function removeHolders(doc, k, o) {
-  const next = await rotate(doc, k, o.keep);
+  /** @type {RingDoc} */ const next = await rotate(doc, k, o.keep);
   for (const n of Object.keys(next.epochs)) { const w = { ...next.epochs[n].wraps }; for (const d of o.drop) delete w[d]; next.epochs[n] = { wraps: w }; }
   return next;
 }

@@ -5,6 +5,8 @@ import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState,
 import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
 import { writeDraft } from "../../src/chat/drafts";
+import { getAgreeKey } from "../../src/crypto/agree-key";
+import { holdersFor, newChatRing } from "../../src/crypto/chat-ring.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { SURFACE } from "../../src/state/live";
 import { tool } from "../../src/real/box";
@@ -31,11 +33,22 @@ export default function NewChatScreen() {
     })();
     return () => { live = false; };
   }, []);
+  // A chat made on a device that has an agreement key is sealed from the start: this device makes the ring (the server never makes a key). With no key, or no way to read who I am, the chat stays in the clear.
+  const ringFor = async (): Promise<{ id: string; ring: unknown } | null> => {
+    try {
+      const me = await getAgreeKey();
+      if (!me) return null;
+      const who = await tool<{ person?: string }>("records.me", {});
+      const { holders } = await holdersFor((t, i) => tool(t, i ?? {}), who?.person ? [who.person] : [], me);
+      return await newChatRing(`chat_${newUuid()}`, holders);
+    } catch { return null; }
+  };
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
     setBusy(true); setErr("");
     try {
-      const id = chatIdOf(await tool("work.chat.create", createInput({ agent })));
+      const made = await ringFor();
+      const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...(made ?? {}) }));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
       // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
       if (text.trim()) {

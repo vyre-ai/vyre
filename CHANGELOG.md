@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): sealed chats from this device. getAgreeKey() is the device's one key-agreement key (a browser's non-extractable WebCrypto key in IndexedDB; phones and Macs answer null until native-core's hook lands). New chat makes the ring on the device for this device and each participant device that carries `agree` on its identity list entry, and passes it to work.chat.create { id, agents, people, ring }; with no key it stays in the clear. Opening a sealed chat lends its key to the server for the session (work.chat.keys.begin, finish). Not yet: putting this device's `agree` on its own identity entry (claim and add-device wait on platform-3's work/agree-key landing in trunk).
+
 - feat(app): the chat's live items on chat's shapes (work/one-chat 15750bafa): while the assistant works, the composer offers Steer now or Queue and sends stream.send { mode }; typing is sent with stream.typing (at most every 3 seconds) and the others' typing and the assistant's doing line (chat.presence frames) show above the composer; the Chats list shows a count when work.chat.list rows carry `unread`. Stop uses threads.chat-stop.
 
 - feat(app): Settings shows how much of their storage on the hosting Cloud space a person's personal items use ("Using 12 MB of 1 GB on harlow", from spaces.storage.usage). The owner's cap setting (spaces.storage.set-cap) is not in the app yet.
