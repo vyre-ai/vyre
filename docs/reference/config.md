@@ -46,18 +46,14 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 
 | Key | Type | Default | What it is for |
 | --- | --- | --- | --- |
-| `network.tailscale` | `boolean` | none | Whether this machine serves over Tailscale. |
 | `network.address` | `string` | unset | The https URL the Deck is served at. |
-| `network.owner` | `string` | unset | The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`. |
 | `network.domain` | `string` | unset | The domain the box's name is under. |
-| `network.via` | `'vyre.run'\|'ts.net'` | unset | `vyre.run` for a name under vyre.run, `ts.net` for the tailnet's own name. |
+| `network.via` | `'vyre.run'` | unset | `vyre.run` for a name under vyre.run, `ts.net` for the tailnet's own name. |
 | `network.port` | `number` | unset | The port the tailnet listener serves on. |
-| `network.acme` | `'production'\|'staging'` | unset | `staging` to get test certificates while trying things out; `production` otherwise. |
 | `network.box` | `string` | unset | On a Mac: the address of the box it is paired with. |
 | `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300. |
 | `network.ownerSeen` | `string` | unset | When the owner was first seen on the tailnet. Written by Vyre. |
 | `network.origins` | `string[]` | unset | Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `["https://app.vyre.run"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session. |
-| `network.guests` | `{ enabled: boolean, people: Record<string, { tools: string[] }> }` | unset | Not described yet. |
 
 Modules keep their own settings under a key named after them (`vault`, `recall`, `learn`, and so on). Their pages describe them.
 
@@ -70,7 +66,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
-| `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
+| `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/wink/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_AGENT_HOME` | Not described yet. | `core/daemon/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
@@ -94,7 +90,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CHROME_TEST_NOFETCH` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/harness/frames-suite.mjs` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
-| `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
 | `VYRE_CODEX_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
@@ -113,14 +108,13 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
-| `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js` |
+| `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js`, `core/wink/netd.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
-| `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
 | `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_TIPS` | Not described yet. | `core/cli/index.js` |
@@ -131,6 +125,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPENROUTER_URL` | Not described yet. | `core/sessions/index.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js`, `core/cli/kit.js` |
+| `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
@@ -150,8 +145,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_STORE` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/index.js` |
-| `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js`, `core/relay/tailnet.js` |
-| `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEST` | Not described yet. | `core/names/directory.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_THREAD_SOCKETS` | Not described yet. | `core/daemon/threadsock.js` |
@@ -171,7 +164,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
 | `VYRE_WINDOWS_LENDING` | Not described yet. | `core/runner/sandbox.js`, `core/runner/workspace.js` |
-| `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js` |
+| `VYRE_WINK_FORWARDER_BIN` | Not described yet. | `core/wink/netd.js` |
+| `VYRE_WINK_NET` | Not described yet. | `core/wink/index.js` |
+| `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js`, `core/wink/netd.js` |
 | `VYRE_WINK_TYPED_CODE` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
@@ -214,6 +209,5 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_PAIR_NO_PROOF` | Not described yet. | `core/wink/pairing.js` |
-| `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |
 | `VYRE_TEST_START_PAUSE_MS` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_TEST_UNGATED_RING` | Not described yet. | `core/relay/index.js` |

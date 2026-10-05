@@ -61,11 +61,11 @@ In the order `vyre help` lists them.
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
-| [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
-| [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
+| [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
+| [`vyre link`](#vyre-link) | this device and its server: pair a server, see how it is reached, list or remove your devices |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
-| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
-| [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code |
+| [`vyre send`](#vyre-send) | send files from this Mac to your server (not available yet) |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre wink`](#vyre-wink) | free a server that still belongs to an app you no longer have |
@@ -425,7 +425,7 @@ Change what it holds:
 This box's address: <you>.vyre.run.
 
 ```
-vyre name [status|check <n>|claim <n>|ts.net|release] [--json]
+vyre name [status|check <n>|claim <n>|release] [--json]
 ```
 
 ### vyre alarm
@@ -585,7 +585,7 @@ vyre run [--env-file f] [<item...>] -- <command...>
 
 ### vyre hooks
 
-Webhooks from the internet through Funnel, one route at a time.
+Webhooks from the internet, one route at a time.
 
 ```
 vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
@@ -593,10 +593,10 @@ vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
 
 ### vyre link
 
-Pair this Mac with your box, or approve a Mac on the box.
+This device and its server: pair a server, see how it is reached, list or remove your devices.
 
 ```
-vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout] [--json]
+vyre link [status|pair <code>|devices|unpair <device>] [--json]
 ```
 
 ### vyre phone
@@ -604,12 +604,11 @@ vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|sig
 Add a phone to your box, list, remove and test the ones it has.
 
 ```
-vyre phone [add [--iphone|--android] [--tailscale-only] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
+vyre phone [add [--iphone|--android] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
 ```
 
 vyre phone add               the steps to put a phone on the box, then live checks
       --iphone | --android     only that phone's install step
-      --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
       --android --usb          the native app over a cable: downloads the APK the box serves,
                                checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
@@ -618,15 +617,13 @@ vyre phone add               the steps to put a phone on the box, then live chec
   vyre phone test [id]         send a test notification to every device, or one
 
   add pairs through the relay by default: it asks you first, then shows a QR that works once
-  for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
-  path direct and private. With --tailscale-only (or on a box without the relay) it mints a
-  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
+  for 10 minutes, so the phone needs nothing installed first. Then it watches until the phone shows up: a new
   notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.
 
 ### vyre relay
 
-Reach this box from your phone with a QR code, no Tailscale.
+Reach this box from your phone with a QR code.
 
 ```
 vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
@@ -640,7 +637,7 @@ vyre relay on|off, pin <release>|unpin: the relay itself, and which web app buil
 
 ### vyre send
 
-Send files from this Mac to your box with Taildrop.
+Send files from this Mac to your server (not available yet).
 
 ```
 vyre send <file...> [--json]
@@ -894,19 +891,10 @@ These work, but `vyre help` leaves them out: they are for the box's service mana
 
 | Command | What it does |
 | --- | --- |
-| [`vyre owner`](#vyre-owner) | the one Tailscale login this box serves |
 | [`vyre home`](#vyre-home) | your projects, a new session, and your agents |
 | [`vyre restore`](#vyre-restore) | put a backup back (vyred must be stopped) |
 | [`vyre uninstall`](#vyre-uninstall) | remove the systemd units (the data stays unless --purge) |
 | [`vyre daemon`](#vyre-daemon) | run vyred in the foreground (what systemd runs) |
-
-### vyre owner
-
-The one Tailscale login this box serves.
-
-```
-vyre owner [<tailscale-login>]
-```
 
 ### vyre home
 
