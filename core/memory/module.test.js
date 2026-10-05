@@ -172,11 +172,16 @@ test("memory module: the person corrects from their phone only with a person ses
     assert.ok(r.error, `${agent} corrected`);
   }
 
-  const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, signed);
+  // With the kernel on the person is the facts the listener proves (the owner's paired device with a person session), never the label: a paired app row, then the same calls carry them.
+  const id = "aaaaaaaaaaaaaaaa";
+  if (d.kernel) d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(id);
+  if (d.kernel) d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run("abcdefghijklmnop");
+  const facts = d.kernel ? { kernelFacts: { kind: "device", device_key_id: id, person: d.kernel.id.owner, path: "wink", session: "s1" } } : {};
+  const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, { ...signed, ...facts });
   assert.equal(ok.data?.fix?.action, "wrong", JSON.stringify(ok));
-  const graph = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, signed);
+  const graph = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, { ...signed, ...facts });
   assert.ok(graph.data?.correction, JSON.stringify(graph));
-  const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, "device:abcdefghijklmnop", signed);
+  const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, "device:abcdefghijklmnop", { ...signed, ...(d.kernel ? { kernelFacts: { ...facts.kernelFacts, device_key_id: "abcdefghijklmnop", path: "relay" } } : {}) });
   assert.equal(undo.data?.fix?.undone > 0, true, JSON.stringify(undo));
 });
 
