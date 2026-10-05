@@ -53,8 +53,6 @@ export const ALLOW = {
     why: "the router resolves which Claude Code session a call comes from" },
   "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js"], next: "lib",
     why: "the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js): the peer wire's session framing is the one remote path" },
-  "core/files -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
-    why: "runs the tailscale CLI (Taildrive); tailscale.js is the one place that does" },
   "core/hooks -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
     why: "runs the tailscale CLI" },
   "core/link -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
