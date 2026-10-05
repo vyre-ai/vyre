@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): one-Chat tool names follow the engine: add a teammate is work.chat.change, switching a slot's model is threads.chat-switch. The Chats list reads project_name and last_line from work.chat.list (providers already).
+
 - fix(app): the calendar has no fallback for a box without planner.agenda: it shows the refusal plainly in a banner. A url field is drawn as a link that opens its http or https address (anything else reads as text), so an Event's url shows as a link on the record page.
 
 - feat(app): the calendar shows a repeating Event's occurrences from the box (planner.agenda { from, to } for the visible window), replacing the event's single first-date item; the app expands no rule itself. A box without planner.agenda shows the event once.

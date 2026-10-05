@@ -29,14 +29,14 @@ export function modelChoices(providerRows, current = {}) {
 }
 
 /**
- * What switching one slot's model asks the box (CONTRACT-one-chat.md): chats.switch { chat, slot, provider, model, account? }.
+ * What switching one slot's model asks the box (CONTRACT-one-chat.md): threads.chat-switch { chat, slot, provider, model, account? }.
  * @param {string} chat @param {string} id @param {any} providerRows @param {{ provider?: string | null, account?: string | null }} [current] @param {string} [slot]
  * @returns {{ tool: string, input: Record<string, unknown> } | null}
  */
 export function switchCall(chat, id, providerRows, current = {}, slot) {
   const [provider, account, model] = String(id).split("|");
   if (!provider || !model) return null;
-  return { tool: "chats.switch", input: { chat, ...(slot ? { slot } : {}), provider, model, ...(account ? { account } : {}) } };
+  return { tool: "threads.chat-switch", input: { chat, ...(slot ? { slot } : {}), provider, model, ...(account ? { account } : {}) } };
 }
 
 /** The people and assistants to @mention: this chat's own first, then the space's actors and the person's agents, each once, never the viewer. @param {{ actors?: any, agents?: any, viewer?: string | null, here?: { name: string, family: string }[] }} o */

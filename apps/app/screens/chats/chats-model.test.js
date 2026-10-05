@@ -51,3 +51,12 @@ test("person ids become names, and an id with no name reads Someone, never the i
   assert.deepEqual(named[0].people, ["Dana Okafor", "Someone"]);
   assert.deepEqual(named[0].agents, ["kit"]);
 });
+
+test("a chat you are in carries project_name, providers and last_line from the engine; one you are not in carries none of them", () => {
+  const rows = chatsFrom({ chats: [
+    { chat: "c1", title: "Lease reply", project_name: "Northwind", project: { urn: "vyre://h/project/p1" }, people: "per_1", agents: "kit", providers: ["claude", "codex"], last_line: "Draft ready", status: "idle", last_active: 5, open: true },
+    { chat: "c2", title: "Payroll", project_name: "HR", people: "per_2", status: "idle", last_active: 3 },
+  ] });
+  assert.deepEqual([rows[0].project, rows[0].providers, rows[0].line], ["Northwind", ["claude", "codex"], "Draft ready"]);
+  assert.deepEqual([rows[1].project, rows[1].providers, rows[1].line, rows[1].open], ["HR", [], "", false]);
+});

@@ -178,7 +178,7 @@ export function ChatScreen(p: ChatScreenProps) {
         viewer={viewer}
         info={info}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
-        onAdd={realComposer ? async (who) => { try { await tool("chats.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
+        onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         muted={muted}
         pinned={pinned}
         onMute={setMuted}

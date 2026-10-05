@@ -31,7 +31,7 @@ export function chatsFrom(data) {
     out.push({
       id, title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
       providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
-      last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.summary), asks: Number(d.asks ?? 0) || 0, open: d.open === true,
+      last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, open: d.open === true,
     });
   }
   return out;

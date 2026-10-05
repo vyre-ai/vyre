@@ -18,9 +18,9 @@ test("the models offered are those of the signed-in accounts, with the answering
   assert.deepEqual(modelChoices(null), { models: [], model: undefined });
 });
 
-test("switching a model asks chats.switch with the slot, provider, model and account", () => {
+test("switching a model asks threads.chat-switch with the slot, provider, model and account", () => {
   const cur = { provider: "claude", account: "default" };
-  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur), { tool: "chats.switch", input: { chat: "t1", provider: "claude", account: "default", model: "opus" } });
+  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur), { tool: "threads.chat-switch", input: { chat: "t1", provider: "claude", account: "default", model: "opus" } });
   assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur, "model:codex/gpt-5#1").input, { chat: "t1", slot: "model:codex/gpt-5#1", provider: "claude", model: "opus", account: "default" });
   assert.equal(switchCall("t1", "bad", ROWS, cur), null);
 });
