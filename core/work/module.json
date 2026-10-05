@@ -31,6 +31,24 @@
         "effect": "write"
       },
       {
+        "name": "work.project.rename",
+        "summary": "rename a Project from Records: its record, Drive folder and project list follow",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.session.rename",
+        "summary": "rename a session from Records: its record and thread agree",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.session.move",
+        "summary": "move a session to another Project",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.situation",
         "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
         "reach": "anyone",
@@ -249,13 +267,28 @@
             {
               "name": "thread",
               "kind": "text",
-              "label": "Thread",
+              "label": "Session id",
               "unique": true
             },
             {
               "name": "transcript",
               "kind": "text",
               "label": "Transcript (kernel address)"
+            },
+            {
+              "name": "transcript_file",
+              "kind": "text",
+              "label": "Transcript file on its machine"
+            },
+            {
+              "name": "machine",
+              "kind": "text",
+              "label": "Machine the transcript file is on"
+            },
+            {
+              "name": "drive",
+              "kind": "text",
+              "label": "Drive folder"
             }
           ]
         }

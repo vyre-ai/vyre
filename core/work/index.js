@@ -86,10 +86,20 @@ export default {
 
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
     /** @type {any} */ let hub = null;
-    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, log: ctx.log }));
+    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
-      ctx.events.on("thread.started", (/** @type {any} */ e) => { void hubOf().onStarted(e && e.payload).catch(() => {}); });
-      ctx.events.on("thread.stopped", (/** @type {any} */ e) => { void hubOf().onStopped(e && e.payload).catch(() => {}); });
+      const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
+      hear("thread.started", p => hubOf().onStarted(p));
+      hear("thread.stopped", p => hubOf().onStopped(p));
+      // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
+      hear("project.changed", p => hubOf().onProjectChanged(p));
+      hear("thread.renamed", p => hubOf().onThreadRenamed(p));
+      const k0 = ctx.kernel;
+      if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
+        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "session-summary.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this build: the other directions still work */ }
+      }
+      // every Space has a General project, made with it
+      void hubOf().generalProject().catch(() => {});
     }
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
@@ -98,6 +108,31 @@ export default {
         const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug });
         return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope };
       },
+    });
+    ctx.tool("work.project.rename", {
+      description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
+      input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
+      run: async (input) => {
+        const rec = await hubOf().projectOf(input.project);
+        if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        const r = await hubOf().renameProject(rec, input.name, "record");
+        return { project: r.urn, slug: r.data.slug, name: r.data.name, drive_path: r.data.drive_path };
+      },
+    });
+    ctx.tool("work.session.rename", {
+      description: "Rename a session, from Records' side: the record's title and the thread's name agree, the session's id does not change.",
+      input: obj({ thread: { type: "string" }, title: { type: "string" } }, ["thread", "title"]),
+      run: async (input) => {
+        const rec = await hubOf().sessionRecord(input.thread);
+        if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
+        const r = await hubOf().renameSession(rec, input.title, "record");
+        return { thread: r.data.thread, title: r.data.title };
+      },
+    });
+    ctx.tool("work.session.move", {
+      description: "Move to project: file a session under another Project (a short name or a record address). Its record, Drive folder and the project's session list follow; its id, times and transcript pointer stay.",
+      input: obj({ thread: { type: "string" }, project: { type: "string" } }, ["thread", "project"]),
+      run: async (input) => { const r = await hubOf().moveSession(input.thread, input.project); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
     });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",

@@ -192,8 +192,11 @@ export const SESSION_SUMMARY = {
     f("datetime", "ended", "Ended"),
     choice("status", "Status", ["working", "done", "stopped", "failed"]),
     f("rich_text", "summary", "Summary"),
-    text("thread", "Thread", { unique: true }),
+    text("thread", "Session id", { unique: true }),
     text("transcript", "Transcript (kernel address)"),
+    text("transcript_file", "Transcript file on its machine"),
+    text("machine", "Machine the transcript file is on"),
+    text("drive", "Drive folder"),
   ],
 };
 

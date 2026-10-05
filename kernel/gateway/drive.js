@@ -88,6 +88,28 @@ export function createDriveGateway(cfg) {
       note(chain, "file.written", file(p), { path: p, version: r.version, conflict: Boolean(r.conflict), bytes: bytes.length }, d.decision);
       return r;
     },
+    /**
+     * Rename a folder: every file under `from` is written under `to` and the old path is tombstoned (the Drive keeps every version, so nothing is lost and the old versions stay in history).
+     * It needs `drive.write` on both folders and nothing more: it is the same person's own files under a new name, not a delete. One event says what moved, never the bytes.
+     * @returns {Promise<{ moved: number }>}
+     */
+    async moveFolder(chain, /** @type {string} */ from, /** @type {string} */ to) {
+      mustChain(chain);
+      const a = String(from).replace(/\/+$/, ""), b = String(to).replace(/\/+$/, "");
+      if (!a || !b || a === b || b.startsWith(a + "/") || a.startsWith(b + "/")) throw new KernelError("bad_input", "name two different folders, neither inside the other");
+      const d1 = await gate(chain, "drive.write", `${file(a)}/*`);
+      await gate(chain, "drive.write", `${file(b)}/*`);
+      const entries = await run(async () => cfg.drive.list(a));
+      let moved = 0;
+      for (const e of entries) {
+        const path = String(e.path ?? e.name ?? e);
+        const dest = `${b}/${path.slice(a.length + 1)}`;
+        await run(async () => { const bytes = await cfg.drive.get(path, {}); await cfg.drive.put(dest, bytes, { by: actor(chain) }); await cfg.drive.delete(path, { by: actor(chain) }); });
+        moved++;
+      }
+      note(chain, "file.moved", `${file(b)}`, { from: a, to: b, files: moved }, d1.decision);
+      return { moved };
+    },
     /** A restore is a new version, and its own admin act: an assistant's `drive.write` never reaches it. */
     async restore(chain, /** @type {string} */ p, /** @type {number} */ version, /** @type {{ presence?: any }} */ opt = {}) {
       mustChain(chain);

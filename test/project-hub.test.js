@@ -23,11 +23,11 @@ test("work.project.create makes a Project record with its short name, Drive fold
   const { d, admin, meta } = await boot(t);
   const r = await d.registry.call("work.project.create", { name: "Rivera Estate", repo: "https://github.com/harlow/rivera" }, "cli", await meta());
   assert.ok(r.data && r.data.slug === "rivera-estate", JSON.stringify(r));
-  assert.equal(r.data.drive_path, "Projects/rivera-estate");
+  assert.equal(r.data.drive_path, "Projects/Rivera Estate");
   assert.equal(r.data.memory_scope, "project:rivera-estate");
   const rec = await d.kernel.gateway.records.get(admin, "project", r.data.project.split("/").pop());
   assert.deepEqual([rec.data.name, rec.data.status, rec.data.repo], ["Rivera Estate", "active", "https://github.com/harlow/rivera"]);
-  const marker = await d.kernel.gateway.drive.get(admin, "Projects/rivera-estate/.project");
+  const marker = await d.kernel.gateway.drive.get(admin, "Projects/Rivera Estate/.project");
   assert.match(Buffer.from(marker.bytes || marker.data || marker).toString(), /\/project\//);
   // the same name again gets the next free short name, and a taken one is refused
   const again = await d.registry.call("work.project.create", { name: "Rivera Estate" }, "cli", await meta());
