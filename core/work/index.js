@@ -17,7 +17,6 @@ import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
-import { createEngineer } from "./engineer/index.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -30,7 +29,6 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
-    /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
