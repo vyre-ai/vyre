@@ -131,15 +131,11 @@ The reason follows on the same line:
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Vyre app can give, so it says to approve in the Vyre app.
+The long code the server shows is good for five minutes and for one use. Run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh one, then run `vyre link pair <code>` on the Mac.
 
-### "The Mac that is asking can approve itself only with a passkey."
+### "Those were not the words the app shows, so nothing was paired."
 
-You approved the pairing in the Vyre app on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or approve from the Vyre app on your phone and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
-
-### "That code does not match. Check the code on the Mac and try again."
-
-Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`. After too many wrong codes the box cancels every request ("Too many wrong codes, so every request was cancelled. Start again on the Mac."): run `vyre up` on the Mac again.
+The server's terminal asked you to pick the three words the pairing device shows, and you picked a different set. Nothing was paired. Choose again when it offers, and compare the words with the screen of the device you are pairing.
 
 ### A Mac's sessions show "offline" on the box
 

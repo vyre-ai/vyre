@@ -78,8 +78,36 @@ Near the end the terminal prints four words:
   They should match the four on your screen.
 ```
 
-and finishes with `Your server is ready.` and `Done. Back to your browser.` The four words are
-the ones on your screen in step 3. Yours will differ.
+The four words are the ones on your screen in step 3. Yours will differ.
+
+Then the terminal asks you to pair this server from your Vyre app:
+
+```output
+  Pair this server from your Vyre app: scan this with your phone,
+  or paste the long code into the app on a computer.
+  <the QR, drawn in the terminal>
+  Long code: <one long line, good for one use>
+  It is good for five minutes.
+```
+
+When the app asks, the terminal shows three words for each way in and asks you to pick the ones the
+app shows:
+
+```output
+  <Name> is asking to pair this server. Pick the three words your app shows:
+    1) <three words>
+    2) <three words>
+    3) <three words>
+  Which one? (1, 2 or 3, Enter to refuse)
+```
+
+A wrong pick prints `Those were not the words the app shows, so nothing was paired.` and offers to
+try again. When it works, the install finishes with `Your server is ready.`, a line about your keys
+(the sealing key is a file owned by the sealing process's own user, so root on this server, or a
+stolen disk, can read it), and `Connected to <name>. Finish setting up on your <device>.` Run with
+`--yes`, or with no terminal, it prints the QR and the long code and then `Finish setting up on
+your device once it has paired.` To show the code again later, run `vyre call wink.server.code
+'{"qr":true}'` on the server. A server has no first-run page: there is no browser link and no tunnel.
 
 > [!SNAG] "Another server already used this code. Your browser is not connected to this server."
 > The code works for one server. Go back to <https://vyre.run/setup> and start again for a new
@@ -241,26 +269,17 @@ vyre --version
 0.2.0
 ```
 
-Then pair the Mac with your server and open the Lumen. Give `vyre up` your address:
+Then pair the Mac with your server and open the Lumen. `vyre up --connect` only saves your server's
+address. Pairing is `vyre link pair` with the code the server shows (the install prints it, and
+`vyre call wink.server.code` on the server shows it again):
 
 ```sh
 vyre up --connect https://alex.vyre.run
+vyre link pair <code>
 ```
 
-It asks the server to pair this Mac and shows a code:
-
-```output
-  Approve this Mac on your phone at https://alex.vyre.run, or in the Vyre app on this Mac
-  The Vyre app there names this Mac (alex-mac) and asks for your passkey. Code: 482-913
-  vyre link shows when it is done.
-```
-
-(Plain `vyre up` asks for your server's pairing code instead. It shows three words; confirm they
-match the server's screen, and approve with your passkey.)
-
-Approve it in the Vyre app. On your phone, confirm with Face ID or your fingerprint. You can also
-approve in the Vyre app on the Mac itself, where the Mac can approve its own request only with a passkey made
-on that Mac, confirmed with Touch ID. Run `vyre up` again afterwards and it ends with the block
+The server's terminal asks you to pick the three words the pairing device shows, as in step 2.
+Run `vyre up` again afterwards and it ends with the block
 that says it is ready (`your assistant` names the assistant once you have made one, and says `none
 yet` before that):
 
@@ -271,10 +290,6 @@ yet` before that):
     your assistant  juno
     next            vyre      (your projects and threads)
 ```
-
-> [!SNAG] "The Mac that is asking can approve itself only with a passkey."
-> You approved on the Mac with no passkey, or with one made on another device. Approve again and
-> use Touch ID with a passkey made on this Mac, or approve from your phone.
 
 `vyre up` also builds and opens the Lumen. To build it yourself, or when it did not open:
 
@@ -332,7 +347,14 @@ that passphrase: keep the two apart. The steps are in [Box care](../using/box-ca
 
 ## Other ways to install
 
-Your server is set up (at vyre.run/setup, or from another Mac) and this is a new Mac. Install
+**From my Mac over SSH.** Use this when you would rather start on the Mac than at vyre.run/setup.
+`vyre box add alex@192.0.2.10` copies the installer to the server over SSH and runs it, and the
+pairing question appears in that same terminal. It does not open a browser, tunnel a port or make a
+passkey link. At the end it prints `Your server is installed and not paired yet.` with how to pair, or
+`Your server is paired to <space>.` if it already is. Then pair the Mac as in
+[step 10](#10-put-the-lumen-on-your-mac).
+
+**I already have a server.** Your server is set up (at vyre.run/setup, or from another Mac) and this is a new Mac. Install
 Vyre as in [step 10](#10-put-the-lumen-on-your-mac), then:
 
 ```sh
@@ -343,8 +365,7 @@ vyre up
 vyre up --connect https://alex.vyre.run
 ```
 
-It asks the server to pair this Mac and shows the code to approve in the Vyre app, as in step 10.
-Plain `vyre up` asks for your server's pairing code. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
+`vyre up --connect` only saves the address; pair with `vyre link pair <code>`, as in step 10. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.
 

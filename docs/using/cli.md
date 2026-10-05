@@ -47,7 +47,7 @@ See [Box care](box-care.md).
 ## Start Vyre and check on it
 
 ```sh
-vyre up        # start Vyre; print the onboarding link, or your box's address
+vyre up        # start Vyre; print your box's address
 vyre status    # is it running, which version, how many modules
 vyre modules   # every module and whether it started
 vyre down      # stop Vyre

@@ -43,16 +43,15 @@ A Linux box runs Vyre in Docker Compose, from `/srv/vyre`. The stack is `box/com
 - `vyre`: vyred and the sessions it runs. A small spawner starts vyred as uid 1000 (`vyre`) and the sessions Vyre runs itself as a second user, `vyre-agent` (uid 1001), which cannot open vyred's socket. vyred reaches your other devices over Wink, Vyre's own network core, which it runs itself: there is no sidecar container, no TUN device and no extra capability.
 - `docker-api`: a filtered Docker API for the agents' computers, under the `computers` profile.
 
-The only published port is the onboarding page, on the host's `127.0.0.1:7300`. The host needs Docker and nothing else. A small `vyre` wrapper in `/usr/local/bin` runs commands inside the container, so `vyre status` on the host works as it does on a Mac.
+The container publishes no port on the host. The host needs Docker and nothing else. A small `vyre` wrapper in `/usr/local/bin` runs commands inside the container, so `vyre status` on the host works as it does on a Mac.
 
 The alternative without Docker is a systemd unit, installed with `sudo vyre up --system --user <account>` (the account vyred runs as, never root). See [without Docker](../get-started/without-docker.md).
 
 ### Who can reach the box
 
-- **The only published port is 7300.** Docker binds it on the host's `127.0.0.1`, for the onboarding page.
+- **No port is published on the host.** A server has no first-run page: you pair it from your Vyre app.
 - **The built-in network and the relay carry every connection.** Your devices reach vyred through them, not through a port on the host. See [your private network](network.md).
 - **Callers are identified from the identity list**, never by a header. A device that reaches the box arrives as `device:<id>`, and the entry on your identity list says who it is.
-- **The onboarding listener binds only the `vyred` alias on the `vyre` network**, where Docker delivers the published port, never `0.0.0.0`. It also needs the one-time token in the link, and answers "Not here." to any `Host` other than its loopback address and port. That is why the tunnel uses port 7300 on both ends.
 - **vyred runs as uid 1000 (`vyre`), not root.** Only the spawner is root in the container, with every capability dropped except the few it needs to start a process as another user.
 
 The reasoning is in [ADR 0002](../adr/0002-network-and-identity.md).
