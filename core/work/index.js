@@ -291,13 +291,24 @@ export default {
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
         // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
         const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
+        // unread: the messages (people's words and whole replies) others made in a chat after this person's read marker (stream.mark-read), counted from the stream's own tables, read only. 0 when there is none.
+        const personId = String((chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id) || "");
+        const db = ctx.store && ctx.store.db;
+        const unreadOf = (/** @type {string} */ who, /** @type {string} */ chat) => {
+          if (!db || !who) return 0;
+          try {
+            const mark = /** @type {any} */ (db.prepare("SELECT upto FROM stream_groups_marks WHERE person = ? AND session = ?").get(`person:${who}`, chat));
+            const row = /** @type {any} */ (db.prepare("SELECT COUNT(DISTINCT json_extract(json, '$.data.message')) AS n FROM stream_frames WHERE session = ? AND cur > ? AND json_extract(json, '$.type') IN ('chat.user-message', 'chat.text-done') AND json_extract(json, '$.data.history') IS NULL AND COALESCE(json_extract(json, '$.author'), '') != ?").get(chat, mark ? Number(mark.upto) : 0, `person:${who}`));
+            return row ? Number(row.n) || 0 : 0;
+          } catch { return 0; }
+        };
         const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
           if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
-          return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
+          return { ...base, open: true, unread: unreadOf(personId, r.data.chat), providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
         }));
         if (input.mine) rows = rows.filter((/** @type {any} */ r) => r.open);
         rows.sort((/** @type {any} */ a, /** @type {any} */ b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));

@@ -166,6 +166,14 @@ export async function runMove({ from, to, plan, ports = {} }) {
       const old = String(cur.data.chat || "");
       if (state.chatMap[old]) continue; // carried by an earlier attempt
       const c = await carryChat({ to, src: cur.data, newRoot: target.data.drive_path });
+      if (c.skipped) {
+        // nobody who was in it is a member here: it stays in the source Space with its people; the target's copy of its record goes, and the move report names it
+        ;(state.leftChats ||= {})[old] = { title: String(cur.data.title || ""), urn: r.urn };
+        await to.records.remove(to.chain, np.type, np.id);
+        delete state.map[r.urn];
+        await persist();
+        continue;
+      }
       state.chatMap[old] = c.chat;
       await persist();
       await to.records.update(to.chain, np.type, np.id, { chat: c.chat, people: c.people.join(","), agents: c.agents.join(","), former: c.former.join(","), drive: target.data.drive_path, location: `${target.data.drive_path}/chat/${c.chat}/` }, cur.version);
@@ -205,8 +213,11 @@ export async function runMove({ from, to, plan, ports = {} }) {
   if (plan.counts.chat_files && !removing && !state.chat_carried) {
     step("chat-files");
     const inv = (await from.drive.inventory(from.chain, oldRoot, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat);
-    const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${newRoot}${mapChatPath(e.path.slice(oldRoot.length), state.chatMap || {})}`, sha256: e.sha256, size: e.size }));
-    if (entries.length !== plan.counts.chat_files) throw Object.assign(new Error("the chat folders changed since the move was approved; plan the move again"), { code: "stale_plan" });
+    const all = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${newRoot}${mapChatPath(e.path.slice(oldRoot.length), state.chatMap || {})}`, sha256: e.sha256, size: e.size }));
+    if (all.length !== plan.counts.chat_files) throw Object.assign(new Error("the chat folders changed since the move was approved; plan the move again"), { code: "stale_plan" });
+    // a chat that stays behind (nobody who was in it is a member of the target) keeps its folders where they are
+    const leftIds = Object.keys(state.leftChats || {});
+    const entries = all.filter((/** @type {any} */ e) => !leftIds.some(id => e.path.slice(oldRoot.length).startsWith(`/chat/${id}/`) || e.path.slice(oldRoot.length).startsWith(`/made/${id}/`)));
     const got = await from.carry(entries, { move_id: ports.move_id, to: to.space });
     const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
     for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw Object.assign(new Error(`a chat file did not arrive intact (${e.path}); nothing was removed from the old Space`), { code: "verify_failed" });
@@ -251,7 +262,8 @@ export async function runMove({ from, to, plan, ports = {} }) {
   // 6. the old Space keeps a marker and nothing else
   step("marker");
   /** @type {string[]} */ let left = [];
-  for (const r of wanted) { const p = urnParts(r.urn); try { const cur = await from.records.get(from.chain, p.type, p.id); if (cur) await from.records.remove(from.chain, p.type, p.id); } catch { /* removed already */ } }
+  const stays = new Set(Object.values(state.leftChats || {}).map((/** @type {any} */ l) => l.urn));
+  for (const r of wanted) { if (stays.has(r.urn)) continue; const p = urnParts(r.urn); try { const cur = await from.records.get(from.chain, p.type, p.id); if (cur) await from.records.remove(from.chain, p.type, p.id); } catch { /* removed already */ } }
   // 7. the source files go under the mover's chain: the one approval of the move covers it. Resumable: `state.cleaned` is set once they are gone; what cannot be removed is reported, never silently kept
   step("cleanup");
   if (!state.cleaned) {
@@ -290,7 +302,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
   }
   const cur = await from.records.get(from.chain, PROJECT, id);
   await from.records.update(from.chain, PROJECT, id, { status: "moved", moved_to: `${to.space}:${target.urn}`, repo: null, client: null, drive_path: null, memory_scope: null }, cur.version);
-  const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}), ...(state.know_receipt ? { know: state.know_receipt.count } : {}) }, left_behind: left, map: state.map };
+  const out = { target: target.urn, ...(Object.keys(state.leftChats || {}).length ? { chats_left_behind: Object.entries(state.leftChats).map(([chat, l]) => ({ chat, title: /** @type {any} */ (l).title })) } : {}), moved: { records: wanted.length - Object.keys(state.leftChats || {}).length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}), ...(state.know_receipt ? { know: state.know_receipt.count } : {}) }, left_behind: left, map: state.map };
   step("done");
   return out;
 }

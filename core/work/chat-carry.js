@@ -7,7 +7,7 @@
 /**
  * @param {{ to: { space: string, chain: any, chats: { create(chain: any, o: any): Promise<any>, change(chain: any, id: string, c: any): Promise<any> }, members?: { roleOf(a: any): string | null } },
  *   src: any, newRoot: string }} o src: the old chat-record's data
- * @returns {Promise<{ chat: string, people: string[], agents: string[], former: string[], moverOnly: boolean }>}
+ * @returns {Promise<{ chat: string, people: string[], agents: string[], former: string[], moverOnly: boolean, skipped?: boolean }>}
  */
 export async function carryChat({ to, src, newRoot }) {
   const ids = (/** @type {any} */ v) => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -16,18 +16,16 @@ export async function carryChat({ to, src, newRoot }) {
   const isMember = (/** @type {string} */ id) => !to.members || to.members.roleOf({ kind: "person", id, space: to.space }) != null;
   const keep = was.filter(isMember);
   /** @type {string[]} */ const former = was.filter(p => !isMember(p));
+  // The mover never gains a chat they were not in (per-chat privacy): if nobody who was in it is a member of the target, the chat does not carry. It stays in the source Space with its people.
+  if (!keep.length) return { skipped: true, chat: "", people: [], agents: [], former: [...was, ...ids(src.agents)], moverOnly: false };
   let chat = await to.chats.create(to.chain, { people: keep.filter(p => p !== mover), assistants: [] });
   /** @type {string[]} */ const agents = [];
   for (const a of ids(src.agents)) {
     try { chat = await to.chats.change(to.chain, chat.id, { add_assistants: [a] }); agents.push(a); } catch { former.push(a); }
   }
-  // the mover made the chat, so they are in it; they stay only if they were in it before, or if nobody else is left to be in it
-  let moverOnly = false;
-  if (mover && !was.includes(mover)) {
-    if (chat.people.filter((/** @type {string} */ p) => p !== mover).length > 0) chat = await to.chats.change(to.chain, chat.id, { remove_people: [mover] });
-    else moverOnly = true;
-  }
-  return { chat: String(chat.id), people: [...chat.people], agents, former, moverOnly };
+  // the mover made the chat, so they are in it; they stay only if they were in it before (then they are in `keep`). Everyone else was in it, so someone remains to hold it.
+  if (mover && !was.includes(mover)) chat = await to.chats.change(to.chain, chat.id, { remove_people: [mover] });
+  return { chat: String(chat.id), people: [...chat.people], agents, former, moverOnly: false };
 }
 
 /** Where a path of the old chat's folders goes: the same place under the target's root, with the chat's NEW id. @param {string} rel the path under the project's root ("/chat/<id>/x") @param {Record<string, string>} chatMap */

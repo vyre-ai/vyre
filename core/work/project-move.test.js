@@ -336,3 +336,34 @@ test("a chat moves with its project: made again in the target under a NEW id as 
   assert.ok(rec.data.location.endsWith("/chat/chat_new1/") && rec.data.drive === `Projects/${done.target.split("/").pop()}`);
   assert.match(carried[0].dest, /\/chat\/chat_new1\/dropped\.txt$/, "the files go under the new id");
 });
+
+test("a chat nobody in the target was part of stays in the source Space: the mover never gains a chat they were not in, its record and files stay, and the move names it", async () => {
+  const a = space("A", ["project", "chat-record"]), b = space("B", ["project", "chat-record"]);
+  const proj = await a.records.create(null, "project", { name: "Rivera", slug: "rivera", status: "active", memory_scope: "project:rivera" });
+  await a.records.update(null, "project", proj.id, { drive_path: `Projects/${proj.id}` });
+  await a.records.create(null, "chat-record", { title: "Private", chat: "chat_priv", project: { urn: proj.urn }, people: "per_x,per_y", agents: "", status: "idle" });
+  await a.records.create(null, "chat-record", { title: "Shared", chat: "chat_ok", project: { urn: proj.urn }, people: "per_a", agents: "", status: "idle" });
+  const privPath = `Projects/${proj.id}/chat/chat_priv/secret.txt`, okPath = `Projects/${proj.id}/chat/chat_ok/ok.txt`;
+  a.files.set(privPath, enc("secret")); a.files.set(okPath, enc("fine"));
+  /** @type {any[]} */ const carried = []; /** @type {string[]} */ const removed = [];
+  /** @type {any} */ (a.drive).survey = async () => ({ files: 2, bytes: 10 });
+  /** @type {any} */ (a.drive).inventory = async () => [{ path: privPath, size: 6, sha256: "h1", chat: true }, { path: okPath, size: 4, sha256: "h2", chat: true }];
+  /** @type {any} */ (a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ paths) => { removed.push(...paths); for (const p of paths) a.files.delete(p); return { removed: paths.length }; };
+  /** @type {any} */ (a).carry = async (/** @type {any[]} */ entries) => { carried.push(...entries); return entries.map(e => ({ path: e.path, dest: e.dest, sha256: e.sha256 })); };
+  /** @type {any[]} */ const made = [];
+  /** @type {any} */ (b).members = { roleOf: (/** @type {any} */ x) => (["per_a", "per_mover"].includes(x.id) ? "member" : null) };
+  /** @type {any} */ (b).chain = { who: "B", hops: [{ actor: { kind: "person", id: "per_mover" } }] };
+  /** @type {any} */ (b).chats = {
+    create: async (/** @type {any} */ _c, /** @type {any} */ o) => { const c = { id: `chat_new${made.length + 1}`, people: ["per_mover", ...o.people], assistants: [] }; made.push(c); return c; },
+    change: async (/** @type {any} */ _c, /** @type {string} */ id, /** @type {any} */ ch) => { const c = made.find(x => x.id === id); for (const x of ch.remove_people || []) c.people = c.people.filter((/** @type {string} */ p) => p !== x); return { ...c }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const done = await runMove({ from: a, to: b, plan, ports: { move_id: "mvp" } });
+  assert.equal(made.length, 1, "only the chat someone in the target was part of is made again");
+  assert.deepEqual([...b.rows.values()].filter(r => r.type === "chat-record").map(r => r.data.title), ["Shared"]);
+  assert.deepEqual(made[0].people, ["per_a"], "and the mover is not in it");
+  assert.ok([...a.rows.values()].some(r => r.type === "chat-record" && r.data.title === "Private"), "the private chat's record stays in the source");
+  assert.ok(a.files.has(privPath) && !removed.includes(privPath), "and its files");
+  assert.deepEqual(carried.map(e => e.path), [okPath]);
+  assert.deepEqual(done.chats_left_behind, [{ chat: "chat_priv", title: "Private" }]);
+});

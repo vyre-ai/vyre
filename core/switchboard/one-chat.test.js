@@ -403,6 +403,12 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   assert.ok((await owner("stream.send", { chat, text: "and now?", tz: "Mars/Olympus" })).data);
   assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and now?").pop().data.tz, undefined);
   assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur", "the last good zone stays");
+  // unread: the replies made after the person's read marker, on the list row; reading to the head clears it
+  const unread = async () => ((await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat) || {}).unread;
+  await until(async () => (await unread()) >= 1, "the unread count to show a reply");
+  const head = logs.get(chat).head;
+  assert.ok((await owner("stream.mark-read", { chat, upto: head })).data);
+  await until(async () => (await unread()) === 0, "the unread count to clear once read to the head");
 });
 
 test("a person outside a chat sees nothing of its runs through ANY threads tool: every tool that names a thread, an ask, a watch or a session says not_found, and the lists leave the run out", { timeout: 180_000 }, async t => {
