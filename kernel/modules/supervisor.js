@@ -15,6 +15,8 @@ import { KernelError } from "../core/errors.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CALL_MS = 30_000;
+/** @type {Map<string, any>} the passes of selfTest in this process */
+const PROVEN = new Map();
 const EXPECT = ["network", "write_module", "read_outside", "child_process", "worker", "read_passwd", "read_environ", "proc_listing", "root_listing", "signal_other", "dns", "dlopen", "env_extra"];
 
 /**
@@ -36,7 +38,15 @@ export function createSupervisor(cfg = {}) {
     proof: () => proof,
 
     /** Run the probe under the real sandbox command and require every attempt to fail. Never throws: a sandbox that cannot start is simply not available. */
-    selfTest() { const p = this.runSelfTest(); testing = p; p.finally(() => { if (testing === p) testing = null; }).catch(() => {}); return p; },
+    /** The sandbox is proved once per process and mechanism: a second home in the same process (a test's, or a restart of the daemon in place) reuses a PASS rather than spend two seconds proving it again. A failure is never reused. */
+    selfTest() {
+      const key = `${cfg.platform}|${cfg.execPath || process.execPath}|${cfg.spawn ? "custom" : "node"}`;
+      const done = cfg.spawn ? null : PROVEN.get(key);
+      if (done) { proof = done; return Promise.resolve(proof); }
+      const p = this.runSelfTest().then(r => { if (r && r.ok && !cfg.spawn) PROVEN.set(key, r); return r; });
+      testing = p; p.finally(() => { if (testing === p) testing = null; }).catch(() => {});
+      return p;
+    },
     async runSelfTest() {
       const mech = mechanism(cfg.platform);
       if (!mech) { proof = { ok: false, mechanism: null, why: "no OS sandbox on this platform" }; return proof; }
