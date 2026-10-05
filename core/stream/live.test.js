@@ -39,6 +39,9 @@ async function serve(t, w) {
   return { port, kill: () => { for (const k of sockets) k.destroy(); }, count: () => sockets.size };
 }
 
+/** The chat a run is in (with the kernel on every run is in one, and the chat id is the way in to its stream); a daemon with no kernel has none, and the thread id stands. */
+const chatOf = async (/** @type {any} */ w, /** @type {string} */ id) => { const t = (await w.tool("threads.get", { thread: id, limit: 1 })).data; return (t && t.thread && t.thread.chat) || id; };
+
 /** A resumable client over the box: a fresh ticket per attempt, from its own cursor. */
 function client(t, w, port, session) {
   /** @type {any[]} */ const frames = [];
@@ -101,7 +104,7 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   const edit = await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Edit"), "the Edit ask");
 
   // The cut-off client attaches to the running session from the start of its log.
-  const cut = client(t, w, port, id);
+  const cut = client(t, w, port, await chatOf(w, id));
   await until(() => cut.frames.some(f => f.type === "chat.ask"), "the ask frame", 8000);
   assert.deepEqual(cut.frames.map(f => f.cur), cut.frames.map((_, i) => i + 1), "gapless from 1 while live");
 
@@ -119,11 +122,11 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   const bash = await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash"), "the Bash ask");
   await w.tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   await w.finished(id);
-  await until(async () => (await w.tool("stream.open", { chat: id }, "deck")).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
+  await until(async () => (await w.tool("stream.open", { chat: await chatOf(w, id) }, "deck")).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
 
   // A client that was never cut off reads the same log from the start.
-  const whole = client(t, w, port, id);
-  const head = (await w.tool("stream.open", { chat: id }, "deck")).data.head;
+  const whole = client(t, w, port, await chatOf(w, id));
+  const head = (await w.tool("stream.open", { chat: await chatOf(w, id) }, "deck")).data.head;
   await until(() => whole.c.last === head, "the uninterrupted client", 8000);
   assert.equal(cut.c.last, head);
   // A replay may merge a run of deltas into one frame (span), so the frames can differ in count; the
@@ -152,7 +155,7 @@ test("live: a queued message taken back is a cancelled frame, and a stop says st
   const { port } = await serve(t, w);
   const id = (await w.tool("threads.start", { cwd: w.work, prompt: "demo", surface: "deck" })).data.id;
   await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Edit"), "the Edit ask");
-  const live = client(t, w, port, id);
+  const live = client(t, w, port, await chatOf(w, id));
   const queued = (await w.tool("threads.send", { thread: id, text: "check the hours", surface: "deck", mode: "queue" }, "deck")).data;
   assert.equal(queued.queued, true);
   await until(() => live.frames.some(f => f.type === "chat.user-message" && f.data.state === "queued"), "queued frame", 8000);
@@ -175,10 +178,10 @@ test("live: a session that began before the stream (an empty log) is seeded from
   const db = new DatabaseSync(config.paths(w.root).db);
   try { db.exec("DELETE FROM stream_frames"); } finally { db.close(); }
   await w.restart();
-  const o = (await w.tool("stream.open", { chat: id, from: 0 }, "deck")).data;
+  const o = (await w.tool("stream.open", { chat: await chatOf(w, id), from: 0 }, "deck")).data;
   assert.ok(o.head > 0, "the log was seeded");
   const { port } = await serve(t, w);
-  const seen = client(t, w, port, id);
+  const seen = client(t, w, port, await chatOf(w, id));
   await until(() => seen.c.last === o.head, "the seeded frames", 8000);
   const f = fold(seen.frames);
   assert.deepEqual(f.messages.map(([, v]) => v.text), ["hello there"]);
@@ -191,7 +194,7 @@ test("live: term.open for a session opens in the session's folder and a typed li
   const { port } = await serve(t, w);
   const id = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data.id;
   await w.finished(id);
-  const live = client(t, w, port, id);
+  const live = client(t, w, port, await chatOf(w, id));
   const r = await w.tool("term.open", { session: id, surface: "deck:abc123" }, "deck");
   assert.ok(!r.error, r.error && r.error.message);
   assert.equal(fs.realpathSync(r.data.cwd), fs.realpathSync(w.work));
