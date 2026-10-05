@@ -14,6 +14,7 @@ import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote
 import { youngAt } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
+import { deviceIdOf } from "../../lib/caller.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -157,8 +158,8 @@ export function createPeerDoor(o) {
      * @param {string} caller @param {string} tool @param {any} input
      */
     serve: async (caller, tool, input) => {
-      const id = String(caller || "").slice(7);
-      if (!String(caller).startsWith("device:")) throw err("denied", "this device is not paired here any more");
+      const id = deviceIdOf(String(caller || "")) || "";
+      if (!id) throw err("denied", "this device is not paired here any more");
       if (!(DEVICE.test(id) && (await rowOf(id)))) {
         // not an app device: a live paired server of this home may read the network's status (its direct-door key was checked at the node door), and nothing else
         if (!(/^[A-Za-z0-9_-]{1,64}$/.test(id) && typeof o.isServer === "function" && o.isServer(id))) throw err("denied", "this device is not paired here any more");
