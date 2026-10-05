@@ -217,7 +217,7 @@ export class Runtime {
       facts: {
         reads: spec.source ? ["github (your connected account, read only)"] : spec.net ? Object.keys(spec.net) : [],
         readsText: spec.source ? "Reads the new comments other people leave on this session's pull requests, from GitHub through your connected account (read only)" : spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
-        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential).map(([h, v]) => ({ host: h, item: v.vault || v.credential, how: v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
+        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential || v.google).map(([h, v]) => ({ host: h, item: v.vault || v.credential || `google:${v.google}`, how: v.google ? "your connected Google account, read only" : v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
         acts: wakes ? `Posts what it finds into session ${wakes} as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day; never as an instruction`
           : duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
         cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
@@ -284,7 +284,7 @@ export class Runtime {
     if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
     this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
       ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, f.spec ? f.spec.schedule : "event", f.hash, this.now());
-    return { ...this.card(p.name), grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` };
+    return { ...this.card(p.name), grant: `vyre vault grant ${o.google ? (typeof this.d.googleItem === "function" ? await this.d.googleItem(o.google).catch(() => null) : null) || "<the Google account's vault item>" : o.credential} watchers --watcher ${p.name}`, ...(o.google ? { note: `reads your connected Google account ${o.google}, read only, once the person grants its vault item to this watcher` } : {}) };
   }
 
   /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
@@ -564,6 +564,21 @@ export class Runtime {
     if (spec.source) return this.execSource(spec, since);
     const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
+        if (rule && rule.google) {
+          // A connected Google account: the google module reads for it (Gmail and Calendar reads only), the token never leaves it.
+          const method = String((init && init.method) || "GET").toUpperCase();
+          if (method !== "GET") throw new Error(`${method} is not allowed from a watcher; only GET`);
+          if (typeof this.d.google !== "function") throw new Error("the google module is not running on this machine");
+          // no grant, no read: a person grants the account's vault item to this watcher, for a dry run as for a run
+          if (typeof this.d.googleGranted !== "function" || !(await this.d.googleGranted(rule.google, spec.name))) {
+            const item = typeof this.d.googleItem === "function" ? await this.d.googleItem(rule.google).catch(() => null) : null;
+            throw new Error(`the Google account ${rule.google} is not granted to this watcher; a person runs: vyre vault grant ${item || "<the account's vault item>"} watchers --watcher ${spec.name}`);
+          }
+          const query = {};
+          for (const [k, v] of url.searchParams) query[k] = k in query ? [].concat(query[k], v) : v;
+          const r = await this.d.google({ account: rule.google, method, path: url.pathname, ...(url.search ? { query } : {}) });
+          return { status: Number(r.status), url: url.href, headers: {}, body: JSON.stringify(r.body ?? {}), truncated: false };
+        }
         if (!rule || !rule.credential) return undefined;
         const method = String((init && init.method) || "GET").toUpperCase();
         if (method !== "GET" && method !== "HEAD") throw new Error(`${method} is not allowed from a watcher; only GET and HEAD`);
