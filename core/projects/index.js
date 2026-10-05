@@ -282,6 +282,10 @@ export default {
     // every project (`vyre://<space>/project/*`), so a project made later is reached too.
     const K = ctx.kernel;
     const normAgent = (/** @type {any} */ agent) => String(agent || "").toLowerCase();
+    // The kernel's grants name an agent by its stable id, never its name (a name given to a new agent after a delete inherits nothing): the agents module answers one for the other.
+    const uidOf = async (/** @type {string} */ name) => { const r = await ctx.call("agents.uid", { name }); return r && r.data ? String(r.data.uid) : null; };
+    /** @type {() => Promise<Map<string, string>>} uid to name for every agent now */
+    const namesByUid = async () => new Map((await agentsList()).map((/** @type {any} */ a) => [String(a.uid), String(a.name)]));
     const WILD = () => `vyre://${K.space}/project/*`;
     /** The Project record's address for a short name, made if the Space has none yet. */
     const urnOfSlug = async (/** @type {string} */ slug) => {
@@ -324,7 +328,7 @@ export default {
         needKernel();
         const slug = P.resolve(project).slug, urn = await urnOfSlug(slug);
         const names = normAgent(agent) ? [normAgent(agent)] : (await agentsList()).map((/** @type {any} */ a) => normAgent(a.name));
-        for (const n of names) await grantReach(K, meta, { urn, agent: n });
+        for (const n of names) { const uid = await uidOf(n); if (!uid) throw refuse(`no agent ${n}`, "not_found"); await grantReach(K, meta, { urn, agent: uid }); }
         return { project: slug, agent: normAgent(agent), status: "granted", agents: names };
       },
     });
@@ -336,9 +340,9 @@ export default {
         needKernel();
         const slug = P.resolve(project).slug, urn = await urnOfSlug(slug);
         const { chain } = await asPerson(K, meta);
-        const names = normAgent(agent) ? [normAgent(agent)] : [...new Set((await reachGrants(K, chain, {})).map((/** @type {any} */ g) => String(g.subject.actor.id).toLowerCase()))];
+        const uids = normAgent(agent) ? [await uidOf(normAgent(agent))].filter(Boolean) : [...new Set((await reachGrants(K, chain, {})).map((/** @type {any} */ g) => String(g.subject.actor.id)))];
         let revoked = 0;
-        for (const n of names) {
+        for (const n of /** @type {string[]} */ (uids)) {
           // an agent with the every-project grant keeps all the others one by one: an allow-only grant cannot say "everything but this"
           if ((await reachGrants(K, chain, { urn: WILD(), agent: n })).length) {
             await revokeReach(K, meta, { urn: WILD(), agent: n });
@@ -361,7 +365,8 @@ export default {
         if (!K || typeof K.agentMay !== "function") return { project, agent: a, granted: false };
         let urn;
         try { urn = await urnOfSlug(project); } catch { return { project, agent: a, granted: false }; }
-        return { project, agent: a, granted: await mayReach(K, a, urn) };
+        const uid = await uidOf(a);
+        return { project, agent: a, granted: uid ? await mayReach(K, uid, urn) : false };
       },
     });
     ctx.tool("projects.access.list", {
@@ -373,7 +378,8 @@ export default {
         const { chain } = await asPerson(K, meta);
         const urn = project ? await urnOfSlug(P.resolve(project).slug) : undefined;
         const grants = await reachGrants(K, chain, urn ? { urn } : {});
-        return { grants: grants.map((/** @type {any} */ g) => ({ project: g.resource.prefix === WILD() ? "*" : g.resource.prefix, agent: g.subject.actor.id, status: g.status, by: g.issuer && g.issuer.id, at: g.created_at })) };
+        const names = await namesByUid();
+        return { grants: grants.map((/** @type {any} */ g) => ({ project: g.resource.prefix === WILD() ? "*" : g.resource.prefix, agent: names.get(String(g.subject.actor.id)) || g.subject.actor.id, status: g.status, by: g.issuer && g.issuer.id, at: g.created_at })) };
       },
     });
 

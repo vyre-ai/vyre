@@ -109,16 +109,11 @@ export default {
         const computer = ask ? String(ask.computer) : computerName();
         const agent = `claude-code-${slug(computer)}`;
         const k = ctx.kernel && ctx.kernel.grants ? ctx.kernel : null;
-        // The Space's own act first, so a refusal (no presence, not the owner) leaves nothing half made.
-        if (k) {
-          const chain = await k.chain(meta);
-          const given = k.proofFrom(meta);
-          await k.grants.addActor(chain, { kind: "agent", id: agent, space: k.space }, given || {});
-        }
+        // The agent holds grants only by its stable id (agents.uid), which exists once the agents module has made it; a refusal below leaves an agent with no grant, never one with a grant it should not have.
         const made = await ctx.call("agents.create", { name: agent, projects: "*", personal: true });
         if (made && made.error) throw refuse(String(made.error.message || "the agent could not be made"), String(made.error.code || "failed"));
         // "every project" is ONE kernel grant, made here in the person's own call with their proof (the agents module made the agent from a module call, which carries no person)
-        if (k) await grantReach(k, meta, { urn: `vyre://${k.space}/project/*`, agent });
+        if (k) { const u = await ctx.call("agents.uid", { name: agent }); if (!u || !u.data) throw refuse("the agent has no id", "failed"); await grantReach(k, meta, { urn: `vyre://${k.space}/project/*`, agent: String(u.data.uid) }); }
         const agentId = made && made.data && made.data.id ? String(made.data.id) : null;
         const key = crypto.randomBytes(32).toString("base64url");
         const file = keyPath();
