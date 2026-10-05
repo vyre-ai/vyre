@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(relay-client): `joinFromPhone` (relay/client/browserjoin.js), the counterpart of pairServer for a browser with no box: paste or scan the phone's long code (`wink.phone.open`, "Add a device"), both sides show three words, the person at the phone picks them, and the browser's entry goes on the identity list with its key, its key-agreement point (`agree`, required: 65-byte uncompressed P-256) and `held: "web"`. Only the long code is taken; the short typed code, an avatar and a server's code are `bad_code`; a missing or misshapen agree point is `bad_key`. `addThisDevice` now passes `held`, `enclave` and `attest` through in the entry. Tested over a real relay and daemon.
+
 - feat(files): the receiver opens a drop's wrapped key through `spaces.identity.unwrap-drop { wrap, aad }` (platform-3: purpose-bound, only the file key comes back, the aad starts with `vyre-drop-wrap\n`), replacing the raw `spaces.identity.ecdh`. The wrap's aad is `vyre-drop-wrap\n<drop id>\n<receiving entry id>`. Merges work/entry-fields3 751cdc71c.
 
 - fix(wink): pairing passes a device's agree point on only when it is a real P-256 point: 65 bytes, uncompressed, and on the curve (noble's decoder throws off-curve), so a made-up point never reaches the identity list (reviewer-4's LOW). Test: an off-curve point, a short one and none are dropped.
