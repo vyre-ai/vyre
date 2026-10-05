@@ -14,6 +14,9 @@ import { canonical, sha256 } from "./canonical.js";
 import { segments } from "./urn.js";
 import { isSealedShape } from "../store/values.js";
 
+/** The person's own assistant is identity-level: never listed in a chat, acting as the person (via: "assistant"), so a chat checks its person, as authorize.js already treats it as a pass-through hop. */
+const DEFAULT_ASSISTANT = "assistant";
+
 const MAX_BODY = 64 * 1024;
 const RATE = Object.freeze({ max: 120, window_ms: 60_000, sessions: 5000 });
 

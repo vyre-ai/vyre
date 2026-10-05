@@ -227,7 +227,7 @@ export default {
         if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
-        const slots = runs.map((/** @type {any} */ r) => ({ slot: r.agent ? `agent:${r.agent}` : `model:${r.provider || "claude"}/${r.model || ""}#${r.thread.slice(0, 6)}`, thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
+        const slots = runs.map((/** @type {any} */ r) => ({ slot: r.slot || (r.agent ? `agent:${r.agent}` : null), thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
         return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
       },
     });

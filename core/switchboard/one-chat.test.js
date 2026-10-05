@@ -37,6 +37,11 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   const own = (await get(plain.data.id)).chat;
   assert.match(own, /^chat_/);
   assert.deepEqual([...grants.chats.read(ownerChain, own).people], [owner], "the chat is the owner's and nobody else's");
+  // a run with no agent is a model slot in its chat: its kernel session carries the slot id as its agent hop, never the assistant's
+  const slot = d.registry.deps.db.prepare("SELECT slot FROM threads_runs WHERE id = ?").get(plain.data.id).slot;
+  assert.match(slot, /^model:claude\/[^#]+#[0-9]{1,6}$/);
+  assert.equal(JSON.parse(d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(plain.data.id).body).agent, slot);
+  assert.deepEqual((await d.registry.call("threads.of-chat", { chat: own }, "module:work")).data.runs.map(r => r.slot), [slot]);
   const started = (await d.registry.call("threads.get", { thread: plain.data.id, limit: 50 }, "cli")).data.events.find(e => e.type === "thread.started");
   assert.equal(started.payload.chat, own, "thread.started says the chat");
 

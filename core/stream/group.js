@@ -650,7 +650,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     for (const run of runs) {
       const thread = String(run.thread);
       if ([...g.bots.values()].some(x => x.thread === thread) || byThread.has(thread)) continue;
-      const who = run.agent ? `assistant:${run.agent}` : `model:${run.provider || "claude"}/${run.model || "default"}#${thread.slice(0, 6)}`;
+      const who = run.agent ? `assistant:${run.agent}` : String(run.slot || `model:${run.provider || "claude"}/${run.model || "default"}#${parseInt(thread.slice(0, 5), 16) % 1000000}`);
       let m = g.bots.get(who);
       if (m && m.thread) continue; // that slot already answers on another thread of its own
       if (!m) { join(grp, who, { name: run.name ? String(run.name) : undefined }); m = g.bots.get(who); }
@@ -678,7 +678,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const run = (/** @type {() => Promise<any>} */ f) => (ctx.events && typeof ctx.events.withOrigin === "function" && !ctx.events.origin() ? ctx.events.withOrigin(surface, f) : f());
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
-      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn }));
+      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...(m.who.startsWith("model:") ? { slot: m.who } : {}), ...turn }));
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);
@@ -800,7 +800,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       // One Chat: a chat of one person with nobody in it who answers yet (a new chat) gets the default model slot, and this send starts its run in the chat. A chat of several people never does: an assistant
       // does not jump into a conversation between people.
       if (kernelOn() && g.bots.size === 0 && g.people.size === 1 && !(Array.isArray(i.to) && i.to.length)) {
-        const who = `model:claude/default#${crypto.randomBytes(3).toString("hex")}`;
+        const who = `model:claude/default#${100000 + (crypto.randomBytes(3).readUIntBE(0, 3) % 899999)}`;
         join(grp, who, { role: "default", cwd: chatFolder(grp) });
         const slot = g.bots.get(who);
         if (slot) { slot.kind = "run"; save(slot); g.dflt = who; }

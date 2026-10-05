@@ -145,6 +145,8 @@ export const MIGRATIONS = [
   // One Chat (team/0.3/DESIGN-one-chat.md): every thread is a run inside a chat. The kernel chat it belongs to; a thread with none (an older one, or a daemon without the kernel) gets one on its next start.
   `ALTER TABLE threads_runs ADD COLUMN chat TEXT;
    CREATE TABLE threads_terminal_chats (session TEXT PRIMARY KEY, chat TEXT NOT NULL);`,
+  // A run with no agent is a model slot in its chat: `model:<provider>/<model>#<n>`, minted here once and never changed (a model switch keeps it), the agent hop its kernel session carries.
+  `ALTER TABLE threads_runs ADD COLUMN slot TEXT;`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
@@ -582,13 +584,30 @@ export class Switchboard {
     } catch (e) { this.deps.log(`threads: no chat for terminal session ${String(session).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
+  /**
+   * The slot of a run with no agent: `model:<provider>/<model>#<id prefix>`, made once (the stream may name it when it starts the run, so its own member id and the run's agree) and kept. A run with an
+   * agent has no slot of its own: its agent is the one in the chat. @param {string} id @param {string | null} [named]
+   * @returns {string | null}
+   */
+  ensureSlot(id, named = null) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT slot, agent, provider, model, chat FROM threads_runs WHERE id = ?").get(String(id)));
+    if (!r || r.agent) return null;
+    if (r.slot) return String(r.slot);
+    // `#n` is the kernel's own shape (1 to 6 digits): the run's place among its chat's runs, so two slots of one model in a chat differ.
+    const nth = r.chat ? Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_runs WHERE chat = ?").get(r.chat)).n) || 1 : 1;
+    const model = String(r.model || "default").replace(/[^A-Za-z0-9._:-]/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "default";
+    const slot = named && /^model:[a-z0-9][a-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*#[0-9]{1,6}$/.test(named) ? named : `model:${String(r.provider || "claude").toLowerCase().replace(/[^a-z0-9._-]/g, "-")}/${model}#${nth}`;
+    this.db.prepare("UPDATE threads_runs SET slot = ? WHERE id = ?").run(slot, String(id));
+    return slot;
+  }
+
   /** The runs of one chat (a run is one assistant or model in it): the facts a chat's participants see as its slots. @param {string} chat */
   ofChat(chat) {
     const live = this.sessions.live(this.ours());
     return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
       const t = /** @type {any} */ (this.record(String(r.id)));
       const said = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.text' ORDER BY id DESC LIMIT 8").all(t.id)).map(e => { try { return JSON.parse(String(e.payload)); } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
-      return { thread: t.id, name: t.name, agent: t.agent, provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
+      return { thread: t.id, name: t.name, agent: t.agent, slot: t.agent ? `agent:${t.agent}` : (t.slot || null), provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
     });
   }
 
@@ -606,7 +625,7 @@ export class Switchboard {
     const holder = this.leases.holder(id);
     // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, status: r.status,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
@@ -829,6 +848,7 @@ export class Switchboard {
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
       if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
+      this.ensureSlot(id);
     } else {
       // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
       // folder and project, a new id, and never the other session's process or transcript.
@@ -863,6 +883,7 @@ export class Switchboard {
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
       at("chat");
       await this.ensureChat(id, o.kernelTurn || null);
+      this.ensureSlot(id, o.slotName || null);
       // A project's default mode (sessions.mode.set), for a new session a person starts there.
       if (w.project && !o.agent && !o.lean) {
         const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
@@ -3522,6 +3543,7 @@ export default {
         account: { type: "string", description: "A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        slot: { type: "string", description: "First-party stream only: the slot id (model:<provider>/<model>#<n>) of the chat member that starts this run. Anyone else's is ignored." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
@@ -3534,7 +3556,7 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, ...restAll } = i;
+        const { mentions, pasted, starter: _claimed, slot: _slot, ...restAll } = i;
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
@@ -3556,7 +3578,9 @@ export default {
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
-        return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
+        // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
+        const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
+        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -4013,7 +4037,7 @@ export default {
     // The runs of a chat are reached by their slot: `agent:<id>` or `model:<provider>/<model>#<thread prefix>`, as work.chat.get names them. The person must be in the chat (the gate above, on the run).
     const slotRun = async (/** @type {string} */ chat, /** @type {string} */ slot, /** @type {any} */ meta) => {
       const runs = sb.ofChat(String(chat));
-      const hit = runs.filter(r => (r.agent ? `agent:${r.agent}` === slot : slot.startsWith("model:") && slot.endsWith(`#${r.thread.slice(0, 6)}`))).pop();
+      const hit = runs.filter(r => r.slot === slot).pop();
       const v = /** @type {any} */ (calls.getStore());
       await chatGate({ thread: hit ? hit.thread : "" }, meta, v && v.kchain);
       if (!hit) throw Object.assign(new Error("no such chat"), { code: "not_found" });
@@ -4034,7 +4058,7 @@ export default {
       async (i, meta) => {
         guard(meta.caller, "stop a chat's turn");
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
-        const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.agent ? `agent:${r.agent}` : `model:${r.provider}/${r.model || ""}#${r.thread.slice(0, 6)}`, meta)));
+        const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
         for (const r of runs) if (r.live) await sb.interrupt(r.thread);
         return { stopped: runs.filter(r => r.live).map(r => r.thread) };
       });
