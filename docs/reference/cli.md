@@ -667,7 +667,7 @@ vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <wo
 Free a server that still belongs to an app you no longer have.
 
 ```
-vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]
+vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] | vyre wink ack [<code>] [--json]
 ```
 
 vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.
