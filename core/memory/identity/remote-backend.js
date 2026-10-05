@@ -8,7 +8,7 @@
 // where ifMatch is the sha256 the writer last saw, or null for "must not exist". The same four sync calls as FileBackend (put, get, list, delete) plus putIf, so a store cannot tell the two apart.
 import crypto from "node:crypto";
 
-const sha = (/** @type {Buffer} */ b) => crypto.createHash("sha256").update(b).digest("hex");
+const nodeSha = (/** @type {Buffer} */ b) => crypto.createHash("sha256").update(b).digest("hex");
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
@@ -17,8 +17,9 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 
 export class RemoteBackend {
-  /** @param {Transport} transport @param {{ prefixes: string[], name?: string }} o the folders of the server's storage this backend mirrors (the person's own) */
+  /** @param {Transport} transport @param {{ prefixes: string[], name?: string, sha256Hex?: (b: Buffer) => string }} o the folders of the server's storage this backend mirrors (the person's own) */
   constructor(transport, o) {
+    this.sha = o.sha256Hex || nodeSha;
     this.t = transport; this.prefixes = o.prefixes; this.name = o.name || "the team server";
     /** @type {Map<string, Buffer>} */ this.cache = new Map();
     /** the sha the server held when this device last read (or wrote) each object @type {Map<string, string>} */ this.seen = new Map();
@@ -39,7 +40,7 @@ export class RemoteBackend {
   /** A write that lands only if the object is what this device last saw. @param {string} name @param {Buffer|string} bytes @param {string|null} expected @returns {boolean} */
   putIf(name, bytes, expected) {
     const cur = this.cache.get(name);
-    if ((cur ? sha(cur) : null) !== expected) return false;
+    if ((cur ? this.sha(cur) : null) !== expected) return false;
     this.put(name, bytes);
     return true;
   }
@@ -56,7 +57,7 @@ export class RemoteBackend {
       if (queued.has(name)) continue;
       if (this.seen.get(name) === e.sha && this.cache.has(name)) continue;
       const b = await this.t.get(name);
-      if (b) { this.cache.set(name, b); this.seen.set(name, sha(b)); }
+      if (b) { this.cache.set(name, b); this.seen.set(name, this.sha(b)); }
     }
     for (const name of [...this.cache.keys()]) if (!remote.has(name) && !queued.has(name) && this.prefixes.some(p => name.startsWith(p))) { this.cache.delete(name); this.seen.delete(name); }
   }
@@ -67,7 +68,7 @@ export class RemoteBackend {
       const w = q[i];
       const r = w.op === "put" ? await this.t.put(w.name, /** @type {Buffer} */ (w.bytes), { ifMatch: w.ifMatch }) : await this.t.delete(w.name, { ifMatch: w.ifMatch });
       if (!r.ok) { for (const x of q.slice(i)) { this.cache.delete(x.name); this.seen.delete(x.name); } throw err("conflict", `another device changed ${w.name}: it is read again`); }
-      if (w.op === "put") this.seen.set(w.name, sha(/** @type {Buffer} */ (w.bytes))); else this.seen.delete(w.name);
+      if (w.op === "put") this.seen.set(w.name, this.sha(/** @type {Buffer} */ (w.bytes))); else this.seen.delete(w.name);
     }
   }
 }

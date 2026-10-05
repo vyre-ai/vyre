@@ -112,3 +112,16 @@ test("two devices: the phone opens the same sealed objects on the server by itse
   const disk = everything(dir);
   for (const secret of ["dentist", "keys", "laptop won", "phone lost"]) assert.ok(!disk.includes(secret), secret);
 });
+
+import { NODE_PRIMS } from "./sealed.js";
+test("sealed store: the cryptographic primitives are injectable (a phone or a browser supplies its own synchronous ones) and the store uses only them", async t => {
+  const calls = { seal: 0, open: 0, hkdf: 0, hmac: 0, sha: 0, key: 0 };
+  const prims = { newKey: () => { calls.key++; return NODE_PRIMS.newKey(); }, seal: (...a) => { calls.seal++; return NODE_PRIMS.seal(...a); }, open: (...a) => { calls.open++; return NODE_PRIMS.open(...a); },
+    hkdf: (...a) => { calls.hkdf++; return NODE_PRIMS.hkdf(...a); }, hmacHex: (...a) => { calls.hmac++; return NODE_PRIMS.hmacHex(...a); }, sha256Hex: (...a) => { calls.sha++; return NODE_PRIMS.sha256Hex(...a); } };
+  const { dir, imk } = (() => { const d = tmp(t); return { dir: d, imk: newKey() }; })();
+  const s = createSealedStore({ backend: new FileBackend(dir), identity: "alex", imk, create: true, allow: PERSONAL_TYPES, prims });
+  await s.store.define({ add_types: [REMINDER] });
+  await s.store.create("reminder", ids[0], { text: "x", due_at: 1 });
+  assert.equal((await s.store.get("reminder", ids[0])).data.text, "x");
+  for (const k of Object.keys(calls)) assert.ok(calls[k] > 0, `${k} went through the injected primitives`);
+});
