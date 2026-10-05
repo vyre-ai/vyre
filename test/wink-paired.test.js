@@ -493,10 +493,8 @@ test("device-first, real daemon: the owner's device calls spaces.host-here on th
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const session = links.sessionFor("srv");
-  // with no proof the server asks for one (the presence floor is the server's own, nothing here is trusted)
-  await assert.rejects(() => session.call("spaces.host-here", { name: "harlow" }), e => e.code === "presence_required");
-  // with the owner's proof in the input (the test world's presence takes any), the server's kernel hosts the space and answers its id
-  const made = await session.call("spaces.host-here", { name: "harlow", proof: { key: "k1" } });
+  // making a space is not a yes moment: the owner's authenticated call is enough, with no proof offered (a passkey browser has none to give right after pairing)
+  const made = await session.call("spaces.host-here", { name: "harlow" });
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
 });
@@ -638,19 +636,24 @@ test("a computer's own device key makes the owner's proof for an act that needs 
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
   const made = await links.sessionFor("srv").call("spaces.host-here", { name: "harlow" });
-  assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered after the device signed the server's presence_required");
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered with no presence proof at all");
   assert.ok(f.w.d.kernel.spaces.hosts(made.space), "the space is hosted by the server's kernel");
+  // an act that DOES need presence (taking a started space back) is the one that checks the enrolled key
+  const second = await links.sessionFor("srv").call("spaces.host-here", { name: "second" });
+  const retired = await links.sessionFor("srv").call("spaces.retire-here", { id: second.space });
+  assert.ok(retired, "retire-here answered after the device signed the server's presence_required");
   // PW-1: with the dev switch off (a computer's own software key), nothing signs a presence challenge by itself
   const quiet = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "q", sign: m => devKey.sign(m), proveTool: devKey.proveTool,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => quiet.close());
-  await assert.rejects(() => quiet.sessionFor("srv").call("spaces.host-here", { name: "nope" }), e => e.code === "presence_required");
+  const third = await links.sessionFor("srv").call("spaces.host-here", { name: "third" });
+  await assert.rejects(() => quiet.sessionFor("srv").call("spaces.retire-here", { id: third.space }), e => e.code === "presence_required");
   // a key the server never enrolled proves nothing
   const stranger = deviceKey(path.join(tempHome(t), "stranger.json"));
   const bad = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "x", sign: m => devKey.sign(m), proveTool: stranger.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => bad.close());
-  await assert.rejects(() => bad.sessionFor("srv").call("spaces.host-here", { name: "other" }), e => e.code === "presence_required");
+  await assert.rejects(() => bad.sessionFor("srv").call("spaces.retire-here", { id: third.space }), e => e.code === "presence_required");
 });
 
 
@@ -950,7 +953,7 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op === "seal.reveal" && asked.data.request.challenge, JSON.stringify(asked).slice(0, 400));
   const { softwareProof } = await import("../core/spaces/presence-signer.js");
   const keyFile = path.join(droot, "wink-keys.json.device");
-  const proofFor = (/** @type {any} */ rq, /** @type {any} */ tweak = {}) => ({ ...softwareProof(keyFile, ident.id, { op: rq.op, payload_hash: rq.payload_hash, nonce: rq.challenge, home: rq.home, space: id }), ...tweak });
+  const proofFor = (/** @type {any} */ rq, /** @type {any} */ tweak = {}) => ({ ...softwareProof(keyFile, ident.id, { op: rq.op, fields: rq.fields, payload_hash: rq.payload_hash, nonce: rq.challenge, home: rq.home, space: id }), ...tweak });
   const hdr = (/** @type {any} */ p) => ({ "x-vyre-kernel-proof": Buffer.from(JSON.stringify(p)).toString("base64url") });
   const shown = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" }, hdr(proofFor(asked.data.request)));
   assert.ok(!shown.error && shown.data.value === "123-45-6789", JSON.stringify(shown).slice(0, 300));

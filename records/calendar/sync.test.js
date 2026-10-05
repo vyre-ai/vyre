@@ -60,7 +60,7 @@ async function rig(over = {}) {
 
 test("the Event type is a core type with the fields the calendar needs", () => {
   const e = CORE_TYPES.find((t) => t.name === "event");
-  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes"]);
+  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes", "url", "rrule"]);
 });
 
 test("google shapes: timed, all-day, attendees, and back", () => {
@@ -69,6 +69,9 @@ test("google shapes: timed, all-day, attendees, and back", () => {
   const day = fromGoogle({ id: "b", summary: "Deadline", start: { date: "2026-10-09" }, end: { date: "2026-10-10" } }, "x");
   assert.equal(day.all_day, true); assert.equal(toGoogle(day).start.date, "2026-10-09");
   assert.equal(fromGoogle({ id: "c" }, "x"), null);
+  // the event's own page on its calendar is the record's link, not a line in its notes
+  assert.equal(fromGoogle({ id: "d", summary: "x", start: { date: "2026-10-09" }, htmlLink: "https://www.google.com/calendar/event?eid=abc" }, "g").url, "https://www.google.com/calendar/event?eid=abc");
+  assert.equal(fromGoogle({ id: "e", summary: "x", start: { date: "2026-10-09" }, htmlLink: "javascript:1" }, "g").url, undefined);
 });
 
 test("pull makes records, then an incremental pull updates and removes", async () => {

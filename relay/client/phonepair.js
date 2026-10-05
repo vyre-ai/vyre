@@ -19,6 +19,7 @@
 import { pairTicket, connect } from "./client.js";
 import { typeWinkCode } from "./join.js";
 import { parseCode } from "./code.js";
+import { avatarBytesToCode } from "./avatarcode.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
 
 const b64u = (/** @type {string} */ s) => { try { const t = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(t, c => c.charCodeAt(0)); } catch { return null; } };
@@ -37,11 +38,13 @@ export function parsePhonePayload(s) {
 
 /**
  * @param {{ payload: string, key: { publicKey: string, label?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
- *   presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
+ *   avatar?: ArrayLike<number>, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function addThisDevice(o) {
   /** @type {{ seed: Uint8Array, relay: string } | null} */ let scan;
+  // The camera reader's picture of the typed code (the avatar's 8 bytes) is the code itself.
+  if (o.code === undefined && o.avatar !== undefined && o.payload === undefined) { const c = avatarBytesToCode(o.avatar); if (!c) throw fail("bad_code", "That is not a Vyre code. Scan the avatar the other device shows."); o = { ...o, code: c }; }
   if (o.code !== undefined && o.payload === undefined) {
     if (!parseCode(String(o.code))) throw fail("bad_code", "That is not a code. Type the code the other device shows, like WINK-K7QM-4P2X.");
     if (!o.relay) throw fail("bad_code", "addThisDevice needs the relay's address to use a typed code");

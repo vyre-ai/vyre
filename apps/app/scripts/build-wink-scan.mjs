@@ -6,7 +6,7 @@
 // The decoder is the shared one (lib/wink-code: geometry, Reed-Solomon, payload, decode-core2), the same code deck/js/scan.js runs in a browser, so a phone and a
 // browser read a drawn Wink code with one decoder. The page opens the back camera (getUserMedia), grabs a square frame every few hundred ms and hands it to a worker
 // that runs the rotation, scale and perspective search; a frame that decodes posts the 8-byte ticket to the app. A decode attempt takes 1 to 2 s of JIT time, which is why
-// this runs in the system WebView and not in Hermes. Nothing here logs or stores the ticket: it goes to the app once and the page stops.
+// this runs in the system WebView and not in Hermes. The page's backdrop colour is the placeholder __PAGE_BG__, which WinkScan.native.tsx fills from the theme (a literal colour here fails the raw-colours test). Nothing here logs or stores the ticket: it goes to the app once and the page stops.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,7 +107,7 @@ const PAGE_SCRIPT = (worker) => `
 
 export function page() {
   const worker = workerSource();
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:cover}</style></head><body><video id="v" muted playsinline autoplay></video><script>${PAGE_SCRIPT(worker)}</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>html,body{margin:0;height:100%;background:__PAGE_BG__;overflow:hidden}video{width:100%;height:100%;object-fit:cover}</style></head><body><video id="v" muted playsinline autoplay></video><script>${PAGE_SCRIPT(worker)}</script></body></html>`;
 }
 
 export function generated() {
