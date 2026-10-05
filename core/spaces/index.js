@@ -22,6 +22,7 @@ import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
 import { planUpgrade, runUpgrade, fingerprint } from "../../lib/spaces/upgrade.js";
+import { sealExportApproveRequest } from "../../kernel/remote/proof.js";
 import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
@@ -1600,9 +1601,29 @@ export default {
       return {
         local: { space: K.space, records: lh.gateway.records, definitions: (/** @type {any} */ c) => lh.gateway.definitions(c), chain: lk.chain },
         remote: { space: String(to), records: rh.gateway.records, definitions: (/** @type {any} */ c) => rh.gateway.definitions(c), chain: null },
-        gateway: lh.gateway, proof: lk.proof,
+        gateway: lh.gateway, proof: lk.proof, sealing: { local: lh.gateway.seal, remote: rh.gateway.seal },
       };
     };
+    /**
+     * The sealed-value transfer between the two sealing processes (platform's ops, kernel/gateway/sealing.js): `wrapKey` and `import` run in My Cloud's sealing process over the wire, `export` in this
+     * device's. The plaintext never leaves a sealing process. Null when this build's gateways do not carry the calls, in which case the plan says sealed fields cannot be carried yet.
+     * `approval` holds the one approval (the person's proof over the plan hash, the target key and every sealed ref) once it is given.
+     */
+    const resealPort = (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval) => {
+      const ls = sides.sealing && sides.sealing.local, rs = sides.sealing && sides.sealing.remote;
+      if (!ls || typeof ls.export !== "function" || typeof ls.exportApprove !== "function" || !rs || typeof rs.wrapKey !== "function" || typeof rs.import !== "function") return null;
+      /** @type {string | null} */ let key = null;
+      const anyRecord = `vyre://${sides.remote.space}/contact/0190c3f2-1111-4abc-8def-000000000000`;
+      const targetKey = async () => { if (!key) key = String((await rs.wrapKey(sides.remote.chain, { record: anyRecord })).key); return key; };
+      return {
+        targetKey,
+        targetKeyOnce: targetKey,
+        approve: async (/** @type {string[]} */ refs, /** @type {string} */ record) => ls.exportApprove(sides.local.chain, { record, plan_hash, target_key: await targetKey(), refs, proof: approval.proof }),
+        export: async (/** @type {any} */ a, /** @type {string} */ tk) => (await ls.export(sides.local.chain, { record: a.urn, to_record: a.to_urn, field: a.field, ref: a.ref, target_key: tk, plan_hash })).blob,
+        import: async (/** @type {any} */ a) => { const r = await rs.import(sides.remote.chain, { record: a.urn, field: a.field, blob: a.blob }); return r && r.ref !== undefined ? r.ref : r; },
+      };
+    };
+
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);
       if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
@@ -1615,20 +1636,37 @@ export default {
       return { body, ...(await signMove(space, MOVE_UPGRADE_RECEIPT_TAG, body)) };
     });
     tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
-      const { local, remote } = await upgradeSides(i.to, meta);
+      const sides = await upgradeSides(i.to, meta);
+      const { local, remote } = sides;
       const ports = await upgradePorts(String(i.to));
+      { const rp = resealPort(sides, "", {}); if (rp) ports.reseal = rp; }
       try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
-    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. My Cloud's name, the pinned version of its list and the paired server are worked out from the space this device made (override with `toName`, `pin`, `server`). It asks My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str }, ["to", "plan_hash"]), async (i, meta) => {
-      const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
+    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. My Cloud's name, the pinned version of its list and the paired server are worked out from the space this device made (override with `toName`, `pin`, `server`). It asks My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str, approve_proof: { type: "object" } }, ["to", "plan_hash"]), async (i, meta) => {
+      const sides = await upgradeSides(i.to, meta);
+      const { local, remote, gateway, proof } = sides;
       const ports = await upgradePorts(String(i.to));
+      const approval = { proof: i.approve_proof };
+      const rp = resealPort(sides, String(i.plan_hash), approval);
+      if (rp) ports.reseal = rp;
       let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
       if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
       if (plan.blockers.length) throw refuse(`This cannot start yet: ${plan.blockers.join("; ")}`, "blocked");
+      // sealed values need the person's one approval of the exact list (the same prompt as the upgrade's own): the app signs `request` and `approve_request` together and calls again with both
+      const refs = plan.sealedRefs || [];
+      /** @type {any} */ let approveRequest = null;
+      if (refs.length && rp) { try { approveRequest = sealExportApproveRequest(K.space, { plan_hash: plan.hash, target_key: await rp.targetKey(), refs }); } catch (e) { throw plainKernelError(e); } }
+      if (approveRequest && !i.approve_proof && !(proof && proof.presence)) return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }), approve_request: approveRequest };
+      if (approveRequest && !i.approve_proof) return { needs_proof: true, approve_request: approveRequest };
       let started;
       try { started = await gateway.upgrade.start(local.chain, { to: String(i.to), plan_hash: plan.hash }, proof); }
       catch (e) { if (String(/** @type {any} */ (e).code) === "needs_presence") return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }) }; ctx.log.warn(`upgrade start failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      if (approveRequest) {
+        const m = /^([^/]+)\/([^:]+): /.exec(String(plan.sealed[0] || ""));
+        try { await rp.approve(refs, `vyre://${K.space}/${m ? m[1] : "contact"}/${m ? m[2] : ""}`); }
+        catch (e) { ctx.log.warn(`upgrade export approval failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      }
       let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { ctx.log.warn(`upgrade run failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
       const server = typeof i.server === "string" && i.server ? i.server : await serverOf(String(i.to));
       /** @type {{ what: string, why: string }[]} */ const notes = [];
