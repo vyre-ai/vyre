@@ -40,7 +40,7 @@ test("compat: the legacy call shape and the legacy codes, over the kernel's rule
   assert.equal(await code(m.setRole({ ...as(ALICE, "setRole", mk(BOB, "owner")), person: BOB, role: "owner" })), "exceeds_role", "an admin cannot make an owner");
   assert.equal(await code(m.setRole({ ...as(BOB, "setRole", mk(ALICE, "member")), person: ALICE, role: "member" })), "not_a_member", "a member cannot see to change a person above them");
   assert.equal(await code(m.setRole({ ...as(OWNER, "setRole", mk(OWNER, "admin")), person: OWNER, role: "admin" })), "last_owner");
-  assert.equal(await code(m.setRole({ kernel: { chain: as(OWNER).kernel.chain }, person: BOB, role: "manager" })), "needs_presence");
+  assert.equal(await code(m.setRole({ kernel: { chain: as(OWNER).kernel.chain }, person: BOB, role: "owner" })), "needs_presence", "making an owner still asks for presence; a role below owner does not (user ruling 5 Oct)");
   assert.equal(await code(m.setRole({ ...as(OWNER, "setRole", { person: CAT, role: "temp" }), person: CAT, role: "temp" })), "bad_scope");
   // reads: a manager and above counts owners; a member gets null and no false warning
   assert.equal(await m.ownerCount({ chain: as(OWNER).kernel.chain }), 1);
