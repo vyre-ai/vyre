@@ -15,8 +15,8 @@ The status is `draft` because several rules are only partly enforced.
 ## Where the floor lives
 
 - **The Harness `PreToolUse` hook** (`core/harness/rules.js`), for every tool call Claude Code makes in a session that loads the Vyre plugin. It can only deny or ask; it never loosens Claude Code's own permissions. It also runs in-process when vyred is down (`harness/hooks/hook.js`).
-- **The same rules in vyred** (`registryRules` in `core/harness/rules.js`), for every tool call through the module registry that does not come from you at your own surface. The CLI, Lumen, the Deck and `local`, naming no agent, are left to presence and the Gate. Every other caller (an agent through the Switchboard or MCP, a module, a device on the tailnet) gets the rules' answer, and an "ask" becomes a refusal, since nobody is there to say yes.
-- **A separate user for sessions, on a Docker box.** The sessions Vyre runs itself (the assistant, agents, chat) run as `vyre-agent`, which cannot open vyred's socket. A tailnet device or a paired phone is also not "you" until you sign in on it with a passkey (see [presence](presence.md)).
+- **The same rules in vyred** (`registryRules` in `core/harness/rules.js`), for every tool call through the module registry that does not come from you at your own surface. The CLI, Lumen, the Vyre app and `local`, naming no agent, are left to presence and the Gate. Every other caller (an agent through the Switchboard or MCP, a module, a device on your private network) gets the rules' answer, and an "ask" becomes a refusal, since nobody is there to say yes.
+- **A separate user for sessions, on a Docker box.** The sessions Vyre runs itself (the assistant, agents, chat) run as `vyre-agent`, which cannot open vyred's socket. A device on your private network or a paired phone is also not "you" until you sign in on it with a passkey (see [presence](presence.md)).
 - **Presence** (`core/presence`), checked by vyred on every call to a human-only tool, whoever the caller is. See [presence](presence.md).
 - **The Gate** (`core/gate`), which holds what would go out as you until you approve the final words.
 - **The event log** (`core/events`), which refuses payloads that look like secrets.
@@ -38,7 +38,7 @@ Enforced: the Harness question for a sending tool names the destination, taken f
 
 ## 3. A thread is one thing wherever it is viewed
 
-Enforced by design: a thread's id is its Claude Code session id, fixed with `--session-id` before the process starts, so the terminal, the Deck, Lumen and Chat all name the same session. There is no Vyre copy to drift from it. No separate runtime check exists.
+Enforced by design: a thread's id is its Claude Code session id, fixed with `--session-id` before the process starts, so the terminal, the Vyre app, Lumen and Chat all name the same session. There is no Vyre copy to drift from it. No separate runtime check exists.
 
 ## 4. One screen types into a thread at a time
 
@@ -73,7 +73,7 @@ Enforced:
 - Every tool that lets a value out (`vault.reveal`, `vault.copy`, `vault.inject`, `vault.totp` and the rest) needs presence.
 - Modules get values only through `ctx.vault.fetch`, only for items their manifest declares under `needs.vault`.
 - The event log refuses a payload that looks like a secret (known key prefixes, private keys, `"password": "..."` and similar).
-- Push notifications carry a kind, a fixed title and a Deck path, never content.
+- Push notifications carry a kind, a fixed title and an app path, never content.
 
 ## 9. Lumen works offline for your own Mac
 

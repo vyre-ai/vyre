@@ -102,7 +102,7 @@ Tab always sends them on.
 
 ## Fill a login from the Vault
 
-1. Type part of the login's name, for example `harlow`.
+1. Type part of the login's name, for example `juniper`.
 2. With the Vault row highlighted, press Enter to fill it into the app you were in.
 3. For more (copy the password, copy the username, copy or show the one-time code, lock the
    vault), press the right arrow or Command-K instead.
@@ -140,7 +140,7 @@ Type `@` to name one. It completes agents, projects and threads:
 - `@juno what is left on the intake form?` asks the agent juno, in its current thread
   . If your words match one of juno's other threads, "Sends to" offers that one
   too.
-- `@harlow-intake run the tests` types into that session as you. While you type
+- `@juniper-intake run the tests` types into that session as you. While you type
   you hold the session's keyboard (its lease). If another surface holds it, Lumen says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
@@ -170,16 +170,6 @@ you choose.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
      editable when you click them. Command-Enter sends exactly what is on screen.
      Discard drops it. Escape leaves a field.
-
-## Open Glass
-
-For an agent that has a computer, Lumen offers "Open Glass", which opens that agent's
-screen in the Deck in your browser. Type `glass` to list what you can open, `glass juno` for one
-agent, or `glass box` for the box's files. See [Glass](glass.md).
-
-> [!SNAG] No "Open Glass" row
-> The row only shows when this Mac is paired with a box (`vyre link`) and the agent has a
-> computer. Pair the Mac first: [Connect a Mac to your box](tailscale.md).
 
 ## Keys
 
@@ -217,7 +207,7 @@ and starts it hidden in the menu bar.
   `vyre capsule`, use its menu, or a tool calls `capsule.show`.
 - It does not send anywhere other than the destination the "Sends to" row showed.
 - It does not paste for you: a clipboard item waits for your Command-V.
-- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the [Deck](deck.md).
+- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the Vyre app.
 - It never reads a password field, a password manager, a sign-in dialog, security settings or
   Vyre's own windows: those show only the app and the window title.
 
@@ -236,7 +226,6 @@ silently ignored by a stale app: when the source changes, it rebuilds before it 
 
 ## Next
 
-- [Deck](deck.md), the same work in a browser and on your phone.
 - [Projects and threads](projects-and-threads.md), what `@` completes.
 - [Agents](agents.md), who you can talk to.
 - [CLI reference](../reference/cli.md#vyre-capsule) for every `vyre capsule` form.

@@ -8,7 +8,7 @@ status: draft
 
 # Your first day
 
-Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
+Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `juniper-legal` and an agent called `kit`.
 
 ## Check that everything is up
 
@@ -44,19 +44,19 @@ A project groups the sessions that belong together, and every new thread in it s
 If you made projects during onboarding, they are already there. To make one from the terminal, run this in the project's folder and pick the sessions that belong to it:
 
 ```
-cd ~/Work/harlow-legal
-vyre new harlow-legal
+cd ~/Work/juniper-legal
+vyre new juniper-legal
 ```
 
 Then start a thread:
 
-- **In the Deck:** open Projects, pick `harlow-legal`, press **New thread**, and say what it should do (or leave it empty).
-- **In the terminal:** in the project's folder, `vyre start` opens Claude Code in a new thread with the brief. `vyre open harlow-legal` shows what the brief says and lists the project's threads; `vyre resume <thread>` picks up an old one where it ran.
+- **In the Vyre app:** open Chat, press **New chat**, and pick who you want to talk to.
+- **In the terminal:** in the project's folder, `vyre start` opens Claude Code in a new thread with the brief. `vyre open juniper-legal` shows what the brief says and lists the project's threads; `vyre resume <thread>` picks up an old one where it ran.
 
 To see what a new thread will be told before you start one:
 
 ```
-vyre context harlow-legal
+vyre context juniper-legal
 ```
 
 A thread can run on Claude, Codex, Grok or OpenRouter, from the accounts you signed in to at setup. In Chat, the chip above the message box shows who answers, with its model and effort, and opens a menu to change them. Starting a message with `@codex` or `@grok` sends only that message to that provider, and the thread keeps its own. More in [Sessions](../using/sessions.md#one-message-on-another-provider).
@@ -67,12 +67,12 @@ More in [Projects and threads](../using/projects-and-threads.md).
 
 An agent is a named, headless Claude Code worker that runs on the box. It uses your Claude subscription (a setup token in the vault) or an API key with a budget, and it sees only the projects you give it.
 
-- **In the Deck:** open Agents and press **New agent**. Give it a name, and say what it does and what it must ask you before doing.
+- **In the Vyre app:** open Settings, then Assistants, and press **New assistant**. Give it a name and a job, and say what it must ask you before doing.
 - **In the terminal:**
 
 ```
-vyre agents create kit --projects harlow-legal --budget 20 \
-  --instructions "Keep the Harlow Legal client folder tidy. Ask before deleting anything."
+vyre agents create kit --projects juniper-legal --budget 20 \
+  --instructions "Keep the Juniper Studio client folder tidy. Ask before deleting anything."
 vyre agents ask kit "List the documents that came in this week."
 ```
 
@@ -84,34 +84,34 @@ If an agent stops on a permission question, `vyre agents ask` prints it with the
 
 Put a credential in the vault once, and never paste it into a session again. Claude sees the item's name, never its value.
 
-- **In the Deck:** open Vault and press **Add item**.
+- **In the Vyre app:** open Vault and press **Add an item**.
 - **In the terminal:**
 
 ```
-vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
+vyre vault put juniper-stripe --kind api-key --description "Juniper Studio billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Deck, it is your passkey.
+It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Vyre app, it is your passkey.
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
 ```
-vyre vault run STRIPE_KEY=harlow-stripe -- node sync-invoices.js
+vyre vault run STRIPE_KEY=juniper-stripe -- node sync-invoices.js
 ```
 
 The value reaches only that process's environment, and is scrubbed from its output. `vyre vault list` shows names and kinds, never values. More in [The vault](../using/vault.md), including how to share one item with another person without handing it over.
 
 ## Find something from last week
 
-Recall searches every session you have had, on this machine and indexed from your history. In the Deck on your box, the paired Mac's sessions are listed too, marked with the Mac's name.
+Recall searches every session you have had, on this machine and indexed from your history. The paired Mac's sessions are listed too, each carrying the Mac's name.
 
 ```
 vyre recall "retainer template"
 ```
 
 ```output
-  Retainer template for Harlow Legal
-    6f1c2a90-1b7e-4c11-9a52-0d3e8b1f4a77 · 6d ago · user · /Users/alex/Work/harlow-legal
+  Retainer template for Juniper Studio
+    6f1c2a90-1b7e-4c11-9a52-0d3e8b1f4a77 · 6d ago · user · /Users/alex/Work/juniper-legal
     can you draft the retainer template from the one we used for Northwind Bakery
 
   resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'
@@ -121,7 +121,7 @@ Each hit shows the session's name, its id, how long ago it was, who said it (`us
 
 Until the search model is on this machine, recall matches keywords, and says so on its last line. `vyre recall --setup` fetches the model (about 130 MB) now.
 
-Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
+Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Vyre app.
 
 You can also ask for it in words. In Lumen, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
 
@@ -129,11 +129,11 @@ You can also ask for it in words. In Lumen, ask your assistant ("what did we dec
 
 - A date filter for recall, as above.
 - A phone app from an app store. Native iPhone and Android builds exist, but you build and install them yourself. On the phone, open your address in Safari or Chrome and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
-- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
+- Replying to a Mac session from the box. The Vyre app reads the Mac's sessions but does not act on them; reply in the Mac's terminal or its Lumen.
 - Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next
 
-- [Lumen](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
+- [Lumen](../using/capsule.md), [Chat](../using/chat.md)
 - [Watchers](../using/watchers.md), for work that should happen while you are away
 - [Troubleshooting](troubleshooting.md)

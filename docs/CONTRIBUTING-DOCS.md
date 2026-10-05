@@ -45,7 +45,7 @@ status: stable
 | `title` | yes | The page's name, as the nav and the `# H1` show it. |
 | `summary` | yes | One sentence. It appears in search, in `/llms.txt` and under the title. |
 | `audience` | yes | A comma list from `users`, `builders`, `operators`, `agents`. |
-| `owner` | yes | One team: `tailnet`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`, `planner`, `cc-plugin`, `glass-live`, `pwa`. The owner keeps the page true (`scripts/lib/docs/check.js` holds the list). |
+| `owner` | yes | One team: `network`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`, `planner`, `cc-plugin`, `glass-live`, `pwa`. The owner keeps the page true (`scripts/lib/docs/check.js` holds the list). |
 | `status` | yes | `stable` (shipped on main), `draft` (partly shipped, may change), `planned` (not built yet). |
 | `generated` | no | The script that writes the page. Only generated reference pages carry it. |
 
@@ -62,7 +62,7 @@ The front matter parser reads a small subset of YAML: `key: value`, optional quo
   "site": { "title": "Vyre docs", "url": "https://docs.vyre.run", "repo": "https://github.com/vyre-ai/vyre" },
   "sections": [
     { "title": "Start here", "pages": ["index.md"] },
-    { "title": "Get started", "pages": ["get-started/install.md", "get-started/onboarding.md"] }
+    { "title": "Get started", "pages": ["get-started/install.md", "get-started/first-day.md"] }
   ],
   "unpublished": ["work/", "proposals/", "design/boards/"]
 }
@@ -154,7 +154,7 @@ Known gap). Any of them may carry a title after the marker:
 
 ```md
 > [!WARNING] The HTTPS switch is off
-> Turn on HTTPS for your tailnet, then press Check again.
+> Wait for the certificate to finish, then press Check again.
 ```
 
 `> [!SNAG]` is an "If this happens" box: the title (required) is what the reader sees, the body is
@@ -180,10 +180,10 @@ its paragraph becomes a figure, captioned by its alt text, or by its title when 
 alt text that says what the screen shows.
 
 ```md
-![The Tailscale step, waiting for the server to join](shots/onboarding-tailscale.png "Tailscale")
+![The address step, waiting for the certificate](shots/onboarding-address.png "Address")
 ```
 
-If `onboarding-tailscale.dark.png` sits beside it, the dark theme shows that file instead. The
+If `onboarding-address.dark.png` sits beside it, the dark theme shows that file instead. The
 build reads each PNG's width and height from the file, so the page does not jump as shots load.
 
 Shots are taken, not drawn. `npm run docs:shots` (on the test box, never the Mac) starts the sample
@@ -191,7 +191,7 @@ world in a temp home and captures every shot listed in `scripts/lib/docs/shots.j
 dark, with `CHROME` pointing at a headless Chrome. Each entry there names the source files the
 shot shows. `docs/shots.json` records a hash of those files at capture time, and docs-check warns about a
 shot once any of them changes, and fails on it only with `--release`, which scripts/release-check.sh runs,
-so a screen that moved on gets retaken before a release. A Deck change never turns another team's suite
+so a screen that moved on gets retaken before a release. An app change never turns another team's suite
 or stage red. To add a shot, add an entry
 to `shots.js`, run `npm run docs:shots -- --only <name>`, and put it on the page. Command output
 is text, not a picture: paste it into an `output` block (`npm run docs:shots -- --cli` prints the
@@ -251,7 +251,7 @@ node scripts/gen-docs-reference --check   # exit 1 if any page is stale, write n
 ### The index
 
 `npm run docs:ref` also writes `docs/reference/index.md` and `docs/index.json` (served at
-`/index.json`): every command and subcommand, tool, event, config key, `VYRE_` variable, Deck
+`/index.json`): every command and subcommand, tool, event, config key, `VYRE_` variable, app
 screen and concept, with the code file that defines it, the page that explains it, and every page,
 line and heading anchor that mentions it. One lookup finds every instance of a thing. It reads
 every published page, so run `npm run docs:ref` after editing any page, not only after changing
@@ -318,7 +318,7 @@ npx wrangler pages deploy docs-site --project-name vyre-docs --branch main
 ## Style
 
 - No em dash and no section-sign character, anywhere. Use a colon, a comma, or two sentences. Write "Section 5.1" for spec references. The check enforces this.
-- Examples use the sample world only: the user alex, the firms Harlow Legal and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `harlowlegal.com` and `*.example`, tailnet names like `vyre.tail1234.ts.net`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
+- Examples use the sample world only: the user alex, the firms Juniper Studio and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `juniperstudio.example` and `*.example`, names like `alex.vyre.run`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
 - Plain, direct English, in the second person. Short paragraphs. Concrete commands in fenced blocks. No marketing adjectives, no "simply", no "seamless".
 - Write only what is true on main. Copy commands, flags, config keys, tool names and paths from the code. When something is designed but not built, say "Not built yet." or mark the page `draft` or `planned`.
 - A reader who is an agent should be able to act from the page alone.
@@ -333,7 +333,7 @@ true now, what to do instead, and the owning team:
 
 ```md
 > [!GAP]
-> The switch pauses but does not resume. See [known gaps](../known-gaps.md#the-decks-pause-switch-does-not-resume-a-watcher).
+> The pause switch pauses but does not resume. See [known gaps](../known-gaps.md#the-pause-switch-does-not-resume-a-watcher).
 ```
 
 The change that closes a gap removes its callouts and its section.

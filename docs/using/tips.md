@@ -23,7 +23,7 @@ that worked. The CLI prints it on stderr, and never with `--json`, when the outp
 after an error, or after `vyre up`, `vyre down` and `vyre tips` themselves. Set `VYRE_NO_TIPS=1`
 to silence it for one shell.
 
-Tips do not show in Lumen, the Deck or the phone yet. Every tip already says which surface it
+Tips do not show in Lumen, the Vyre app or the phone yet. Every tip already says which surface it
 is for, so they can appear there later without a change to the tips you have dismissed.
 
 A tip never takes focus, never covers what you are reading, and never uses the colour Vyre keeps

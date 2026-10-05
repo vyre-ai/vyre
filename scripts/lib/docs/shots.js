@@ -18,7 +18,7 @@
 // Each entry of SHOTS:
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
-//   world    which sample world renders it: deck (the Deck, from web/test/world.js), onboard
+//   world    which sample world renders it: app (the app's web export, sample world), deck (the Deck, from deck/test/world.js), onboard
 //            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass)
@@ -46,47 +46,34 @@ const ONBOARD = ["web/onboard/onboard.js", "web/onboard/onboard.css", "web/onboa
 const BOTH = ["light", "dark"];
 
 
+// The app's first run, shot from the app's own web export built with the sample world (EXPO_PUBLIC_VYRE_MOCK=1:
+// alex, Juniper Studio, juno, kit). A script taps by the words on the buttons, the way a person does.
+const APP_TAP = `const tap = async (t, ms = 6000) => { const t0 = Date.now(); for (;;) {
+    const el = [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === t).pop();
+    if (el) { el.click(); await wait(900); return; }
+    if (Date.now() - t0 > ms) throw new Error("no " + t + " on the screen"); await wait(150); } };`;
+const INSTALL = ["apps/app/screens/install/InstallScreen.tsx", "apps/app/screens/install/data.ts", "apps/app/screens/install/flow.js"];
+const PAIRING = ["apps/app/screens/devices/PairParts.tsx", "apps/app/src/api/pairing-session.ts"];
+const PAIR_SCRIPT = `${APP_TAP}
+  await tap("Continue"); await tap("On a server you have"); await tap("I ran it");`;
+// "Use the sample code" exists only in the sample world (the real app has no such button), so a picture of the screen hides it.
+const HIDE_SAMPLE = `for (const el of [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === "Use the sample code")) { let b = el; while (b.parentElement && b.getAttribute("role") !== "button" && b.tagName !== "BUTTON") b = b.parentElement; (b.getAttribute("role") === "button" || b.tagName === "BUTTON" ? b : el).style.display = "none"; }
+  await wait(300);`;
+
 /** @type {any[]} */
 export const SHOTS = [
-  // ---- Onboarding: a fresh box, one screen per step ----
-  { name: "onboarding-you", dir: "get-started", world: "onboard", url: "#you", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`,
-    alt: "Step 1 of the onboarding: your name and your assistant's name, with the note that the address will be on your tailnet.",
-    page: "get-started/onboarding.md", heading: "1. You" },
-  { name: "onboarding-claude", dir: "get-started", world: "onboard", url: "#claude", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `await until('document.querySelector(".choice")');`,
-    alt: "Step 2: Claude Code is found on the machine, and Vyre offers to sign in with your Claude subscription or an API key.",
-    page: "get-started/onboarding.md", heading: "2. Claude Code" },
-  { name: "onboarding-tailscale", dir: "get-started", world: "onboard", url: "#tailscale", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/tailscale.js"],
-    script: `await until('document.querySelector("#primary")');
-      if (/connect/i.test(document.querySelector("#primary").innerText)) click("#primary");
-      await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`,
-    alt: "Step 3: the machine has joined the tailnet as alex-box, with each sign-in step ticked.",
-    page: "get-started/onboarding.md", heading: "3. Tailscale" },
-  { name: "onboarding-name", dir: "get-started", world: "onboard", url: "#name", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/service.js"],
-    script: `await until('document.querySelector("#primary")'); click("#primary");
-      await until('document.querySelector("#primary") && /switch to/i.test(document.querySelector("#primary").innerText)', 30000);`,
-    alt: "Step 4: the address https://alex-box.tail0000.ts.net is reserved, pointed at the machine and has its certificate.",
-    page: "get-started/onboarding.md", heading: "4. Your address" },
-  { name: "onboarding-history", dir: "get-started", world: "onboard", url: "#history", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    // The step lists the folders it found, "N sessions" each; the sample world's transcripts live in a temp folder, whose path must not
-    // be in a picture, so it is written as a folder in the sample person's own Claude Code folder (keeping its last segment, so rows stay different) before the shot.
-    script: `await until('/[0-9]+ sessions?/.test(document.body.innerText) && !document.querySelector(".bar.moving")', 20000);
-      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const bad = []; while (w.nextNode()) bad.push(w.currentNode);
-      for (const n of bad) n.textContent = n.textContent.replace(/\\/(?:private\\/)?(?:tmp|var\\/folders)\\/[^\\s|]*/g, m => "/home/alex/.claude/projects/" + (m.replace(/\\/+$/, "").split("/").pop() || "sessions")).replace(/a temporary folder/g, "Claude Code");
-      await wait(800);`,
-    alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
-    page: "get-started/onboarding.md", heading: "5. Your history" },
-  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, "web/js/phone-code.js", "web/css/phone-code.css"],
-    script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(800);`,
-    fit: ".ob-main",
-    alt: "Step 6: the Pair this Mac card with alex-mbp asking to pair and a field for its code, and the Open Vyre on your phone card with a code for Tailscale and one for this box's address.",
-    page: "get-started/onboarding.md", heading: "6. Your devices" },
-  { name: "onboarding-ready", dir: "get-started", world: "onboard", url: "#ready", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    alt: "The last screen of the setup: Vyre is ready, with your Mac, your phone and your history ticked or still to do, and Open Vyre.",
-    page: "get-started/onboarding.md", heading: "The last screen" },
-
-  // ---- The Deck ----
+  { name: "first-run-claim", dir: "get-started", world: "app", url: "/u/install", width: 390, height: 780, phone: true, themes: BOTH,
+    script: `${APP_TAP}\n  await tap("Get started");\n  const f = document.querySelector("input"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; f.focus(); set.call(f, "alex-rivera"); f.dispatchEvent(new Event("input", { bubbles: true })); await wait(900);`, shows: [...INSTALL] },
+  { name: "first-run-space", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
+    script: `await wait(600);`, shows: [...INSTALL] },
+  { name: "first-run-pair-code", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
+    script: `${PAIR_SCRIPT}\n  ${HIDE_SAMPLE}`, shows: [...INSTALL, ...PAIRING] },
+  { name: "first-run-pair-words", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
+    script: `${PAIR_SCRIPT}\n  await tap("Use the sample code");`, shows: [...INSTALL, ...PAIRING] },
+  { name: "first-run-chat", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
+    script: `await wait(800);`, shows: ["apps/app/app/chat-demo.tsx", "apps/app/src/chat/ChatScreen.tsx", "apps/app/src/chat/mock-stream.ts"] },
+  { name: "first-run-now", dir: "get-started", world: "app", url: "/u/now", width: 390, height: 844, phone: true, themes: BOTH,
+    script: `await wait(800);`, shows: ["apps/app/screens/now/NowScreen.tsx", "apps/app/screens/shell/data.ts"] },
 ];
 
 /** CLI output is shown as text, not pictures: these are the commands docs-shots --cli prints from the sample world. */
@@ -141,7 +128,7 @@ export function manifestText(m) {
   return JSON.stringify(out, null, 2) + "\n";
 }
 
-/** Every PNG under a shots/ folder in docs/, repo-relative, sorted. */
+/** Every PNG under a shots/ folder in docs/ (not docs/work, the unpublished notes), repo-relative, sorted. */
 export function shotFiles(root) {
   const out = [];
   const walk = rel => {
@@ -150,6 +137,7 @@ export function shotFiles(root) {
     for (const e of entries) {
       if (e.name.startsWith(".") || e.name === "node_modules") continue;
       const r = `${rel}/${e.name}`;
+      if (r === "docs/work") continue; // work notes are not published (package.json excludes docs/work) and are not docs shots
       if (e.isDirectory()) walk(r);
       else if (/\.png$/i.test(e.name) && r.split("/").slice(0, -1).includes("shots")) out.push(r);
     }

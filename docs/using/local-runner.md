@@ -8,13 +8,13 @@ status: draft
 
 # Run a space's work on your own computer
 
-Harlow Legal's server is small, and ten people running sessions at once will not fit on it. So a member can run
+Juniper Studio's server is small, and ten people running sessions at once will not fit on it. So a member can run
 their own sessions on their own computer. The space stays the source of truth.
 
 ## Two yeses, once
 
-Harlow's admin turns on "Members can run our work on their own computers, and through it use the credentials that work needs". The runner holds those credentials in memory while a session runs, so a member who is determined can use them through the runner; they cannot read them, and each credential works only for the methods and paths the space listed. You accept "Use this computer for
-Harlow Legal" on your device page, with your limits: only when plugged in, only when awake, a CPU and a memory
+Juniper's admin turns on "Members can run our work on their own computers, and through it use the credentials that work needs". The runner holds those credentials in memory while a session runs, so a member who is determined can use them through the runner; they cannot read them, and each credential works only for the methods and paths the space listed. You accept "Use this computer for
+Juniper Studio" on your device page, with your limits: only when plugged in, only when awake, a CPU and a memory
 ceiling. Either side can take theirs back in one tap. Without both, nothing starts here.
 
 ## What runs where

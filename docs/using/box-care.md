@@ -9,7 +9,7 @@ status: draft
 # Box care
 
 Your box is the always-on server that runs Vyre. On a Linux server it is a Docker Compose stack in
-`/srv/vyre` with two containers, `tailscale` and `vyre`, and its data in Docker volumes. You look
+`/srv/vyre` with the `vyre` container, and its data in Docker volumes. You look
 after it from your Mac with `vyre box ...`, which runs each step over SSH so you never open a shell
 on the server, or on the server itself with the host's `vyre` command. This page covers the care
 tasks. What each folder and volume holds, and who can reach the box, is in
@@ -24,7 +24,7 @@ vyre box       # the box's address and SSH target, and whether it answers from h
 ```
 
 ```output
-  your box  https://vyre.tail1234.ts.net · alex@192.0.2.10
+  your box  https://alex.vyre.run · alex@192.0.2.10
   answering · 0.0.1
 ```
 ::: tab On a server
@@ -50,8 +50,8 @@ is not running, waits up to a minute for Vyre, then prints the setup link or you
 > Vyre already there and carries on from where it stands.
 
 > [!SNAG] `vyre box` says "not answering from here"
-> This Mac is not on your tailnet, or the box is down. Open Tailscale on the Mac, then check the
-> box with `vyre status` on the server. See [Tailscale](tailscale.md).
+> This Mac cannot reach your box, or the box is down. Check the box with `vyre status` on the
+> server, and run `vyre doctor` on the Mac for the path and the relay.
 
 ## Read its logs
 
@@ -81,8 +81,8 @@ vyre spend raise claude off     # no cap
 
 At the cap, the thread that was spending is paused with one line that says what happened and the
 command to raise the cap, and memory answers from facts and search until the next UTC day or until
-you raise it. A provider with no cap has none. The Deck shows the same list under Settings, Spend,
-with a way to change each cap.
+you raise it. A provider with no cap has none. The Vyre app shows the same list under Settings, Spending limits,
+with **Change cap** for each one.
 
 ## Upgrade
 
@@ -275,22 +275,21 @@ What it does, in order:
 2. Checks for Docker with Compose 2.24 or newer. If Docker is missing it asks before running
    `curl -fsSL https://get.docker.com | sh`; with no terminal to ask on, or a no, it prints the
    command and stops. An old Compose gets the same kind of message and a stop.
-3. Checks `/dev/net/tun`, which the Tailscale container needs.
-4. Picks how to get the image: it pulls `VYRE_IMAGE` when the registry has it, and otherwise
+3. Picks how to get the image: it pulls `VYRE_IMAGE` when the registry has it, and otherwise
    builds from `vyre.tgz`.
-5. Downloads `SHA256SUMS`, then `compose.yml`, `compose.build.yml`, `vyre.env.example`, the host
+4. Downloads `SHA256SUMS`, then `compose.yml`, `compose.build.yml`, `vyre.env.example`, the host
    wrapper and, for a build, `vyre.tgz`, and checks each against its line. A missing line or a
    different hash stops the install before anything is written. With `--from DIR` the files come
    from the checkout instead.
-6. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), writes the box
+5. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), writes the box
    files into it, and unpacks `vyre.tgz` into `/srv/vyre/src` for a build.
-7. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre`, `COMPOSE_FILE`
+6. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre`, `COMPOSE_FILE`
    (plus `VYRE_SOURCE` for a build) and `DOCKER_GID`, the group that owns the Docker socket. It
    writes the file only if it is not there. The one change it makes to an existing `.env` is to
    add `DOCKER_GID` when the line is missing.
-8. Installs the host wrapper to `/usr/local/bin/vyre`. If something else already has that name,
+7. Installs the host wrapper to `/usr/local/bin/vyre`. If something else already has that name,
    it asks first.
-9. Runs `vyre up`, or `vyre up --print-link` with `--print-link`.
+8. Runs `vyre up`, or `vyre up --print-link` with `--print-link`.
 
 sudo is used only for Docker's own install, for `/srv/vyre` when `/srv` is root's, and for
 `/usr/local/bin/vyre`. If your account cannot reach Docker, the installer runs the stack through
@@ -334,16 +333,15 @@ it off the box:
 cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
-**Everything**, Claude Code's sign-in and transcripts, your projects in `/work` and the box's
-Tailscale identity included, from the Mac:
+**Everything**, Claude Code's sign-in and transcripts, and your projects in `/work`, from the Mac:
 
 ```
 vyre box backup                         # vyre-box-backup-YYYY-MM-DD.tar.gz here
 vyre box backup ~/Backups/box.tar.gz
 ```
 
-The box is stopped while this runs: it stops the stack, copies the `vyre-home`, `vyre-work` and
-`tailscale-state` volumes into one file on your Mac (mode 0600), and starts the stack again, even
+The box is stopped while this runs: it stops the stack, copies the `vyre-home` and `vyre-work`
+volumes into one file on your Mac (mode 0600), and starts the stack again, even
 if the copy fails or you press Control-C. `--force` replaces an existing file.
 
 Both files contain your sealed vault. Keep them somewhere only you can read. The `vyre backup`
@@ -374,23 +372,22 @@ failed restore keeps what was there. If the power fails between those two steps,
 your artifacts are there. Public links come back as they were when the backup was made: a link that
 was on then is on again.
 
-A `vyre box backup` file holds the three volumes as folders (`vyre-home/`, `vyre-work/`,
-`tailscale-state/`). To put it on a server that has no Vyre volumes yet, install without starting,
+A `vyre box backup` file holds the two volumes as folders (`vyre-home/` and
+`vyre-work/`). To put it on a server that has no Vyre volumes yet, install without starting,
 create the volumes the way Compose would, unpack into them, then start:
 
 ```
 curl -fsSL https://vyre.run/install.sh | VYRE_NO_UP=1 sh
-for v in vyre-home vyre-work tailscale-state; do
+for v in vyre-home vyre-work; do
   docker volume create --label run.vyre=1 --label com.docker.compose.project=vyre \
     --label com.docker.compose.volume=$v vyre_$v
 done
 docker run --rm -i -v vyre_vyre-home:/b/vyre-home -v vyre_vyre-work:/b/vyre-work \
-  -v vyre_tailscale-state:/b/tailscale-state alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc tar xzf - -C /b < vyre-box-backup-2026-09-27.tar.gz
+  alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc tar xzf - -C /b < vyre-box-backup-2026-09-27.tar.gz
 vyre up
 ```
 
-Because `tailscale-state` comes back too, the box returns with the same Tailscale name and
-address. Start the old server's stack again only after you have taken Vyre off it: two nodes with
+Start the old server's stack again only after you have taken Vyre off it: two boxes with
 one identity fight over it. To go from one live server to another, `vyre box move` (next) does all
 of this for you.
 
@@ -402,9 +399,8 @@ From the Mac:
 vyre box move alex@192.0.2.20
 ```
 
-It installs Vyre on the new server, stops the old stack, streams the three volumes from old to
-new through your Mac, starts the new one, and waits for it to answer at the same address. Because
-`tailscale-state` moves too, the box keeps its Tailscale name, address and certificate. Once the
+It installs Vyre on the new server, stops the old stack, streams the two volumes from old to
+new through your Mac, starts the new one, and waits for it to answer at the same name and address. Once the
 new box answers, Vyre is taken off the old server, whose volumes stay until you delete them.
 
 The new server must not already hold a box or Vyre volumes. If anything fails after the old stack
@@ -420,8 +416,7 @@ COMPOSE_PROFILES=computers
 ```
 
 then run `vyre up`. What the proxy allows is in
-[The box and the Mac](../concepts/box-and-mac.md#the-agents-computers). See [Glass](glass.md) for
-using the computers.
+[The box and the Mac](../concepts/box-and-mac.md#the-agents-computers).
 
 ## Remove it
 

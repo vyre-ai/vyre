@@ -18,9 +18,9 @@ Start with `vyre doctor`, on the Mac or on the server:
 vyre doctor
 ```
 
-It checks that Vyre is running, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
-phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
-Lumen, in under two seconds. Each line is a check that passed, failed (with the one thing to
+It checks that Vyre is running, that you are signed in to Vyre, the link to your space, the path to your
+server and the relay, the server's door, storage, the clock, pairing, a passkey, Claude on the box, the Lumen,
+every module, search, that `vyre` is on your PATH and the install size, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
 opens anything. `vyre doctor --json` gives the same list to a script.
 
@@ -31,10 +31,10 @@ If that does not explain it, these show more:
 ```
 vyre status                 # is Vyre running, and what is it running
 vyre logs                   # follow Vyre's output
-docker compose -p vyre ps   # are the tailscale and vyre containers up
+docker compose -p vyre ps   # is the vyre container up
 ```
 
-If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
+`vyre logs`, `docker compose` and `vyre uninstall --keep-data` run through the `vyre` command the installer puts on a Docker server (`/usr/local/bin/vyre`, the `box/vyre` wrapper), not the Mac's own CLI. If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
 ::: tab On this Mac
 ```
 vyre status
@@ -49,117 +49,27 @@ A healthy `vyre status` says Vyre is running, with its version, its role, how lo
 and how many modules are running. A failed module adds `· 1 failed (vyre modules)` to the second
 line.
 
-## Setup at vyre.run/setup
+## Setup in the Vyre app
 
-### "This browser is too old for the setup."
+### "That code ran out of time", or "That code was already used"
 
-The setup page needs Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer or Firefox 130 or newer. "This browser could not make the key the setup needs" means the same: try a current one.
+The code the server prints works for one pairing and for five minutes. Run the install line on the server again for a new one, or, if Vyre is already installed, run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh code. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first, then paste the line again. Your data stays.
 
-### "This page could not reach Vyre's relay."
+### "The words were not the same", or "Nothing was paired"
 
-The setup page talks to your server through Vyre's relay. Check your connection, and that a work network or a browser extension is not blocking `vyre.run`, then press **Start again**.
+The three words in the app did not match the ones your server's terminal showed, so the pairing stopped. Start again from your server with a new code. Do not confirm words for a code you did not start yourself.
 
-### "This code has expired. Start again."
+### "Your phone cannot reach your Vyre right now"
 
-The code in the install line works for one hour and one server. Open <https://vyre.run/setup> again. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first. Your data stays.
+Check that the server is on and online, and that a work network or a browser extension is not blocking `vyre.run`. Nothing was paired. Run `vyre status` on the server, then try again.
 
-### "Two servers used this code." or "Another server already used this code."
+### "that name is reserved", or the name is taken
 
-A code works for one server, and the first one to use it wins. If that was not your server, someone else had the line. Close the page and start again from <https://vyre.run/setup>. This is also why the page shows four words: they must match the ones your server's terminal printed.
-
-### "The four words did not match, so that was not your server."
-
-Close the page and start again. Do not use a line you did not copy from your own page.
-
-### "The progress lines arrived out of order" or "did not check out"
-
-Something between the server and the page altered or replayed the progress. The install itself is not harmed. Press **Start again**; if you pasted the same line twice, run `vyre uninstall --keep-data` first.
-
-### The page says "Waiting for your server"
-
-The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, `/dev/net/tun`, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
-
-### "that name is reserved", or the address is not free
-
-Pick another name. Service names such as `app`, `login` and `vault`, well-known company names and look-alikes of them are not given out, and a name someone else holds is not free.
+Pick another name. Service names such as `app`, `login` and `vault`, well-known company names and look-alikes of them are not given out, and a name someone else holds is not free. People and spaces share one set of names, so a space cannot take its owner's name.
 
 ### You did not save the recovery code
 
-It is shown once, and only on that page, so nothing can show it again. It matters only if you reinstall: with it, a reinstall takes this address back. The address itself keeps working.
-
-### Tailscale says "Waiting for approval in your Tailscale admin"
-
-Your tailnet asks an admin to approve each new device. Open [Machines](https://login.tailscale.com/admin/machines), open the new server's menu and approve it, or ask whoever runs the tailnet.
-
-### "The address could not be published" or "the certificate could not be made"
-
-The page shows the reason it was given. If Tailscale is connected and this stays, run `vyre name` on the server for where the address stands, and see [Tailscale, from zero](tailscale.md#when-something-is-wrong).
-
-### The link to open your server expired
-
-It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server, on a computer that is on your tailnet.
-
-## Setting up the server from the Mac
-
-### "Tailscale is not running"
-
-`vyre box add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link. New to Tailscale? See [Tailscale, from zero](tailscale.md).
-
-### "... is not Linux" or "this server has no /dev/net/tun"
-
-A Vyre box runs on Linux with Docker, and Tailscale needs `/dev/net/tun`. Nothing changed on the server. For the second one, run `sudo modprobe tun` on the server, or turn on TUN in your VPS provider's panel, then run `vyre box add alex@192.0.2.10` again.
-
-### "nothing changed. Run it in a terminal to answer, or add --yes."
-
-`vyre box add` shows its plan and asks before it changes anything. Without a terminal to ask on (in a script, say), it stops. Run it in a terminal, or add `--yes` once you have read the plan.
-
-### "The setup link has expired."
-
-The Mac waited more than an hour for the browser steps. Your box is as you left it: run `vyre box add alex@192.0.2.10` again for a fresh link. The page keeps every step you already finished.
-
-## Onboarding in the browser
-
-### "This onboarding link has already been used or has expired"
-
-The link works once, for an hour. Run `vyre up` on the box for a new one, or `vyre box add` again from the Mac. The page keeps what you already did and resumes from there.
-
-### The onboarding page will not load
-
-This matters when you set up from the server itself (`curl ... | sh`). The page listens only on the box's loopback, so from your Mac you reach it through an SSH tunnel.
-
-1. Check that the `ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10` line `vyre up` printed is still running in a Terminal tab. It prints nothing while it works.
-2. Open the link exactly as printed. Do not change the port: the page checks that it is reached on the port it listens on, and answers "Not here." otherwise.
-3. If port 7300 is busy on your Mac, stop whatever holds it rather than forwarding a different port.
-
-### "HTTPS certificates are off for your tailnet"
-
-Tailscale certificates are off for a new tailnet. On the **Your address** step, press **Turn on HTTPS**, flip the switch on the Tailscale page that opens, come back and press **Check again**. Step by step: [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
-
-### "Tailscale runs in userspace networking mode"
-
-The Tailscale step stops when Tailscale on the server has no network interface. Vyre needs `tailscale0`. Run Tailscale in its default mode, not `--tun=userspace-networking`, and press **Check again**.
-
-### "Your address is not set up yet, so this page cannot open the Deck."
-
-You skipped **Your address**. The Deck is served only at your address, never on the loopback link. Go back to that step and finish it.
-
-### Step 1 will not take your name
-
-"Lowercase letters, numbers and hyphens, 3 to 32 long, starting with a letter." A display name such as `Alex Rivera` is refused. Type a short name such as `alex`.
-
-### You want a `<you>.vyre.run` address
-
-The six screens on the SSH path give the address as your tailnet's name, `https://vyre.<tailnet>.ts.net`, which needs nothing extra but Tailscale's HTTPS certificates. To have a `<you>.vyre.run` name, run this on the server:
-
-```
-vyre setup --name alex --yes
-```
-
-It claims `alex.vyre.run` for good, waits for the address and its certificate, and prints a recovery code once: store it somewhere safe. `vyre name check alex` tells you first whether the name is free. To go back to the tailnet name, run `vyre name ts.net` on the server. The setup page at vyre.run/setup does the same claim in your browser.
-
-### Your address does not open
-
-Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+It is shown once, so nothing can show it again. It is the only way back in if you lose every device. If you still have a device signed in to your name, add the new device from it with **Add a device**.
 
 ## The box
 
@@ -177,7 +87,7 @@ The containers started but Vyre did not answer within a minute. Run `vyre logs` 
 vyre uninstall --keep-data
 ```
 
-Then paste a fresh install line from <https://vyre.run/setup>. `--keep-data` leaves the volumes, and with them the vault, your AI sign-ins and your projects. `--delete-data` removes them too; without either flag, `vyre uninstall` asks. Before deleting data, `vyre backup` saves everything.
+Then run the install line again (`curl -fsSL vyre.run/i | sh`). `--keep-data` leaves the volumes, and with them the vault, your AI sign-ins and your projects. `--delete-data` removes them too; without either flag, `vyre uninstall` asks. Before deleting data, `vyre backup` saves everything.
 
 ### "the service unit is out of date" (without Docker)
 
@@ -193,32 +103,19 @@ After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. 
 
 The reason follows on the same line:
 
-- **"this Mac is not on the tailnet"**, followed in brackets by "Tailscale is not installed", "Tailscale is signed out: open Tailscale and sign in", or Tailscale's own state: install Tailscale on the Mac and sign in with the same account as the box.
-- **"the box is offline or unreachable"**: the Mac is on the tailnet but the box did not answer. Check the box is up (`vyre status` on the box) and that the address is right. `vyre up --connect https://vyre.tail1234.ts.net` names it directly.
-
-### "the box serves ... and this Mac is signed in to Tailscale as ..."
-
-The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tailscale as the box's owner, then run `vyre up`. See [Sign every device into the same account](tailscale.md#3-sign-every-device-into-the-same-account).
-
-### "more than one Vyre box answers on your tailnet"
-
-`vyre up` found several boxes and will not guess. In a terminal it asks which one; otherwise pick with `vyre up --connect <address>`.
+- **"the box is offline or unreachable"**: the Mac got no answer from the box. Check the box is up (`vyre status` on the box) and that the address is right. `vyre up --connect https://alex.vyre.run` names it directly. `vyre doctor` on the Mac shows the path and the relay.
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
+The long code the server shows is good for five minutes and for one use. Run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh one, then run `vyre link pair <code>` on the Mac.
 
-### "The Mac that is asking can approve itself only with a passkey."
+### "Those were not the words the app shows, so nothing was paired."
 
-You approved the pairing in the Deck on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
-
-### "That code does not match. Check the code on the Mac and try again."
-
-Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`. After too many wrong codes the box cancels every request ("Too many wrong codes, so every request was cancelled. Start again on the Mac."): run `vyre up` on the Mac again.
+The server's terminal asked you to pick the three words the pairing device shows, and you picked a different set. Nothing was paired. Choose again when it offers, and compare the words with the screen of the device you are pairing.
 
 ### A Mac's sessions show "offline" on the box
 
-The Deck on the box lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+The Vyre app on the box lists the paired Mac's sessions while the Mac is awake and reachable. When it is not, the app shows the box's own sessions. Wake the Mac, check its connection, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
 
 ## Lumen
 
@@ -254,7 +151,7 @@ Search by meaning needs a local model of about 130 MB. Vyre fetches it into `~/.
 
 ### The vault says it is locked, or asks for presence
 
-`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code Vyre writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Deck, it is your passkey.
+`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code Vyre writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Vyre app, it is your passkey.
 
 ### An agent stopped: budget
 
@@ -268,11 +165,10 @@ vyre agents update kit --budget 40
 
 ### An agent is waiting on you
 
-A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in Lumen or the Deck.
+A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in Lumen or the Vyre app.
 
 ## Where to go next
 
-- [Install](install.md) and [Onboarding](onboarding.md), the steps in order
+- [Install](install.md), the steps in order
 - [Looking after the box](../using/box-care.md): updates, backups, logs
-- [Tailscale, from zero](tailscale.md#when-something-is-wrong): tailnet snags, device by device
 - [CLI reference](../reference/cli.md)

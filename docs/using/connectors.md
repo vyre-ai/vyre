@@ -20,8 +20,8 @@ tool, your calendar or your mail. Vyre connects these:
 The first three keep the same promises. A connection names [vault](vault.md) items and never
 holds a value. Anything that goes out as you waits at the Gate until you approve it.
 
-You manage MCP servers, Google accounts and GitHub accounts in the Deck, under Settings,
-Connections. MCP servers, Google accounts and catalog apps also work from the terminal with
+You manage MCP servers, Google accounts and GitHub accounts in the Vyre app, under Settings,
+Connections (`/u/connections`). MCP servers, Google accounts and catalog apps also work from the terminal with
 `vyre connect`. See the [CLI reference](../reference/cli.md) for every flag.
 
 ## Add an MCP server
@@ -45,8 +45,8 @@ vyre connect add mcp docs --url https://docs.example.com/mcp --auth bearer --ite
 ```
 
 After the add, Vyre asks the vault to let the `mcp` module use each item. That grant needs you
-to be present. Then it tries the server and prints how many tools it has. In the Deck, **Add MCP
-server** does the same and asks for your passkey for the grant.
+to be present. Then it tries the server and prints how many tools it has. In the Vyre app, **Add MCP
+server** does the same and asks you to prove you are there for the grant.
 
 What else you can set:
 
@@ -60,7 +60,7 @@ Plain `http://` is allowed only to this machine, your tailnet, or an origin you 
 `mcp.httpHosts` in `config.json`. Everything else needs `https://`.
 
 A server starts on its first use, not at boot. It stops after 10 minutes idle. A server that
-crashes three times in five minutes stays stopped until you restart it (**Restart** in the Deck).
+crashes three times in five minutes stays stopped until you restart it (**Restart** in the Vyre app).
 
 `vyre connect list` shows every connection. `vyre connect test mcp tracker` tries one now.
 `vyre connect remove mcp tracker` disconnects it and leaves its vault items where they are.
@@ -77,7 +77,7 @@ outward, and an unknown tool counts as outward.
   Nothing reaches the server until you approve it, and then it runs with exactly the arguments
   you approved, edits included.
 
-You can change a tool's mode after **Test** in the Deck: **Read**, **Held** or **Off** (hidden).
+You can change a tool's mode after **Test** in the Vyre app: **Read**, **Held** or **Off** (hidden).
 A tool whose name sends (`send`, `post`, `reply`, `forward`, `publish`, `share`, `invite`,
 `tweet`, `dm`, `comment`) is always held. It can be Held or Off, never Read.
 
@@ -117,7 +117,7 @@ There are three ways an app signs in, and Vyre picks the one the vendor offers:
 
 - **Sign in.** The vendor lets an app register itself. You open the address Vyre prints, approve, and
   it is done. On a browser that is not on the box, paste the address the browser lands on back into the
-  terminal, or into the Deck's Connections screen.
+  terminal, or into the Vyre app's Connections screen.
 - **Your own app.** The vendor wants you to make an OAuth app in your own account first (Asana,
   HubSpot, Google Workspace). `vyre connect apps` says so, and `vyre connect add app <id>` prints the
   steps and the redirect address to enter. Put the app's client ID and secret in a vault item, then
@@ -152,7 +152,7 @@ address that Vyre uses; HighLevel's Claude-only address refuses any other app.
 
 ## Connect Google Calendar and Gmail
 
-In the Deck, open Settings, Connections, and press **Add Google account**. Give the account a
+In the Vyre app, open Settings, Connections, and press **Add Google account**. Give the account a
 name (like `work`) and its address, pick how it signs in, and pick the vault item that holds the
 credential. **Add account** adds it, asks for your passkey to let the `google` module use the
 item, then checks each scope with Google. There are two ways to sign in.
@@ -170,7 +170,7 @@ through domain-wide delegation. Store its JSON key as a `note` or `secret` vault
 address it acts as:
 
 ```
-vyre connect add google work --email alex@harlowlegal.com --item harlow-google-sa --dwd
+vyre connect add google work --email alex@juniperstudio.example --item juniper-google-sa --dwd
 ```
 
 **Test** asks Google for each scope and lists which were refused. For a service account, the
@@ -180,7 +180,7 @@ Security, API controls, Domain-wide delegation.
 To sign in with a browser instead, run `vyre connect add google home --sign-in`. It opens
 Google's consent page, finds the address itself and puts the refresh token in the vault. It uses
 the OAuth client in the vault item `google-oauth-client` unless you name another with `--client`.
-In the Deck, **Add Google account** offers **Sign in with Google** first; it opens Google's consent
+In the Vyre app, **Add Google account** offers **Sign in with Google** first; it opens Google's consent
 page in a new tab, and on a browser on another device you paste the address it lands on.
 
 What Vyre does with the account:
@@ -206,7 +206,7 @@ GitHub account**, give it a name such as `work`, and choose how to sign in:
 - **Paste a token instead.** Paste a personal access token into the field in the form. Vyre checks
   it with GitHub before it saves anything, and tells you how many repos it reaches. A fine-grained
   token can reach fewer repos than the sign-in, and this path needs no `gh`. Type the token in the
-  Deck field, never into a chat message.
+  app's field, never into a chat message.
 
 The token is stored as a [vault](vault.md) item named `github-<name>` and is never shown again.
 Disconnecting removes that item and the account. It does not revoke the token at GitHub, so
@@ -244,7 +244,7 @@ with Developer mode on. Click its toolbar icon to see whether it is connected.
 - **Site learning is on by default.** Vyre for Chrome remembers each site's layout, how to find
   its buttons, how to tell the page is ready or that you must sign in, and the flows that worked,
   so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens.
-  See and forget any of it in the Deck under Memory, Sites; each forget can be undone for a day.
+  See and forget any of it in the Vyre app under Memory, Sites; each forget can be undone for a day.
   Turn it off with **Learn how each website works** in Settings.
 
 A separate package, `vyre-chrome`, runs the same code without a Vyre server: `vyre-chrome
@@ -261,7 +261,7 @@ one is a connection in Vault, Connections, where you choose which surfaces may u
 Lumen and chats by default, agents only when you turn them on.
 
 In Lumen, type **send an email**. You get one row per account you may send from, such as
-"Send from alex@harlow.example". Words you add are filled in: "email dana@northwind-bakery.example
+"Send from alex@juniper.example". Words you add are filled in: "email dana@northwind-bakery.example
 about the order" sets the address and the subject, "write to dana saying the rota is ready" finds
 Dana's address in your mail and sets the body. Press Return on a row and the message waits at the
 Gate, where you finish it and approve it with Touch ID. "email from dana" lists messages across
@@ -292,7 +292,7 @@ tool as a read.
   looks like a credential. Tokens are fetched from the vault at call time and scrubbed from every
   result and error.
 - A model never adds, changes or removes a server or an account, and never widens a scope.
-  Those are for you, in the Deck or the terminal.
+  Those are for you, in the Vyre app or the terminal.
 - A tool that sends is never run without your approval.
 - Vyre's own MCP server is never a hub server: it refuses to run inside the hub.
 

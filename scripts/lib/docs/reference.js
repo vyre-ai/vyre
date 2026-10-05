@@ -512,7 +512,7 @@ const MEANING = {
   modules: "Modules to start or stop against their role.",
   "modules.enable": "Modules to start even where their role says not to.",
   "modules.disable": "Modules never to start.",
-  network: "How this machine is reached. See [Tailscale](../using/tailscale.md).",
+  network: "How this machine is reached. See [Install](../get-started/install.md).",
   onboard: "Onboarding's own settings.",
   owner: "The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input.",
   "owner.id": "16 random bytes, hex. Made once and never changed; `system.info` exposes only a fingerprint of it (fingerprint8), never this value itself.",
