@@ -77,7 +77,8 @@ test("a Code step that runs forever is stopped and the run fails with a reason t
 function stubDoor() {
   /** @type {any[]} */ const sent = [];
   const sealer = { detect: async (/** @type {any} */ i) => { const r = redact(i.text); return { text: r.text, found: r.found.map((/** @type {any} */ f) => ({ class: f.class, n: f.n })), ledger: [] }; }, endSession: async () => {} };
-  const door = createDoor({ sealer, isChain, sinks: [], drivers: { default: { call: async (/** @type {any} */ i) => { sent.push(i); const text = String(i.messages[i.messages.length - 1].content); return { content: /quote|retain|hire|injur/i.test(text) ? "new_lead" : "other", usage: { cost_micro: 0 } }; } } } });
+  const door = createDoor({ sealer, isChain, sinks: [], drivers: { default: { call: async (/** @type {any} */ i) => { sent.push(i); const text = String(i.messages[i.messages.length - 1].content); if (/JSON object/.test(String(i.messages[0].content))) return { content: JSON.stringify({ client: "Jane", amount: 500 }), usage: { cost_micro: 0 } };
+      return { content: /quote|retain|hire|injur/i.test(text) ? "new_lead" : "other", usage: { cost_micro: 0 } }; } } } });
   return { door, sent };
 }
 
@@ -183,4 +184,20 @@ test("a task given to a pool in a real daemon goes to the team member with the s
   const full = (await host.flows.tools["flows.run"](host.personChain(), { run: runs[0].id })).run;
   assert.equal(full.steps.a.output.chosen.doer, d.kernel.id.owner, JSON.stringify(full.error || full.steps.a));
   assert.match(full.steps.a.output.chosen.why, /has spanish/);
+});
+
+test("an extract step in a real daemon reads fields through the door: the SSN in the message is a placeholder, no tools are offered, the fields reach the record", { timeout: 120_000 }, async t => {
+  const { door, sent } = stubDoor();
+  const { d, host, admin, install } = await boot(t, { kernelDoor: door });
+  await d.kernel.gateway.records.define(admin, { add_types: [{ name: "intake", label: "Intake", fields: [{ name: "who", kind: "text", label: "Who" }, { name: "owed", kind: "number", label: "Owed" }] }] });
+  const flow = await install({ format: 1, name: "read", label: "Read", authorship: "human", trigger: { on: "manual" }, steps: [
+    { id: "e", kind: "extract", input: { expr: "trigger.body" }, fields: [{ name: "client", kind: "text" }, { name: "amount", kind: "number" }] },
+    { id: "c", kind: "create", type: "intake", set: { who: { expr: "steps.e.fields.client" }, owed: { expr: "steps.e.fields.amount" } } }] });
+  await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: { body: "Jane owes $500. SSN 123-45-6789." } });
+  const row = await until(async () => (await d.kernel.gateway.records.query(admin, "intake", { page: { limit: 10 } })).rows[0] || null, "the extracted record");
+  assert.equal(row.data.who, "Jane");
+  assert.equal(row.data.owed, 500);
+  assert.ok(!JSON.stringify(sent).includes("123-45-6789"));
+  assert.match(JSON.stringify(sent[0].messages), /\[sealed: /);
+  assert.ok(sent.every(x => !x.tools || x.tools.length === 0));
 });

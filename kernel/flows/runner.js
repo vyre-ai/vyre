@@ -492,6 +492,7 @@ export class FlowRunner {
         return draftAs ? { draft: true, via: draftAs, result: r } : r;
       }, { input: val(s.input) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
+      case "extract": out = await this.#extract(ctx, s, key, val); break;
       case "service": out = await this.#service(ctx, s, key, val); break;
       case "fn": out = await this.#fn(ctx, s, key, val); break;
       default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
@@ -914,6 +915,34 @@ export class FlowRunner {
     }, { input_class: "text" });
   }
 
+  /**
+   * Extract: named fields read out of a message or document, through the same model door as classify (sealed values placeholders, no tools, the same AI budget). The model is asked for a JSON object of
+   * exactly the declared fields, null where the text does not say; each value is coerced to its declared kind and anything else is dropped, so the step's output is the declared shape and nothing more.
+   * @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val
+   */
+  async #extract(ctx, s, key, val) {
+    const need = { action: "model.call", resource: `vyre://${ctx.cat.space}/model/*` };
+    return this.#effect(ctx, s, key, need, async () => {
+      const names = s.fields.map((/** @type {any} */ f) => f.name);
+      if (ctx.dry) return { dry: true, fields: Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) };
+      const m = this.ports.model || { provider: "default", model: "default" };
+      await this.#aiGuard(ctx);
+      const text = String(val(s.input) ?? "").slice(0, 16_000);
+      const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");
+      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "extract", provider: m.provider, model: m.model, max_tokens: 400,
+        messages: [{ role: "system", content: `Read the user's text and answer with ONE JSON object and nothing else. Its keys are exactly these fields; a value is null when the text does not say. Dates are YYYY-MM-DD.\n${spec}` }, { role: "user", content: text }] }).catch(portFail);
+      const u = r && r.usage || {};
+      const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
+      await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
+      /** @type {any} */ let parsed = null;
+      try { const raw = String(r.content || "").trim().replace(/^```(?:json)?\s*|\s*```$/g, ""); parsed = JSON.parse(raw); } catch { parsed = null; }
+      const ok = parsed && typeof parsed === "object" && !Array.isArray(parsed);
+      /** @type {Record<string, any>} */ const fields = {};
+      for (const f of s.fields) fields[f.name] = ok ? coerce(parsed[f.name], f.kind || "text") : null;
+      return { fields, found: names.filter((/** @type {string} */ n) => fields[n] !== null), raw_ok: Boolean(ok) };
+    }, { input_class: "text" });
+  }
+
   /** @param {number} now */
   #day(now) { return new Date(now).toISOString().slice(0, 10); }
   /** The Space's daily AI allowance in tokens: what an admin set, else the default. */
@@ -1109,6 +1138,14 @@ const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, act
 
 /** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
 const SERVICE_BODY_CAP = 64 * 1024;
+/** A model's value as the declared kind, or null when it is not that kind (an extracted field is never a guess dressed as another type). @param {any} v @param {string} kind */
+function coerce(v, kind) {
+  if (v === undefined || v === null || v === "") return null;
+  if (kind === "number") { const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s$]/g, "")); return Number.isFinite(n) ? n : null; }
+  if (kind === "boolean") return typeof v === "boolean" ? v : /^(true|yes)$/i.test(String(v)) ? true : /^(false|no)$/i.test(String(v)) ? false : null;
+  if (kind === "date") { const d = String(v).trim(); return /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) ? d : null; }
+  return typeof v === "object" ? null : String(v).slice(0, 2000);
+}
 
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */

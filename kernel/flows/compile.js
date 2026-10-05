@@ -28,7 +28,7 @@ import { parse, roots, stepRefs } from "./expr.js";
 export const STEP_ACTIONS = Object.freeze({
   find: "records.read", pick: "records.read", create: "records.create", update: "records.update", upsert: "records.update",
   remove: "records.remove", stage: "records.update", ask: "ask.request", assign: "ask.request", agent: "ask.request",
-  classify: "model.call", service: "service.call", fn: "fn.run",
+  classify: "model.call", extract: "model.call", service: "service.call", fn: "fn.run",
 });
 
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -208,7 +208,7 @@ export function compileFlow(flow, cat) {
         if (!read) effects.outward.push({ step: s.id, action: "service.call", risk: "outward.send", destination_constant: true });
       }
       if (s.kind === "fn") effects.code.push({ step: s.id, hash: s.hash || null, needs: s.needs || [], outputs: s.outputs });
-      if (s.kind === "classify" || s.kind === "agent") effects.model_steps.push(s.id);
+      if (s.kind === "classify" || s.kind === "extract" || s.kind === "agent") effects.model_steps.push(s.id);
       if (s.kind === "find" || s.kind === "pick") { if (t && !effects.reads.includes(s.type)) effects.reads.push(s.type); }
       if (["create", "update", "upsert", "remove", "stage"].includes(s.kind) && !effects.writes.includes(s.type)) effects.writes.push(s.type);
 
@@ -229,6 +229,7 @@ export function compileFlow(flow, cat) {
         case "agent": nm(s.title, "title"); nm(s.instructions, "instructions"); nm(s.record, "record"); break;
         case "call": nm(s.input, "input"); break;
         case "classify": nm(s.input, "input"); break;
+        case "extract": nm(s.input, "input"); break;
         case "service": nm(s.query, "query"); nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body) && serviceActionOf(cat, s) === "service.call") effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
         case "fn": nm(s.inputs, "inputs"); break;
         default: break;
