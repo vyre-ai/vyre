@@ -17,9 +17,8 @@ const KEYS = { A: newDeviceKey(), B: newDeviceKey(), X: newDeviceKey() };
 const pointOfEid = eid => b64(pointOf(KEYS[eid].publicJwk));
 const listDevices = () => ["A", "B"].map(e => ({ device: e, agree: pointOfEid(e) }));
 const identityCalls = async (tool, input, me) => {
-  if (tool === "spaces.identity.id") return { data: { id: "per_alex" } };
+  if (tool === "spaces.identity.id") return { data: { id: "per_alex", eid: me } };
   if (tool === "spaces.identity.devices.read") return { data: { devices: listDevices() } };
-  if (tool === "spaces.identity.status") return { data: { exists: true, pending: false, id: "per_alex", eid: me } };
   if (tool === "spaces.identity.ecdh") return { data: { secret: b64(await ecdhFrom(KEYS[me].privateJwk)(Buffer.from(input.epk, "base64url"))) } };
   return undefined;
 };

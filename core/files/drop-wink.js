@@ -119,8 +119,9 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   // ---------------------------------------------------------------- a computer's half
   /** This computer's own entry on the person's identity list, the one whose key-agreement key opens what is sealed to it. */
   const ownEid = async () => {
-    const r = /** @type {any} */ (await ctx.call("spaces.identity.status", {}).catch(() => null));
-    const eid = r && r.data && r.data.exists && !r.data.pending && typeof r.data.eid === "string" ? r.data.eid : null;
+    // the modules-only read of the identity (spaces.identity.status is the person's, and a module is refused it with the gates on)
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.id", {}).catch(() => null));
+    const eid = r && r.data && typeof r.data.id === "string" && typeof r.data.eid === "string" ? r.data.eid : null;
     if (!eid) throw fail("not_ready", "this computer has no identity yet");
     return eid;
   };
