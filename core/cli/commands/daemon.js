@@ -58,7 +58,7 @@ export default [
       else if (d.finishing === "gave_up") out(`  ${beacon("The update did not finish")} ${dim("· the signed module list never arrived, so no module is running. Run: vyre update")}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (readSpace()) out(`  acting in ${readSpace()} ${dim("· vyre space use --clear to go back to the home's own space")}`);
-      if (d.records_store) { const rs = d.records_store; out(`  records: ${rs.store === "twenty" ? "Twenty" : rs.store === "builtin" ? "built-in store" : rs.store} ${dim(`· ${rs.from === "VYRE_STORE" ? "VYRE_STORE" : "default"}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}`)}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
+      if (d.records_store) { const rs = d.records_store; out(`  records: ${rs.store === "twenty" ? "Records" : rs.store === "builtin" ? "built-in store" : rs.store} ${dim(`· ${rs.from === "VYRE_STORE" ? "VYRE_STORE" : "default"}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}`)}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
       return 0;

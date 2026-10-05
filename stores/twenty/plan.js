@@ -76,13 +76,13 @@ export function planType(def, hint = {}) {
   for (const f of def.fields) {
     const isTitle = f.name === title;
     const tw = isTitle ? "name" : safe(camel(f.name));
-    if (!isTitle && SYSTEM_FIELDS.has(tw)) throw new PlanError("invalid", `Field "${f.name}" of ${def.name} collides with a name Twenty uses on every object`);
+    if (!isTitle && SYSTEM_FIELDS.has(tw)) throw new PlanError("invalid", `Field "${f.name}" of ${def.name} collides with a name Records uses on every object`);
     const k = isTitle ? { type: "TEXT" } : twentyKind(f);
-    if (k.options) { const vals = k.options.map((o) => o.value); if (new Set(vals).size !== vals.length || vals.some((v) => !v)) throw new PlanError("invalid", `The options of ${def.name}.${f.name} are not distinct once written as Twenty values`); }
+    if (k.options) { const vals = k.options.map((o) => o.value); if (new Set(vals).size !== vals.length || vals.some((v) => !v)) throw new PlanError("invalid", `The options of ${def.name}.${f.name} are not distinct once written as Records values`); }
     fields.push({ vyre: f.name, kind: f.kind, twenty: tw, type: k.type, def: f, options: k.options, settings: k.settings, isTitle, sealed: f.kind === "sealed" });
   }
   const byTwenty = new Map(fields.map((f) => [f.twenty, f]));
-  if (byTwenty.size !== fields.length) throw new PlanError("invalid", `Two fields of ${def.name} map to the same Twenty name`);
+  if (byTwenty.size !== fields.length) throw new PlanError("invalid", `Two fields of ${def.name} map to the same Records name`);
   return { vyre: def.name, singular, plural: pl, label: def.label ?? def.name, icon: def.icon ?? "IconBox", def, fields, byVyre: new Map(fields.map((f) => [f.vyre, f])), byTwenty, title };
 }
 

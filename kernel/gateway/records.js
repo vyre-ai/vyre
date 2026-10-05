@@ -272,6 +272,29 @@ export function createRecords(cfg) {
       }
     }
   }
+  /**
+   * A new type needs its own name and label: a second type with the label of one the Space already has (another name, same words) is refused, and so is an
+   * "add" of an existing name that would drop its fields (that is a change, made from the type itself). The same definition added again is no change at all.
+   */
+  async function checkNames(/** @type {any} */ diff) {
+    const adding = diff.add_types || [];
+    if (!adding.length) return;
+    let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
+    const words = (/** @type {any} */ s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+    const seen = new Map();
+    for (const t of adding) {
+      const label = words(t.label || t.name);
+      const same = defs.find((/** @type {any} */ d) => d.name === t.name);
+      if (same) {
+        const dropped = (same.fields || []).filter((/** @type {any} */ f) => !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name));
+        if (dropped.length) throw new KernelError("type_exists", `There is already a type called ${same.label || same.name}. Open it to change it.`);
+      } else {
+        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
+        if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
+      }
+      seen.set(label, t.name);
+    }
+  }
   const VIEW_TYPES = new Set(["list", "board", "calendar", "page", "dashboard"]);
   const VIEW_KEYS = new Set(["name", "type", "label", "groupBy", "dateField", "columns", "filter", "sort"]);
   /**
@@ -639,7 +662,7 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      checkKinds(diff); await checkRoles(diff); await checkShape(diff);
+      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;

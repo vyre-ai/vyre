@@ -25,9 +25,9 @@ const TABULAR = { fontVariant: ["tabular-nums" as const] };
  * A phone row is the title (17), a line "Jane Doe, Engagement" (links, stage and choices), and at the end the money field in 17 tabular with the calendar
  * date under it ("closing 28 Oct"); the owner is a column on a wide screen and not on the phone.
  */
-export function ListView({ def, rows, env, onOpen, lead }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; lead?: ReactNode }) {
+export function ListView({ def, rows, env, onOpen, lead, view }: { def: any; view?: string; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; lead?: ReactNode }) {
   const { phone } = useUiTheme();
-  const vd = viewDefOf(def);
+  const vd = viewDefOf(def, undefined, view);
   const cols = listColumns(def, vd);
   const [sort, setSort] = useState<string>(vd.list?.sort || vd.titleField);
   const [desc, setDesc] = useState(vd.list?.sortDir === "desc");

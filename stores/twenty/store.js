@@ -21,6 +21,7 @@ import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
+import { syncViews } from "./views.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
@@ -222,7 +223,7 @@ export class TwentyStore {
   }
   async health() {
     const h = await twentyGet(this.client, "/healthz");
-    if (h.status !== 200) return { ok: false, detail: `Twenty is not answering (${h.status || "no reply"})`, checked_at: this.now() };
+    if (h.status !== 200) return { ok: false, detail: `Records is not answering (${h.status || "no reply"})`, checked_at: this.now() };
     try { await this.client.gql("metadata", "query Health { objects(paging: { first: 1 }) { edges { node { id } } } }"); } catch (e) { return { ok: false, detail: /** @type {Error} */ (e).message, checked_at: this.now() }; }
     return { ok: true, checked_at: this.now() };
   }
@@ -290,6 +291,12 @@ export class TwentyStore {
           for (const v of exVals) if (!f.options.some((o) => o.value === v)) throw new StoreError("unsupported", `An option of ${def.name}.${f.vyre} was removed: that is a migration, not a define`);
           if (f.options.some((o) => !exVals.has(o.value))) { await this.client.gql("metadata", "mutation UpdField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { options: f.options } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         }
+      }
+      // The type's stored views are the Records' own views too (stores/twenty/views.js): written whenever the definition's views are new, changed or gone.
+      if ((def.views && def.views.length) || (known && known.def.views && known.def.views.length)) {
+        const all = await this.#t(() => this.client.gql("metadata", "query ObjF { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { id name } } } } } } }"));
+        const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
+        if (o) for (const c of await syncViews(this.client, { id: o.id, fields: new Map(o.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node.id])) }, p, this.space, known ? known.def : undefined)) changes.push(c);
       }
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
@@ -503,7 +510,7 @@ export class TwentyStore {
       if (await this.#row(p, id, "any")) throw new StoreError("invalid", `${type} ${id} already exists`);
       const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), [VERSION_FIELD]: 1 } });
       const row = d[`create${P}`];
-      if (row.id !== id) throw new StoreError("invalid", `Twenty replaced our id: sent ${id}, got ${row.id}`);
+      if (row.id !== id) throw new StoreError("invalid", `Records replaced our id: sent ${id}, got ${row.id}`);
       this.#mine(id, row.updatedAt);
       const rec = this.#snap(p, row);
       this.#note({ type, id, kind: "created", version: 1, at: rec.updated_at, after: rec.data, source: "gateway" });

@@ -115,3 +115,14 @@ test("define refuses a conditional field, stage set, entry condition or view tha
   assert.equal(stored.stage_sets.length, 2);
   assert.equal(stored.fields.find((f) => f.name === "accident_date").required_if, `area == "${PI}"`);
 });
+
+test("a type needs its own name and label: a second type with the same label is refused, and an add that would drop an existing type's fields is a change", async () => {
+  const { o, R } = await rig();
+  const dup = (name, label, fields = MATTER.fields) => ({ name, label, fields });
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter_2", "Matter")] }), (e) => e.code === "type_exists" && /There is already a type called Matter/.test(e.message));
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter_3", "  matter ")] }), { code: "type_exists" }, "case and spaces do not make it another label");
+  await assert.rejects(() => R.define(o, { add_types: [dup("matter", "Matter", [MATTER.fields[0]])] }), { code: "type_exists" }, "same name, fewer fields");
+  await assert.rejects(() => R.define(o, { add_types: [dup("a1", "Alpha", [MATTER.fields[0]]), dup("a2", "alpha", [MATTER.fields[0]])] }), { code: "type_exists" }, "two new types with one label");
+  assert.equal((await R.define(o, { add_types: [{ ...MATTER }] })).applied, false, "the same definition again changes nothing");
+  assert.equal((await R.define(o, { add_types: [dup("alpha", "Alpha", [MATTER.fields[0]])] })).applied, true, "another label is a new type");
+});

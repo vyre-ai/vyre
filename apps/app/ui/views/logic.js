@@ -1,13 +1,13 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
-import { viewDefOf } from "../../../../deck/ui/view-defs.js";
+import { viewDefOf, storedViewsOf } from "../../../../deck/ui/view-defs.js";
 import { fieldStates, holds } from "../../../../kernel/expr/conditions.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
-export { viewDefOf, fieldStates };
+export { viewDefOf, storedViewsOf, fieldStates };
 
 /** The field of a type by name. @param {any} def @param {string} name */
 export const fieldOf = (def, name) => (def.fields || []).find((/** @type {any} */ f) => f.name === name);
