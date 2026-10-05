@@ -11707,7 +11707,7 @@ What this module recorded when the owner confirmed a device: { id, kind, owner, 
 
 ### `wink.events.read`
 
-On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. Waits up to wait_ms (at most 25000) for the first new event.
+On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. `type` is an exact name or a prefix ending in * (thread.*). Waits up to wait_ms (at most 25000) for the first new event.
 
 - Input:
   - `limit` number
