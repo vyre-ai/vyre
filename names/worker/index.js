@@ -7,7 +7,6 @@
 //   POST   /v1/names/point           {name, ip}            A record, tailnet IPv4 (100.64.0.0/10) only
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
-//   POST   /v1/names/code            {name, next}          the owner replaces the recovery code
 //   POST   /v1/names/release         {name}                give the name up (a tombstone if it was ever pointed)
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
@@ -26,7 +25,6 @@
 
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
-export const CODE_TAG = "vyre-names-code";
 export const ZONE_TAG = "vyre-acme-zone";
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
 const DAY = 86_400_000;
@@ -166,8 +164,6 @@ const sha256 = /** @param {string} s */ async s => hex(await crypto.subtle.diges
 export async function routeId(pub) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", pub))).slice(0, 26); }
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export async function routeHash(route) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${ZONE_TAG}\n${route}`)))).slice(0, 26); }
-/** @param {string} name @param {string} code the recovery code, dashes and case ignored */
-export const codeHash = (name, code) => sha256(`${CODE_TAG}\n${name}\n${String(code).toLowerCase().replace(/[^a-z2-7]/g, "")}`);
 /** Equal strings, in time that depends only on length. */
 function same(a, b) {
   const x = enc.encode(a), y = enc.encode(b);
@@ -208,7 +204,7 @@ import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 
 const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
-  "POST /v1/names/code": "code", "POST /v1/names/release": "release",
+  "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
   "POST /v1/names/admin/rebind": "adminRebind",
   ...ID_ROUTES,
@@ -362,7 +358,7 @@ const NOTICES = 20;
 
 /**
  * Every name, in one object. Keys:
- *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, codeHash, notices, log }
+ *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, notices, log }
  *   r/<route>         the one name a route holds
  *   c/<kind>/<day>/<key>   a day's counter
  *   nc/<route>/<nonce>     a used signature nonce
@@ -496,7 +492,7 @@ export class Directory {
     if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
     const held = await this.held(a.route);
     if (held) {
-      if (held.name === v.name) return { name: v.name, mine: true, code: null };
+      if (held.name === v.name) return { name: v.name, mine: true, fresh: false };
       throw err(409, "one_per_route", `this server already holds ${held.name}`);
     }
     await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || LIMITS.claimsPerIp, "too many names claimed from this address today");
@@ -507,14 +503,11 @@ export class Directory {
     });
     if (total === max) console.warn(`names: ALERT the daily claim ceiling (${max}) is now reached`);
     if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
-    const raw = new Uint8Array(16);
-    crypto.getRandomValues(raw);
-    const code = base32(raw).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
-    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, codeHash: await codeHash(v.name, code), notices: [], log: [] };
+    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] };
     await this.save(rec);
     await this.store.put(`r/${a.route}`, v.name);
     await this.store.delete(`m/${a.route}`); // the route holds a name again: the old "moved" note no longer applies
-    return { name: v.name, mine: true, code };
+    return { name: v.name, mine: true, fresh: true };
   }
 
   async op_point(b, a) {
@@ -570,16 +563,6 @@ export class Directory {
     await this.save(rec);
     await this.wipeDns(rec);
     return { name: rec.name, tombstone: true };
-  }
-
-  async op_code(b, a) {
-    const rec = await this.owned(b, a);
-    if (!/^[0-9a-f]{64}$/.test(String(b.next || ""))) throw err(400, "bad_code", "send the hash of the new code");
-    rec.codeHash = b.next;
-    await this.unpend(rec);
-    this.note(rec, "code-replaced", {});
-    await this.save(rec);
-    return { name: rec.name };
   }
 
   async op_mine(_b, a) {

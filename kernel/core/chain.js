@@ -30,6 +30,12 @@ export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space:
 /** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
 export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
+/**
+ * One person acting for themselves, or the person's own default assistant acting AS them (`chain.via === "assistant"`: the person's chain plus the assistant hop, never a second principal). Not a
+ * space or project agent (that chain carries a different agent and no `via`), not a viewer, and not a model slot. What only a human may do (an approval, a proof) still asks `isExactlyPerson`.
+ */
+export const actsAsPerson = (/** @type {any} */ chain) => isExactlyPerson(chain) || (isChain(chain) && chain.viewer !== true && chain.via === "assistant" && chain.hops[0].actor.kind === "person");
+
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
 /** An unknown trust or class is an error, never "weakest": a bad label must not drop a taint (invariant 9). */
@@ -100,6 +106,8 @@ export function createChainBuilder(cfg) {
       }
       case "agent_session": {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
+        // `model:` names a Switchboard slot, which holds nothing of its own: only a `model_slot` fact makes one, never an agent session under that name (SL-1).
+        if (typeof f.agent === "string" && f.agent.startsWith("model:")) return refuse("an agent session is not a model slot");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
         return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });

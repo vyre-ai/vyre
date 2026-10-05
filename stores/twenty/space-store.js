@@ -25,9 +25,14 @@ import { createRefusingStore } from "../../kernel/store/refusing.js";
 /**
  * The record store a Space gets when nothing says otherwise. Two tiers (the user's ruling, 5 Oct): a SERVER install (the person's own always-on server, or a team server) gives every Space its own Twenty; a DEVICE install
  * (a laptop or desktop that is not a server) is Basic, with no Twenty and no Docker: its records are the device kernel's own index. A development build keeps the built-in store everywhere so the test suites need no Docker.
- * VYRE_STORE overrides. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean }} [o] `server`: this install is a server
+ * VYRE_STORE overrides only in a development build. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean, root?: string }} [o] `server`: this install is a server; `root`: read the build kind from that folder (tests)
  */
-export const storeMode = (env = process.env, o = {}) => env.VYRE_STORE || (isPackaged() && o.server === true ? "twenty" : "sqlite");
+export const storeMode = (env = process.env, o = {}) => {
+  // a packaged build has no override: a server is always Twenty (never sqlite or auto), a device is always Basic (the built-in store, fixed personal types only)
+  if (isPackaged(o.root)) return o.server === true ? "twenty" : "sqlite";
+  return env.VYRE_STORE || "sqlite";
+};
+import { kitFromLibrary } from "../../records/kits/library.js";
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
@@ -111,8 +116,7 @@ export function createStoreFor(cfg) {
     if (mode === "sqlite") return undefined;
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
-      // a Space that was made on Twenty never starts without it; a new Space is not made here (the answer comes first, never after: the server is offered)
-      if (chosen?.kind === "twenty") throw Object.assign(new Error(`the Twenty store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
       if (!meta.personal) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "none", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       // the home's own Space: the daemon starts, records answer one plain refusal, and the reasons are written beside it for `vyre status`
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -134,7 +138,7 @@ export function createStoreFor(cfg) {
       if (!h.rotate) { try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } return h; }
       try { await (cfg.rotate ?? rotateApiKey)({ home: twentyHome, space: name, runner, reach, log }); try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } }
       catch (e) {
-        const msg = `WARNING: the API key for ${space}'s Twenty could not be rotated (${/** @type {Error} */ (e).message}); it ${h.daysLeft === null ? "cannot be read" : h.daysLeft <= 0 ? "has expired" : `expires in ${h.daysLeft} days`}. Records will stop being readable when it does.`;
+        const msg = `WARNING: the API key for ${space}'s Records could not be rotated (${/** @type {Error} */ (e).message}); it ${h.daysLeft === null ? "cannot be read" : h.daysLeft <= 0 ? "has expired" : `expires in ${h.daysLeft} days`}. Records will stop being readable when it does.`;
         log(msg);
         fs.writeFileSync(path.join(dir, "key-warning.json"), JSON.stringify({ at: new Date().toISOString(), daysLeft: h.daysLeft, expiresAt: h.expiresAt, error: String(/** @type {Error} */ (e).message) }), { mode: 0o600 });
         if (!h.ok) throw Object.assign(new Error(msg), { code: "unavailable" });
@@ -147,16 +151,35 @@ export function createStoreFor(cfg) {
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
     const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
-    const tc = Date.now(); await store.define({ add_types: [...CORE_TYPES] }); log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
-    // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
-    { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
+    const tc = Date.now();
+    await defineCore(store, log);
+    log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
-    log(`store for ${space}: Twenty ready`);
+    log(`store for ${space}: Records ready`);
     /** @type {any} */ (store).keyCheck = checkKey;
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
   };
   storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
+}
+
+/**
+ * A Space's own types at start: the core types it does not have yet, then (only when it had none) the base Kit, then links moved onto relations if the Space is older. Idempotent. Also what the saved
+ * database for new Spaces is built with (stores/twenty/live/build-golden.mjs), so a Space made from it has already done all of this.
+ * @param {any} store @param {(line: string) => void} [log]
+ */
+export async function defineCore(store, log = () => {}) {
+  // Only the ones this Space does not have yet: a core type a Kit extended (contact with its own fields) is never put back to its bare shape on a restart.
+  const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
+  const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
+  if (fresh.length) await store.define({ add_types: [...fresh] });
+  // A new Space starts with the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
+  if (fresh.length === CORE_TYPES.length) {
+    const base = kitFromLibrary("base").includes.types;
+    await store.define({ add_types: base.filter((/** @type {any} */ t) => !known.has(t.name) && !CORE_TYPES.some((c) => c.name === t.name)), change_types: base.filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)) });
+  }
+  // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
+  { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
 }
