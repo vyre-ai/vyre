@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { redact } from "./sanitize.js";
 import { Linker } from "./links.js";
+import { withoutSeed } from "../../lib/seed.js";
 
 export { redact, scan } from "./sanitize.js";
 
@@ -150,6 +151,8 @@ export function turnOf(o) {
   if (typeof c === "string") text = c;
   else if (Array.isArray(c)) text = c.filter(p => p && p.type === "text" && typeof p.text === "string").map(p => p.text).join("\n");
   text = text.trim();
+  // A rolled session's first message is Vyre's seed (lib/seed.js) and then the person's words: the seed repeats what earlier windows already stored, so only the words are the turn.
+  if (role === "user") text = withoutSeed(text).trim();
   // The model that wrote an assistant line (Claude Code records it on the message); a placeholder like "<synthetic>" is no model.
   const model = role === "assistant" && typeof m.model === "string" && m.model && !m.model.startsWith("<") ? m.model.slice(0, 80) : null;
   return text ? { role, text, ...(model ? { model } : {}) } : null;
