@@ -9,9 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { bootKernel } from "./boot.js";
 import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
-import { Pool } from "./storage/pool.js";
-import { Drive } from "./storage/drive.js";
-import { dirBackend } from "./storage/backends.js";
+import { provisionDrive } from "./storage/provision.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { isExactlyPerson } from "./core/chain.js";
@@ -73,14 +71,11 @@ export async function bootHomeKernel(cfg) {
     if (hostedAdopt) { try { await hostedAdopt(to, from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } }
   };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
+  // The home Space's own Drive (kernel/storage/provision.js): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
   /** @type {any} */ let drive;
   if (sealer) {
-    try {
-      const pool = new Pool({ dir: path.join(id.dir, "drive"), key: await sealer.poolKey({ owner: id.space }) });
-      pool.addNode({ id: "home", backend: dirBackend(path.join(id.dir, "drive", "node")), home: true });
-      drive = new Drive(pool);
-    } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
+    try { drive = await provisionDrive({ dir: id.dir, space: id.space, sealer }) || undefined; }
+    catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
   const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, ...(sealer ? { checkpoints: true } : {}), door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(cfg.resolveCredential ? { resolveCredential: cfg.resolveCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { const moved = adoptedOwner(to, from); if (typeof cfg.onOwnerAdopted === "function") { try { cfg.onOwnerAdopted(to, from); } catch { /* a listener never stops an adoption */ } } return moved; }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // BL-2: the restart's checks. The log against the last signed checkpoint, and against the anchor the sealing process keeps outside the database. A packaged build that finds the log

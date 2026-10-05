@@ -299,3 +299,31 @@ test("retire (RT-1, more): a database that cannot be read refuses with the folde
   assert.ok(fs.existsSync(folder(b)));
   // member.removed and grant.revoked are allowed only because any record they could hide stays in the table, where it is found
 });
+
+test("every hosted Space has its own Drive: its own pool folder and pool key, and one Space's files are not there in another and are not readable with the other's key", async () => {
+  const { spaces, root } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  assert.ok(a.gateway.drive && b.gateway.drive, "each hosted Space has a Drive at creation");
+  const text = Buffer.from("Projects/Harlow: the retainer, in the clear ".repeat(30));
+  await a.gateway.drive.put(ca, "Projects/Harlow/retainer.txt", new Uint8Array(text));
+  assert.deepEqual(Buffer.from(await a.gateway.drive.get(ca, "Projects/Harlow/retainer.txt")), text, "the file reads back in its own Space");
+  // the other Space's Drive does not have it: not by path, not by listing
+  await assert.rejects(() => b.gateway.drive.get(cb, "Projects/Harlow/retainer.txt"), e => e.code === "not_found" || e.code === "unavailable");
+  const listed = await b.gateway.drive.list(cb, "");
+  assert.equal(JSON.stringify(listed).includes("retainer"), false, "and it is not in B's listing");
+  // separate pools on disk, each under its own Space's folder, and only ciphertext in them
+  const dirOf = id => path.join(root, "kernel", "spaces", id, "drive");
+  const files = d => { const out = []; const walk = x => { for (const n of fs.existsSync(x) ? fs.readdirSync(x) : []) { const p = path.join(x, n); fs.statSync(p).isDirectory() ? walk(p) : out.push(p); } }; walk(d); return out; };
+  const inA = files(path.join(dirOf(a.space), "node")), inB = files(path.join(dirOf(b.space), "node"));
+  assert.ok(inA.length > 0 && inB.length === 0, "the chunks are in A's pool folder only");
+  for (const f of inA) assert.ok(!fs.readFileSync(f).includes(Buffer.from("retainer, in the clear")), "chunks are ciphertext");
+  // the two pools' keys differ: A's chunk is not openable by B's pool
+  const { Pool } = await import("../storage/pool.js");
+  const idxA = JSON.parse(fs.readFileSync(path.join(dirOf(a.space), "index.json"), "utf8"));
+  const cid = Object.keys(idxA.chunks)[0];
+  const blob = fs.readFileSync(path.join(dirOf(a.space), "node", "c", cid));
+  const keyB = Buffer.from((await import("node:crypto")).hkdfSync("sha256", fs.readFileSync(path.join(root, "kernel", "spaces", b.space, "kernel.key"), "utf8").trim().length ? Buffer.from(fs.readFileSync(path.join(root, "kernel", "spaces", b.space, "kernel.key"), "utf8").trim(), "hex") : Buffer.alloc(32), b.space, "vyre pool key v1", 32));
+  const poolB = new Pool({ dir: fs.mkdtempSync(path.join(os.tmpdir(), "vyre-poolb-")), key: keyB });
+  assert.equal(poolB.open(cid, blob), null, "B's key does not open A's chunk");
+});
