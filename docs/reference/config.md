@@ -124,6 +124,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js`, `core/wink/netd.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
+| `VYRE_KERNEL_FILE_KEY` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
