@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present, kernelCaller } from "../../test/helpers.js";
+import { asOwner, tempHome, present, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 
@@ -23,6 +23,7 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -87,6 +88,7 @@ test("the person's own assistant is never a listed participant: its chat is the 
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -114,6 +116,7 @@ test("a terminal session's SessionStart leaves a chat of the person's, remembere
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -140,6 +143,7 @@ test("a person's call on a run needs the person to be in its chat: a member outs
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -158,6 +162,15 @@ test("a person's call on a run needs the person to be in its chat: a member outs
     const res = await d.registry.call(tool, input, "cli", await tokenOf(bobChain));
     assert.equal(res.error && res.error.code, "not_found", `${tool} for a member outside the chat: ${JSON.stringify(res.error)}`);
   }
+  // it fails closed: no person chain (a call with no facts and no token), a chain that cannot be built (a bad token, an unenrolled device) and a non-person first hop are all not_found
+  for (const [what, meta] of [["no facts and no token", {}], ["a token that does not verify", { token: "bad.token" }], ["a device that is not enrolled", { kernelFacts: { kind: "device", device_key_id: "dnotenrolled0000001", person: owner, path: "relay", session: "x" } }]]) {
+    for (const [tool, input] of [["threads.get", { thread: id, limit: 1 }], ["threads.send", { thread: id, text: "x", surface: "cli" }], ["threads.interrupt", { thread: id }]]) {
+      const res = await d.registry.call(tool, input, "cli", meta);
+      assert.equal(res.error && res.error.code, "not_found", `${tool} with ${what}: ${JSON.stringify(res.error || res.data).slice(0, 120)}`);
+    }
+  }
+  // a first-party module's own call is exempt (it checks its asker itself), and a thread in no chat is as before
+  assert.ok((await d.registry.call("threads.get", { thread: id, limit: 1 }, "module:work")).data, "a first-party module reads it");
   const mine = await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli", await tokenOf(ownerChain));
   assert.ok(mine.data && mine.data.thread.chat === chat, "the owner, who is in it, reads it");
   await grants.chats.change(ownerChain, chat, { add_people: [BOB] });
@@ -175,6 +188,7 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -244,6 +258,7 @@ test("a chat started outside the stream continues in it: the existing run is ado
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -280,6 +295,7 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const made = await owner("work.chat.create", { title: "Fresh" });
