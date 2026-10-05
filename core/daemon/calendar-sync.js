@@ -59,6 +59,8 @@ export function createCalendarSyncHost(o) {
       const call = callThrough(googleCalendar, send);
       const pending = () => state.get("pending") || {};
       const setPending = (/** @type {string} */ k, /** @type {any} */ v) => { const p = { ...pending() }; if (v === undefined) delete p[k]; else p[k] = v; state.set("pending", p); };
+      /** Is the connector's declared per-minute rate used up right now? (checked BEFORE an approval is spent, so a yes is never used up by a write that then has to wait) */
+      const rateFull = () => { const per = Number(/** @type {any} */ (googleCalendar).rate && /** @type {any} */ (googleCalendar).rate.per_minute) || 0; return per > 0 && (state.get("sent_at") || []).filter((/** @type {number} */ t) => Date.now() - t < 60_000).length >= per; };
       /**
        * A write that goes out, done safely from the declaration (the Flow runner's safe-write rules, kernel/flows/safe-write.js, as far as a Calendar write needs them): a ledger remembers what this
        * exact change already sent, so a repeat sends nothing; the declared rate is kept; and the write is read back and compared with what was sent.
@@ -120,11 +122,20 @@ export function createCalendarSyncHost(o) {
         }
         const t = await s.gw.ask.get(chain, note.task);
         if (t && t.state === "done" && t.outcome === "approved") {
+          // An approval is single use. Once it has been spent for exactly this request (the write then had to wait, a 429 or the rate window), the yes is kept in the note and the same request is sent on the next
+          // look without asking the kernel again; a window that is full is noticed BEFORE the approval is spent.
+          if (note.spent && note.bind === bind) {
+            const r = await safely(change, req, perform, { approval: note.task, idem: change.key });
+            if (r.done) setPending(change.key, undefined);
+            return r;
+          }
+          if (rateFull()) return { done: false, held: true, waiting: "rate" };
           // Google is not called through the vault's forward, so the approval is checked here, for this act and no other.
           // The approval is the task's DOER's to spend (the Flows service under the owner): it is presented as that doer, and needs no standing grant of its own.
           const doerChain = s.chains.forDoer({ flow: "calendar-sync", space: s.space, approver: actor(s.ownerId()), run: change.key });
           const ok = await s.gw.authorize({ chain: doerChain, action: "service.call", resource, approval: note.task, bind });
           if (ok.effect !== "allow") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
+          setPending(change.key, { task: note.task, bind, spent: true });
           const r = await safely(change, req, perform, { approval: note.task, idem: change.key });
           if (r.done) setPending(change.key, undefined);
           return r;

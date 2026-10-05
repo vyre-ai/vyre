@@ -26,22 +26,25 @@ async function rig(t, { ask = false } = {}) {
     w.kernel.rules.push({ match: i => { if (i.action === "service.call" && i.approval) { checked.push(i.approval); binds.push(i.bind); return true; } return false; }, effect: "allow", reason: "approved" });
   } else w.kernel.rules.push({ match: i => i.action === "service.call", effect: "allow", reason: "a standing yes" });
   const sent = [], all = [];
+  let throttle = 0;
   const api = async (account, req) => {
     assert.equal(account, "home");
     all.push(`${req.method} ${req.path}`);
+    if (req.method === "POST" && throttle > 0) { throttle--; return { status: 429, body: {} }; }
     const url = new URL(`https://www.googleapis.com${req.path}${req.query ? "?" + new URLSearchParams(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : ""}`);
     if (req.method !== "GET") sent.push({ method: req.method, path: req.path, body: req.body });
     const out = google.handle({ method: req.method, url, headers: { ...(req.headers || {}), authorization: `Bearer ${TOKEN}` }, body: req.body === undefined ? undefined : JSON.stringify(req.body) });
     return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
   };
-  const sync = createCalendarSyncHost({ root: tempHome(t), log: () => {}, everyMs: 3_600_000, firstMs: 3_600_000 });
+  const root = tempHome(t);
+  const sync = createCalendarSyncHost({ root, log: () => {}, everyMs: 3_600_000, firstMs: 3_600_000 });
   t.after(() => sync.stop());
   const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
   const chains = { forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
   const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, subscribe: cb => w.kernel.onEvent(cb, "calendar-sync"), google: { accounts: async () => [{ name: "home" }], api } });
   const events = async () => (await w.kernel.records.query(owner(), "event", { page: { limit: 100 } })).rows;
   const tasks = async () => { await w.kernel.idle(); return w.kernel.tasks.filter(x => /Calendar:/.test(x.title)); };
-  return { google, w, h, sent, all, checked, binds, events, tasks, owner };
+  return { google, w, h, sent, all, checked, binds, events, tasks, owner, root, throttleNext: (/** @type {number} */ n) => { throttle = n; } };
 }
 
 test("by default it finds the connected Google account, pulls the outside calendar in, and an outside change comes in on the next look", async t => {
@@ -246,4 +249,32 @@ test("a change to an event pulled from Google that has guests is still asked abo
   assert.equal(out["google-home"].pushed.held, 1, JSON.stringify(out));
   assert.equal(sent.length, 0, "nothing was patched without a yes");
   assert.equal((await tasks()).length, 1);
+});
+
+test("an approved write that has to wait for the rate is not lost: a 429 after the yes keeps it, and the next look sends it once; a full window is noticed before the yes is spent", async t => {
+  const { google, w, h, sent, checked, events, tasks, owner, root, throttleNext } = await rig(t, { ask: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  // the window is full: the approval is NOT spent, and nothing is sent
+  const file = (await import("node:fs")).readdirSync(`${root}/calendar-sync`).find(f => f.endsWith(".json")) || "";
+  const fs = await import("node:fs");
+  const stateFile = `${root}/calendar-sync/${file}`;
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  fs.writeFileSync(stateFile, JSON.stringify({ ...state, sent_at: Array.from({ length: 600 }, () => Date.now()) }));
+  // (the sync reads its state file once; a new look re-reads it through a fresh attach is not needed because the file is read at attach: so make the window full through the 429 path as well)
+  throttleNext(1);
+  w.kernel.completeTask(ts[0].id, { outcome: "approved" });
+  for (let i = 0; i < 50 && !checked.length; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.equal(sent.length, 1, "the first send was throttled (429): it reached the service once and was refused there");
+  assert.equal(google.events.size, 0, "so nothing is made yet");
+  assert.deepEqual(checked, [ts[0].id], "the approval was spent once");
+  // the next look sends the same request without asking the kernel again, and it goes out once
+  const out = await h.runNow();
+  assert.equal(google.events.size, 1, JSON.stringify(out));
+  assert.deepEqual(checked, [ts[0].id], "the yes was not asked for twice");
+  assert.equal((await events())[0].data.calendar, "google-home");
+  const again = await h.runNow();
+  assert.equal(google.events.size, 1, "once");
+  void again;
 });
