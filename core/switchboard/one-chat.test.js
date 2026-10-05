@@ -474,6 +474,13 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
     if (res.error.code === "not_found") walked.push(name);
   }
   assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
+  // the terminal reads a session's thread by relaying the person at it: the relayed call is judged as that person (firstParty false), so a member outside the chat gets nothing, and a person in it is not refused
+  const outside = await d.registry.call("term.open", { session: thread, surface: "deck:outside" }, "cli", bob);
+  assert.ok(outside.error && ["denied", "not_found"].includes(outside.error.code), `term.open on a run in a chat the person is not in: ${JSON.stringify(outside.error || outside.data).slice(0, 200)}`);
+  assert.equal((await d.registry.call("term.list", {}, "cli", bob)).data.terms.length, 0, "and no terminal was made for them");
+  const inside = await d.registry.call("term.open", { session: thread, surface: "deck:inside" }, "cli");
+  assert.ok(!inside.error || !["denied", "not_found"].includes(inside.error.code), `the person in the chat is not refused: ${JSON.stringify(inside.error).slice(0, 200)}`);
+  if (inside.data && inside.data.term) await d.registry.call("term.close", { term: inside.data.term }, "cli");
 });
 
 test("a chat's history leaves one device and comes back on another: its logged frames, its runs (stopped) and their events; a chat that already has its frames there is left as it is", { timeout: 150_000 }, async t => {
