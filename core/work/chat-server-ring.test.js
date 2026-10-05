@@ -39,7 +39,7 @@ async function rig(t, agree) {
   for (const p of [BOB, CAROL]) { const r = { person: p, role: "member" }; await gs.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const tools = {};
-  const kernel = { space: SPACE, chainFor: () => bob, chats: gs.chats, records: undefined, events: { read: async () => [] }, serviceChain: () => bob };
+  const kernel = { space: SPACE, chainFor: () => bob, chats: gs.chats, records: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${SPACE}/x/rec_x`, data: {} })) }), events: { read: async () => [] }, serviceChain: () => bob };
   await mod.start({ tool: (name, def) => { tools[name] = def; }, store: {}, kernel, call: async (tool, input) => { if (tool !== "spaces.identity.devices") throw new Error(`unexpected ${tool}`); return { data: { devices: agree[input.person] || [] } }; } });
   return { k, gs, bob, dir, tools, kernel };
 }
