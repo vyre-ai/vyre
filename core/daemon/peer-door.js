@@ -14,7 +14,7 @@ import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote
 import { youngAt } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
-import { HOME_TOOL, HOME_LIMITS } from "../wink/homemove.js";
+import { HOME_TOOL, HOME_LIMITS, PRE_AUTH_REQUESTS } from "../wink/homemove.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -361,11 +361,38 @@ export function createPeerDoor(o) {
     const space = head && head.pull && typeof head.pull.space === "string" ? head.pull.space : "";
     /** @type {any} */ let session = null;
     const closeSoon = (/** @type {string} */ why) => { const t = setTimeout(() => { try { session.close(why); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); };
+    // Before the pull protocol's auth has been verified a stream is a stranger: it may send hello and auth only, at most `preRequests` of them within `preMs`, and a failed auth ends it. It is
+    // charged to the box-wide pre-auth pool, never to the move's own budget. Only an auth that answers { session } makes it the target, and from then on it is counted like any pull stream.
+    const m0 = moves();
+    let release = () => {};
+    if (m0) { try { release = m0.preEnter(); } catch (e) { setTimeout(() => { try { session && session.close("busy"); } catch { /* closed */ } }, 0).unref?.(); } }
+    let authed = false;
+    let pre = 0;
+    const preTimer = setTimeout(() => { if (!authed) { try { session.close("not proven in time"); } catch { /* closed */ } } }, HOME_LIMITS.preMs);
+    if (preTimer.unref) preTimer.unref();
+    const leave = () => { clearTimeout(preTimer); release(); };
     session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
       const m = moves();
       if (!m || !/^[A-Za-z0-9_-]{1,64}$/.test(space)) { closeSoon("no move"); throw err("denied", "no move is open here"); }
       if (tool !== HOME_TOOL) throw err("denied", "another home may only ask for a move's pull");
       if (!input || typeof input !== "object" || input.space !== space || typeof input.request !== "object" || input.request === null) throw err("bad_input", "a pull is { space, request } for the space this stream named");
+      const kind = String(input.request.t || "");
+      if (!authed) {
+        pre++;
+        if (pre > HOME_LIMITS.preRequests) { closeSoon("not proven"); throw err("denied", "prove who you are first"); }
+        if (!PRE_AUTH_REQUESTS.includes(kind)) { closeSoon("not proven"); throw err("denied", "connect first: hello, then auth"); }
+        try { m.preCheck(space); } catch (e) { closeSoon("move closed"); throw e; }
+        let r;
+        try { r = await o.registry.call(HOME_TOOL, { space, request: input.request }, "module:vyred", { door: true, onBehalfOf: `home:${id}` }); } catch (e) { closeSoon("not proven"); throw e; }
+        if (r && r.error) { if (kind === "auth") closeSoon("auth refused"); throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {}); }
+        const d = r ? r.data : null;
+        if (kind === "auth") {
+          if (d && typeof d === "object" && typeof d.session === "string") { authed = true; leave(); }
+          else { closeSoon("auth refused"); throw err("denied", "that proof was not accepted"); }
+        }
+        if (JSON.stringify(d === undefined ? null : d).length > HOME_LIMITS.answerChars) throw err("too_large", "that answer is over the limit; ask for less");
+        return d;
+      }
       let end;
       try { end = m.begin(space); } catch (e) { if (/** @type {any} */ (e).code === "denied") closeSoon("move closed"); throw e; }
       try {
@@ -376,6 +403,7 @@ export function createPeerDoor(o) {
         return data;
       } finally { end(); }
     } });
+    session.onclose = () => leave();
     log(`peer door: a home (${id.slice(0, 8)}) opened a pull stream for ${space || "no space"}`);
   };
   return door;

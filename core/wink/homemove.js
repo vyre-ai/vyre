@@ -8,7 +8,9 @@ const MOVE_ID = /^[A-Za-z0-9_-]{1,80}$/;
 /** The tool a home may call on another home, and nothing else. */
 export const HOME_TOOL = "spaces.moves.pull";
 /** A request per minute for one move, and the most an answer may carry (base64 text of one chunk, plus the envelope). */
-export const HOME_LIMITS = Object.freeze({ perMinute: 240, answerChars: 1_048_576 + 16_384, channels: 4, channelsPerMinute: 12, maxOpenMs: 7 * 24 * 3_600_000 });
+export const HOME_LIMITS = Object.freeze({ perMinute: 240, answerChars: 1_048_576 + 16_384, channels: 4, channelsPerMinute: 12, maxOpenMs: 7 * 24 * 3_600_000, preStreams: 3, preRequests: 3, preMs: 10_000 });
+/** What a stream may send before its auth has been verified: the pull protocol's two opening requests, nothing else (lib/spaces/move-pull.js). */
+export const PRE_AUTH_REQUESTS = Object.freeze(["hello", "auth"]);
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /** @param {{ now?: () => number }} [o] */
@@ -18,6 +20,8 @@ export function createHomeMoves(o = {}) {
   const open = new Map();
   /** Channel arrivals in the last minute, box-wide: a stranger cannot make the home dial-answer without limit. @type {number[]} */
   let arrivals = [];
+  /** Streams that have not proven themselves yet, box-wide. They are charged here and never to a move's own budget, so a stranger cannot spend the real target's requests. */
+  let preOpen = 0;
   const sweep = () => { const t = now(); for (const [k, m] of open) if (m.expires <= t) open.delete(k); };
   return {
     /** The source home opens a move: `to` is the target Space's id (what the move names, shown in logs), `expires` a time in ms. @param {{ space: string, move_id: string, to?: string, expires: number }} m */
@@ -44,6 +48,16 @@ export function createHomeMoves(o = {}) {
       if (arrivals.length >= HOME_LIMITS.channelsPerMinute) throw err("rate_limited", "too many homes are asking; wait a minute");
       arrivals.push(t);
     },
+    /** A stream begins before its auth: at most `preStreams` at once, box-wide. Returns the function that ends it (call once, on auth or on close). @returns {() => void} */
+    preEnter() {
+      if (preOpen >= HOME_LIMITS.preStreams) throw err("rate_limited", "too many homes are asking; wait a moment");
+      preOpen++;
+      let done = false;
+      return () => { if (done) return; done = true; preOpen = Math.max(0, preOpen - 1); };
+    },
+    /** Is a move open for this Space? (Checked before auth too: it charges nothing.) */
+    preCheck(/** @type {string} */ space) { sweep(); if (![...open.values()].some(x => x.space === space)) throw err("denied", "no move is open for that space"); },
+    preOpenCount() { return preOpen; },
     /**
      * One request begins for a Space: the move must be open, the request count for the move within its minute, and no other request of the move in flight. Returns the function that ends it.
      * @param {string} space @returns {() => void}
