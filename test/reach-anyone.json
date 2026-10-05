@@ -1,5 +1,17 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "memory.space.file": {
+  "module": "memory",
+  "reason": "the kernel's memory.file grant on the caller's chain decides (kernel/gateway/memory.js): a member holds none by default and an agent only by an explicit grant; the facts' source must be one the filer may read"
+ },
+ "memory.space.recall": {
+  "module": "memory",
+  "reason": "the kernel's memory.read grant on the caller's chain decides, asked again for each fact (kernel/gateway/memory.js): a fact the chain may not read is absent"
+ },
+ "memory.space.retire": {
+  "module": "memory",
+  "reason": "the kernel's memory.retire grant decides (kernel/gateway/memory.js): the filer or a person with the right"
+ },
  "tools": {
   "agents.ask": {
    "module": "agents",
