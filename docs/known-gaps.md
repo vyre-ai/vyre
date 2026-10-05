@@ -12,13 +12,13 @@ These docs describe what the code does today. This page lists where Vyre 0.2.9 s
 
 ## Next, in 0.3.1
 
-Glass in the phone and Mac apps.
+Screen Share. Watch and take over your agents' computers and Chrome, on every device.
 
 ## Known gaps in 0.2.9
 
 ### Real devices
 
-Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Glass is in the web app only. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
+Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 
 ### Notifications when the phone app is closed
 

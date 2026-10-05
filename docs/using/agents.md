@@ -169,9 +169,8 @@ look at something; an idle computer is frozen and its home volume stays. Compute
 that can run containers; on one that cannot, `computers.list` reports driver `none`.
 
 Turn it on with `computer: true` on `agents.create` or `agents.update`, or **Give kit a
-computer** (with the agent's name) in the Computer panel of its board in the Deck. Watch the
-screen, take over the keyboard and give it back in [Glass](glass.md). Taking the keyboard asks
-for no passkey: it is your own screen, and it pauses the agent's hands while you type.
+computer** (with the agent's name) in the Computer panel of its board in the Deck. Screen Share, which lets
+you watch the screen and take over the keyboard, comes in 0.3.1.
 
 Two rules hold for every computer:
 
@@ -222,7 +221,6 @@ a project**, and every agent with what it is doing. Pick an agent to talk to it.
 
 - [Vault](vault.md): where the setup token and API key live.
 - [Watchers](watchers.md): things an agent can watch for you.
-- [Glass](glass.md): an agent's screen, live.
 - Every tool: [agents](../reference/tools.md#agents), [threads](../reference/tools.md#threads),
   [computers](../reference/tools.md#computers). Every command:
   [`vyre agents`](../reference/cli.md#vyre-agents).

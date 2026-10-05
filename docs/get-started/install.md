@@ -191,7 +191,7 @@ link on your phone.
 
 When it works, the page says **You're in**, and you carry on at your address. Now and Agents there
 show **Create your assistant**: give it a name such as `juno`, tick **Give it its own computer,
-from the pool** if you want it to browse and use apps you can watch in Glass, and press
+from the pool** if you want it to browse and use apps, and press
 **Create**. The assistant sees every project and can drive any session.
 
 > [!WHY] Why a fingerprint, face or security key?

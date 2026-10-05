@@ -40,12 +40,12 @@ Sessions, memory and the vault stay on your machines. vyre.run holds your name's
 
 ## Direction (not a promise of dates)
 - Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it stays encrypted and is removed when access ends.
-- Next, 0.3.1: Glass in the phone and Mac apps.
+- Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
 - Later: a Vyre-hosted home for people without a server.
 
 ## Known gaps in 0.2.9
 - Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Glass is in the web app only.
+- Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.
 - The Mac server installer has not run on a real Mac yet.
 - Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 - Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.

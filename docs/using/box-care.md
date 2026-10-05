@@ -416,8 +416,7 @@ COMPOSE_PROFILES=computers
 ```
 
 then run `vyre up`. What the proxy allows is in
-[The box and the Mac](../concepts/box-and-mac.md#the-agents-computers). See [Glass](glass.md) for
-using the computers.
+[The box and the Mac](../concepts/box-and-mac.md#the-agents-computers).
 
 ## Remove it
 

@@ -59,7 +59,6 @@ export const CONCEPTS = [
   { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "core/events/index.js" },
   { name: "floor", page: "concepts/floor.md", match: /\bfloor\b/i },
   { name: "Gate", page: "concepts/floor.md", match: /\bGate\b/, code: "core/gate/index.js" },
-  { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "deck/glass/index.js" },
   { name: "gold marking", page: "using/memory.md#the-gold-marking", match: /\bgold\b/i },
   { name: "grant", page: "using/vault.md#let-an-agent-module-or-watcher-use-an-item", match: /\bgrant(?:s|ed|ing)?\b/i, code: "core/vault/index.js" },
   { name: "harness", page: "concepts/modules.md#kinds-of-module", match: /\bharness\b/i, code: "core/harness/index.js" },
@@ -90,7 +89,7 @@ export const CONCEPTS = [
 
 // Where each Deck view is explained, when not on the Deck page's list of views.
 const SCREEN_PAGES = {
-  agents: "using/agents.md", chat: "using/chat.md", glass: "using/glass.md", memory: "using/memory.md", vault: "using/vault.md",
+  agents: "using/agents.md", chat: "using/chat.md", memory: "using/memory.md", vault: "using/vault.md",
   onboard: "get-started/install.md",
 };
 const DECK_VIEWS_PAGE = "concepts/floor.md";

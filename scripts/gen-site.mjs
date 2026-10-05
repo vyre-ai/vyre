@@ -458,7 +458,7 @@ const homeBody = `
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Chats</h3><p>One place for you, your team and every AI model, with each chat encrypted to the people in it.</p></div>
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>A built-in network</h3><p>Pair a device with one typed code, with no VPN to install.</p></div>
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Lend a computer</h3><p>Lend a computer to a team; your work on it stays encrypted and is removed when access ends.</p></div>
-      <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Glass</h3><p>Glass in the phone and Mac apps.</p></div>
+      <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
       <div class="piece"><span class="num">Later</span><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
     </div>
     <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
@@ -650,7 +650,7 @@ devicePage({
     `<b>Confirm the three words.</b> The phone and the other screen show the same three words. Say yes only if they match.`,
   ] },
   needs: [['Phone', 'iPhone or Android, with a current browser'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
-  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.', 'Glass is in the web app only.'],
+  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.', 'Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.'],
   faq: [
     ['Is there an App Store app?', 'No. The phone app is the Deck installed to your Home Screen from your own address, on iPhone and Android.'],
     ['Does the phone need a VPN?', 'No. The phone reaches your server through Vyre’s own network, and where a direct path is not possible, through the relay. Your identity on the phone is a key that Face ID unlocks, so there is no separate login to the server.'],
@@ -674,7 +674,7 @@ const DIR = `
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">The road from ${VERSION}</h2>
     <div class="road">
       <div class="stop now rv"><p class="ver">${VERSION} &middot; Now</p><h3>The first release of the 0.3 work</h3><p>0.2.9 is the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.</p><ul><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, with each chat encrypted to the people in it.</li><li><b>A built-in network</b>Pair a device with one typed code, with no VPN to install.</li><li><b>Lend a computer</b>Lend a computer to a team; your work on it stays encrypted and is removed when access ends.</li></ul></div>
-      <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Glass</h3><p>Glass in the phone and Mac apps.</p></div>
+      <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
       <div class="stop rv"><p class="ver">Later</p><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
     </div>
   </div>
@@ -692,8 +692,8 @@ const DIR = `
 page({
   slug: 'direction', path: '/direction/',
   title: 'Where Vyre is going: the direction',
-  desc: 'The direction for Vyre from 0.2.9: spaces, records, chats, a built-in network and lending a computer, then Glass, then a Vyre-hosted home. Direction, not a promise of dates.',
-  ogTitle: 'Where Vyre is going.', ogSub: 'Spaces, records, chats, a built-in network, then Glass. Direction, not a promise of dates.',
+  desc: 'The direction for Vyre from 0.2.9: spaces, records, chats, a built-in network and lending a computer, then Screen Share, then a Vyre-hosted home. Direction, not a promise of dates.',
+  ogTitle: 'Where Vyre is going.', ogSub: 'Spaces, records, chats, a built-in network, then Screen Share. Direction, not a promise of dates.',
   body: DIR, ld: [crumbs([['Vyre', `${SITE}/`], ['Direction', `${SITE}/direction/`]])],
 });
 
@@ -736,7 +736,7 @@ ${part('04', 'phone', 'Your phone', `<p>Open the Vyre app and scan the code the 
 ${part('05', 'windows', 'Windows', `<p>There is a Windows app for your Windows PC: a tray icon and an Alt+Space panel, and it updates itself. Its installer, <code>VyreSetup.exe</code>, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The app is not signed yet, so Windows may warn that the publisher is unknown: choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
-<li><strong>Glass.</strong> Glass is in the web app only.</li>
+<li><strong>Screen Share.</strong> Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.</li>
 <li><strong>Mac server.</strong> The Mac server installer has not run on a real Mac yet.</li>
 <li><strong>Home routers.</strong> Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.</li>
 <li><strong>Phone notifications.</strong> Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.</li>
@@ -936,12 +936,12 @@ ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
 ## Direction (not a promise of dates)
 - Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it stays encrypted and is removed when access ends.
-- Next, 0.3.1: Glass in the phone and Mac apps.
+- Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
 - Later: a Vyre-hosted home for people without a server.
 
 ## Known gaps in ${VERSION}
 - Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Glass is in the web app only.
+- Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.
 - The Mac server installer has not run on a real Mac yet.
 - Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 - Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.

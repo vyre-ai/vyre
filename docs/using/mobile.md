@@ -62,9 +62,6 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
 - **Ask**: talk to your assistant or any agent, at `/ask`.
 - **Drive**: browse the folders your box shares as Vyre Drive, at `/files`. A phone cannot mount a
   share, so it reads them: a preview for a picture, text or PDF up to 8 MB, otherwise a download.
-- **Glass**: watch an agent's computer and take over. A tap is a click, a long press a right
-  click, two fingers scroll, pinch zooms your view, and a keyboard button opens the soft
-  keyboard. See [Glass](glass.md).
 
 Memory, Vault, Planner and Settings open from the Places sheet or their paths (`/memory`,
 `/vault`, `/planner`, `/settings`), laid out for a narrow screen.

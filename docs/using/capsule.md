@@ -171,16 +171,6 @@ you choose.
      editable when you click them. Command-Enter sends exactly what is on screen.
      Discard drops it. Escape leaves a field.
 
-## Open Glass
-
-For an agent that has a computer, Lumen offers "Open Glass", which opens that agent's
-screen in the Deck in your browser. Type `glass` to list what you can open, `glass juno` for one
-agent, or `glass box` for the box's files. See [Glass](glass.md).
-
-> [!SNAG] No "Open Glass" row
-> The row only shows when this Mac is paired with a box (`vyre link`) and the agent has a
-> computer. Pair the Mac first: [Put the Lumen on your Mac](../get-started/install.md#10-put-the-lumen-on-your-mac).
-
 ## Keys
 
 | Key | Does |
