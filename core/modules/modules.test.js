@@ -1287,7 +1287,7 @@ test("modules: a first-party module relays the person it acts for to the tools i
   assert.deepEqual(r.data, { plan: { facts }, move: { facts } }, "the person's proven facts reach the port and, from it, the storage");
   assert.deepEqual((await reg.call("spaces.bad", {}, "cli", { kernelFacts: facts })).data, { refused: "undeclared" }, "a tool off the allowlist is refused");
   const none = await reg.call("spaces.go", {}, "cli", {});
-  assert.ok(none.error || (none.data && JSON.stringify(none.data).includes("denied")) || none.data === undefined || true);
+  assert.ok(none.error, "with no person on the running call there is nothing to relay, and the call fails");
   // a client-sent meta on a plain call to a port tool is just a call: nothing relays for it
   const direct = await reg.call("memory.upgrade.plan", {}, "cli", { kernelFacts: facts });
   assert.deepEqual(direct.data, { facts }, "the daemon's own facts are the daemon's to set");
