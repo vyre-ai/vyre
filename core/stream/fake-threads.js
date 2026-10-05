@@ -14,7 +14,7 @@ export function fakeThreads(dir) {
   fs.writeFileSync(path.join(d, "index.js"), `
 export default { async start(ctx) {
   ctx.tool("threads.get", {
-    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module"],
+    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module:term"],
     run: async (i, meta) => {
       (globalThis.__fakeThreadsCalls ||= []).push({ thread: i.thread, caller: meta.caller });
       const e = (code) => Object.assign(new Error(code), { code });
