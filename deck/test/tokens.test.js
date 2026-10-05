@@ -17,7 +17,7 @@ const REPO = path.resolve(DECK, "..");
 const read = (/** @type {string} */ f) => fs.readFileSync(path.join(DECK, f), "utf8");
 
 test("tokens: every page links tokens.css, then deck.css, then config's theme.css", () => {
-  for (const page of ["index.html", "onboard/index.html", "onboard/passkey/index.html"]) {
+  for (const page of ["index.html", "onboard/passkey/index.html"]) {
     const html = read(page);
     const at = (/** @type {string} */ href) => html.indexOf(`<link rel="stylesheet" href="${href}">`);
     assert.ok(at("/css/tokens.css") > 0, `${page} links tokens.css`);

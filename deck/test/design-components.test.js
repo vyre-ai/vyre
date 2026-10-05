@@ -87,7 +87,7 @@ test("buttons: on the phone every button and icon button is at least 44", () => 
 });
 
 test("buttons: buttons.css is linked right after deck.css on every page and kept at install", () => {
-  for (const page of ["index.html", "onboard/index.html", "onboard/passkey/index.html"]) {
+  for (const page of ["index.html", "onboard/passkey/index.html"]) {
     assert.match(read(page), /<link rel="stylesheet" href="\/css\/deck.css">\n\s*<link rel="stylesheet" href="\/css\/buttons.css">/, page);
   }
   assert.match(read("sw.js"), /"\/css\/deck.css", "\/css\/buttons.css"/);

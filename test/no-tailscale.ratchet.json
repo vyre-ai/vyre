@@ -84,8 +84,6 @@
   "deck/js/health.test.js",
   "deck/js/lock.js",
   "deck/js/update-card.js",
-  "deck/onboard/onboard.css",
-  "deck/onboard/onboard.js",
   "deck/setup/steps.js",
   "deck/test/avatars-browser.js",
   "deck/test/memory-presence.test.js",
