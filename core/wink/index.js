@@ -99,8 +99,7 @@ export function createWink(inject = {}) {
       routeId = String(r.data.route);
       return routeId;
     };
-    // The home's Space is the kernel's own id when there is a kernel (the spaces module and every grant know that one); the route-derived stand-in is only for a build with none.
-    const spaceId = async () => (ctx.kernel && typeof ctx.kernel.space === "string" && ctx.kernel.space ? ctx.kernel.space : spaceIdOf(await ensureRoute()));
+    const spaceId = async () => spaceIdOf(await ensureRoute());
     let spaceCache = "";
     // The table is made at start; the space is known once the relay has a route, and every grant call asks for it first.
     const grantsStore = createGrants({ ctx, space: () => spaceCache, now });
