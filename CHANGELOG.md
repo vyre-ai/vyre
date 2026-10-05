@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the chat tools sheet (apps/app/screens/chat-tools, the Deck's composer and session tools ported): Fork this chat, Effort, Thinking, Mode, Send now, Carry on here, Mention someone, Running here (Stop a task), Context used, Transcript, Go back (undo and redo a chat's changes); pull request merge and review, team ask, artifact versions and links as source calls; and a Shared page at /u/shared listing artifacts with a public link. The chat opens the sheet with `<ChatToolsSheet>` (11 tests).
 - feat(app): the dashboard view (sum, count by, funnel, recent) on a record type's page, from the type's view definition; `apps/app/ui/views/view-defs.js` is now the app's own copy of the view definitions.
 - feat(app): Vault has a Held fields tab (the sealed fields of records, Reveal with presence, grouped by record, never a value in the list) and Share (vault.grant: a module or assistant by name, optional project, use only).
 - feat(flows): flows.kit.diff (what updating an installed Kit changes, widenings and risks, read only), and flows.kit.library and flows.kit.library.get registered in the flows module. The Kits page offers "Update to vN" and the update page shows the box's own diff, then asks (flows.kit.propose) for a yes in Now.
