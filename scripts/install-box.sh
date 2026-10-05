@@ -322,10 +322,10 @@ get_sums() {
 check_version() {
   case "$WANT" in ""|latest) return 0 ;; esac
   case "$WANT" in *[!0-9A-Za-z.-]*) die "--version $WANT is not a version like 0.2.9" ;; esac
-  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves.)"
+  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves, or install a build that is not published from a checkout with --from <folder>.)"
   get VERSION
   have=$(tr -d '[:space:]' <"$TMP/VERSION")
-  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), or point VYRE_BOX_URL at a site that serves $WANT."
+  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), point VYRE_BOX_URL at a site that serves $WANT, or, for a build that is not published yet, install from a checkout of it with --from <folder>."
 }
 
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
@@ -1003,6 +1003,7 @@ mac_server() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   get_sums
+  [ "${MAC_FROM:-0}" = 1 ] || check_version
   get install-mac-server.sh
   sh "$TMP/install-mac-server.sh" "$@"
   return $?
@@ -1010,14 +1011,19 @@ mac_server() {
 
 main() {
   if [ "$(uname -s)" = Darwin ]; then
-    # the Mac server script takes no version: it installs what the site serves
-    a=""; skip=0
-    for x in "$@"; do
-      if [ "$skip" = 1 ]; then skip=0; continue; fi
-      case "$x" in --version) skip=1 ;; --version=*) ;; *) a="$a $x" ;; esac
+    # The Mac server script takes no version, so it is taken out here and checked against the site before that script runs (the check is on every
+    # path). The other arguments are passed on as they came: rotated through "$@", never word-split, so an argument with a space stays one.
+    MAC_FROM=0
+    n=$#
+    while [ "$n" -gt 0 ]; do
+      x=$1; shift; n=$((n - 1))
+      case "$x" in
+        --version) [ "$#" -ge 1 ] || die "--version needs a version (or latest)"; WANT=$1; shift; n=$((n - 1)) ;;
+        --version=*) WANT=${x#--version=} ;;
+        --from|--from=*) MAC_FROM=1; set -- "$@" "$x" ;;
+        *) set -- "$@" "$x" ;;
+      esac
     done
-    # shellcheck disable=SC2086
-    set -- $a
     mac_server "$@"; exit $?
   fi
   while [ $# -gt 0 ]; do
