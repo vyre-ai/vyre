@@ -1322,11 +1322,11 @@ test("the device reaches the paired server over the Wink peer session when the d
   void w;
 });
 
-test("spaces.list tier: a space on this computer is pro when this machine is a server, basic on a device", async t => {
+test("spaces.list tier: a space on this computer is cloud when this machine is a server, basic on a device", async t => {
   const w = world(t);
   const d = await device(t, { machine: "server" });
   await d.ok("spaces.identity.create", { name: "alex" });
   await d.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
-  assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["pro"]);
+  assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["cloud"]);
   void w;
 });
