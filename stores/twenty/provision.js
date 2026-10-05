@@ -15,8 +15,15 @@ import { execFile } from "node:child_process";
 export const TWENTY_IMAGE = "twentycrm/twenty";
 /** The release this build was tested against. Upgrades are explicit. */
 export const TWENTY_TESTED_TAG = "v2.44.0";
-export const POSTGRES_IMAGE = "postgres:16";
-export const REDIS_IMAGE = "redis:7";
+// Every image is named by tag AND digest (a tag can be moved at the registry; the digest cannot). These are the exact images stores/twenty/live passes against (5 Oct 2026).
+/** The Twenty image reference a Space runs: tag and digest. An upgrade names a full reference like this, never a bare tag. */
+export const TWENTY_TESTED_REF = `${TWENTY_IMAGE}:${TWENTY_TESTED_TAG}@sha256:01fb6d2c00397976fd7613dbeb9703b514b52fb6270339b7a326a2a975d15b26`;
+export const POSTGRES_IMAGE = "postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c";
+export const REDIS_IMAGE = "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499";
+/** Is this a full, pinned image reference: name, tag and sha256 digest? @param {unknown} r */
+export const isPinnedRef = r => typeof r === "string" && /^[a-z0-9][a-z0-9./_-]*:[A-Za-z0-9_][A-Za-z0-9_.-]*@sha256:[0-9a-f]{64}$/.test(r);
+/** The tag of a pinned reference, for file names and messages. @param {string} r */
+export const tagOfRef = r => String(r).split("@")[0].split(":").pop() || "unknown";
 
 /** @param {string} space */
 export const SPACE_RE = /^[a-z][a-z0-9-]{0,30}$/;
@@ -48,11 +55,12 @@ export function memoryOf(m) {
 /**
  * The compose file for one Space. Pure. Nothing here publishes a port; the network is internal.
  * `memory` caps each container (a Node heap is set below its container's limit so it collects before the kernel kills it).
- * @param {{ space: string, tag?: string, hookPort?: number, memory?: Parameters<typeof memoryOf>[0] }} o
+ * @param {{ space: string, image?: string, hookPort?: number, memory?: Parameters<typeof memoryOf>[0] }} o `image` is a full pinned reference (tag and digest)
  */
 export function composeFile(o) {
   const n = names(o.space);
-  const tag = o.tag ?? TWENTY_TESTED_TAG;
+  const image = o.image ?? TWENTY_TESTED_REF;
+  if (!isPinnedRef(image)) throw new Error(`The Twenty image must be a full reference with a digest (name:tag@sha256:...), not ${String(image).slice(0, 80)}`);
   const env = [
     "NODE_PORT: 3000",
     "PG_DATABASE_URL: postgres://postgres:${PG_PASSWORD}@db:5432/default",
@@ -75,7 +83,7 @@ export function composeFile(o) {
 name: ${n.project}
 services:
   server:
-    image: ${TWENTY_IMAGE}:\${TWENTY_TAG:-${tag}}
+    image: \${TWENTY_IMAGE_REF:-${image}}
     restart: unless-stopped${cap(mem?.server)}
     networks:
       store:
@@ -90,7 +98,7 @@ ${envBlock([], mem?.server)}
       redis: { condition: service_healthy }
     healthcheck: { test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80 }
   worker:
-    image: ${TWENTY_IMAGE}:\${TWENTY_TAG:-${tag}}
+    image: \${TWENTY_IMAGE_REF:-${image}}
     restart: unless-stopped
     command: ["yarn", "worker:prod"]${cap(mem?.worker)}
     networks: [store]
@@ -167,10 +175,10 @@ const writePrivate = (file, text) => { fs.mkdirSync(path.dirname(file), { recurs
 export function spaceDir(home, space) { need(space); return path.join(home, "spaces", space, "twenty"); }
 
 /**
- * @typedef {{ home: string, space: string, runner?: Runner, tag?: string, gatewayContainer?: string | null,
+ * @typedef {{ home: string, space: string, runner?: Runner, image?: string, gatewayContainer?: string | null,
  *   reach?: "alias" | "ip", memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void }} ProvisionOptions
  * @typedef {{ space: string, dir: string, url: string, origin: string, keyFile: string, workspaceId: string, network: string,
- *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, tag: string }} Provisioned
+ *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string }} Provisioned
  */
 
 /**
@@ -184,10 +192,11 @@ export async function provisionSpace(o) {
   const runner = o.runner ?? realRunner();
   const log = o.log ?? (() => {});
   const dir = spaceDir(o.home, o.space);
-  const tag = o.tag ?? TWENTY_TESTED_TAG;
+  const image = o.image ?? TWENTY_TESTED_REF;
+  if (!isPinnedRef(image)) throw new Error(`The Twenty image must be a full reference with a digest (name:tag@sha256:...), not ${String(image).slice(0, 80)}`);
   const keyFile = path.join(dir, "service.key");
   const origin = `http://${n.serverAlias}:3000`;
-  const base = { space: o.space, dir, origin, keyFile, network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), tag };
+  const base = { space: o.space, dir, origin, keyFile, network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), image };
   if (fs.existsSync(keyFile) && fs.existsSync(path.join(dir, "workspace.id"))) {
     const url = await reachUrl(o, runner, n, origin);
     return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim() };
@@ -195,8 +204,8 @@ export async function provisionSpace(o) {
   fs.mkdirSync(path.join(dir, "empty-front"), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(dir, "state"), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(dir, "backups"), { recursive: true, mode: 0o700 });
-  writePrivate(path.join(dir, ".env"), `TWENTY_TAG=${tag}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n`);
-  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, tag, memory: o.memory }));
+  writePrivate(path.join(dir, ".env"), `TWENTY_IMAGE_REF=${image}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n`);
+  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory }));
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
   // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
@@ -270,33 +279,34 @@ export async function bootstrap(o) {
  * Upgrade a Space's Twenty: back up the database, change the image, wait until healthy, then run
  * `verify` (the conformance and isolation tests) before the store reopens. A failure restores the
  * dump and the old image together and re-runs verify.
- * @param {ProvisionOptions & { toTag: string, verify: () => Promise<void> }} o
+ * @param {ProvisionOptions & { toImage: string, verify: () => Promise<void> }} o `toImage` is a full pinned reference (tag and digest)
  * @returns {Promise<{ ok: boolean, from: string, to: string, backup: string, rolledBack: boolean, seconds: number }>}
  */
 export async function upgradeSpace(o) {
+  if (!isPinnedRef(o.toImage)) throw new Error(`An upgrade names a full image reference with a digest (name:tag@sha256:...), not ${String(o.toImage).slice(0, 80)}`);
   const n = names(o.space); const runner = o.runner ?? realRunner(); const dir = spaceDir(o.home, o.space);
   const envFile = path.join(dir, ".env");
   const env = fs.readFileSync(envFile, "utf8");
-  const from = /^TWENTY_TAG=(.*)$/m.exec(env)?.[1] ?? "";
+  const from = /^TWENTY_IMAGE_REF=(.*)$/m.exec(env)?.[1] ?? "";
   const t0 = Date.now();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backup = path.join(dir, "backups", `pre-${o.toTag}-${stamp}.dump`);
+  const backup = path.join(dir, "backups", `pre-${tagOfRef(o.toImage)}-${stamp}.dump`);
   const dump = await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "exec", "-T", "db", "pg_dump", "-U", "postgres", "--clean", "--if-exists", "--no-owner", "default"], { cwd: dir });
   writePrivate(backup, dump.stdout);
-  const setTag = (/** @type {string} */ t) => writePrivate(envFile, env.replace(/^TWENTY_TAG=.*$/m, `TWENTY_TAG=${t}`));
-  setTag(o.toTag);
+  const setImage = (/** @type {string} */ t) => writePrivate(envFile, /^TWENTY_IMAGE_REF=/m.test(env) ? env.replace(/^TWENTY_IMAGE_REF=.*$/m, `TWENTY_IMAGE_REF=${t}`) : `${env}${env.endsWith("\n") ? "" : "\n"}TWENTY_IMAGE_REF=${t}\n`);
+  setImage(o.toImage);
   try {
     await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir });
     await o.verify();
-    return { ok: true, from, to: o.toTag, backup, rolledBack: false, seconds: Math.round((Date.now() - t0) / 1000) };
+    return { ok: true, from, to: o.toImage, backup, rolledBack: false, seconds: Math.round((Date.now() - t0) / 1000) };
   } catch (e) {
-    setTag(from);
+    setImage(from);
     await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "stop", "server", "worker"], { cwd: dir });
     await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "exec", "-T", "db", "psql", "-U", "postgres", "-d", "postgres", "-c", "DROP DATABASE default WITH (FORCE)", "-c", "CREATE DATABASE default"], { cwd: dir });
     await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "exec", "-T", "db", "psql", "-U", "postgres", "-d", "default", "-v", "ON_ERROR_STOP=1"], { cwd: dir, input: dump.stdout });
     await runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir });
     await o.verify();
-    return { ok: false, from, to: o.toTag, backup, rolledBack: true, seconds: Math.round((Date.now() - t0) / 1000) };
+    return { ok: false, from, to: o.toImage, backup, rolledBack: true, seconds: Math.round((Date.now() - t0) / 1000) };
   }
 }
 
@@ -331,8 +341,8 @@ export async function backupSpace(o) {
   /** @type {Record<string, string>} */ const state = {};
   if (fs.existsSync(stateDir)) for (const f of fs.readdirSync(stateDir)) { const p = path.join(stateDir, f); if (fs.statSync(p).isFile()) state[f] = fs.readFileSync(p, "utf8"); }
   writePrivate(path.join(out, "space.json"), JSON.stringify({ folder, state }));
-  const tag = /^TWENTY_TAG=(.*)$/m.exec(folder[".env"] ?? "")?.[1] ?? TWENTY_TESTED_TAG;
-  const manifest = { format: 1, space: o.space, tag, created_at: new Date().toISOString(), parts: Object.fromEntries(["db.sql", "files.tgz", "space.json"].map((f) => [f, { bytes: fs.statSync(path.join(out, f)).size, sha256: sha(fs.readFileSync(path.join(out, f))) }])) };
+  const image = /^TWENTY_IMAGE_REF=(.*)$/m.exec(folder[".env"] ?? "")?.[1] ?? TWENTY_TESTED_REF;
+  const manifest = { format: 1, space: o.space, image, created_at: new Date().toISOString(), parts: Object.fromEntries(["db.sql", "files.tgz", "space.json"].map((f) => [f, { bytes: fs.statSync(path.join(out, f)).size, sha256: sha(fs.readFileSync(path.join(out, f))) }])) };
   writePrivate(path.join(out, "manifest.json"), JSON.stringify(manifest, null, 2));
   return { dir: out, manifest, seconds: Math.round((Date.now() - t0) / 100) / 10 };
 }
@@ -359,7 +369,7 @@ export async function restoreSpace(o) {
   for (const [f, text] of Object.entries(/** @type {Record<string, string>} */ (sp.folder))) if (f !== "compose.yml") writePrivate(path.join(dir, f), text);
   for (const [f, text] of Object.entries(/** @type {Record<string, string>} */ (sp.state))) writePrivate(path.join(dir, "state", f), text);
   const memory = fs.existsSync(path.join(dir, "memory.json")) ? JSON.parse(fs.readFileSync(path.join(dir, "memory.json"), "utf8")) : undefined;
-  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, tag: manifest.tag, memory }));
+  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image: manifest.image ?? (manifest.tag === TWENTY_TESTED_TAG ? TWENTY_TESTED_REF : undefined), memory }));
   log("starting the database");
   await runner.exec("docker", compose("up", "-d", "--wait", "db"), { cwd: dir });
   await runner.exec("docker", compose("exec", "-T", "db", "psql", "-U", "postgres", "-d", "default", "-v", "ON_ERROR_STOP=1"), { cwd: dir, input: fs.readFileSync(path.join(o.from, "db.sql"), "utf8") });
@@ -372,7 +382,7 @@ export async function restoreSpace(o) {
   const origin = `http://${n.serverAlias}:3000`;
   const url = await reachUrl({ home: o.home, space: o.space, reach: o.reach }, runner, n, origin);
   await waitHealthy(runner, url);
-  const base = { space: o.space, dir, origin, keyFile: path.join(dir, "service.key"), network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), tag: manifest.tag };
+  const base = { space: o.space, dir, origin, keyFile: path.join(dir, "service.key"), network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), image: manifest.image ?? TWENTY_TESTED_REF };
   return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim(), seconds: Math.round((Date.now() - t0) / 100) / 10 };
 }
 
