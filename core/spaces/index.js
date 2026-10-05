@@ -1620,6 +1620,11 @@ export default {
       await kv.put(`zone/${row.id}`, { zone: i.zone });
       return { space: row.id, time_zone: i.zone };
     });
+    // The Spaces this person belongs to, by name and role, for what an agent is told at the start of a session (core/sessions/environment.js): names and roles only, and only for a module.
+    tool("spaces.brief", "The person's Spaces by name and role, and which one this home is: what an agent's environment brief says. Names and roles only. Modules only.", obj(), async (i, meta) => {
+      const rows = /** @type {any[]} */ (await listSpaces(i, meta));
+      return { spaces: rows.map(x => ({ name: String(x.label || x.name || x.id), role: x.role || null, current: Boolean(K && x.id === K.space), zone: typeof x.time_zone === "string" ? x.time_zone : typeof x.zone === "string" ? x.zone : null })) };
+    }, { internal: true, callers: ["module"] });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
