@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, reseal, wrap.pub, export, import, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -81,6 +81,53 @@ export class Sealer {
     need(typeof r.to_record === "string" && typeof r.field === "string", "bad_input");
     const v = this.open(from, r.ref);
     return this.put({ ctx: to, record: r.to_record, field: r.field, class: v.meta.class, value: v.plaintext });
+  }
+  /**
+   * Moving a sealed value to a Space on ANOTHER server (the Personal to My Cloud upgrade) without its plaintext leaving a sealing process or touching a disk. The target's sealing process holds an
+   * X25519 wrapping key per Space (made here, never returned: `wrap.pub` answers the public half). `export` runs in the source's process, with the person's own proof as a reveal needs: it opens the
+   * value, wraps it to that public key (an ephemeral X25519 key, HKDF, AES-256-GCM, bound to the record and field) and answers the blob. `import` runs in the target's process: it opens the blob with
+   * the private half and stores the value there as a new sealed value, answering the new sealed reference.
+   */
+  wrapKey(ctx) {
+    const ref = `seal_wk${crypto.createHash("sha256").update(ctx.space).digest("hex").slice(0, 30)}`;
+    let rec = this.store.read("values", ref, "_system");
+    if (!rec) {
+      const { privateKey } = crypto.generateKeyPairSync("x25519");
+      this.store.write("values", { ref, space: "_system", record: ctx.space, field: "wrapkey", class: "wrapkey" }, privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+      rec = this.store.read("values", ref, "_system");
+    }
+    const priv = crypto.createPrivateKey(/** @type {any} */ (rec).plaintext);
+    return { priv, pub: crypto.createPublicKey(priv).export({ type: "spki", format: "der" }).toString("base64") };
+  }
+  export(r) {
+    const ctx = this.ctxOf(r.ctx);
+    need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
+    need(typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && typeof r.record === "string" && typeof r.field === "string" && typeof r.ref === "string", "bad_input");
+    const why = this.presence.refuse(r.proof, { op: "seal.export", space: ctx.space, fields: { ref: r.ref, record: r.record, field: r.field, target_key: r.target_key }, ctx });
+    if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+    const v = this.open(ctx, r.ref);
+    let pub; try { pub = crypto.createPublicKey({ key: Buffer.from(r.target_key, "base64"), type: "spki", format: "der" }); } catch { throw err("bad_input"); }
+    need(pub.asymmetricKeyType === "x25519", "bad_input");
+    const eph = crypto.generateKeyPairSync("x25519");
+    const key = Buffer.from(crypto.hkdfSync("sha256", crypto.diffieHellman({ privateKey: eph.privateKey, publicKey: pub }), Buffer.alloc(0), "vyre-upgrade-field-v1", 32));
+    const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", key, iv);
+    c.setAAD(Buffer.from(`${r.record}\0${r.field}`));
+    const ct = Buffer.concat([c.update(JSON.stringify({ class: v.meta.class, value: v.plaintext }), "utf8"), c.final()]);
+    return { blob: { epk: eph.publicKey.export({ type: "spki", format: "der" }).toString("base64"), iv: iv.toString("base64"), ct: ct.toString("base64"), tag: c.getAuthTag().toString("base64") }, event: { type: "field.exported", record: r.record, field: r.field, class: v.meta.class } };
+  }
+  import(r) {
+    const ctx = this.ctxOf(r.ctx);
+    need(ctx.one_person && !ctx.model_originated, "human_only");
+    const b = r.blob;
+    need(b && ["epk", "iv", "ct", "tag"].every(k => typeof b[k] === "string") && typeof r.record === "string" && typeof r.field === "string", "bad_input");
+    let body;
+    try {
+      const key = Buffer.from(crypto.hkdfSync("sha256", crypto.diffieHellman({ privateKey: this.wrapKey(ctx).priv, publicKey: crypto.createPublicKey({ key: Buffer.from(b.epk, "base64"), type: "spki", format: "der" }) }), Buffer.alloc(0), "vyre-upgrade-field-v1", 32));
+      const d = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(b.iv, "base64")); d.setAAD(Buffer.from(`${r.record}\0${r.field}`)); d.setAuthTag(Buffer.from(b.tag, "base64"));
+      body = JSON.parse(Buffer.concat([d.update(Buffer.from(b.ct, "base64")), d.final()]).toString("utf8"));
+    } catch { throw err("bad_input"); }
+    need(body && typeof body.class === "string" && typeof body.value === "string", "bad_input");
+    return this.put({ ctx, record: r.record, field: r.field, class: body.class, value: body.value });
   }
   open(ctx, ref) { const v = this.store.read("values", ref, ctx.space); need(v, "not_found"); return v; }
 
@@ -222,7 +269,7 @@ export class Sealer {
   async handle(req) {
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
-      case "reseal": return this.reseal(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
+      case "reseal": return this.reseal(req); case "wrap.pub": return { key: this.wrapKey(this.ctxOf(req.ctx)).pub }; case "export": return this.export(req); case "import": return this.import(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
       case "lookup": return this.lookup(req); case "match": return this.match(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }

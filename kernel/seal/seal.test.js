@@ -595,3 +595,26 @@ test("reseal: a sealed value moves to another Space's namespace inside the proce
   assert.equal(await code(s.api.reseal({ chain: from, to_chain: from, ref: ref.ref, to_record: REC, field: "ssn" })), "human_only");
   assert.equal(await code(s.api.reseal({ chain: to, to_chain: from, ref: ref.ref, to_record: REC, field: "ssn" })), "not_found");
 });
+
+test("export and import: a sealed value moves to a Space on another server wrapped to its key; the plaintext is in neither folder nor in the blob, and only the person's proof and the target's own key open it", async t => {
+  const a = await setup(t), b = await setup(t);
+  const { ref } = await put(a.s, "123-45-6789");
+  const SPACE2 = "spc_testspace0002", REC2 = `vyre://${SPACE2}/contact/c_jane`;
+  const from = person(), to = person("per_alex", "deck", SPACE2);
+  const key = (await b.s.api.wrapKey({ chain: to })).key;
+  assert.equal((await b.s.api.wrapKey({ chain: to })).key, key, "the same key each time");
+  const fields = { ref: ref.ref, record: REC, field: "ssn", target_key: key };
+  assert.equal(await code(a.s.api.export({ chain: from, ...fields })), "needs_presence", "export needs the person's own proof, as a reveal does");
+  assert.equal(await code(a.s.api.export({ chain: withAgent(), ...fields, proof: a.alex.proof(withAgent(), "seal.export", fields) })), "human_only");
+  const { blob } = await a.s.api.export({ chain: from, ...fields, proof: a.alex.proof(from, "seal.export", fields) });
+  assert.ok(!JSON.stringify(blob).includes("123-45-6789") && !JSON.stringify(blob).includes(Buffer.from("123-45-6789").toString("base64")), "the blob is wrapped");
+  const moved = await b.s.api.import({ chain: to, blob, record: REC, field: "ssn" });
+  assert.equal(await code(b.s.api.import({ chain: to, blob, record: REC2, field: "ssn" })), "bad_input", "a blob is bound to its record and field");
+  assert.equal(await code(a.s.api.import({ chain: from, blob, record: REC, field: "ssn" })), "bad_input", "another server's process cannot open it");
+  assert.equal(await code(b.s.api.import({ chain: withAgent(), blob, record: REC, field: "ssn" })), "human_only");
+  assert.deepEqual(Object.keys(moved.ref).sort(), ["present", "ref", "sealed", "set_at", "valid_format"]);
+  assert.equal(diskHolds(a.dir, "123-45-6789"), null);
+  assert.equal(diskHolds(b.dir, "123-45-6789"), null, "no plaintext on the target's disk");
+  const proof = b.alex.proof(to, "seal.reveal", { ref: moved.ref.ref, purpose: "check" });
+  assert.equal((await b.s.api.reveal({ chain: to, ref: moved.ref.ref, purpose: "check", proof })).value, "123-45-6789", "the target reads it for the person");
+});
