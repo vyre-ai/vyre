@@ -1210,7 +1210,10 @@ export default {
     const bkItems = async () => {
       const r = await ctx.call("projects.backup.sources", {}).catch(() => null);
       const list = r && !r.error && r.data && Array.isArray(r.data.items) ? r.data.items : [];
-      return list.filter((/** @type {any} */ i) => i && typeof i.name === "string" && (i.kind === "file" || i.kind === "rows")).map((/** @type {any} */ i) => ({ kind: i.kind, name: i.name, size: Number(i.size) || 0, mtime: Number(i.mtime) || 0,
+      // The source already applies the project's ignore rules; this is the floor under it: dependency and build folders, caches, logs and anything over the size cap are never sent, and a sealed or vault item is never a plain file.
+      const skip = /(^|\/)(node_modules|\.next|dist|build|target|venv|\.venv|__pycache__|\.cache|caches?|\.vault|vault|sealed)(\/|$)|\.log$|(^|\/)\.DS_Store$/i;
+      const cap = Number(bkCfg && bkCfg.max_bytes) || 2 * 1024 ** 3;
+      return list.filter((/** @type {any} */ i) => i && typeof i.name === "string" && (i.kind === "rows" || (i.kind === "file" && !skip.test(i.name) && (Number(i.size) || 0) <= cap))).map((/** @type {any} */ i) => ({ kind: i.kind, name: i.name, size: Number(i.size) || 0, mtime: Number(i.mtime) || 0,
         read: async () => (typeof i.text === "string" ? Buffer.from(i.text, "utf8") : fs.promises.readFile(String(i.path))) }));
     };
     const bkRun = async () => { const b = await backupOf(); return b.run(await bkItems()); };

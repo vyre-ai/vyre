@@ -84,12 +84,13 @@ test("memory.backup: no team means none; with one, run backs up, status reads ok
   const ns = await none.call("memory.backup.status", {}, "deck", await none.session("per_alex"), surface("deck"));
   assert.deepEqual(ns.data, { to: null, last: null, state: "none" }, JSON.stringify(ns));
   assert.equal((await none.call("memory.backup.run", {}, "deck", await none.session("per_alex"), surface("deck"))).code, "not_found");
-  const items = [{ kind: "rows", name: "rows/chats.jsonl", size: 40, mtime: Date.now() - 1000, text: '{"chat":"Harlow billing question"}' }];
+  const items = [{ kind: "file", name: "northwind/node_modules/x/index.js", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/debug.log", size: 5, mtime: 1, text: "skip" }, { kind: "file", name: "northwind/.git/HEAD", size: 5, mtime: 1, text: "keep!" }, { kind: "rows", name: "rows/chats.jsonl", size: 40, mtime: Date.now() - 1000, text: '{"chat":"Harlow billing question"}' }];
   const w = await world(t, undefined, { memory: { backup: { to: "Acme Team", home: path.join(dir, "server"), identity: "alex", holder: "laptop", device: path.join(dir, "device.json") } } }, () => items);
   const tok = await w.session("per_alex");
   const run = await w.call("memory.backup.run", {}, "deck", tok, surface("deck"));
   assert.equal(run.error, undefined, JSON.stringify(run));
-  assert.equal(run.data.uploaded, 1);
+  assert.equal(run.data.items, 2, "dependency folders and logs are never sent; .git is kept");
+  assert.equal(run.data.uploaded, 2);
   const st = (await w.call("memory.backup.status", {}, "deck", tok, surface("deck"))).data;
   assert.equal(st.to, "Acme Team");
   assert.equal(st.state, "ok");
