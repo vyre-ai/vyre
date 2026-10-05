@@ -7,8 +7,7 @@
 // group (never the other way; a call cannot add one); every message is written through chats.append(token, message) under a token that carries the
 // chat from birth (surfaces.open with { chat }): a person's words under that person's own token, an assistant's reply under a token for that
 // assistant, opened from the asker's chain. The kernel's append comes BEFORE the stream stores or sends a word, so a reply the kernel refuses is
-// shown nowhere (not a delta, not a frame). Without ctx.kernel (a 0.2 daemon) the old paths run, kept apart below (project0, and the kernelOn()
-// branches in send).
+// shown nowhere (not a delta, not a frame).
 //
 // A reply STREAMS (task O). The first delta opens it through the reply port (openReply, see reply-port.js; the kernel's chats.appendOpen when it lands), which stamps it
 // with the chat's membership version; each delta is a frame stamped `data.ver`, and a viewer receives it only if the port says they were in the chat at that version
@@ -122,10 +121,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   // ---- the kernel's chat (ctx.kernel on): tokens with the chat in them, and chats.append ------------------
 
-  /** Is this daemon running with the kernel? Then every chat is the kernel's and the 0.2 paths are closed. */
-  const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.append === "function" && typeof ctx.kernel.for === "function");
   /** The daemon path: the assistant's kernel session is vyred's, reached through the seam (`ks`). */
-  const viaKs = () => ks !== null && kernelOn();
+  const viaKs = () => ks !== null;
   const TOKEN_MS = 24 * 3600_000;
   /** What a call's own chain gave mirror(): the person's chain (exactly one person) and who it is. @type {WeakMap<object, { chain: any, person: string }>} */
   const kcalls = new WeakMap();
@@ -313,7 +310,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
   /**
-   * A thread's event into the group's log. 0.2 (no kernel): written straight away (project0). Kernel on: every word of a reply goes through
+   * A thread's event into the group's log: every word of a reply goes through
    * chats.append first (projectKernel), one at a time per assistant so the order holds, and a refused reply is never shown.
    * @param {Member} m @param {any} e
    */
@@ -325,7 +322,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     try { specs = m.ad.event(e); } catch (err) { log(`${e.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
     const p = e.payload || {};
     if (e.type === "thread.sent" && p.via === "turn" && p.queued != null && m.queuedTurns && m.queuedTurns.has(Number(p.queued))) specs = [{ kind: "turn-start", queued: Number(p.queued), data: {} }, ...specs];
-    if (kernelOn()) projectKernel(m, specs); else project0(m, specs);
+    projectKernel(m, specs);
     dirty.add(m);
     if (!timer && !stopped) { timer = setTimeout(flush, 100); timer.unref?.(); }
   }
@@ -340,21 +337,6 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   function write(m, s, data, message) {
     try { logs.get(m.grp).append(s.kind, data, { turn: s.turn ? `${m.name}/${s.turn}` : null, author: m.who, ...(m.asker ? { acts_for: m.asker } : {}), ...(message ? { message } : {}) }); }
     catch (err) { log(`${s.kind} for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
-  }
-
-  // ---- 0.2, no kernel: kept apart ------------------------------------------------------------------
-
-  /** The specs of a thread event written straight into the group's log. @param {Member} m @param {any[]} specs */
-  function project0(m, specs) {
-    const room = group(m.grp).people.size > 1;
-    for (const s of specs) {
-      if (SKIP.has(s.kind)) continue;
-      // In a room of more than one person an assistant's reply never carries a field value (it is the same words for everyone): a field is cited as a field-ref block, drawn per viewer.
-      if (room && carriesFieldValue(s.data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); continue; }
-      let data = s.data, message;
-      if ((s.kind === "text-delta" || s.kind === "text-done") && m.answer) { message = answerId(m, String(data.message)); data = { ...data, message }; }
-      write(m, s, room ? withNote(m.grp, data) : data, message);
-    }
   }
 
   // ---- kernel on: a reply is written once the kernel took it -----------------------------------------
@@ -680,7 +662,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const grp = sessionOf(i);
       const author = personOf(meta, i);
       // SS-2: with the kernel on, the asker of every turn is the kernel-verified author of the message (the chain the call was made under, recorded by the gate), never `as`, `asker` or anything else the caller wrote.
-      if (kernelOn() && !(meta && typeof meta === "object" && kernelPerson.has(meta))) throw fail("person_session_required", "this chat is the kernel's: a call needs the person's own session");
+      if (!(meta && typeof meta === "object" && kernelPerson.has(meta))) throw fail("person_session_required", "this chat is the kernel's: a call needs the person's own session");
       mustBeIn(grp, author);
       // A private message (enc, an opaque ciphertext made on the person's device): stored and relayed as it is, never parsed, routed to
       // no assistant, mentioned to nobody. The home does not hold its words.
@@ -691,7 +673,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const out = logs.get(grp);
         join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
         const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
-        if (!had && kernelOn()) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
+        if (!had) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
         if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
       }
@@ -706,9 +688,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const cwd = typeof i.cwd === "string" ? i.cwd : undefined;
       join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
       // Kernel on: `default` only chooses among the assistants the kernel lists (routing, not membership).
-      if (kernelOn() && typeof i.default === "string" && group(grp).bots.has(i.default)) group(grp).dflt = i.default;
+      if (typeof i.default === "string" && group(grp).bots.has(i.default)) group(grp).dflt = i.default;
       // Kernel on: people and assistants are the kernel's list (a person in the chat changes it, acting directly); a send adds nobody.
-      if (kernelOn() && ((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length))) throw fail("bad_input", "people and assistants of a chat are added with the kernel's chat change, by a person in it");
+      if (((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length))) throw fail("bad_input", "people and assistants of a chat are added with the kernel's chat change, by a person in it");
       for (const spec of [...(i.people || []), ...(i.assistants || [])]) {
         const j = asJoin(spec);
         if (!validId(j.id)) throw fail("bad_input", "a participant is person:<id>, assistant:<id> or model:<id>");
@@ -738,18 +720,15 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
       }
 
-      // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
+      // The kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
       // (its replies are appended under it). A refusal here is the send's refusal: nothing is stored.
-      /** @type {string|undefined} */ let kid;
-      if (kernelOn()) {
-        const mine = await personSession(meta, grp, author);
-        const bots = [];
-        // The assistants' sessions are vyred's (the seam), opened from this send; the stream opens none for them on the daemon path.
-        if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
-        kid = String((await append(mine.token, { text })).id);
-        for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
-      }
-      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}) }, { author, message });
+      const mine = await personSession(meta, grp, author);
+      const bots = [];
+      // The assistants' sessions are vyred's (the seam), opened from this send; the stream opens none for them on the daemon path.
+      if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
+      const kid = String((await append(mine.token, { text })).id);
+      for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
+      out.append("user-message", { message, text, state: "sent", kid }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));

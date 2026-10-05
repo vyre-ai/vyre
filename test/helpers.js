@@ -188,11 +188,11 @@ async function upFixture(home, fixture, env = process.env) {
   return { code: 1 };
 }
 
-/** A stable, valid `device:<16 base32>` caller label for a name: the label a paired device arrives under. @param {string} name */
+/** A stable, valid `device:<16 base32>` caller label for a name: the label a paired device arrives under. It keeps the name's own letters first, so a test can still tell whose device it is. @param {string} name */
 export function deviceFor(name) {
-  const bits = crypto.createHash("sha256").update(String(name)).digest();
   const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
-  let out = "";
-  for (let i = 0; i < 16; i++) out += alphabet[bits[i] % 32];
+  const bits = crypto.createHash("sha256").update(String(name)).digest();
+  let out = String(name).toLowerCase().replace(/[^a-z2-7]/g, "").slice(0, 12);
+  for (let i = 0; out.length < 16; i++) out += alphabet[bits[i] % 32];
   return `device:${out}`;
 }

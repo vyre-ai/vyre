@@ -232,10 +232,9 @@ export default {
     const kernelGate = async (i, meta) => {
       const session = String((i && i.session) || "");
       if (!groups || !/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) return;
-      const kernelOn = Boolean(ctx.kernel && ctx.kernel.chats);
       const kc = await access.chat(session, meta);
-      // The kernel is on: a chat is the kernel's, and a call that carries no session of its own cannot speak in one (the 0.2 group path is closed).
-      if (!kc) { if (kernelOn) throw Object.assign(new Error("a call needs the person's own session"), { code: "person_session_required" }); return; }
+      // A chat is the kernel's, and a call that carries no session of its own cannot speak in one.
+      if (!kc) throw Object.assign(new Error("a call needs the person's own session"), { code: "person_session_required" });
       if (!kc.chat) throw Object.assign(new Error("no such session"), { code: "not_found" });
       // Nobody joins by a call: people and assistants are the kernel's list, changed by a person in the chat acting directly (the kernel's chats.change), never by a send.
       if ((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length)) throw Object.assign(new Error("people and assistants of a chat are added with the kernel's chat change, by a person in it"), { code: "bad_input" });
