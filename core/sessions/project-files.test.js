@@ -82,8 +82,10 @@ test("only Vyre's own modules put files into a project's folder; a chat without 
   const w = await boot(t, { kernel: true });
   const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
   await w.finished(th.id);
-  const r = await w.internal("work.files.save", { thread: th.id, kind: "made", name: "a.png", base64: png("x").toString("base64") });
+  const r = await w.d.registry.call("work.files.save", { thread: th.id, kind: "made", name: "a.png", base64: png("x").toString("base64") }, "module:artifacts");
   assert.match(r.data.path, new RegExp(`^Projects/[^/]+/made/[^/]+/a\\.png$`), JSON.stringify(r));
+  // an exact list of modules: any other module, even a first-party one, cannot plant a file in a chat's folder
+  for (const who of ["module:gate", "module:vyred", "module:sessions"]) assert.equal((await w.d.registry.call("work.files.save", { thread: th.id, kind: "made", name: "b.png", base64: png("y").toString("base64") }, who)).error?.code, "denied", who);
   assert.equal((await w.tool("work.files.save", { thread: th.id, kind: "made", name: "a.png", base64: "AAAA" })).error?.code, "no_such_tool", "a person's surface does not call it");
   assert.ok((await w.d.registry.call("work.files.save", { thread: th.id, kind: "made", name: "a.png", base64: "AAAA" }, "mcp")).error, "a model does not either");
 });

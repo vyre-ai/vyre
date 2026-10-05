@@ -29,7 +29,7 @@ export function safeName(raw, fallback = "file") {
  * @param {{ kernel: any, hub: { chatRecord: Function, ensureChatRecord: Function, chatFolder: Function, projectOf: Function }, call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} o
  */
 export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
-  const log = (/** @type {string} */ m) => { if (process.env.DEBUGFILES) console.log("FILESLOG " + m); log0(m); };
+  const log = log0;
   const chain = () => kernel.serviceChain("work");
   const find = async (/** @type {string} */ type, /** @type {string} */ field, /** @type {string} */ value) => (await kernel.records.query(chain(), type, { filter: { field, op: "eq", value }, page: { limit: 1 } })).rows[0] || null;
   const idOf = (/** @type {string} */ urn) => String(urn).split("/").pop() || "";
@@ -79,7 +79,7 @@ export function createFiles({ kernel, hub, call, log: log0 = () => {} }) {
         ...(f.artifact ? { artifact: String(f.artifact) } : {}), project: { urn: ctx.project.urn }, chat: { urn: ctx.rec.urn },
       });
       return { path, record: rec, created: true, version: put.version };
-    } catch (e) { log(`project files: could not save ${String(f && f.name).slice(0, 60)} for ${String(f && f.thread).slice(0, 8)}: ${/** @type {Error} */ (e).message}${process.env.DEBUGFILES ? " " + String(/** @type {Error} */ (e).stack).split("\n").slice(1, 6).join(" | ") : ""}`); return null; }
+    } catch (e) { log(`project files: could not save ${String(f && f.name).slice(0, 60)} for ${String(f && f.thread).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
   /** A name not yet used in a folder: "a.png", then "a (2).png". @param {string} folder @param {string} name */
