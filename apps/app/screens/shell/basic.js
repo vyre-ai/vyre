@@ -1,4 +1,5 @@
 // @ts-check
+import { spaceName as spaceNameOf } from "../../src/state/space-name.js";
 // A Basic personal space is one with no server (CHAT 5 Oct 03:15Z): chats and projects work as normal, but Planner, tasks, reminders, notes, Records and flows need a space on a server. On Basic those places
 // say one plain line, offer the team spaces the person is in, and offer a server of their own. This file is the pure part: which space is Basic, which places are gated, and the backup line.
 
@@ -41,4 +42,15 @@ export function backupLine({ basic, teams, status }) {
   if (status && status.to === null) return "Not backed up: join a team or set up My Cloud";
   if (!teams.length) return "Not backed up: join a team or set up My Cloud";
   return null;
+}
+
+/**
+ * The Cloud spaces a Personal space's planner items can be kept on, and the one they are on now: spaces.tier answers { cloud: [{ id, name, label }], personal_host }. Each is named by the one naming function.
+ * @param {any} t @returns {{ options: [string, string][], current: string | null }}
+ */
+export function hostChoices(t) {
+  const cloud = Array.isArray(t?.cloud) ? t.cloud : [];
+  /** @type {[string, string][]} */ const options = cloud.filter((/** @type {any} */ c) => c && typeof c.id === "string").map((/** @type {any} */ c) => [c.id, spaceNameOf({ id: c.id, name: c.name ?? "", label: c.label ?? undefined, tier: "cloud" })]);
+  const current = typeof t?.personal_host === "string" && options.some(([id]) => id === t.personal_host) ? t.personal_host : null;
+  return { options, current };
 }

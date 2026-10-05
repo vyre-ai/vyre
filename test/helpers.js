@@ -186,3 +186,17 @@ async function upFixture(home, fixture, env = process.env) {
   }
   return { code: 1 };
 }
+
+/**
+ * Calls as the Space owner's own enrolled device, with the kernel's development stand-in proof: what a paired app sends. Granting a project to an agent is a kernel grant (lib/project-reach.js), a
+ * person's act with the kernel's own proof, so a test that makes an agent with `projects` makes it through this and not through the plain HTTP client. The stand-in needs the file
+ * `dev-presence-stand-in` in the home (a development build reads it).
+ * @param {any} d a started daemon @param {string} root its home @param {string} [caller]
+ * @returns {(tool: string, input?: any) => Promise<any>}
+ */
+export function kernelCaller(d, root, caller = "cli") {
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  try { d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone"); } catch { /* no relay table in this home: the call carries its facts anyway */ }
+  const meta = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } };
+  return (tool, input = {}) => d.registry.call(tool, input, caller, meta);
+}

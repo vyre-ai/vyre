@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
@@ -1028,7 +1028,7 @@ test("learned skills: the account's and the project's folders load as plugins; l
 
   // An agent's own folder loads into its threads only.
   const scoutDir = plugin(path.join(root, "learned", "agents", "scout"));
-  await tool("agents.create", { name: "scout", projects: ["harlow"] });
+  await kernelCaller(d, root)("agents.create", { name: "scout", projects: ["harlow"] });
   await tool("agents.ask", { agent: "scout", text: "hi" });
   assert.deepEqual(dirsOf((await until(() => launches()[4], "scout's launch")).argv).slice(1), [account, harlow, scoutDir]);
 });

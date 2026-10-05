@@ -18,7 +18,7 @@ import { connect, wsDuplex } from "./client.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(20); } throw new Error(`timed out waiting for ${what}`); };
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const LONG = (/** @type {string} */ tag) => `${tag} ` + Array(400).fill("word").join(" ");
 
 test("step 8: the assistant reads a record with a sealed ssn inside a chat turn and its transcript holds the placeholder, never the value or the reference", { skip: (process.env.VYRE_E2E !== "1" && "set VYRE_E2E=1 on the test box") || false, timeout: 150_000 }, async t => {
@@ -40,13 +40,13 @@ test("step 8: the assistant reads a record with a sealed ssn inside a chat turn 
   assert.ok(info.record, `the harness seeded a record with a sealed ssn (${info.recordError})`);
   const call = (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input) => post("/call", { who, tool, input });
   /** @type {any[]} */ const frames = [];
-  const c = connect({ from: 0, open: async ({ from }) => { const r = await call("alex", "stream.open", { session: info.chat, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${h.port2 || h.port}${r.data.path}`); }, onFrame: (/** @type {any} */ f) => frames.push(f) });
+  const c = connect({ from: 0, open: async ({ from }) => { const r = await call("alex", "stream.open", { chat: info.chat, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${h.port2 || h.port}${r.data.path}`); }, onFrame: (/** @type {any} */ f) => frames.push(f) });
   t.after(() => c.close());
   // the person asks; the fake provider is the assistant: its prompt carries a `vyre-sock work.call {tool: contacts.find}` line, which it runs on its OWN thread socket (VYRE_SOCKET), where vyred adds the thread's kernel session: the assistant's own door to the Space's records, as the plugin's MCP server uses it, which it runs the way the MCP server does inside its own thread (the agent's caller)
   const ask = `vyre-sock work.call ${JSON.stringify({ tool: "contacts.find", input: {} })}`;
-  const sent = await call("alex", "stream.send", { session: info.chat, text: ask, to: ["assistant:assistant"], cwd: work });
+  const sent = await call("alex", "stream.send", { chat: info.chat, text: ask, to: ["assistant:assistant"], cwd: work });
   assert.ok(!sent.error, JSON.stringify(sent.error));
-  await until(() => frames.some(f => f.type === "session.text-done"), "the assistant's reply", 90_000);
+  await until(() => frames.some(f => f.type === "chat.text-done"), "the assistant's reply", 90_000);
   const reply = textOf(frames);
   console.log("STEP8 reply the model produced from the tool result:\n" + reply.slice(0, 1500));
   // the transcript the model received: every recorded event of its thread, as the thread stored them

@@ -5,6 +5,8 @@ import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState,
 import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
 import { writeDraft } from "../../src/chat/drafts";
+import { newUuid } from "@vyre/chat-core/composer-state.js";
+import { SURFACE } from "../../src/state/live";
 import { tool } from "../../src/real/box";
 import { agentChoices, chatIdOf, createInput } from "../../src/state/new-chat-model.js";
 
@@ -35,8 +37,11 @@ export default function NewChatScreen() {
     try {
       const id = chatIdOf(await tool("work.chat.create", createInput({ agent })));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
-      // The first words wait in the new chat's box, ready to send.
-      if (text.trim()) writeDraft(id, text.trim());
+      // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
+      if (text.trim()) {
+        const first = await tool("stream.send", { chat: id, text: text.trim(), message: newUuid(), surface: SURFACE }).then(() => null).catch((e: Error) => e);
+        if (first) writeDraft(id, text.trim());
+      }
       router.replace({ pathname: "/u/chats/[id]", params: { id } });
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };

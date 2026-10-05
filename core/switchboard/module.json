@@ -38,6 +38,26 @@
         "reach": "anyone"
       },
       {
+        "name": "threads.chat-switch",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.chat-stop",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.chat-of",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.of-chat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "threads.lease",
         "reach": "anyone",
         "effect": "write"
@@ -287,6 +307,7 @@
   "watches": {
     "emits": [
       "thread.started",
+      "thread.chat",
       "thread.sandbox",
       "thread.sent",
       "thread.text",
@@ -334,6 +355,7 @@
   "needs": {
     "daemon": [
       "kernelSession",
+      "chatFor",
       "sandbox",
       "credentials"
     ],

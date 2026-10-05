@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present, writeModule } from "../../test/helpers.js";
+import { tempHome, present, writeModule, kernelCaller } from "../../test/helpers.js";
 import { startFakeMcpHttp } from "./testing/fake-mcp.js";
 
 const FAKE = path.join(import.meta.dirname, "testing", "fake-mcp.js");
@@ -162,8 +162,8 @@ test("mcp: scope by agent, by an agent's projects, and by a session's thread", a
   // cares about MCP scoping, not real project folders).
   assert.ok((await v.cli("projects.create", { name: "Harlow Legal", home: path.join(v.root, "harlow-legal") })).data);
   assert.ok((await v.cli("projects.create", { name: "Northwind", home: path.join(v.root, "northwind") })).data);
-  assert.ok((await v.cli("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
-  assert.ok((await v.cli("agents.create", { name: "kit", projects: ["northwind"] })).data);
+  assert.ok((await kernelCaller(v.d, v.root)("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
+  assert.ok((await kernelCaller(v.d, v.root)("agents.create", { name: "kit", projects: ["northwind"] })).data);
   const log = path.join(v.root, "x.log");
   await v.cli("mcp.add", stdio("tracker", log, {}, { scope: { projects: ["harlow-legal"] } }));
   await v.cli("mcp.add", stdio("ops", log, {}, { scope: { agents: ["juno"] }, tools: { allow: ["list_issues", "get_issue"] } }));

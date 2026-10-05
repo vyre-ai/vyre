@@ -31,7 +31,7 @@ async function run(seed, o) {
     snapshot: () => { snapshots++; text = emitted; return { cur: log.head }; },
     onFrame: f => {
       seen.push(f.cur);
-      if (f.type === "session.text-delta") text += f.data.text;
+      if (f.type === "chat.text-delta") text += f.data.text;
       else order.push(f.type);
     },
   });

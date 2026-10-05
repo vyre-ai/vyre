@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { boot } from "../sessions/testing/boot.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { kernelCaller } from "../../test/helpers.js";
 
 const FAKE_ACP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "sessions", "testing", "fake-acp.js");
 
@@ -37,8 +38,8 @@ test("a teammate's new session is given what the person decided in an earlier on
     fs.mkdirSync(path.join(work, dir), { recursive: true });
     assert.equal((await w.tool("projects.create", { name, home: path.join(work, dir) })).error, undefined);
   }
-  assert.equal((await w.tool("agents.create", { name: "juno", projects: ["harlow-legal"], instructions: "Harlow research." })).error, undefined);
-  assert.equal((await w.tool("agents.create", { name: "kit", projects: ["northwind-bakery"], instructions: "Northwind research." })).error, undefined);
+  assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "juno", projects: ["harlow-legal"], instructions: "Harlow research." })).error, undefined);
+  assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: ["northwind-bakery"], instructions: "Northwind research." })).error, undefined);
 
   // Session A: the person's own Claude Code session in the Harlow folder, a day ago, the way a terminal session is written (no SDK entrypoint, so Recall counts it as the person's).
   const dir = path.join(w.transcripts, path.join(work, "harlow").replace(/[^A-Za-z0-9]/g, "-"));

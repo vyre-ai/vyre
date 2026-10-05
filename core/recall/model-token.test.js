@@ -10,7 +10,7 @@ import path from "node:path";
 import { start, callerFacts } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
@@ -26,7 +26,7 @@ test("the person's own Claude (a kernel token) reads across projects; a named ag
   const opts = { root };
   await call("recall.index", {}, opts);
   for (const [name, home, ws] of [["Northwind", "northwind", []], ["Harlow", "harlow-site", [path.join(work, "harlow-intake")]]]) assert.ok(!(await call("projects.create", { name, home: path.join(work, home), workspaces: ws }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] })).error);
 
   const facts = callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true });
   const owner = d.kernel.chains.fromFacts(facts);

@@ -26,7 +26,7 @@ In the order `vyre help` lists them.
 | [`vyre doctor`](#vyre-doctor) | check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
-| [`vyre projects`](#vyre-projects) | every project; on a server, move moves the homes to /work/projects |
+| [`vyre projects`](#vyre-projects) | every project |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
@@ -159,10 +159,10 @@ vyre config [list [group]|get <key>|set <key> <value>|reset <key>] [--project <s
 
 ### vyre projects
 
-Every project; on a server, move moves the homes to /work/projects.
+Every project.
 
 ```
-vyre projects [list|move [--dry-run]] [--json]
+vyre projects [list] [--json]
 ```
 
 ### vyre recall

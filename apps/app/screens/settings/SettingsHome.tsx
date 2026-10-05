@@ -10,6 +10,7 @@ import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { backupLine, storedLine } from "../shell/basic.js";
 import { MakeServer } from "./MakeServer";
+import { PersonalHost } from "./PersonalHost";
 import { VERSION } from "./data";
 import { MOCK, tool } from "../../src/real/box";
 import { useMembers } from "../spaces/state";
@@ -47,6 +48,7 @@ export function SettingsHome() {
         {g.title === "Devices" ? <MakeServer /> : null}
         </View>
       ))}
+      {showing?.basic ? <PersonalHost /> : null}
       {backup || stored ? <Sec title="Backup"><Card flush>{stored ? <Row dense lead={<IconTile name="vault" />} title={stored} /> : null}{stored && backup ? <Divider inset={60} /> : null}{backup ? <Row dense lead={<IconTile name="shield" />} title={backup} /> : null}</Card></Sec> : null}
       <View className="items-center pt-s6"><Text size="secondary" tone="faint">{`Vyre ${VERSION}`}</Text></View>
     </Frame>

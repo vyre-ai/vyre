@@ -12,7 +12,7 @@ import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
@@ -156,16 +156,16 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
   // The real agents module: the assistant, and an agent with one project.
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
   // memory's guard now also checks projects.access (Vyre Drive step 3, one source of truth):
   // an agent's agents.projects entry alone is not enough. migrate seeds it from what agents.create
   // just set, the way an upgrade would, so kit's existing grant keeps working here.
-  assert.ok(!(await call("projects.access.migrate", {}, opts)).error);
   await call("memory.curate", {}, opts);
 
   const main = (await call("memory.graph", {}, opts)).data;
@@ -217,14 +217,15 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "wilma", projects: "*" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "wilma", projects: "*" }, opts)).error);
   // A projects: "*" agent gets no seed from migrate (its "*" is not per-project, same as the
   // assistant): projects.access still has to grant it each mapped project by name.
-  assert.ok(!(await call("projects.access.grant", { project: "northwind", agent: "wilma" }, opts)).error);
-  assert.ok(!(await call("projects.access.grant", { project: "harlow", agent: "wilma" }, opts)).error);
+  assert.ok(!(await kcall("projects.access.grant", { project: "northwind", agent: "wilma" }, opts)).error);
+  assert.ok(!(await kcall("projects.access.grant", { project: "harlow", agent: "wilma" }, opts)).error);
   await call("memory.curate", {}, opts);
 
   // Every mapped project, one room at a time: granted.
@@ -243,7 +244,7 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   assert.match((await call("memory.answer", { agent: "wilma", q: "who is my wife" }, opts)).error?.message || "", /only the assistant reads them/);
 
   // A project.access revoke narrows it immediately, same as a named-projects agent.
-  assert.ok(!(await call("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
+  assert.ok(!(await kcall("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
   assert.match((await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts)).error?.message || "", /not granted/);
 });
 
@@ -254,10 +255,11 @@ test("graph: THE assistant rule — every mapped project and the main graph, per
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   await call("memory.curate", {}, opts);
 
   // The main graph, every mapped project's room, unconditional (never checked against
@@ -301,8 +303,9 @@ test("graph: an assistant with ZERO mapped projects reads nothing, never everyth
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   // No project created at all: a fresh install, r.folders === []. graph.view/scoped read an
   // empty cwds array as "no scope at all" (the main graph, unlimited) -- so before this fix an
   // assistant asking unscoped here, with nothing yet mapped, still read every session raw,
@@ -331,9 +334,10 @@ test("graph: the assistant's own caller-supplied project_cwds are checked agains
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   await call("memory.curate", {}, opts);
   // A real, mapped folder still works, exactly as before this fix.
   assert.ok(!(await call("memory.retrieve", { agent: "juno", question: "Dana Reyes", project_cwds: [path.join(work, "northwind")] }, opts)).error);
@@ -364,6 +368,7 @@ test("graph: a named agent is refused when agents cannot be checked", async t =>
   const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   await call("memory.curate", {}, { root });
   const r = await call("memory.graph", { agent: "kit", project_cwds: NORTHWIND }, { root });
   assert.match(r.error?.message || "", /cannot be checked/);

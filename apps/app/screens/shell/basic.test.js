@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
+import { hostChoices, isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
 
 test("a space is Basic only when the box says tier basic; cloud and team spaces are not", () => {
   assert.equal(isBasicRow({ tier: "basic" }), true);
@@ -35,4 +35,11 @@ test("the backup line: not backed up with no team, the destination when the box 
   assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: null } }), NB);
   assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }] }), null, "a team exists but the box has not said: no claim");
   assert.equal(backupLine({ basic: false, teams: [] }), null);
+});
+
+test("the personal-items host: the Cloud spaces from spaces.tier, named by the one function, and the current choice", () => {
+  const t = { tier: "basic", cloud: [{ id: "spc_a", name: "harlow.vyre.run", label: "harlow" }, { id: "spc_b", name: "example.vyre.run", label: null }], time_zone: null, personal_host: "spc_b" };
+  assert.deepEqual(hostChoices(t), { options: [["spc_a", "harlow"], ["spc_b", "example"]], current: "spc_b" });
+  assert.deepEqual(hostChoices({ cloud: [], personal_host: null }), { options: [], current: null });
+  assert.equal(hostChoices({ cloud: [{ id: "spc_a", name: "x" }], personal_host: "gone" }).current, null);
 });

@@ -2,7 +2,7 @@
 import { isBasicRow } from "./basic.js";
 import type { ShellSpace } from "@vyre/ui";
 
-export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud"; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
+export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud"; time_zone?: string | null; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
 export type IdentityRow = { exists?: boolean; name?: string; label?: string; pending?: boolean };
 export type Me = { name: string; sub: string; vyreName: string };
 export type ShellData = { me: Me; spaces: ShellSpace[] };
@@ -23,7 +23,7 @@ export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, 
 export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
 
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}) }));
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
   return own.length > 1 ? [ALL, ...own] : own.length ? own : [ALL];
 }
 
