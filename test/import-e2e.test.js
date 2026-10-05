@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { pair, until } from "./link-harness.js";
-import { hashOf } from "../core/sessions/drivers/gemini/import.js";
+import { hashOf } from "../core/import/formats/gemini.js";
 
 const CWD = "/home/alex/Work/northwind";
 

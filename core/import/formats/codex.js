@@ -13,7 +13,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { subdirs, files, allowed, headText, readAllowed, line, textOf, HEAD_MAX } from "../import-shared.js";
+import { subdirs, files, allowed, headText, readAllowed, line, textOf, HEAD_MAX } from "./shared.js";
 
 export const source = "codex";
 const ALLOW = /^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[A-Za-z0-9._:-]+\.jsonl$/;

@@ -9,8 +9,8 @@
 
 import os from "node:os";
 import path from "node:path";
-import * as codex from "../../sessions/drivers/codex/import.js";
-import * as gemini from "../../sessions/drivers/gemini/import.js";
+import * as codex from "./codex.js";
+import * as gemini from "./gemini.js";
 import { isRealHome } from "../../config/dialogs.js";
 
 /** @type {Record<string, typeof codex | typeof gemini>} keyed by the source kind a scan root carries */

@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import { transcriptFolders, claudeHome } from "../config/index.js";
 import { scan } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
-import { folderName } from "../sessions/drivers/import-shared.js";
+import { folderName } from "./formats/shared.js";
 
 /** Only the person's own surfaces read what is on their disk. "onboard" is the onboarding page on the machine's own loopback, reached only with the one-time link the person was given: its history step is this module's first screen. */
 const PEOPLE = ["cli", "local", "deck", "capsule", "onboard"];

@@ -11,7 +11,7 @@
 // Switchboard (index.js) does the stopping, the starting and the asking.
 
 import { SEED_OPEN, withoutSeed } from "../../lib/seed.js";
-import { WINDOWS, DEFAULT_WINDOW, windowFor } from "../sessions/drivers/windows.js";
+import { WINDOWS, DEFAULT_WINDOW, windowFor } from "../../lib/windows.js";
 
 /** How rollover behaves unless a setting says otherwise. */
 export const ROLL = Object.freeze({

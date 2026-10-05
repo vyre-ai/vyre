@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import * as codex from "../core/sessions/drivers/codex/import.js";
+import * as codex from "../core/import/formats/codex.js";
 
 const bin = process.argv[2] || "codex";
 const REPLY = "pong from the mock";
