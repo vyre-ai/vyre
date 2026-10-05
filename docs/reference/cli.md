@@ -31,6 +31,7 @@ In the order `vyre help` lists them.
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
 | [`vyre open`](#vyre-open) | a project: what its threads are told, and its threads |
+| [`vyre roll`](#vyre-roll) | continue a long Claude Code session in a fresh window, with nothing lost |
 | [`vyre threads`](#vyre-threads) | sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions) |
 | [`vyre sessions`](#vyre-sessions) | how the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt |
 | [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said |
@@ -201,6 +202,21 @@ A project: what its threads are told, and its threads.
 ```
 vyre open <project> [--json]
 ```
+
+### vyre roll
+
+Continue a long Claude Code session in a fresh window, with nothing lost.
+
+```
+vyre roll [--session <id>] [--thread <id>] [--print] [--no-start] [--json]
+```
+
+Run it in the folder, after /exit. It builds a seed from what you decided, an index of what came before and the last turns word for word, then starts claude here under a fresh session with the seed as its first message. Every earlier turn stays stored: memory_search finds it and memory_turn reads it back exactly.
+--session <id>: roll this session (the start of its id is enough), not the newest one in this folder
+--thread <id>: a session Vyre runs: ask it to roll its window over now (it does this by itself when the window fills)
+--print: print the seed and start nothing, for any agent to use
+--no-start: build the seed and a fresh session id, write the seed to a file, and start nothing
+VYRE_CLAUDE_BIN names the claude to start (default: claude on PATH).
 
 ### vyre threads
 
