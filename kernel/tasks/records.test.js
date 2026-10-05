@@ -132,3 +132,15 @@ test("task records: the stage and the record a task concerns are kernel-owned fi
   assert.equal((await R.get(owner, "task", u.id)).data.title, "(the text of this task was removed)");
   void k;
 });
+
+test("task records: a Personal space (tier basic) keeps tasks and the types Vyre defines, and refuses a type, field or view of the person's own", async () => {
+  const { k, owner, R, T } = await boot({ tier: "basic" });
+  await assert.rejects(() => R.define(owner, { add_types: [{ name: "pet", label: "Pet", fields: [{ name: "name", kind: "text", label: "Name" }] }] }), { code: "custom_types_need_cloud" });
+  await assert.rejects(() => R.define(owner, { change_types: [{ name: "task", label: "Task", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "colour", kind: "text", label: "Colour" }] }] }), { code: "custom_types_need_cloud" }, "no custom field on a task either");
+  const t = await T.request(owner, spec());
+  assert.equal((await R.get(owner, "task", t.id)).data.status, "ready", "tasks work");
+  assert.equal((await R.create(owner, "task", { title: "A personal to-do" })).data.status, "ready");
+  const cloud = await boot({ tier: "cloud" });
+  await cloud.R.define(cloud.owner, { add_types: [{ name: "pet", label: "Pet", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  void k;
+});

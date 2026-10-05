@@ -17,7 +17,7 @@ export default {
     const door = createDoor(ctx);
     /** @typedef {{ space: string, gateway: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn */
-    const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const gate = await cloudGate(ctx, i && typeof i.space === "string" ? i.space : undefined); if (gate) throw gate; return fn(i || {}, await door.open(i || {}, meta)); } });
+    const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta); const gate = await cloudGate(ctx, d.space); if (gate) throw gate; return fn(i || {}, d); } });
     const asks = (/** @type {Opened} */ d) => { if (!d.gateway.ask) throw refuse("this Space keeps no tasks", "unavailable"); return d.gateway.ask; };
     /** A task's actor from an id: a person by their per_ id, else an assistant or teammate by name. @param {string} id @param {string} space */
     const actor = (id, space) => ({ kind: /^per_/.test(id) ? "person" : "agent", id, space });

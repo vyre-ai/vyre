@@ -661,6 +661,8 @@ export function createRecords(cfg) {
      * @param {{ waiver?: object }} [o] the waiver of an approved Kit install (kernel/tasks/kit-apply.js): it stands for the presence this admin act asks for, and only for a diff of exactly the types that Kit lists
      */
     async define(chain, diff, o = {}) {
+      // A Personal space (tier "basic") keeps only the types Vyre itself defines (a task, a reminder, a note): its person adds no type, field or view of their own; that needs a Cloud space.
+      if (cfg.basicSpace) throw new KernelError("custom_types_need_cloud", "Custom types need a Cloud space");
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);

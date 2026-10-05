@@ -260,17 +260,20 @@ test("records: the engine's own fields are hidden from every role and the remind
   assert.deepEqual([cal.of, cal.dateField], ["reminder", "at"]);
 });
 
-test("records: on a Basic personal space the planner answers that it needs a Cloud space and lists the Cloud spaces the person is in; a Cloud space, or no answer, is not refused", async t => {
+test("records: a person with no Cloud membership at all is told the planner needs a Cloud space; a Personal space with a team, a Cloud space, or no answer, is not refused", async t => {
   const { forgetCloudGate } = await import("../../lib/cloud-gate.js");
   forgetCloudGate();
   const w = await world(t);
-  w.tier = { tier: "basic", cloud: [{ id: "spc_harlow000001", name: "harlow.example", label: "harlow" }] };
+  w.tier = { tier: "basic", cloud: [] };
   const r = await w.call("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" });
   assert.equal(r.error.code, "needs_cloud");
-  assert.equal(r.error.message, "Planner needs a Cloud space");
+  assert.equal(r.error.message, "Planner needs a Cloud space: join a team or set up My Cloud");
   assert.ok(!/pro\b|server/i.test(r.error.message), "never Pro or server");
   assert.equal((await w.call("planner.list", {})).error.code, "needs_cloud", "reads too");
   assert.equal((await w.call("planner.parse", { text: "alarm 7am" })).error, undefined, "parsing words needs no space");
+  forgetCloudGate();
+  w.tier = { tier: "basic", cloud: [{ id: "spc_harlow000001", name: "harlow.example", label: "harlow" }] };
+  assert.ok(!(await w.call("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" })).error, "a Personal space with a team has its Planner");
   forgetCloudGate();
   w.tier = { tier: "cloud", cloud: [] };
   assert.ok(!(await w.call("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" })).error, "a Cloud space works");

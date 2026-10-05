@@ -30,8 +30,8 @@ test("cloud gate on a real daemon: a Basic device refuses Planner and Tasks in p
   assert.ok(tier.error, "internal to modules");
   const add = await basic.as("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" });
   assert.equal(add.error && add.error.code, "needs_cloud", JSON.stringify(add));
-  assert.equal(add.error.message, "Planner needs a Cloud space");
-  assert.ok(Array.isArray(add.error.detail.spaces), "the Cloud spaces the person is in (none yet)");
+  assert.equal(add.error.message, "Planner needs a Cloud space: join a team or set up My Cloud");
+  assert.deepEqual(add.error.detail.spaces, [], "the person is in no Cloud space");
   assert.doesNotMatch(add.error.message, /\b(pro|server)\b/i);
   assert.equal((await basic.as("planner.list", {})).error.code, "needs_cloud");
   const task = await basic.as("tasks.list", {});
