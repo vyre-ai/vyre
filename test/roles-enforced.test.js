@@ -17,11 +17,11 @@ const PEOPLE = { owner: "per_alex", admin: "per_adm", manager: "per_man", member
 const u = (/** @type {string} */ type, id = "probe") => `vyre://${SPACE}/${type}/${id}`;
 // the resource each action is asked about
 const RESOURCE = { "memory.file": u("memory", "new"), "memory.read": u("memory", "m1"), "memory.retire": u("memory", "m1"), "checkpoint.write": u("checkpoint", "s1"), "checkpoint.read": u("checkpoint", "s1"), "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
-  "records.define": u("definition", "types"), "seal.put": u("contact", "c1"), "seal.reveal": u("contact", "c1"), "project.move_out": u("project", "c1"), "project.move_in": u("project", "c1"), "tasks.request": u("task"), "tasks.read": u("contact", "c1"), "tasks.work": u("contact", "c1"),
+  "records.define": u("definition", "types"), "seal.put": u("contact", "c1"), "seal.reveal": u("contact", "c1"), "project.move_out": u("project", "c1"), "project.move_in": u("project", "c1"), "project.move_finish": u("project", "c1"), "records.import": u("contact", "c1"), "space.upgrade": u("space", "x"), "space.upgrade_finish": u("space", "x"), "tasks.request": u("task"), "tasks.read": u("contact", "c1"), "tasks.work": u("contact", "c1"),
   "grants.role": u("member", "per_x"), "grants.invite": u("invite"), "grants.create": u("grant", "new"), "grants.revoke": u("grant"), "grants.narrow": u("grant"),
   "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "drive.read": u("drive", "x"), "drive.write": u("drive", "x"), "grants.unoffer": u("grant"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),
   "kits.propose": u("kit", "estate"), "kits.install": u("kit", "estate"), "kits.remove": u("kit", "estate"), "rules.set": u("rule"), "rules.get": u("rule"), "rules.test": u("rule"), "rules.enable": u("rule"), "rules.disable": u("rule"), "rules.propose": u("rule"), "rules.list": u("rule"), "grants.list": u("member", "per_x"),
-  "flows.run": u("flow", "f1"), "ask.request": u("task"), "service.read": u("service", "clio"), "service.call": u("service", "clio") };
+  "flows.run": u("flow", "f1"), "ask.request": u("task"), "service.read": u("service", "clio"), "service.call": u("service", "clio"), "project.reach": u("project", "p1") };
 
 async function world() {
   const rig = await createRig({ space: SPACE, clock, people: { per_adm: "admin", per_man: "manager", per_mem: "member" }, defs: [CONTACT] });
