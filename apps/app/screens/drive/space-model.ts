@@ -1,8 +1,9 @@
 // The pure half of the Space's own Drive (files.drive.space.list, read, upload, versions, restore): the versioned, permissioned files of the space, not the box's shared folders.
 // The box lists files under a folder as paths; a folder is the first step of a path below the one you are in.
 
-export type SpaceEntry = { path?: string; name?: string; size?: number; ver?: number; version?: number; at?: number | string; mtime?: number | string; by?: string };
-export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number };
+/** A listing entry. A chat's folder comes with the chat's title and an `open` flag: false when the caller is not in the chat (files.drive.space.list). */
+export type SpaceEntry = { path?: string; name?: string; size?: number; ver?: number; version?: number; at?: number | string; mtime?: number | string; by?: string; title?: string; open?: boolean; dir?: boolean; folder?: boolean };
+export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number; /** A chat folder the caller is not in: its name shows greyed and it does not open. */ locked?: boolean };
 export type Version = { ver: number; size: number; at: number; by?: string; base?: number };
 
 const ms = (v: unknown): number => { if (typeof v === "number") return v; const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? 0 : t; };
@@ -19,7 +20,12 @@ export function children(entries: SpaceEntry[], prefix: string): Item[] {
     const [head, ...more] = rest.split("/");
     if (!head) continue;
     const path = base ? `${base}/${head}` : head;
-    if (more.length) { const cur = out.get(head); out.set(head, { name: head, dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)) }); }
+    if (more.length || e.dir || e.folder) {
+      const cur = out.get(head);
+      const named = !more.length && typeof e.title === "string" && e.title.trim() ? e.title.trim() : cur?.name && cur.name !== head ? cur.name : head;
+      const locked = cur?.locked || e.open === false;
+      out.set(head, { name: named, dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)), ...(locked ? { locked: true } : {}) });
+    }
     else out.set(head, { name: head, dir: false, path, size: Number(e.size ?? 0), ver: Number(e.ver ?? e.version ?? 1), at: ms(e.at ?? e.mtime) });
   }
   return [...out.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));

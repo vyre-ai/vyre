@@ -16,12 +16,10 @@ export function systemSource(call: Call) {
     reindex: () => ask("recall.index"),
     hooks: () => maybe("hooks.list"),
     hooksStatus: () => maybe("hooks.status"),
-    guests: () => maybe("network.guests.list"),
-    tailnet: () => maybe("computers.tailnet.status"),
+    wink: () => maybe("network.wink.status"),
     egress: () => maybe("computers.egress.status"),
     handback: () => maybe("computers.handback.status"),
     setHandback: (minutes: number) => ask<any>("computers.handback.set", { minutes }),
-    lock: () => maybe("onboard.tailscale", { action: "lock" }),
     drive: () => maybe("files.drive.status"),
     /** The share's access: "ro" or "rw". */
     setAccess: (name: string, mode: "ro" | "rw") => ask<{ access?: string }>("files.drive.access", { name, mode }),

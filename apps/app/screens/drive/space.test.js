@@ -85,3 +85,16 @@ test("shared links: the words, the order, the address, and the three calls to th
   assert.deepEqual(seen[0].input, { path: "Clients/A/retainer.pdf" });
   assert.deepEqual(seen[1].input, { space: "spc_x", path: "a/b", version: 2, days: 3 });
 });
+
+test("a chat folder the caller is not in keeps its title, is locked, and a folder the caller is in is not", async () => {
+  const { children } = await import("./space-model.ts");
+  const items = children([
+    { path: "chat/chat_1", title: "Lease reply", open: false, dir: true },
+    { path: "chat/chat_2/notes.md", size: 10 },
+    { path: "chat/chat_2", title: "Intake", open: true, dir: true },
+    { path: "plain/a.txt", size: 1 },
+  ], "chat");
+  assert.deepEqual(items.map((i) => [i.name, !!i.locked]), [["Intake", false], ["Lease reply", true]]);
+  const top = children([{ path: "chat/chat_1", title: "Lease reply", open: false, dir: true }, { path: "plain/a.txt", size: 1 }], "");
+  assert.deepEqual(top.map((i) => i.name), ["chat", "plain"]);
+});

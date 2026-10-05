@@ -100,34 +100,32 @@ test("system: history says what is indexed and why search by meaning is off", { 
   assert.equal(m.recallView({}).lines[2][1], "Not yet");
 });
 
-test("system: webhooks off shows the one command, on lists routes, mismatches and the fixes", { skip: !strip }, async () => {
+test("system: webhooks off shows the one command, on lists the routes and the way to close one", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
   const off = m.hooksCard({ enabled: false }, null);
   assert.equal(off.state, "Off");
   assert.deepEqual(off.commands.map((c) => c.line), ["vyre hooks on"]);
-  const on = m.hooksCard({ enabled: true, listening: false, error: "port busy", routes: [{ name: "stripe", path: "/hooks/stripe", verify: { scheme: "hmac-sha256" }, deliveries: 2, funnel: { open: "tailscale funnel 443" } }] },
-    { mismatches: [{ message: "stripe is not published", fix: "tailscale funnel --bg 443" }, { message: "443 is used", harmless: true }] });
+  const on = m.hooksCard({ enabled: true, listening: false, error: "port busy", routes: [{ name: "stripe", path: "/hooks/stripe", verify: { scheme: "hmac-sha256" }, deliveries: 2 }] }, null);
   assert.equal(on.state, "On, 1 open route");
-  assert.deepEqual(on.warn, ["The webhook listener is not answering (port busy).", "Funnel and Vyre disagree: stripe is not published.", "443 is used. Harmless."]);
+  assert.deepEqual(on.warn, ["The webhook listener is not answering (port busy)."]);
   assert.ok(on.commands.some((c) => c.line === "vyre hooks close stripe"));
-  assert.ok(on.commands.some((c) => c.line === "tailscale funnel --bg 443"));
+  assert.ok(!JSON.stringify(on).toLowerCase().includes("tailscale"), "no Tailscale wording");
 });
 
-test("system: guests, agent nodes, egress and lock say on or off and what is wrong", { skip: !strip }, async () => {
+test("system: the Wink network card and the egress card say what is connected and what is wrong", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
-  const g = m.guestsCard({ enabled: true, safe: ["threads.list"], people: [{ login: "sam@x.example", tools: ["threads.list", "vault.reveal"], allowed: ["threads.list"] }] });
-  assert.equal(g.state, "On, 1 person");
-  assert.deepEqual(g.warn, ["Listed for sam@x.example but not guest-safe, so refused: vault.reveal."]);
-  assert.equal(m.guestsCard({ enabled: false }).state, "Off");
-  const t = m.tailnetCard({ enabled: true, tag: "tag:a", computers: [{ agent: "kit", node: "kit-1", running: true }], vault: { item: "ts-key", exists: true, granted: false } });
-  assert.deepEqual(t.lines, ["Tagged tag:a.", "Auth key ts-key in the Vault: there, not granted yet.", "kit (kit-1), running"]);
+  // network.wink.status's real shape (core/network/wink.js, as the doctor test builds it).
+  const w = m.winkCard({ at: 1, otherVpn: false, identity: { signedIn: true, name: "alex.vyre.run", devices: 3 }, spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: "direct", latencyMs: 12, peers: 2 }], relay: { enabled: true, reachable: true, latencyMs: 38 }, clock: { skewMs: 800 } });
+  assert.equal(w.state, "Connected");
+  assert.deepEqual(w.lines, ["Personal, connected, direct, 12 ms, 2 devices", "Relay: reachable, 38 ms"]);
+  const bad = m.winkCard({ spaces: [{ id: "s", name: "Harlow", state: "offline", path: "relay" }], relay: { enabled: true, reachable: false }, otherVpn: true, clock: { skewMs: 90_000 } });
+  assert.equal(bad.state, "1 space not connected");
+  assert.equal(bad.warn.length, 2);
+  assert.equal(m.winkCard({ spaces: [] }).state, "No spaces linked");
+  assert.ok(!JSON.stringify([w, bad]).toLowerCase().match(/tailscale|tailnet/), "no Tailscale wording");
   const e = m.egressCard({ enabled: true, sites: ["a.com"], sidecar: { answers: false, why: "refused" } });
   assert.equal(e.state, "On, 1 site");
   assert.match(e.warn[0], /does not answer \(refused\)/);
-  assert.equal(m.lockCard({ enabled: true, signed: false, trusted: 2 }).lines[0].includes("not signed yet"), true);
-  const off = m.lockCard({ enabled: false, key: "tlpub:abc" });
-  assert.equal(off.commands[1].line, "tlpub:abc");
-  assert.match(m.lockCard({ enabled: false, why: "no tailscale" }).warn[0], /no tailscale/);
 });
 
 test("system: hand-back keeps its choices; shares flip between read only and read and write; the audit names what it found", { skip: !strip }, async () => {
