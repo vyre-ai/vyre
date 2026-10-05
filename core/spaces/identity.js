@@ -5,7 +5,7 @@
 //   IdentityStore {
 //     status():  { exists, pending, name, id, eid, keyId, publicKey, seq, createdAt }   no secret in it. `id` is the permanent identity id,
 //                `eid` this device's entry on the list (keyId is the same, kept for older callers)
-//     generate({ code?, label? }): make the device key and the genesis (with the recovery code's entry if given); keeps it pending, with no name yet
+//     generate({ code?, label? }): make the device key and the genesis (with the recovery code's entry if given); keeps it pending, with no name yet. `label` stays on this device (labels()/setLabel()), never in the chain
 //     join(ops, pin): this device was added to an existing identity by another entry: keep its key and the chain it was given
 //     setName(name): the name was claimed; returns status()
 //     sign(message: Buffer): Promise<Buffer>                                      the private half never leaves the store
@@ -71,10 +71,10 @@ export function fileIdentityStore(dir) {
       const priv = privateKeyOf(kp.privateKey);
       const eid = keyId(Buffer.from(kp.publicKey, "base64url"));
       const ts = o.ts ?? Date.now();
-      const g = await C.makeGenesis({ kind: "person", entry: { eid, kind: "device", pub: kp.publicKey, label: o.label }, ...(o.code ? { code: { eid: o.code.eid, kind: "code", pub: o.code.pub } } : {}),
+      const g = await C.makeGenesis({ kind: "person", entry: { eid, kind: "device", pub: kp.publicKey }, ...(o.code ? { code: { eid: o.code.eid, kind: "code", pub: o.code.pub } } : {}),
         nonce: crypto.randomBytes(12).toString("base64url"), ts, sign: m => crypto.sign(null, Buffer.from(m), priv) });
       const state = await C.verifyChain([g], { now: ts + 1 });
-      write({ v: 2, name: null, id: state.id, publicKey: kp.publicKey, privateKey: kp.privateKey, ops: [g], pin: C.pinOf(state), createdAt: ts });
+      write({ v: 2, name: null, id: state.id, publicKey: kp.publicKey, privateKey: kp.privateKey, ops: [g], pin: C.pinOf(state), createdAt: ts, ...(o.label ? { labels: { [eid]: String(o.label).replace(/[\u0000-\u001f]/g, " ").slice(0, 60) } } : {}) });
       return view(read());
     },
     /** A key for a device that another entry will add to an existing identity. Nothing is on the list until that entry signs. */
@@ -98,6 +98,9 @@ export function fileIdentityStore(dir) {
     ops() { const r = read(); return r && Array.isArray(r.ops) ? r.ops : []; },
     pin() { const r = read(); return r ? r.pin || null : null; },
     setChain(/** @type {any[]} */ ops, /** @type {any} */ pin) { const r = read(); if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" }); write({ ...r, ops, pin }); },
+    /** The names this device gave to entries on the list (its own and the devices it added), by entry id. They live here and never in the public chain (0.2.9). */
+    labels() { const r = read(); return r && r.labels && typeof r.labels === "object" ? r.labels : {}; },
+    setLabel(/** @type {string} */ eid, /** @type {string | undefined} */ label) { const r = read(); if (!r || !label) return; write({ ...r, labels: { ...(r.labels || {}), [eid]: String(label).replace(/[\u0000-\u001f]/g, " ").slice(0, 60) } }); },
     /** The alerts a device has already shown, as a sequence number. */
     alerted() { const r = read(); return r ? Number(r.alerted || 0) : 0; },
     setAlerted(/** @type {number} */ seq) { const r = read(); if (r) write({ ...r, alerted: seq }); },
