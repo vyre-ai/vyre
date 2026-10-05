@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(cli): `vyre phone` and `vyre relay pair` say, after a pairing by the relay's offer, "This device can't sign in as you until you confirm it from Devices." (that way of pairing has no owner confirmation; the typed code confirms the device itself). 0.3.1 moves them to the typed code and removes the offer path (team/BACKLOG.md).
+
 - feat(wink): a device paired by the typed code can open a person session. `wink.code.ack` is a pair yes moment (it takes the owner's software yes on a development build, like wink.phone.open), the owner's typed-back ack is the confirmation the paired session is granted on (the record is confirmed by the owner, with a key id `ack:<offer>`), and `addThisDevice({ ..., presenceKey })` reports the device's P-256 presence key at pairing: that key, never the Ed25519 identity key, signs presence.person.start-paired. test/wink-paired.test.js covers typed pair, signed ack, start-paired and a person-session call.
 
 - feat(wink): `wink.phone.wait` answers `identity: { id, vyre? }` once the yes is done, and `addThisDevice` returns it, so a device that joined an identity reads its list by the identity's own name; `name` stays the other device's (box) name.
