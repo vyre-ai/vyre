@@ -1066,6 +1066,8 @@ test("typed pair on the kernel: the typed-paired, acked device defines a record 
   assert.ok(facts, "a confirmed paired device is given person facts");
   const viaFacts = await w.d.registry.call("records.define", { diff: { add_types: [{ name: "company", label: "Company", fields: [{ name: "name", kind: "text", label: "Name" }] }] } }, `device:${done.device}`, { kernelFacts: facts, person: { id: "ps", kind: "bearer" } });
   assert.equal(viaFacts.data && viaFacts.data.applied, true, JSON.stringify(viaFacts));
+});
+
 test("pair, release, then pair a browser as ANOTHER identity: refused with the server's own words and a log line saying why", async t => {
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software" });
   const w = f.w, dev = f.done.device;

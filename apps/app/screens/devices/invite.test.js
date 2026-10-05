@@ -60,3 +60,8 @@ test("Email it is a mailto for the person's own mail app, with the link and no r
   assert.ok(decodeURIComponent(e.mailto).includes("https://harlow.vyre.run/join/abc"));
   assert.match(e.subject, /Harlow Legal/);
 });
+
+test("a phone is never told about a server", () => {
+  assert.doesNotMatch(inviteRefusal("this_computer", "x", "", true), /server/i);
+  assert.doesNotMatch(inviteRefusal("unreachable", "x", "Chris", true), /server/i);
+});

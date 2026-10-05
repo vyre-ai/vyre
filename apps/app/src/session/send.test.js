@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEvent, confirmSend, createSession, dropLocal } from "../../../../deck/chat/core/session-state.js";
+import { applyEvent, confirmSend, createSession, dropLocal } from "../vendor/deck/chat/core/session-state.js";
 import { drawSend } from "./send.js";
 
 const view = (/** @type {any} */ s) => s.items.map((/** @type {any} */ i) => `${i.kind}:${i.key}`);

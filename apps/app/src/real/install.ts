@@ -2,10 +2,10 @@
 
 import { said, tool } from "./box";
 import { Platform } from "react-native";
-import { claimBlocked } from "../../screens/shell/rc";
+import { RC, claimBlocked } from "../../screens/shell/rc";
 import { macDeviceKey, macKeyAvailable } from "../identity/mac-key.ts";
 import { enclavePublic } from "../keys";
-import { claimIdentity } from "../identity/claim.js";
+import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
 
@@ -56,8 +56,10 @@ export async function createIdentity(name: string, deviceLabel: string, password
   // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
   const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
   if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This Mac would not keep your key, so no name was claimed."), { code: "cannot_keep" });
+  // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
+  const claim = Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
   try {
-    const made = await claimIdentity({
+    const made = await claim({
       name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });

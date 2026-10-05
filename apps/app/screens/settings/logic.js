@@ -68,10 +68,13 @@ function all(/** @type {string} */ space) {
       ["Appearance", "Theme, accent, density, font", "/u/appearance", "settings"],
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "key"],
+      ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
+      ["Spending limits", "A daily cap per provider", "/u/settings/spend", "download"],
+      ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
     ] },
     { title: "Devices", rows: [
-      ["Devices", "Phone, computers, servers", "/u/settings/devices", "devices"],
+      ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
       ["Access", "People, assistants, Kits and Flows", "/u/access", "shield"],
     ] },
     { title: space, rows: [
@@ -85,9 +88,12 @@ function all(/** @type {string} */ space) {
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
-      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
+      ["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"],
+      ["Assistants", "Your assistants and agents", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
+      ["All settings", "Every setting, in one place", "/u/settings/all", "settings"],
+      ["This computer", "What runs here, history, shares", "/u/settings/system", "info"],
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],
       ["About", "Version and open-source credits", "/u/about", "info"],
     ] },

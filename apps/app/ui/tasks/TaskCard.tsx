@@ -9,7 +9,7 @@ import { cardFor, nameOf, who, type World } from "./model";
 import { swipeActions } from "../motion/logic.js";
 import type { SwipeAction } from "../motion/SwipeActions";
 import { useUiTheme } from "../theme";
-import { aid } from "../../../../deck/ui/kernel-view.js";
+import { aid } from "../../src/vendor/deck/ui/kernel-view.js";
 
 /**
  * The task card (DESIGN-tasks.md, Now): which record it belongs to, who made it and how, and what one tap does. It is the base AskCard with the task's words and

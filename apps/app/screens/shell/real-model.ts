@@ -9,8 +9,8 @@ export type ShellData = { me: Me; spaces: ShellSpace[] };
 const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", manager: "Manager", member: "Member", temp: "Guest" };
 export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 
-/** What a space is called: the name the person gave it, else its label, else its address. */
-export const spaceName = (s: SpaceRow): string => s.displayName || s.label || s.name || s.id;
+/** What a space is called: the name the person gave it, else its label, else "Home" (never its id). */
+export const spaceName = (s: SpaceRow): string => s.displayName || s.label || (s.name && !/^spc_/.test(s.name) ? s.name : "") || "Home";
 
 /** The line under a space in the switcher: the person's role there, or that it is still being set up. */
 export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));

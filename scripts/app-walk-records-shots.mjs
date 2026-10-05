@@ -56,4 +56,11 @@ for (const v of ["Board", "Kanban", "Stage"]) { const b = pg.getByText(v, { exac
 await pg.waitForTimeout(2500);
 console.log("board:", (await text()).slice(0, 260));
 await pg.screenshot({ path: path.join(OUT, `${TYPE}-board.png`) });
-await browser.close(); server.close();
+// open the first record: its sealed field is shown hidden
+await pg.goto(`${BASE}/u/records/${TYPE}`, { waitUntil: "domcontentloaded" });
+await pg.waitForTimeout(4000);
+await pg.getByText(new RegExp(`^${TYPE === "walk_case" ? "Walk case 1" : "Walk matter .*"}$`)).first().click().catch(() => {});
+await pg.waitForTimeout(3500);
+console.log("record:", (await text()).slice(0, 300));
+await pg.screenshot({ path: path.join(OUT, `${TYPE}-record.png`) });
+await browser.close(); server.close(); process.exit(0);

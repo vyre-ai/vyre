@@ -9,12 +9,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
-import { COMMANDS } from "../../../../deck/chat/core/commands.js";
+import { COMMANDS } from "../vendor/deck/chat/core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
-import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
+import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant" };
-export type RecordPick = { name: string; type: string; sealed: number };
+/** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
+export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
+export type PickedMention = { kind: string; id: string; name: string };
 export type ModelChoice = { id: string; label: string; fit: number | null };
 export type ComposerProps = {
   state: string;
@@ -26,7 +28,7 @@ export type ComposerProps = {
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
-  onSend: (text: string, o?: { to: string[]; fanout: boolean }) => void;
+  onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[] }) => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
@@ -59,6 +61,8 @@ export function ChatComposer(p: ComposerProps) {
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
   const [askAll, setAskAll] = useState(false);
+  // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
+  const picked = useRef(new Map<string, PickedMention>());
   const assistants = (p.people ?? []).filter((x) => x.family === "assistant").length;
   const input = useRef<TextInput>(null);
   const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
@@ -79,11 +83,12 @@ export function ChatComposer(p: ComposerProps) {
     if (!trig) return [];
     if (trig.kind === "command") return rankCommands(COMMANDS, trig.range.query).slice(0, 6).map((c) => ({ key: c.name, label: "/" + c.name, sub: c.description, pick: c.name }));
     if (trig.kind === "person") return rankByName(p.people ?? [], trig.range.query).slice(0, 6).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? "Assistant" : "Person", pick: x.name, avatar: x }));
-    return rankByName(p.records ?? [], trig.range.query).slice(0, 6).map((r) => ({ key: r.name, label: r.name, sub: r.type, pick: r.name, chip: sealedChip(r) }));
+    return rankByName(p.records ?? [], trig.range.query).slice(0, 6).map((r) => ({ key: r.urn ?? r.name, label: r.name, sub: r.type, pick: r.name, chip: sealedChip(r), urn: r.urn, kind: r.kind }));
   }, [trig, p.people, p.records]);
 
-  const choose = (o: { pick: string }) => {
+  const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
+    if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
     const r = pick(text, trig, o.pick);
     setText(r.text);
     setCaret(r.caret);
@@ -93,7 +98,9 @@ export function ChatComposer(p: ComposerProps) {
     const t = text.trim();
     if (!t) return;
     const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
-    if (to.to.length) p.onSend(t, to); else p.onSend(t);
+    const mentions = mentionsIn(t, picked.current) as PickedMention[];
+    if (to.to.length || mentions.length) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}) }); else p.onSend(t);
+    picked.current.clear();
     setText("");
     setCaret(0);
     setAskAll(false);

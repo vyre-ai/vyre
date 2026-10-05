@@ -160,6 +160,28 @@ await check("define a type with a link, a stage and a sealed field, then add a r
   assert(!rec.error, `create refused: ${rec.error ? JSON.stringify(rec.error).slice(0, 240) : ""}`);
   return `type ${def.error ? "already there" : "defined"}; record ${JSON.stringify(rec.data).slice(0, 100)}`;
 });
+await check("define a case type with a choice (practice area), a link and a sealed field, and add two records (from the paired device)", async () => {
+  const contacts = await dev("records.list", { type: "contact" });
+  const me = await dev("records.me", {});
+  const urnOf = (r) => r.urn ?? `vyre://${me.data?.space}/contact/${r.id}`;
+  const rows = contacts.data?.rows ?? [];
+  assert(rows.length >= 2, `need two contacts to link: ${rows.length}`);
+  const type = { name: "walk_case", label: "Walk case", fields: [
+    { name: "title", kind: "text", label: "Title", required: true },
+    { name: "practice_area", kind: "choice", label: "Practice area", options: ["Estate planning", "Probate", "Family law"] },
+    { name: "client", kind: "link", label: "Client", to: "contact" },
+    { name: "ssn", kind: "sealed", label: "Client SSN", seal: { level: "ai", class: "free" } },
+  ] };
+  const def = await dev("records.define", { diff: { add_types: [type] } });
+  assert(!def.error || /exists|already/i.test(`${def.error.code} ${def.error.message}`), `define refused: ${def.error ? JSON.stringify(def.error).slice(0, 240) : ""}`);
+  const made = [];
+  for (const [i, area] of ["Estate planning", "Probate"].entries()) {
+    const rec = await dev("records.create", { type: "walk_case", data: { title: `Walk case ${i + 1}`, practice_area: area, client: { urn: urnOf(rows[i]) } } });
+    assert(!rec.error, `create refused: ${rec.error ? JSON.stringify(rec.error).slice(0, 240) : ""}`);
+    made.push(rec.data?.record?.id);
+  }
+  return `type ${def.error ? "already there" : "defined"}; records ${made.join(", ").slice(0, 80)}`;
+});
 try { conn?.close(); } catch {}
 const failed = results.filter((r) => !r.ok);
 console.log(`${results.length - failed.length} pass, ${failed.length} fail`);

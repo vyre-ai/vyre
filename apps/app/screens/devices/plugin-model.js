@@ -20,7 +20,7 @@ export function pluginView(status, pending) {
   return { asks: status && status.granted === true ? [] : asks, row };
 }
 
-export const grantedLine = "Reads your memory and the sessions of your projects. It suggests new memories and you approve them.";
+export const grantedLine = "Reads your memory and the chats of your projects. It suggests new memories and you approve them.";
 export const declinedTitle = "Claude Code is not asking";
 export const declinedLine = "It asks once more the next time it runs. You still approve it.";
 export const removeLabel = "Remove Claude Code";

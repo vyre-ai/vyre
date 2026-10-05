@@ -5,8 +5,8 @@ import { macKeyAvailable } from "../../src/identity/mac-key.ts";
 
 export const RC = {
   sites: false,
-  // A build made with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 may claim and recover a name in a browser (a walk of the recovery screens needs it). Read as process.env.NAME exactly: Expo inlines only that form.
-  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM === "1",
+  // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
+  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0",
 };
 
 /** True when this build is a browser and may not claim a name. The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */

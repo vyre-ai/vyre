@@ -91,7 +91,7 @@ test("a failed status that says it could not resume shows \"Couldn't resume. Ask
   f.apply(fr("status", { state: "failed", note: "couldn't resume, ask again" }));
   assert.equal(f.item(f.rows[0].key)?.text, "Couldn't resume. Ask again.");
   f.apply(fr("status", { state: "failed", note: "something else" }));
-  assert.equal(f.item(f.rows[1].key)?.text, "The session failed.");
+  assert.equal(f.item(f.rows[1].key)?.text, "This chat failed.");
 });
 
 test("a reset clears the rows and takes its cursor", () => {
