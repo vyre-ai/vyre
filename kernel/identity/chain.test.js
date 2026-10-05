@@ -494,3 +494,45 @@ test("agree: a device entry carries a P-256 agreement point through genesis and 
   const g2 = JSON.parse(JSON.stringify(g)); g2.entry.agree = agreePoint();
   await assert.rejects(() => C.verifyChain([g2], { now: T0 }));
 });
+
+// `agree` op: a device gives ITSELF its key-agreement point once, when its entry has none (an entry written before the key existed). Self-signed; nothing else on the entry moves.
+test("agree op: an older entry gains agree once; a second is refused; another entry's, a code's, a contact's and a space's are refused; eid, age and signing key stay", async () => {
+  const dev = await key("old-a"), other = await key("old-b"), code = await key("old-code");
+  const g = await C.makeGenesis({ kind: "person", entry: dev.entry("device"), code: code.entry("code"), nonce: "n-agree-op-1", ts: T0, sign: dev.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  w = await step(w, { type: "add", entry: other.entry("device") }, dev, T0 + H);
+  const before = w.state.entries.find(e => e.eid === dev.eid);
+  assert.equal(before.agree, undefined);
+  const pt = agreePoint();
+  // another device (however old) cannot set it for the entry
+  await refused(step(w, { type: "agree", target: dev.eid, agree: agreePoint() }, other, T0 + 2 * H), "not_allowed");
+  // the recovery code cannot (code_limited), and cannot be the target either
+  await refused(step(w, { type: "agree", target: dev.eid, agree: pt }, code, T0 + 2 * H), "code_limited");
+  // a malformed point
+  await refused(step(w, { type: "agree", target: dev.eid, agree: "AAAA" }, dev, T0 + 2 * H), "bad_entry");
+  await refused(step(w, { type: "agree", target: dev.eid, agree: Buffer.concat([Buffer.from([2]), Buffer.alloc(64)]).toString("base64url") }, dev, T0 + 2 * H), "bad_entry");
+  // the entry itself: accepted, once
+  const done = await step(w, { type: "agree", target: dev.eid, agree: pt }, dev, T0 + 2 * H, { live: true });
+  const after = done.state.entries.find(e => e.eid === dev.eid);
+  assert.equal(after.agree, pt);
+  assert.deepEqual({ ...after, agree: undefined }, { ...before, agree: undefined }, "nothing else on the entry moved: eid, kind, key, since, founder");
+  assert.equal(done.state.entries.find(e => e.eid === other.eid).agree, undefined, "the other device is untouched");
+  await refused(step(done, { type: "agree", target: dev.eid, agree: agreePoint() }, dev, T0 + 3 * H), "exists");
+  // a verifier that replays the whole chain reaches the same state
+  assert.equal((await C.verifyChain(done.ops, { now: T0 + 2 * H })).entries.find(e => e.eid === dev.eid).agree, pt);
+  // a device that already carried agree from genesis cannot set another
+  const g2 = await C.makeGenesis({ kind: "person", entry: { ...other.entry("device"), agree: agreePoint() }, nonce: "n-agree-op-2", ts: T0, sign: other.sign });
+  const w2 = { ops: [g2], state: await C.verifyChain([g2], { now: T0 }) };
+  await refused(step(w2, { type: "agree", target: other.eid, agree: agreePoint() }, other, T0 + H), "exists");
+  // a code entry cannot be targeted; a contact cannot sign one
+  await refused(step(w, { type: "agree", target: code.eid, agree: pt }, dev, T0 + 2 * H), "not_allowed");
+  // the op is not in the alerts a device shows for a new sign-in
+  assert.deepEqual(C.alertsSince(done.ops, 1).map(a => a.type), [], "an agree op is not a sign-in");
+});
+
+test("agree op: a web-held key and an enclave entry without its esig are refused like any list change", async () => {
+  const web = await key("web-a");
+  const g = await C.makeGenesis({ kind: "person", entry: { ...web.entry("device"), held: "web" }, nonce: "n-agree-web1", ts: T0, sign: web.sign });
+  const w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  await refused(step(w, { type: "agree", target: web.eid, agree: agreePoint() }, web, T0 + H), "web_key");
+});

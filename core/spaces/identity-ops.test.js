@@ -11,7 +11,8 @@ import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import * as C from "../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
-import { fileIdentityStore } from "./identity.js";
+import { fileIdentityStore, signerOf, privateKeyOf } from "./identity.js";
+import crypto from "node:crypto";
 import { createIdentityOps } from "./identity-ops.js";
 import { newCode, codeKey, normalizeCode, codeLooksRight } from "./recovery.js";
 
@@ -266,4 +267,38 @@ test("a device's name stays on the device that gave it: the public chain holds n
   const C = await import("../../kernel/identity/chain.js");
   const op = await C.makeOp(state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: "leaky name" } }, { by: phone.store.status().eid, ts: w.clock.t, sign: m => phone.store.sign(Buffer.from(m)) });
   await assert.rejects(w.dir.append("alex", [op]), e => /label/.test(String(e.message)) || e.code === "bad_entry");
+});
+
+test("an identity made before the agreement key gets it on its own entry with one self-signed op: same eid and signing key, once, and the directory and a second device see it", async t => {
+  const w = world(t), old = w.device("old"), other = w.device("other");
+  // an old identity: its genesis has no `agree`, and its store has no scalar
+  const kp = old.store.newDeviceKey();
+  const priv = privateKeyOf(kp.privateKey), sign = m => crypto.sign(null, Buffer.from(m), priv);
+  const g = await C.makeGenesis({ kind: "person", entry: { eid: kp.eid, kind: "device", pub: kp.publicKey }, nonce: "n-old-0001", ts: w.clock.t, sign });
+  const state = await C.verifyChain([g], { now: w.clock.t });
+  await w.dir.claim("oldie", state, [g], signerOf(kp.publicKey, sign), { v: 1 });
+  old.store.join({ privateKey: kp.privateKey, publicKey: kp.publicKey }, [g], "oldie");
+  old.store.setChain([g], C.pinOf(state));
+  assert.equal(old.store.agree(), null);
+  w.clock.t += HOUR;
+  const r = await old.ops.completeAgree();
+  assert.equal(r.done, true);
+  assert.equal(r.agree, old.store.agree());
+  const seen = (await w.dir.resolve("oldie")).state.entries.find(e => e.eid === kp.eid);
+  assert.equal(seen.agree, r.agree, "the directory's verified list carries it");
+  assert.equal(seen.pub, kp.publicKey, "the signing key is the same");
+  assert.equal(old.store.status().eid, kp.eid, "the eid is the same");
+  assert.equal(old.store.ops().length, 2);
+  // once: asked again, nothing is made
+  const again = await old.ops.completeAgree();
+  assert.deepEqual(again, { done: false, why: "has_agree" });
+  assert.equal(old.store.ops().length, 2);
+  // it is not a sign-in for the other devices: no alert
+  w.clock.t += 2 * HOUR;
+  const key = other.store.newDeviceKey();
+  await old.ops.addEntry({ kind: "device", publicKey: key.publicKey, agree: key.agree, label: "other" });
+  other.store.join(key, old.store.ops(), "oldie");
+  const sync = await other.ops.sync();
+  assert.deepEqual(sync.alerts.map(a => a.type), ["add"], "the add is an alert; the agree op is not");
+  assert.equal((await w.dir.resolve("oldie")).state.entries.find(e => e.eid === key.eid).agree, key.agree);
 });

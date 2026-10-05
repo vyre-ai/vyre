@@ -1924,6 +1924,12 @@ export default {
     const syncEvery = Math.max(60_000, hooks.syncMs ?? 60_000);
     const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
     if (typeof syncTimer.unref === "function") syncTimer.unref();
+    // An identity made before the agreement key gets one on its own entry (one self-signed op), at the first start and again on every check until it has it. A failure (offline) tries again next time.
+    const completeAgree = () => { const s = identity.status(); if (s.exists && s.name) idops.completeAgree().catch(e => ctx.log.warn(`the agreement key could not be added yet: ${/** @type {Error} */ (e).message}`)); };
+    const agreeFirst = setTimeout(completeAgree, 3_000);
+    if (typeof agreeFirst.unref === "function") agreeFirst.unref();
+    const agreeTimer = setInterval(completeAgree, syncEvery);
+    if (typeof agreeTimer.unref === "function") agreeTimer.unref();
 
     // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
     adoptOwner().catch(() => {});
@@ -1951,7 +1957,7 @@ export default {
         }
       } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     })();
-    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
+    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); clearTimeout(agreeFirst); clearInterval(agreeTimer); } };
   },
 };
 

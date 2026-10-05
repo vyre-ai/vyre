@@ -85,6 +85,25 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const status = store.setName(name);
       return { status, recoveryCode: code, passwordSet: Boolean(password) };
     },
+    /**
+     * The migration of an identity made before the agreement key: this device makes the key (once) and puts its point on ITS OWN entry with one self-signed `agree` op. The eid, age and signing key stay.
+     * Cheap when there is nothing to do (it reads only the chain this device holds); a no-op for an identity without a name yet. A failure (offline) leaves everything as it was and the next call tries again.
+     */
+    async completeAgree() {
+      const st = store.status();
+      if (!st.exists || !st.name) return { done: false, why: "no_name" };
+      const here = () => stateNow().then(state => state.entries.find(e => e.eid === st.eid));
+      const held = await here();
+      if (!held || held.kind !== "device") return { done: false, why: "not_a_device" };
+      if (held.agree !== undefined) return { done: false, why: store.agree() === held.agree ? "has_agree" : "agree_mismatch" };
+      const point = store.ensureAgree();
+      await refresh();
+      const now1 = await here();
+      if (!now1) return { done: false, why: "removed" };
+      if (now1.agree !== undefined) return { done: false, why: now1.agree === point ? "has_agree" : "agree_mismatch" };
+      await change({ type: "agree", target: /** @type {string} */ (st.eid), agree: point });
+      return { done: true, agree: point };
+    },
     /** Put this identity's chain in the directory again (a fresh directory lost its claims): the same claim as at creation. The name must still be free or already this identity's. */
     async republish() {
       const st = store.status();
