@@ -213,6 +213,8 @@ test("wink: sharing a computer is a node.host grant with limits, and only for a 
   await until(() => w.events.find(e => e[0] === "wink.found"));
   await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code });
   const r = await done;
+  // With the kernel the member's side of the compute offer is bound to the computer's own key (the Identity stud's device key a full pairing records); this typed-code pairing records none, so it is set here.
+  w.d.registry.deps.db.prepare("UPDATE wink_devices SET node_key = ? WHERE id = ?").run(crypto.randomBytes(32).toString("base64url"), r.paired.device);
   const shared = await w.call("wink.share", { device: r.paired.device, cpu: 0.25, hours_day: 4, awake: true, on_power: true });
   assert.ok(shared.data?.grant, JSON.stringify(shared.error));
   const g = (await w.call("wink.access")).data.grants.find(x => x.source === "wink:W4");
