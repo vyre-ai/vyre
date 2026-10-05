@@ -27,6 +27,9 @@ export default defineKit({ id: "demo", version: 1, includes: [Matter] });
 - `language/expr.js`: the Expression language (rules, conditions). Parsed and evaluated here, never `eval`.
 - Types in a stored kit are the kernel's `TypeDefinition`. Templates, roles, flows, views and code steps are kit-level definitions.
 - `kits/estate-planning`: "Estate planning matter". `kit.ts` is the source, `kit.json` the stored form (regenerate with `node language/cli.js compile kits/estate-planning/kit.ts > kits/estate-planning/kit.json`).
+- `kits/base`: the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project). Lead, Client and Subscriber are role types linked to the one Contact; practice area is a choice; a Project follows its own stages by practice area (`stage_sets`). Regenerate `kit.json` with `node language/cli.js compile kits/base/kit.ts > kits/base/kit.json`.
+- Conditional fields: `visible_if` and `required_if` on a field are Expressions over the record's other stored fields (never a sealed one, never the field itself). Not shown means not written (`field_not_shown`); visible and required_if true means not left empty (`field_required`). A stage takes `enter_if` (`stage_entry_refused`), and `defineStage(stages, { sets: [{ name, when, stages }] })` gives stage sets: the first set whose `when` holds picks the record's stages (`stage_not_in_set`). `kernel/expr/conditions.js` is the one judge the gateway, the stage module and the app share.
+- Views are stored with the type (`TypeDefinition.views`): the app reads the first list, board and calendar view of each type, and `deck/ui/view-defs.js` is only the default. A Kit's `defineView` is folded into the type it shows when the Kit is installed.
 - `connectors/stripe`: the Stripe connector (test mode). `flows/run.js`: the minimal flow runner it uses until the platform's step runner lands. `testing/gateway-lite.js`: a stand-in gateway for tests.
 
 ## Core types, roles and what is said to a contact
