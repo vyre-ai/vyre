@@ -14,7 +14,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -145,7 +145,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     setWrong(""); setAddWords(""); setStep("adding");
     void addDeviceToName({ payload, deviceLabel: device, onWords: setAddWords })
       .then((r) => { noId.current = false; setName(r.name); setStep(invite ? "invite" : "spaces"); })
-      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep("scan"); });
+      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep(scanStep); });
   };
   const finish = () => router.replace((first || start === "phone" || start === "connect" ? "/u/now" : "/u/spaces") as never);
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
@@ -307,7 +307,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title={BROWSER.title} sub={BROWSER.line}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("scanwords"); }} />
+        <PairEntry onCode={(c: LongCode) => { setWrong(""); if (!MOCK && codeRoute(c) === "add-device") { startAdd(payloadOf(c)); return; } setSession(openPairing(c)); setStep("scanwords"); }} />
         {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep("spaces"); }} />}
         <Button kind="ghost" label={BROWSER.notSet} onPress={() => setStep("nosetup")} />
       </Page>
@@ -364,7 +364,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <>
-          <PairEntry onCode={(c: LongCode) => { if (claimBlocked()) { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
+          <PairEntry onCode={(c: LongCode) => { if (claimBlocked() && codeRoute(c) === "pair-server") { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
           {claimBlocked() ? null : <TypeCode redeem={(code, onAck) => addDeviceToName({ code, deviceLabel: device, onAck }).then((r) => { noId.current = false; setName(r.name); return {}; })} onDone={() => setStep(invite ? "invite" : "spaces")} />}
         </>}
         {offersNoVyre(dk, MOCK) ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}

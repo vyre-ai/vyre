@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -172,4 +172,11 @@ test("the words step after a long code uses the session's own kind: a real (watc
   const step = src.slice(src.indexOf('} else if (step === "scanwords") {'), src.indexOf('} else if (step === "recovery") {'));
   assert.match(step, /<PairServer session=\{session\}/);
   assert.doesNotMatch(step, /<PairWords/);
+});
+
+test("a phone's long code adds this device to the name (a browser too); a server's long code pairs this device to that server", () => {
+  assert.equal(codeRoute({ kind: "ticket", for: "phone" }), "add-device");
+  assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
+  assert.equal(codeRoute({ kind: "offer" }), "pair-server");
+  assert.equal(codeRoute(null), "pair-server");
 });

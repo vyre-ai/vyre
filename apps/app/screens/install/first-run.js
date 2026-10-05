@@ -223,3 +223,10 @@ export const WEB_SAY = {
 export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
 /** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
 export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
+
+/**
+ * What a long code read on this device starts. A phone's code (`for: "phone"`, from Add a device) adds THIS device to the person's name; a server's code pairs this device to that server. A browser that cannot
+ * claim a name still adds itself from a phone's code (relay/client/browserjoin.js), so the phone's code never goes down the server path.
+ * @param {{ kind?: string, for?: string }} code @returns {"add-device" | "pair-server"}
+ */
+export const codeRoute = (code) => (code && code.kind === "ticket" && code.for === "phone" ? "add-device" : "pair-server");
