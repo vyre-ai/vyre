@@ -1,7 +1,7 @@
 // @ts-check
 // Tool calls as typed details, and what a card's header shows for each. Sample world only.
 
-import "../../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toolDetail, toolDisplay, stripGutter, splitMcp, humanize, serverLabel, TOOL_ICONS } from "./tool-detail.js";

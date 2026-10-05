@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { createMockStore } from "../../src/vendor/deck/ui/mock-store.js";
-import { runClientPays } from "../../src/vendor/deck/ui/scenario.js";
-import { getStore } from "../../src/vendor/deck/ui/store.js";
+import { createMockStore } from "../../src/store-core/mock-store.js";
+import { runClientPays } from "../../src/store-core/scenario.js";
+import { getStore } from "../../src/store-core/store.js";
 import { setStore } from "../store";
 
 let played = false;

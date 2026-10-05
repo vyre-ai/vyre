@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(app): src/vendor/deck is gone; what the app uses lives under its own names: chat core and sessions in src/chat/core, the store (mock, gateway adapter, theme, tasks) in src/store-core (alias @vyre/store), the mark art in ui/marks/art, xterm in src/terminal/xterm, Find's command parser in screens/find. Unused copies (a second Wink renderer and payload) are deleted. fix: Metro no longer watches kernel/expr (web-2's lib/expr is the one fix).
+
 - feat(app): one Chat, per the lead's rulings. One path only: the old session list and the threads.model / threads.switch fallbacks are deleted, and a box without work.chat.list shows "Update your server to use Chats". Add a teammate adds people and space or project agents (add_agents); the person's own assistant is never added. A message the assistant sent for the person (frame via: "assistant") reads "(Sent by Vyre Assistant)"; a fourth sample chat shows it. agent:<id> slot ids read as agents. An artifact made in a chat is a row that opens /a/<id>?v=<version>. A space whose label is its own id is called Home.
 
 - refactor(app): a chat frame's type is read and written in one place (src/chat/frame-type.js): the engine's later session. to chat. rename is one edit to its prefix, and reading accepts both.

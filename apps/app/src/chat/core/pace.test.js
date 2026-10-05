@@ -2,7 +2,7 @@
 // The paced reveal (after Paseo's text-reveal): ceil(backlog * dt / 150 ms) characters a frame, at
 // least one, at most one step per 60 Hz frame, a stall capped, whole on done. Time is plain numbers.
 
-import "../../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPacer, revealStep, PACE_HORIZON_MS, PACE_FRAME_MS } from "./pace.js";

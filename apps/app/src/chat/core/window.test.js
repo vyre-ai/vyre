@@ -1,7 +1,7 @@
 // @ts-check
 // Windowed rendering, the pure part: heights, offsets, the mounted range, the anchor.
 
-import "../../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {

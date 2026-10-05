@@ -1,7 +1,7 @@
 // @ts-check
 // Which sessions tools this box has, learnt from the first answer each gives.
 
-import "../../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createCaps, isMissing, NEEDS_UPDATE, SESSION_TOOLS, NOT_OFFERED, SEND_IMAGES, REWIND_CODE, RELEASE_034, CAPS } from "./caps.js";

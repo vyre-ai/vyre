@@ -1,7 +1,7 @@
 // @ts-check
 // "/" commands for the composer: where the command is, ranking, and the text once one is picked.
 
-import "../../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COMMANDS, findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./commands.js";

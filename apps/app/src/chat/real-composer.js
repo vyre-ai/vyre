@@ -1,7 +1,7 @@
 // @ts-check
 // What a real chat's composer offers, from the box: the models and accounts that can answer (providers.list), the people and assistants to @mention (records.actors, agents.list), and the records to # tag (the person's own
 // records, with how many of their fields are sealed). Pure, so Node tests it; src/chat/useRealComposer.ts reads the box and calls these.
-import { answerRows } from "../vendor/deck/chat/core/answer-with.js";
+import { answerRows } from "./core/answer-with.js";
 
 /** @typedef {{ id: string, label: string, fit: number | null }} ModelChoice */
 

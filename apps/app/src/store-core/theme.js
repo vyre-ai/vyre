@@ -10,7 +10,7 @@
 // A space setting is { accent, hex, tint, thex, density, font, corners }; a person setting is { theme, density, font, reducedMotion, largerText }.
 
 import { V3 } from "./tokens-v3.js";
-import { inkOn, isHex, nearestPassing, rgba } from "../../../../../../lib/theme/contrast.js";
+import { inkOn, isHex, nearestPassing, rgba } from "../../../../lib/theme/contrast.js";
 
 /** @typedef {{ accent?: string, hex?: string, tint?: string, thex?: string, density?: string, font?: string, corners?: string }} SpaceTheme */
 /** @typedef {{ theme?: "dark"|"paper"|"system", density?: string|null, font?: string|null, reducedMotion?: boolean, largerText?: boolean }} PersonTheme */

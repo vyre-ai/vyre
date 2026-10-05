@@ -8,7 +8,7 @@
 //
 // Who may move a task is the kernel's table, not ours: TASK_TRANSITIONS (kernel/contracts/index.js) says from, to and `by`. whyNot() reads it, so the Deck offers a button
 // only for a move the table allows that person, and the mock store refuses every other one.
-import { TASK_STATES, TASK_TRANSITIONS, TASK_OUTPUT_KINDS, PRESENCE_SIGNERS } from "../../../../../../kernel/contracts/index.js";
+import { TASK_STATES, TASK_TRANSITIONS, TASK_OUTPUT_KINDS, PRESENCE_SIGNERS } from "../../../../kernel/contracts/index.js";
 import { aid } from "./kernel-view.js";
 
 /** @typedef {import("./contracts.js").DeckTask} Task */
@@ -19,7 +19,7 @@ import { aid } from "./kernel-view.js";
 /** @typedef {import("./contracts.js").PresenceProof} PresenceProof */
 /** @typedef {import("./contracts.js").Evidence} Evidence */
 /** @typedef {import("./contracts.js").TaskTemplateDef} TaskTemplateDef */
-/** @typedef {import("../../../../../../kernel/contracts/task.js").TransitionRule} TransitionRule */
+/** @typedef {import("../../../../kernel/contracts/task.js").TransitionRule} TransitionRule */
 
 /** The seven states, from the kernel's table. */
 export const STATES = TASK_STATES;

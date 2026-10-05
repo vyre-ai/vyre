@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { aid, stageFieldOf, stageNames } from "../../src/vendor/deck/ui/kernel-view.js";
-import { viewDefOf } from "../../src/vendor/deck/ui/view-defs.js";
+import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Avatar } from "../components/Avatar";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";

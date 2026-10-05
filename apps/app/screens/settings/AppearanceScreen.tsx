@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Row, Segmented, Switch, Text, allowsMock, showToast, useAppearance, useUiTheme } from "@vyre/ui";
-import { V3 } from "@vyre/deck-ui/tokens-v3.js";
+import { V3 } from "@vyre/store/tokens-v3.js";
 import { tokens } from "../../src/theme/tokens";
 import { Group, Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";

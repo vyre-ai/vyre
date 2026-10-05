@@ -7,8 +7,8 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent } from "../vendor/deck/chat/core/session-state.js";
-import { groupItems } from "../vendor/deck/chat/core/grouping.js";
+import { createSession, applyEvent } from "../chat/core/session-state.js";
+import { groupItems } from "../chat/core/grouping.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./model.ts");

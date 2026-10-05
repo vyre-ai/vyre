@@ -1,9 +1,9 @@
 // @vyre/ui tasks model: what a task is to a person, as data (pure, no React, no store). Over the kernel's Task shape (deck/ui/tasks.js, kernel/contracts/task.d.ts):
 // doer, checker and assigned_by are Actors, a record is a urn, the Deck's extras (now, say, note, result) sit under task.ext. The React components in this folder
 // only draw what these functions return, so the words and the buttons are tested in node (model.test.js).
-import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/vendor/deck/ui/tasks.js";
-import { aid, eventLine } from "../../src/vendor/deck/ui/kernel-view.js";
-import { viewDefOf } from "../../src/vendor/deck/ui/view-defs.js";
+import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/store-core/tasks.js";
+import { aid, eventLine } from "../../src/store-core/kernel-view.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 
 const STATE_WORDS = /** @type {Record<string, string>} */ (STATE_LABEL);
 export { STATE_WORDS as STATE_LABEL, HOW_LABEL, OUTPUT_KINDS };

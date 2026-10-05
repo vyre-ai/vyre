@@ -1,9 +1,9 @@
 // The pure half of Find on every device: what the box has (sessions, projects, assistants, records, places), how a typed line narrows it (the p, t and u prefixes), what each search tool answers
 // (recall.search, files.search, memory.relevant), and the one command the Enter key runs (@agent, tell, watch, or ask the assistant). The grammar and the session merge are the Deck's own
 // (deck/js/commands.js, find-prefix.js, chat/lib/sessions.js), so a line means the same thing on every surface.
-import { parseCommand, plan, type Command } from "../../src/vendor/deck/js/commands.js";
-import { parsePrefix } from "../../src/vendor/deck/js/find-prefix.js";
-import { mergeSessions, title as sessionTitle } from "../../src/vendor/deck/chat/lib/sessions.js";
+import { parseCommand, plan, type Command } from "./commands.js";
+import { parsePrefix } from "./find-prefix.js";
+import { mergeSessions, title as sessionTitle } from "../../src/chat/core/sessions.js";
 
 export { parseCommand, plan, parsePrefix, mergeSessions, sessionTitle };
 export type { Command };

@@ -1,10 +1,10 @@
 // @ts-check
 // The task model (deck/ui/tasks.js) over the kernel's Task: who may move a task is the kernel's TASK_TRANSITIONS table, so these tests read the table and the `by` column
 // through whyNot(), not a table of their own.
-import "../../../../../../scripts/mac-test-guard.mjs";
+import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TASK_TRANSITIONS } from "../../../../../../kernel/contracts/index.js";
+import { TASK_TRANSITIONS } from "../../../../kernel/contracts/index.js";
 import { STATES, canMove, needsReason, needsYou, hasOutput, isComplete, missingOutput, move, approve, reject, makeStuck, reassign, unblock, stageDone, stageProgress,
   advanceStage, spawnStage, howSentence, cardTitle, whyNot, isGate, startsItself, withEvidence, handEvidence, offers } from "./tasks.js";
 import { simulatedProof } from "./kernel-view.js";
