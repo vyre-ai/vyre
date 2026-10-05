@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): one Chat, first slice (CONTRACT-one-chat.md A1, A2 route, A5). The Chats list is one row type for solo, group and people-only chats (faces, title, project, last line, provider icons), read from work.chat.list and, until a box has it, made from the older list; a chat you are not in is greyed and does not open; the sample world has the three scripted chats. A chat opens at /u/chats/<id> (the old /session path still works). Words sweep: no screen reads session, thread or room to a person.
+
 - fix(app): the chat's cards and Send now read the box's real shapes. The queued words come from threads.queue ({ queued: [{ queued, uuid, text }] }) when the tools sheet opens; a spend.capped event naming this chat shows its SpendCapCard; the watcher cards come from watchers.shown for the thread; the welcome shows in an empty chat. The invented block kinds are gone. test(app): extras.test.js uses those shapes. fix(app): metro watches kernel/expr. test: scripts/app-walk-paired.mjs pairs by typed code, not relay.pair.start.
 
 - feat(app): Now shows a "Finish setting up Vyre" banner, leading to /u/install/setup, when the box says onboarding is not finished (onboard.status finished is false). A box that cannot answer shows nothing.

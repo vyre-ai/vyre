@@ -29,7 +29,7 @@ export function WaitingOnYou() {
   const items = visibleNeeds(useNeeds(), useHidden());
   if (!items.length) return null;
   const open = (n: Need) => {
-    if (n.source === "ask" && n.thread) router.push({ pathname: "/session/[id]", params: { id: n.thread, ask: n.ref } });
+    if (n.source === "ask" && n.thread) router.push({ pathname: "/u/chats/[id]", params: { id: n.thread, ask: n.ref } });
     else router.push({ pathname: "/need/[id]", params: { id: n.id } });
   };
   return (

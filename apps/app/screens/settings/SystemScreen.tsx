@@ -64,7 +64,7 @@ function History() {
         {v.problem ? <View className="p-s3"><Text size="caption" tone="warn">{v.problem}</Text></View> : null}
       </Card>
       <View className="flex-row"><Button size="sm" label={v.indexing || busy ? "Indexing" : "Re-index now"} disabled={v.indexing || busy} onPress={run} /></View>
-      <Text size="caption" tone="label">Reads new and changed sessions now.</Text>
+      <Text size="caption" tone="label">Reads new and changed chats now.</Text>
     </Sec>
   );
 }

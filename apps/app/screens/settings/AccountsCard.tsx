@@ -58,7 +58,7 @@ export function AccountsCard() {
   return (
     <Card className="gap-s3">
       <Text strong>Other AI accounts</Text>
-      <Text size="caption" tone="label">The accounts sessions can run on. Each signs in with its own provider, and Vyre never sees the password or token.</Text>
+      <Text size="caption" tone="label">The accounts chats can run on. Each signs in with its own provider, and Vyre never sees the password or token.</Text>
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {rows === null ? <LoadingState rows={2} /> : null}
       {err ? <ErrorState title="AI accounts did not load" reason={err} retry={load} /> : null}

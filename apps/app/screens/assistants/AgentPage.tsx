@@ -90,7 +90,7 @@ function Talk({ name }: { name: string }) {
         <Field name={`Talk to ${name}`} value={text} onChangeText={setText} placeholder={`Ask ${name} something, or give it a task`} />
         <View className="flex-row gap-s2">
           <Button size="sm" label="Send" disabled={busy || !text.trim()} onPress={send} />
-          {thread?.thread ? <Button size="sm" kind="ghost" label="Open the thread" onPress={() => router.push(`/session/${encodeURIComponent(thread.thread!)}` as never)} /> : null}
+          {thread?.thread ? <Button size="sm" kind="ghost" label="Open the chat" onPress={() => router.push(`/u/chats/${encodeURIComponent(thread.thread!)}` as never)} /> : null}
         </View>
       </Card>
     </Sec>

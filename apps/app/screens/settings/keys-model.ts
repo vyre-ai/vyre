@@ -7,7 +7,7 @@ export type Group = { id: string; label: string };
 export type Schema = { keys: KeyDef[]; groups: Group[] };
 
 /** When a change takes effect, as the row's line says. Live says nothing. */
-export const APPLY: Record<string, string> = { live: "", session: "Next session", restart: "After restart" };
+export const APPLY: Record<string, string> = { live: "", session: "Next chat", restart: "After restart" };
 
 /** The keys a person sees: those their module does not hide, with a group, and the groups that have one. */
 export function schemaOf(data: any): Schema {

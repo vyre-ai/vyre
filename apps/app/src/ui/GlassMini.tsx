@@ -132,7 +132,7 @@ function useOpen(view: TargetView, here?: string | null) {
     const t = view.thread;
     if (!t || t === here) return;
     sessionOpening();
-    router.push({ pathname: "/session/[id]", params: { id: t } });
+    router.push({ pathname: "/u/chats/[id]", params: { id: t } });
   }, [router, view.thread, view.agent, here]);
 }
 

@@ -66,7 +66,7 @@ export function RealAi() {
   const budgeted = us.filter((u) => u.agent && u.budget_usd != null);
   return (
     <Page title="AI accounts" back="/u/settings">
-      <Banner>Nobody's work runs on someone else's account. Your sessions use your accounts and count against your budget.</Banner>
+      <Banner>Nobody's work runs on someone else's account. Your chats use your accounts and count against your budget.</Banner>
       <ConnectClaude onConnected={load} />
       <AccountsCard />
       {err ? <Card flush><ErrorState title="AI accounts did not load" reason={err} retry={load} /></Card> : null}

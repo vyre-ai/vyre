@@ -233,9 +233,9 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {replyTo ? (
-        <View accessibilityLabel="Replying in a thread" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying in a thread to ${replyTo.name}`}</Text>
+          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
         </View>
       ) : null}

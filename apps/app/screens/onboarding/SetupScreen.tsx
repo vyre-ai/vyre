@@ -75,7 +75,7 @@ export function SetupScreen({ onDone }: { onDone?: () => void } = {}) {
         <>
           <Timeline view={view} />
           {error ? <Banner tone="err">{error}</Banner> : null}
-          {view.finished || ending ? <Done ending={ending} checking={checking} retry={tryAgain} open={(t) => router.push(`/session/${encodeURIComponent(t)}` as never)} />
+          {view.finished || ending ? <Done ending={ending} checking={checking} retry={tryAgain} open={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} />
             : view.current === "assistant" ? (
               <Card>
                 <Panel view={view} id="assistant" title="You and your assistant" lead="Steps 1 to 7 are done. Tell Vyre your name, and name the assistant that will help you.">
@@ -176,8 +176,8 @@ function Done({ ending, checking, retry, open }: { ending: Ending | null; checki
         ) : ending?.thread ? (
           <>
             <Text size="page" strong>{`${who} is ready`}</Text>
-            <Text tone="muted">Setup is finished. Your assistant has said hello in its first thread.</Text>
-            <View className="flex-row"><Button kind="primary" label={`Open ${who}'s thread`} onPress={() => open(ending.thread as string)} /></View>
+            <Text tone="muted">Setup is finished. Your assistant has said hello in its first chat.</Text>
+            <View className="flex-row"><Button kind="primary" label={`Open ${who}'s chat`} onPress={() => open(ending.thread as string)} /></View>
           </>
         ) : (
           <>

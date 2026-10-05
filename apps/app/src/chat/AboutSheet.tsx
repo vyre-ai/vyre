@@ -75,7 +75,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
         <Section label="Where it runs">
           <Row title={here} sub={`Or on ${there}`} />
           {onMove ? <View style={{ flexDirection: "row", paddingHorizontal: 12 }}><Button size="sm" kind="secondary" label={`Move to ${there}`} onPress={onMove} /></View> : null}
-          {onOpenTerminal ? <Row title="Open full terminal" sub="The shell in this session's folder" onPress={() => { onClose(); onOpenTerminal(); }} /> : null}
+          {onOpenTerminal ? <Row title="Open full terminal" sub="The shell in this chat's folder" onPress={() => { onClose(); onOpenTerminal(); }} /> : null}
         </Section>
 
       <View style={{ borderTopWidth: 1, borderTopColor: color.edge, paddingTop: 8, gap: 2 }}>

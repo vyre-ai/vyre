@@ -70,7 +70,7 @@ function BoxSession({ thread }: { thread: string }) {
       title={title}
       belowHeader={guts}
       onBack={() => router.back()}
-      onBranched={(id) => router.push({ pathname: "/session/[id]", params: { id } })}
+      onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
       onOpenTerminal={() => void openTerminal()}
       handlers={handlers}
     />

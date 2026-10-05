@@ -72,7 +72,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
         <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
           <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
-          {dress?.reply ? <Text size="caption" tone="label">in a thread</Text> : null}
+          {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
           {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}

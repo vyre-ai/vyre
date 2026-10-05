@@ -28,7 +28,7 @@ export default function NewAgent() {
   return (
     <Page title="New assistant" back="/u/settings/assistants">
       <Card className="gap-s3">
-        <Field label="Name" value={f.name} onChangeText={(name) => set({ name })} placeholder="for example rex" help="Lowercase, one word. It signs its threads with it." />
+        <Field label="Name" value={f.name} onChangeText={(name) => set({ name })} placeholder="for example rex" help="Lowercase, one word. It signs its chats with it." />
         <Field label="Job" value={f.instructions} onChangeText={(instructions) => set({ instructions })} multiline lines={3} placeholder="What it does, and what it must ask you before doing." />
       </Card>
       <Card flush>

@@ -19,7 +19,7 @@ export function SpendCapCard({ data, onRaised }: { data: { provider?: string; ca
     setBusy(false);
     if (r.ok) { setRaised(r.cap); setOpen(false); onRaised?.(r.cap); } else setProblem(r.reason);
   };
-  const line = raised !== undefined ? capLine(provider, raised) : String(data?.line || "This thread is paused: the daily spend cap was reached.");
+  const line = raised !== undefined ? capLine(provider, raised) : String(data?.line || "This chat is paused: the daily spend cap was reached.");
   return (
     <Card>
       <View className="flex-row items-center gap-s2">
