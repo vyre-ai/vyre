@@ -513,7 +513,8 @@ export default {
         // public agree point, kept only as the session lease. A participant with no agree point stops the start, by name.
         let ring = input.ring, id = input.id ? String(input.id) : undefined, keys = null;
         const k0 = kernelOf();
-        if (!ring && k0.chats && k0.chats.keys && typeof k0.chats.keys.adopt === "function") {
+        const direct = chain && chain.viewer !== true && chain.delegated !== true && chain.hops && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
+        if (!ring && direct && k0.chats && k0.chats.keys && typeof k0.chats.keys.adopt === "function") {
           const me = chain.hops[0].actor.id;
           const people = [...new Set([me, ...(Array.isArray(input.people) ? input.people.map(String) : [])])];
           /** @type {Record<string, any>} */ let holders = {};

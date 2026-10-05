@@ -9,6 +9,12 @@ import { start } from "../daemon/index.js";
 import { asOwner, tempHome, present, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
+import { createRing } from "../../lib/chat-keys.js";
+import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
+import crypto from "node:crypto";
+
+// A chat with a person in it keeps its folders sealed, so a chat is made with a key ring: the app's device makes it. These tests have no paired device, so they stand one in.
+const sealed = () => { const d = newDeviceKey(), id = `chat_${crypto.randomUUID()}`; return { id, ring: createRing(id, { [fingerprint(d.publicJwk)]: d.publicJwk }).doc }; };
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -207,7 +213,7 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   // making and changing a chat is a person acting directly (a paired device's own chain, as the app's calls arrive); a session token's chain is refused
   assert.equal((await call(B, "work.chat.create", { people: [owner] })).error.code, "chain_not_person");
   assert.equal((await call(O, "work.chat.create", { models: [{ provider: "codex", model: "x" }] })).error.code, "bad_input");
-  const made = await call(O, "work.chat.create", { title: "Docket check", people: [BOB] });
+  const made = await call(O, "work.chat.create", { title: "Docket check", people: [BOB], ...sealed() });
   assert.ok(made.data, JSON.stringify(made.error));
   const chat = made.data.chat;
   assert.deepEqual([...made.data.people].sort(), [owner, BOB].sort());
@@ -300,7 +306,7 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   asOwner(d, root);
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
-  const made = await owner("work.chat.create", { title: "Fresh" });
+  const made = await owner("work.chat.create", { title: "Fresh", ...sealed() });
   assert.ok(made.data, JSON.stringify(made.error));
   const chat = made.data.chat;
   assert.equal((await owner("work.chat.get", { chat })).data.slots.length, 0, "no run yet");
@@ -336,7 +342,7 @@ test("a message sent in the chat while its run works joins the running turn (ste
   asOwner(d, root);
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
-  const chat = (await owner("work.chat.create", { title: "Busy" })).data.chat;
+  const chat = (await owner("work.chat.create", { title: "Busy", ...sealed() })).data.chat;
   // presence: what the slot is doing, and who is typing, are ephemeral frames on the chat's log
   const logs = d.registry.modules.get("stream").handle.logs;
   /** @type {any[]} */ const seen = [];
@@ -390,7 +396,7 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   asOwner(d, root);
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
-  const chat = (await owner("work.chat.create", { title: "Quotes" })).data.chat;
+  const chat = (await owner("work.chat.create", { title: "Quotes", ...sealed() })).data.chat;
   const logs = d.registry.modules.get("stream").handle.logs;
   const first = await owner("stream.send", { chat, text: "hello there" });
   assert.ok(first.data, JSON.stringify(first.error));
