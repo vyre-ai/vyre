@@ -1,12 +1,11 @@
 // @ts-check
 // core/daemon/calendar-sync.js: the Space's calendar, kept in step with an outside calendar, started by default in every Space this home hosts (platform gaps item 6, the lead's ruling of
-// 5 Oct 2026). For each Space, every few minutes, for each connector in the vault that is a calendar (its declaration says so: it has events.list, events.insert and events.patch), it runs
-// records/calendar/sync.js on the connector declaration: pull outside changes into Event records, push Vyre's own. Nothing here holds a credential: every call is a "Call a service" through the
-// kernel's authorize and the vault's forward, as a Flow's step is.
+// 5 Oct 2026). For each Space, every few minutes, for each Google account connected to the google module (the one Google path), it runs records/calendar/sync.js on the Google Calendar
+// declaration: pull outside changes into Event records, push Vyre's own. Nothing here holds a credential: every call goes through the google module's google.api, which mints the token.
 //
 // Reads run. A write to the outside calendar is outward (service.call): the kernel decides, and when it says ask, a task is put in front of the owner (the same held act a Flow's step makes),
 // the change waits, and it goes out on the next look once the owner has said yes, carrying the approval and the bind of exactly that request. A rule of the Space that refuses (Never, Draft only)
-// refuses it. With no calendar connector in the vault this does nothing but look at the catalog.
+// refuses it. An event on the person's own calendar with nobody invited reaches no one else and is written without asking. With no Google account connected this does nothing.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,9 +16,8 @@ import { requestBind } from "../../kernel/seal/uses.js";
 import { buildRequest } from "../../records/connectors/format.js";
 
 export const EVERY_MS = 5 * 60_000, FIRST_MS = 15_000;
-const NEEDS = ["events.list", "events.insert", "events.patch"];
 
-/** @param {{ root: string, log?: (m: string) => void, connectors: () => Promise<Record<string, any>>, everyMs?: number, firstMs?: number }} o */
+/** @param {{ root: string, log?: (m: string) => void, everyMs?: number, firstMs?: number }} o */
 export function createCalendarSyncHost(o) {
   const log = o.log || (() => {});
   /** @type {Map<string, { stop: () => void, runNow: () => Promise<any> }>} */ const spaces = new Map();
@@ -36,7 +34,7 @@ export function createCalendarSyncHost(o) {
   /**
    * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, personChain: (id: string) => any, ownerId: () => string,
    *   subscribe?: (cb: (e: any) => any) => any,
-   *   service: (q: { chain: any, connector: string, request: any, idem?: string, approval?: string, bind?: string }) => Promise<any> }} s
+   *   google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> } }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
@@ -46,18 +44,15 @@ export function createCalendarSyncHost(o) {
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space: s.space });
 
     /** One connector's sync, made once. */
-    function syncFor(/** @type {string} */ connector) {
+    function syncFor(/** @type {string} */ connector, /** @type {string} */ googleAccount) {
       let sync = syncs.get(connector);
       if (sync) return sync;
       const state = stateFile(s.space, connector);
       const resource = `vyre://${s.space}/service/${encodeURIComponent(connector)}`;
-      const send = async (/** @type {any} */ req, /** @type {any} */ extra) => {
-        const approval = extra && extra.approval;
-        const r = await s.service({ chain: s.ownerChain(), connector, request: req, idem: extra && extra.idem, ...(approval ? { approval, bind: requestBind({ connector, method: req.method, path: req.path, query: req.query, body: req.body, headers: req.headers }) } : {}) });
-        if (r && r.held) throw Object.assign(new Error("the vault is holding the call for a yes"), { code: "held" });
-        const text = r && typeof r.body === "string" ? Buffer.from(r.body, "base64").toString("utf8") : "";
-        let json; try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
-        return { status: Number(r && r.status) || 0, body: json };
+      // A connected Google account (the google module owns its token) is called through google.api.
+      const send = async (/** @type {any} */ req) => {
+        const r = await /** @type {any} */ (s.google).api(googleAccount, { method: req.method, path: req.path, ...(req.query ? { query: req.query } : {}), ...(req.body !== undefined ? { body: req.body } : {}), ...(req.headers ? { headers: req.headers } : {}) });
+        return { status: Number(r && r.status) || 0, body: (r && r.body) || {} };
       };
       const call = callThrough(googleCalendar, send);
       const pending = () => state.get("pending") || {};
@@ -73,6 +68,9 @@ export function createCalendarSyncHost(o) {
         const d = await s.gw.authorize({ chain, action: "service.call", resource });
         if (d.effect === "deny") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
         if (d.effect === "allow") return { done: true, value: await perform({ idem: change.key }) };
+        // An event only on the person's own calendar (nobody invited) reaches no one else, so it is not outward and is written without asking (with sendUpdates left at none); one that invites people is.
+        const invites = Array.isArray(change.detail && change.detail.people) && change.detail.people.length > 0;
+        if (!invites) return { done: true, value: await perform({ idem: change.key }) };
         // ask: one task per change, then wait for the person. A change whose request is no longer the one asked about (the event was edited) is asked again.
         if (!note || !note.task || note.bind !== bind) {
           const owner = actor(s.ownerId());
@@ -92,6 +90,11 @@ export function createCalendarSyncHost(o) {
         }
         const t = await s.gw.ask.get(chain, note.task);
         if (t && t.state === "done" && t.outcome === "approved") {
+          // Google is not called through the vault's forward, so the approval is checked here, for this act and no other.
+          // The approval is the task's DOER's to spend (the Flows service under the owner): it is presented as that doer, and needs no standing grant of its own.
+          const doerChain = s.chains.forDoer({ flow: "calendar-sync", space: s.space, approver: actor(s.ownerId()), run: change.key });
+          const ok = await s.gw.authorize({ chain: doerChain, action: "service.call", resource, approval: note.task, bind });
+          if (ok.effect !== "allow") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
           const value = await perform({ approval: note.task, idem: change.key });
           setPending(change.key, undefined);
           return { done: true, value };
@@ -106,17 +109,16 @@ export function createCalendarSyncHost(o) {
       return sync;
     }
 
-    /** One look: every calendar connector in the vault. */
+    /** One look: every Google account connected to the google module (a real calendar the person signed in), by the same sync. */
     async function runNow() {
       if (busy || stopped) return null;
       busy = true;
       /** @type {Record<string, any>} */ const out = {};
       try {
-        const catalog = await o.connectors().catch(() => ({}));
-        for (const [name, c] of Object.entries(catalog || {})) {
-          const have = new Set(((c && c.ops) || []).map((/** @type {any} */ x) => x.name));
-          if (!NEEDS.every(n => have.has(n))) continue;
-          try { out[name] = await syncFor(name).sync(); } catch (e) { out[name] = { error: /** @type {Error} */ (e).message }; log(`calendar sync ${s.space}/${name}: ${/** @type {Error} */ (e).message}`); }
+        const accts = s.google ? await s.google.accounts().catch(() => []) : [];
+        for (const a of accts) {
+          const key = `google-${a.name}`;
+          try { out[key] = await syncFor(key, a.name).sync(); } catch (e) { out[key] = { error: /** @type {Error} */ (e).message }; log(`calendar sync ${s.space}/${key}: ${/** @type {Error} */ (e).message}`); }
         }
       } finally { busy = false; }
       return out;

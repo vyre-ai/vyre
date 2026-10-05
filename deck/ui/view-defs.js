@@ -16,8 +16,8 @@
 //   initials   draw a tile of the title's initials before it (people-like types)
 
 /** @typedef {{ kind: "sum"|"countBy"|"funnel"|"recent", field?: string, where?: string }} Widget */
-/** @typedef {{ plural: string, titleField: string, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string }, board?: { groupBy: string, card: string[] },
- *   calendar?: { date: string }, dashboard?: { widgets: Widget[] } }} ViewDefinition */
+/** @typedef {{ plural: string, titleField: string, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string, sortDir?: "asc"|"desc", filter?: string }, board?: { groupBy: string, card: string[], filter?: string },
+ *   calendar?: { date: string, filter?: string }, dashboard?: { widgets: Widget[] } }} ViewDefinition */
 
 /** @type {Record<string, ViewDefinition>} */
 export const viewDefs = {
@@ -58,7 +58,7 @@ export const viewDefs = {
   },
 };
 
-/** The view definition of a type: the table's entry or a plain one, with the type's stored views laid over it. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[], views?: readonly StoredView[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
+/** The view definition of a type: the table's entry or a plain one, with the type's stored views laid over it. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[], views?: readonly StoredView[] }} def @param {Record<string, ViewDefinition>} [table] @param {string} [viewName] a stored view of one kind, by name, to use instead of the first @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs, viewName) {
   const base = defaultViewDef(def, table);
   return def.views && def.views.length ? withStoredViews(base, def, viewName) : base;
