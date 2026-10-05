@@ -11,7 +11,7 @@ import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "..
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
-import { shell } from "../../src/shell/shell";
+import { isWindowsShell, shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
 import { installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
@@ -313,6 +313,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           </>
         ) : (
           <>
+            {isWindowsShell() ? <Banner tone="warn">{MY_CLOUD.windows}</Banner> : null}
             <Text tone="muted">{MY_CLOUD.lineComputer}</Text>
             <CopyLine text={installLine(shell()?.version)} />
           </>
