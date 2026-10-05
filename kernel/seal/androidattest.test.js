@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { GOOGLE_ROOTS_PEM, GOOGLE_ROOT_SHA256, ANDROID_ATTEST_VERIFIED, ANDROID_APP_IDS, androidAttestVerifier } from "./androidattest.js";
+import { GOOGLE_ROOTS_PEM, GOOGLE_ROOT_SHA256, ANDROID_ATTEST_VERIFIED, ANDROID_APP_IDS, androidAttestVerifier, verifyAttestation } from "./androidattest.js";
 import { appAttestVerifier, APPATTEST_VERIFIED } from "./appattest.js";
 import { entryProof, entryClientData, entryToken, spkiB64 } from "./entry-proof.js";
 
@@ -100,6 +100,30 @@ test("android key attestation: a chain to a pinned root, this key, this challeng
   assert.equal(v.check({ chain: [] }, ok.point, hash), null);
   assert.equal(v.check(null, ok.point, hash), null);
   assert.equal(v.check({ chain: ["not base64 der"] }, ok.point, hash), null);
+});
+
+test("android key attestation: each wrong piece is refused for ITS reason, not by accident", () => {
+  const w = world(), hash = sha("h2"), roots = [new crypto.X509Certificate(w.rootPem)];
+  const why = (/** @type {any} */ o, /** @type {Buffer | undefined} */ point = undefined, h = hash) => {
+    const a = w.attest(hash, o);
+    try { verifyAttestation({ chain: a.chain.map(c => Buffer.from(c, "base64")), clientDataHash: h, point: point || a.point, now: Date.now(), appIds: APPS, roots }); return "accepted"; } catch (e) { return /** @type {Error} */ (e).message; }
+  };
+  assert.equal(why({}), "accepted");
+  assert.equal(why({ challenge: sha("x") }), "bad_challenge");
+  assert.equal(why({}, w.attest(hash).point), "bad_key");
+  assert.equal(why({ level: 0 }), "not_hardware");
+  assert.equal(why({ bootState: 2 }), "not_verified_boot");
+  assert.equal(why({ unlocked: true }), "not_verified_boot");
+  assert.equal(why({ origin: 1 }), "not_generated");
+  assert.equal(why({ softwareOrigin: true }), "not_generated");
+  assert.equal(why({ algorithm: 1 }), "bad_algorithm");
+  assert.equal(why({ version: 2 }), "old_attestation");
+  assert.equal(why({ pkg: "com.evil.app" }), "bad_app");
+  assert.equal(why({ certDigest: sha("zzz") }), "bad_app");
+  assert.equal(why({ noApp: true }), "no_app");
+  assert.equal(why({ dates: { to: "250101000000Z" } }), "cert_dates");
+  assert.equal(why({ reversed: true }), "untrusted_root");
+  assert.equal(why({ leafSigner: crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey }), "bad_chain");
 });
 
 test("android: a verifier that is not in development mode refuses a perfect chain (the release flag is off), and an app that is not pinned is refused", () => {
