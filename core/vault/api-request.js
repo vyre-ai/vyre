@@ -121,7 +121,7 @@ export function normalize(i) {
 }
 
 /**
- * `service: { allow, deny }`: what a Flow's "Call a service" step may reach through this credential (core/vault/service.js), each rule `{ method?, path }`. A path is exact, `*` is one
+ * `service: { allow, deny, draft?, idempotency?, rate?, ops? }`: what a Flow's "Call a service" step may reach through this credential (core/vault/service.js), each rule `{ method?, path }`. A path is exact, `*` is one
  * segment, a trailing `/*` is the rest; deny wins and the default is no. Written with the credential, so only a person's own surface sets it. A credential with no `service` is not a connector.
  * @param {any} sv @returns {{ allow: { method?: string, path: string }[], deny: { method?: string, path: string }[] }}
  */
@@ -133,7 +133,37 @@ function normalizeService(sv) {
     return { ...(r.method !== undefined && r.method !== "*" ? { method: String(r.method).toUpperCase() } : {}), path: r.path };
   };
   const list = (/** @type {any} */ l, /** @type {string} */ w) => { if (l === undefined) return []; if (!Array.isArray(l) || l.length > 100) throw bad(`service.${w} is a list of rules`); return l.map(rule); };
-  return { allow: list(sv.allow, "allow"), deny: list(sv.deny, "deny") };
+  // What a connector declaration (records/connectors/format.js) says beside the rules, kept for the Flow step runner: the draft op, the idempotency header, the provider's rate and
+  // retry-after, and each op's outward flag, read flag and read-back pairing. None of it widens what is allowed: the rules above are all that is.
+  const hdr = (/** @type {any} */ h, /** @type {string} */ w) => { if (typeof h !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(h)) throw bad(`service.${w} is a header name`); return h; };
+  const out = { allow: list(sv.allow, "allow"), deny: list(sv.deny, "deny") };
+  if (sv.draft !== undefined) {
+    if (!isObj(sv.draft) || typeof sv.draft.path !== "string") throw bad("service.draft is { method, path, wrap? }");
+    const r = rule({ method: sv.draft.method || "POST", path: sv.draft.path });
+    Object.assign(out, { draft: { method: r.method || "POST", path: r.path, ...(sv.draft.wrap !== undefined ? { wrap: /^[a-z_]{1,32}$/.test(String(sv.draft.wrap)) ? String(sv.draft.wrap) : (() => { throw bad("service.draft.wrap is a field name"); })() } : {}) } });
+  }
+  if (sv.idempotency !== undefined) { if (!isObj(sv.idempotency)) throw bad("service.idempotency is { header }"); Object.assign(out, { idempotency: { header: hdr(sv.idempotency.header, "idempotency.header") } }); }
+  if (sv.rate !== undefined) {
+    const r = normalizeRate(sv.rate);
+    Object.assign(out, { rate: { per_minute: r.per_minute, retry_after: sv.rate.retry_after !== false } });
+  }
+  if (sv.ops !== undefined) {
+    if (!Array.isArray(sv.ops) || sv.ops.length > 200) throw bad("service.ops is a list of the connector's operations");
+    Object.assign(out, { ops: sv.ops.map((/** @type {any} */ o) => {
+      if (!isObj(o) || typeof o.name !== "string" || !/^[a-z][a-z0-9_.]{0,63}$/.test(o.name)) throw bad("a service op has a name");
+      const r = rule({ method: o.method, path: o.path });
+      const rb = o.readback;
+      let readback;
+      if (rb !== undefined) {
+        const rr = rule({ method: rb && rb.method, path: String(rb && rb.path || "").replace(/\{[^}]*\}/g, "*") });
+        if (!isObj(rb) || !isObj(rb.vars) || Object.keys(rb.vars).length > 16 || !Object.values(rb.vars).every(v => typeof v === "string" && v.length <= 200)) throw bad("a service op's readback is { method, path, vars, compare? }");
+        const cmp = rb.compare === undefined ? undefined : (isObj(rb.compare) && Object.keys(rb.compare).length <= 16 && Object.entries(rb.compare).every(([k, v]) => k.length <= 200 && typeof v === "string" && v.length <= 200) ? { ...rb.compare } : (() => { throw bad("a service op's readback.compare names fields"); })());
+        readback = { method: rr.method || "GET", path: String(rb.path), vars: { ...rb.vars }, ...(cmp ? { compare: cmp } : {}) };
+      }
+      return { name: o.name, ...(r.method ? { method: r.method } : {}), path: r.path, read: o.read === true, outward: o.outward === true, ...(o.idempotent === false ? { idempotent: false } : {}), ...(readback ? { readback } : {}) };
+    }) });
+  }
+  return out;
 }
 
 /**

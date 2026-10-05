@@ -5,6 +5,7 @@
 // (`service.read` or `service.call`, and the Drive paths a file moves); this adds the connector's own rules, then the same checks as every vault request (hosts, the SSRF guard,
 // read or outward). Two internal tools, callable only by the kernel's lease module: `vault.service.catalog` (the rules, never a secret or a host) and `vault.service.forward`.
 
+import crypto from "node:crypto";
 import { canonicalPath, requestBind, safePath } from "../../kernel/seal/uses.js";
 
 const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -44,13 +45,13 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
   const inflight = new Map();
   const callerOk = c => c === "kernel:leases" || c === "module:leases";
 
-  internal("vault.service.catalog", "The connectors a Flow may call: { connectors: { <name>: { allow: [{ method?, path }], deny: [{ method?, path }] } } }, the credential's own `service` rules. No host, no secret. Only the kernel's lease module asks.",
+  internal("vault.service.catalog", "The connectors a Flow may call: { connectors: { <name>: { allow: [{ method?, path }], deny: [{ method?, path }], draft?, idempotency?, rate?, ops? } } }, the credential's own `service` rules and what a declared connector says beside them (the draft op, its idempotency header, its rate and each op's outward flag and read-back). No host, no secret. Only the kernel's lease module asks.",
     obj({}, []),
     async (_input, { caller }) => {
       if (!callerOk(String(caller))) throw bad("only the kernel's lease module reads the connector list", "denied");
       const connectors = {};
       for (const name of await vault.apiCredentialNames()) {
-        try { const { config } = await vault.apiCredential(name); if (config.service) connectors[name] = { allow: config.service.allow, deny: config.service.deny }; } catch { /* not readable: not a connector */ }
+        try { const { config } = await vault.apiCredential(name); if (config.service) connectors[name] = { ...config.service }; } catch { /* not readable: not a connector */ }
       }
       return { connectors };
     });
@@ -84,7 +85,11 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
       }
       const outward = method !== "GET" && method !== "HEAD";
       const key = input.idem ? `${name}\0${String(input.idem)}` : null;
-      const base = { credential: name, method, url: `https://${host}${path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}) };
+      // A connector that declares an idempotency header gets the call's idem key in it, so the provider too sees one act once. Only on an outward call (a read has nothing to repeat), only when
+      // the op does not opt out, and as a derived value: the key a Flow holds is a run and step id, which is not what a provider should see.
+      const idemName = config.service.idempotency && config.service.idempotency.header, op = (config.service.ops || []).find(o => o.method === method && pathMatches(o.path, path));
+      const idemHeaders = idemName && outward && input.idem && !(op && op.idempotent === false) ? { [idemName.toLowerCase()]: `vyre-${crypto.createHash("sha256").update(`${name}\0${String(input.idem)}`).digest("hex").slice(0, 40)}` } : null;
+      const base = { credential: name, method, url: `https://${host}${path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers || idemHeaders ? { headers: { ...(r.headers || {}), ...(idemHeaders || {}) } } : {}), ...(idemHeaders ? { allow_headers: [idemName] } : {}), ...(r.body !== undefined ? { body: r.body } : {}) };
       const who = `flow:${String(input.idem || "run").slice(0, 80)}`;
       /** What actually goes out, once. */
       const execute = async (/** @type {string | null} */ approval) => {
@@ -98,7 +103,7 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
           out = x.held ? x : { ...x, ...(x.body ? { body: x.body.toString("base64") } : {}) };
         } else if (approval && outward) {
           // The kernel saw the ask-first task approved, so the person is asked once: run exactly this request, re-checked, with the approval named in the audit row.
-          const plan = await api.plan({ ...base, headers: forwardHeaders(r.headers) }, name);
+          const plan = await api.plan({ ...base, headers: forwardHeaders(base.headers, idemHeaders ? [idemName] : []) }, name);
           const x = await api.execute(plan, { who, released: approval, raw: true });
           out = { ...x, body: x.body.toString("base64"), kind: plan.kind };
         } else {
