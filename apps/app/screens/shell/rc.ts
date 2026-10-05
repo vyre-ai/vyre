@@ -6,6 +6,8 @@ import { passkeyRp } from "../../src/identity/passkey.js";
 
 export const RC = {
   sites: false,
+  // Glass, renamed Screen Share, is 0.3.1 (user ruling): no route, button or command reaches it in 0.2.9. screens/glass, src/glass and scripts/glass-assets.mjs stay for then.
+  glass: false,
   // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
   browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0",
 };
