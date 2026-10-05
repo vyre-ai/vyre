@@ -3736,7 +3736,8 @@ export default {
         return out;
       };
       const gated = (/** @type {string} */ name, /** @type {any} */ run) => async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any[]} */ ...rest) => {
-        if (!kernelOn() || (m && m.firstParty) || typeof run !== "function") return run(i, m, ...rest);
+        // module:vyred is the daemon itself (its peer check reads threads.pids, threads.origin, threads.live for every session socket); it is no person's call and sees everything. threads.bind is the machine's own SessionStart hook binding a process to a session (harness only, and it checks the thread's own process itself): it reads no chat, and there is no person on it
+        if (!kernelOn() || (m && m.firstParty) || (m && m.caller === "module:vyred") || name === "threads.bind" || typeof run !== "function") return run(i, m, ...rest);
         const chain = await personChain(m);
         const chatOk = (/** @type {string | null} */ chat) => { if (!chat) return true; if (!chain) return false; try { ctx.kernel.chats.read(chain, chat); return true; } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") return false; throw e; } };
         const threadOk = (/** @type {any} */ t) => chatOk(sb.chatOf(String(t)));
