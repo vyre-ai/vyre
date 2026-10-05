@@ -4,7 +4,7 @@
 //   lender <port> <base> <device>          a member's computer lending itself: joins the home over the Wink wire, leases its workspace key, takes the session's definition, runs it, checkpoints to the home
 //   resume <port> <base> <device>          another computer of the same member: continues the session from the home's last checkpoint
 //   peek <port> <device>                   what the home holds for the session
-// STAND-INS (listed in docs/work/runner.md): the TCP carrier (an ssh port forward instead of the tailnet, ufw blocks the boxes' own ports); presence for the Offers (SHIM(presence), as in
+// STAND-INS (listed in team/archive/work-journals/runner.md): the TCP carrier (an ssh port forward instead of the tailnet, ufw blocks the boxes' own ports); presence for the Offers (SHIM(presence), as in
 // kernel/gateway/leases.real.test.js); the device keys (derived from a seed, no identity chain); the agent (testing/fake-agent.js).
 import "../core/runner/testing/hosted-guard.js";
 import fs from "node:fs"; import path from "node:path"; import net from "node:net"; import crypto from "node:crypto";

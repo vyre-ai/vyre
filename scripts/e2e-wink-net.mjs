@@ -65,8 +65,10 @@ const leftoverBlocks = () => { try { return sh(HOSTS.home, `sudo -n iptables -t 
 const leftoverRules = host => { try { return sh(host, `sudo -n ufw status | grep -c ${TAG} || true`, { quiet: true }).trim(); } catch { return "unknown (ssh failed)"; } };
 
 function stage(host) {
-  sh(host, `mkdir -p ${DIR}/bin ${DIR}/vyre`);
-  execFileSync("rsync", ["-a", "--delete", "--exclude", ".git", "--exclude", "node_modules", "--exclude", "/site", "--exclude", "/packaging", "--exclude", "/release", `${REPO}/`, `${host}:${DIR}/vyre/`], { stdio: ["ignore", "ignore", "inherit"] });
+  // No rsync from the Mac (slow link): the commit under test is pushed, and each box fetches it into a persistent clone (E2E_REF, default this checkout's HEAD).
+  const ref = process.env.E2E_REF || execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
+  const branch = process.env.E2E_BRANCH || "work/network";
+  sh(host, `mkdir -p ${DIR}/bin; [ -d ${DIR}/vyre/.git ] || { rm -rf ${DIR}/vyre; git clone -q https://github.com/vyre-ai/vyre.git ${DIR}/vyre; }; cd ${DIR}/vyre && git fetch -q origin ${branch} && git checkout -qf ${ref} && { [ -d node_modules ] || npm ci --ignore-scripts --silent; }`, { timeout: 600_000 });
 }
 function ensureBins(host) {
   for (const n of ["headscale", "wink-forwarder"]) {
@@ -141,7 +143,7 @@ async function main() {
     // THE RELAY FALLBACK: the direct path dies (the home drops the server's UDP and its TCP to the gate, before connection tracking), the relay is untouched. The link must move to the relay and a call must still
     // cross, run by the home's door as the same server and still limited to the status read; then the direct path comes back and the link prefers it again.
     blockDirect(true, ips);
-    const viaRelay = await until(() => { const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "relay" ? s : null; }, 150_000, "the link to fall back to the relay").catch(() => null);
+    const viaRelay = await until(() => { try { ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 20 }); } catch { /* a call that finds the direct path dead is what moves the link (probes run on demand, never on a timer) */ } const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "relay" ? s : null; }, 150_000, "the link to fall back to the relay").catch(() => null);
     check("direct path blocked: the server's link falls back to the RELAY", Boolean(viaRelay), viaRelay || ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }));
     let relayErr = null;
     const relayCall = await until(() => { try { const r = ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 30 }); relayErr = r.error || null; return r.error ? null : r; } catch (e) { relayErr = String(e.message).slice(0, 300); return null; } }, 90_000, "a call over the relay").catch(() => null);

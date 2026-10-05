@@ -26,8 +26,10 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { holdKernelDrive } from "./storage/keys.js";
 import { backendFor } from "./storage/devices.js";
 import { createBridge } from "./storage/bridge.js";
+import { TASK } from "../records/core-types.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -86,16 +88,36 @@ export async function createKernel(cfg) {
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
+    // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
+    // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
+    records: store,
+    projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
+  // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
+  // The task record type is asked for at boot. A record store that is not there yet (stores/twenty/deferred-store.js) remembers a definition made now and applies it when it attaches; what it cannot do
+  // now, the task migration (it reads and writes records), runs when the store comes up (`whenReady`), so no second retry loop lives here. Any other error stops the boot.
+  const defineTasks = async () => { await store.define({ add_types: [TASK] }); await tasks.migrate(); };
+  try { await defineTasks(); }
+  catch (e) {
+    if (/** @type {any} */ (e).code !== "unavailable" || typeof store.whenReady !== "function") throw e;
+    store.whenReady(() => tasks.migrate());
+  }
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   gateway = createGateway({
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
+    ...(cfg.basic ? { basic: cfg.basic } : {}),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
+    // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
+    moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
+    // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
+    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); },
+    verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
+    verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
@@ -127,7 +149,9 @@ export async function createKernel(cfg) {
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
     // Only a module that declared `needs.kernel` is made a service of the Space (one sealed event each); the rest get a handle that can do nothing.
     const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
-    const ready = Promise.all([installed, Array.isArray(needs.types) && needs.types.length ? store.define({ add_types: needs.types }) : Promise.resolve()]);
+    // On a Basic device only the fixed personal types exist: a module's other types are not made (its tools answer the Cloud line when they reach for one).
+    const wanted = Array.isArray(needs.types) ? (cfg.basic ? needs.types.filter((/** @type {any} */ t) => cfg.basic.allow.has(String(t && t.name))) : needs.types) : [];
+    const ready = Promise.all([installed, wanted.length ? store.define({ add_types: wanted }) : Promise.resolve()]);
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
     // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
@@ -140,7 +164,7 @@ export async function createKernel(cfg) {
       space: cfg.space, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
       canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
-      records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      records, memory: gateway.memory, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -236,13 +260,13 @@ export async function createKernel(cfg) {
       })() : {}),
       /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
-       * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
+       * show BEFORE it is made) and starting to host one (`host({ owner, name })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
        */
       ...(needs.spaces === true ? { spaces: Object.freeze({
         retire: async (/** @type {string} */ id) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.retire(id); },
         storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
-        host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
+        host: async (/** @type {{ owner: string, name?: string }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
       }) } : {}),
       /**
        * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives
@@ -322,6 +346,8 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
+        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
+        setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }
     /**
@@ -333,7 +359,14 @@ export async function createKernel(cfg) {
       if (space === cfg.space) return handle.chain(meta);
       const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
       if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
-      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && typeof meta.token === "string") {
+        try { return await h.surfaces.chainFor(meta.token); } catch { /* not a token of that Space's own: a session of this home, below */ }
+        // A session opened in this home speaks for its person in every Space they belong to (an assistant works wherever its person does): this home verifies the token it signed, and the other Space
+        // builds the chain from the person and agent the token names by the same rule a session of its own gets. The Space's own grants still decide what that chain may do, and a person who is not a member there gets no chain.
+        let t; try { t = await surfaces.verify(meta.token); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+        const facts = t.agent ? { kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, from_token: true, vouched: true } : { kind: "session_person", person: t.person, session: t.session, from_token: true, vouched: true };
+        try { return h.kernel.chains.fromFacts(facts); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+      }
       if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
         if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
         try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
@@ -381,5 +414,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }

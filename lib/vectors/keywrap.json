@@ -1,0 +1,28 @@
+{
+ "note": "Agree key (P-256). `agree(epk)` = ECDH shared secret (32-byte X). kek = HKDF-SHA256(ikm = shared, salt = epk, info = 'vyre-identity-wrap-v1', 32). AES-256-GCM, 12-byte iv, 16-byte tag, aad as given. All binary values base64url.",
+ "agree_private_jwk": {
+  "kty": "EC",
+  "crv": "P-256",
+  "x": "AM6jGd5vbYaA9YV0UqdH3CsrDfQxloI9C9PBDOnUbyY",
+  "y": "2TSCSUfx3scX00FAymnyKabEBu04vA0gjqQcCz6VyW8",
+  "d": "omRjolnGVTsj6dYX0MHpQUrGZj6-DlKyHLhC6UoPEQw"
+ },
+ "agree_public_jwk": {
+  "kty": "EC",
+  "crv": "P-256",
+  "x": "AM6jGd5vbYaA9YV0UqdH3CsrDfQxloI9C9PBDOnUbyY",
+  "y": "2TSCSUfx3scX00FAymnyKabEBu04vA0gjqQcCz6VyW8"
+ },
+ "holder": "f559eec9205f595e",
+ "wrap": {
+  "v": 1,
+  "epk": "BJdsuuWA7N6Agohl8uxZ-iBaI9vJSPzFqYX0ERDUYVCENieD9Ybm9JGu63bMuKjwtI-QlqNNaCuRINg_8tc4NQU",
+  "iv": "cT9017BQc11Rx0mZ",
+  "ct": "vALvY63VBldU6BzV5J011aG-o4YUNrIFjrKbDASVRUg",
+  "tag": "DxjI59gyBFetU2xjuDFvZA"
+ },
+ "aad": "ring:chat_vector01:1",
+ "shared": "FIT5eB2BC8fVaNtVAT7heX8c0UuqeLeTcu7_Mpjq2OY",
+ "kek": "gbe5A2nWxjsbFksjvLovy7eKBCtfdPHYjgUFlhtveX8",
+ "plaintext_key": "KZc0Hn7oc6L0ailjyfwJDMbx0wkxFdR9tQgfhTlmtsM"
+}

@@ -119,6 +119,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_LENT_AGENT_ARGS` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_LENT_AGENT_DEV` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
@@ -148,7 +150,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
-| `VYRE_STORE` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/link/mac.js`, `core/link/transport.js` |

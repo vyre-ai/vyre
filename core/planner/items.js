@@ -33,7 +33,7 @@ export function shape(r) {
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
     waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null, paused: Boolean(r.paused),
-    waits_on_fired: r.waits_on_fired ?? null,
+    waits_on_fired: r.waits_on_fired ?? null, assignee: r.assignee ?? null,
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,

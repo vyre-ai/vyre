@@ -1,5 +1,5 @@
 // The native result components (design idea 2): one component per Block kind, never raw JSON.
-// `renderBlock(block, ctx)` is the one switch, keyed on the Block contract (docs/work/chat.md, 0.3);
+// `renderBlock(block, ctx)` is the one switch, keyed on the Block contract (team/archive/work-journals/chat.md, 0.3);
 // anything it does not know has already degraded to a short text block (blocks.js). A sealed field
 // is the typed placeholder chip and never a value. Callbacks (open terminal, open in Drive, Face ID,
 // take over) arrive in `ctx`: the screen decides what they do.

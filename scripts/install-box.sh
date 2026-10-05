@@ -322,10 +322,10 @@ get_sums() {
 check_version() {
   case "$WANT" in ""|latest) return 0 ;; esac
   case "$WANT" in *[!0-9A-Za-z.-]*) die "--version $WANT is not a version like 0.2.9" ;; esac
-  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves.)"
+  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves, or install a build that is not published from a checkout with --from <folder>.)"
   get VERSION
   have=$(tr -d '[:space:]' <"$TMP/VERSION")
-  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), or point VYRE_BOX_URL at a site that serves $WANT."
+  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), point VYRE_BOX_URL at a site that serves $WANT, or, for a build that is not published yet, install from a checkout of it with --from <folder>."
 }
 
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
@@ -557,10 +557,11 @@ install_wrapper() {
 }
 
 # The Space helper (box/vyre `space-helper`): the root path unit that starts a Space's Twenty store and firewalls it from the agents, on vyred's request. It records the
-# image vyre runs, so it is installed once the container is up. Best effort: without it a Space has no store on this server and Vyre says so.
+# image vyre runs, so it is installed once the container is up. It is required: a space on a server runs on Twenty, and without the helper (or its images) it
+# would have no store. A failure stops the install with the helper's own cause (an image that could not be pulled names the image and the registry's reason).
 install_space_helper() {
   [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ] || return 0
-  priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || say "note: could not set up the Space helper; Spaces have no records store on this server until: sudo vyre space-helper install"
+  priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || die "the Space helper could not be set up (the cause is the line above), so a space on this server would have no records store. Vyre is running but unfinished; fix the cause, then run: sudo vyre space-helper install, and pair the server after it"
 }
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
@@ -724,8 +725,8 @@ intake_code() {
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
-# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on the larger store when this server has
-# room for it, else the built-in one. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
+# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on Twenty when this server has
+# room for it; only a server too small for Twenty gets the small built-in store. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
 write_kernel_env() {
   [ "$DRY" = 1 ] && { say "would turn the kernel on in $DIR/vyre.env"; return 0; }
   TMP=${TMP:-$(mktemp -d)}
@@ -862,8 +863,11 @@ early_one_install() {
 # The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
 CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
 SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
+# A server under 6 GB of memory (TINY_BELOW_MB in stores/twenty/provision.js) gets the tiny profile, whose measured need is stores/twenty/space-store.js requireFor(4096).memoryMb; the test keeps both equal.
+SPACE_MEM_TINY_MB=${VYRE_SPACE_MEM_TINY_MB:-2521}
+TINY_BELOW_MB=6144
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
-# preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person
+# preflight: say plainly what this server can host. A box too small for Twenty runs on the small built-in store, which is a choice the person
 # should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
 preflight() {
   mem=""; disk=""
@@ -871,14 +875,18 @@ preflight() {
   d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
   [ -d "$d" ] || d=/
   disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
-  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will use the built-in store unless it finds room."; return 0; fi
-  fit=$(( (mem - 300) / (SPACE_MEM_MB - 300) )); [ "$fit" -ge 0 ] || fit=0
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will run each space on Twenty if it finds room, and on the small built-in store if it does not."; return 0; fi
+  # the same rule the daemon uses: a machine under 6 GB is measured against the tiny profile's need, not the small one's
+  total=""; if [ -r /proc/meminfo ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  SPACE_MEM_MB_USED=$SPACE_MEM_MB
+  if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$TINY_BELOW_MB" ]; then SPACE_MEM_MB_USED=$SPACE_MEM_TINY_MB; fi
+  fit=$(( (mem - 300) / (SPACE_MEM_MB_USED - 300) )); [ "$fit" -ge 0 ] || fit=0
   if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and the larger store needs $SPACE_DISK_MB MB: Vyre will use the built-in store."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Twenty needs $SPACE_DISK_MB MB: this server is too small for Twenty, so Vyre will use the small built-in store."
   elif [ "$fit" -ge 1 ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on the larger store (each needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB)."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on Twenty (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
   else
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. The larger store needs about $((SPACE_MEM_MB / 1024)).$(( (SPACE_MEM_MB % 1024) * 10 / 1024 )) GB per space, so Vyre will use the built-in store. Everything works; very large record sets are slower."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. Twenty needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB per space. This server is too small for Twenty, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
   fi
 }
 
@@ -1003,6 +1011,7 @@ mac_server() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   get_sums
+  [ "${MAC_FROM:-0}" = 1 ] || check_version
   get install-mac-server.sh
   sh "$TMP/install-mac-server.sh" "$@"
   return $?
@@ -1010,14 +1019,19 @@ mac_server() {
 
 main() {
   if [ "$(uname -s)" = Darwin ]; then
-    # the Mac server script takes no version: it installs what the site serves
-    a=""; skip=0
-    for x in "$@"; do
-      if [ "$skip" = 1 ]; then skip=0; continue; fi
-      case "$x" in --version) skip=1 ;; --version=*) ;; *) a="$a $x" ;; esac
+    # The Mac server script takes no version, so it is taken out here and checked against the site before that script runs (the check is on every
+    # path). The other arguments are passed on as they came: rotated through "$@", never word-split, so an argument with a space stays one.
+    MAC_FROM=0
+    n=$#
+    while [ "$n" -gt 0 ]; do
+      x=$1; shift; n=$((n - 1))
+      case "$x" in
+        --version) [ "$#" -ge 1 ] || die "--version needs a version (or latest)"; WANT=$1; shift; n=$((n - 1)) ;;
+        --version=*) WANT=${x#--version=} ;;
+        --from|--from=*) MAC_FROM=1; set -- "$@" "$x" ;;
+        *) set -- "$@" "$x" ;;
+      esac
     done
-    # shellcheck disable=SC2086
-    set -- $a
     mac_server "$@"; exit $?
   fi
   while [ $# -gt 0 ]; do

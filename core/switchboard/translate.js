@@ -278,6 +278,8 @@ export function translate(m) {
     const windows = m.modelUsage && typeof m.modelUsage === "object" ? Object.values(m.modelUsage).map(x => Number(x && x.contextWindow) || 0).filter(Boolean) : [];
     if (windows.length) out.window = Math.max(...windows);
     const u = m.usage || {};
+    // An agent that reports its context (the ACP drivers: Codex's usage_update, Grok's last request) says so on the result; Claude's own usage here is the turn's total, not the window.
+    if (Number(u.context_used) > 0) { out.used = Number(u.context_used); if (Number(u.context_size) > 0 && !out.window) out.window = Number(u.context_size); }
     const n = v => (typeof v === "number" && v >= 0 ? v : 0);
     const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };
     out.events.push({ type: "thread.finished", payload: { ok: !m.is_error, stop_reason: m.stop_reason || m.subtype || null,

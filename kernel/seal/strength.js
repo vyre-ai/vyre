@@ -36,6 +36,8 @@ const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code"]
  * `unattested`: its method is "unattested" and its strength "unattested", never "hardware" and never "attested" (hardware means attested, or it is not said). A software key is not one of these and stays refused on release.
  * An attested key keeps its own mark. Only these signer names: the keys a phone's secure chip holds.
  */
+// `tpm` (a PC's Windows Hello key) is NOT admitted unattested on a release build: until a prompt on every signature is shown on a real TPM computer, a page script that can reach the key could mint a yes silently.
+// It is a known signer class (proof.js SIGNERS, verified as P-256), taken only where unattested keys are (a development build), so a Windows PC is not the yes yet and the phone is.
 export const UNATTESTED_SIGNERS = new Set(["secure_enclave", "strongbox"]);
 /** Is this an unattested key of a signer the release rule admits? @param {{ attested?: boolean, signer?: string }} k */
 export const isUnattestedEnclave = k => k.attested !== true && UNATTESTED_SIGNERS.has(String(k.signer));

@@ -18,6 +18,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "spaces.identity.devices": "lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger",
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
@@ -147,8 +148,6 @@ export const OPEN_NOTES = Object.freeze({
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
   "wink.storage.status": "reads whether each storage device is there",
-  "work.engineer.revise": "edits the Engineer's proposed definition, which is checked again and gets its own card",
-  "work.engineer.talk": "talks to the Engineer, which only admins can do; explain reads a definition back",
   "work.team.add": "adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen",
 });
 

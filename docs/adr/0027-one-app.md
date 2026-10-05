@@ -54,7 +54,7 @@ generated (`expo prebuild`) and never committed. Platform differences live in fi
 (one breakpoint at 720, then 1100 and 1400 from `tokens.json`).
 
 The web target replaces the Deck by stages: it is served at `/app/` beside the Deck, and moves
-to `/` when it covers every Deck page (a parity list in `docs/work/mobile.md`). The Deck's
+to `/` when it covers every Deck page (a parity list in `team/archive/work-journals/mobile.md`). The Deck's
 pages that are not rebuilt yet open in the app as plain links, never as a webview.
 
 ### 2. What is shared, and with whom

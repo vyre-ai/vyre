@@ -49,9 +49,11 @@ vyre notes
 no time never rings; it shows on that day's agenda and stays there until it is done.
 
 A todo is a Task assigned to you, so it is the same one you see in Now. What a Task has no field for
-(list, priority, tags) is kept with it, and once made a todo's words, list and time are fixed:
-finish it, cancel it, or make a new one. Finishing is yours to do; an assistant can add a todo but
-not tick it off. A todo does not repeat and has no sub-items: use a reminder that repeats.
+(list, priority, tags) is kept with it. You can edit a todo's words, list, priority and time, tick
+it off and open it again, delete it and bring it back, make it part of another todo (`parent`), and
+make it repeat: when you finish a repeating todo, the next one is made for the next time its rule
+names. Give a todo to an assistant with `assignee` (only you can) and that assistant finishes it as
+its own. A todo an assistant adds for you is yours to finish, not the assistant's.
 
 ## See your day
 

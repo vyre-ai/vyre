@@ -9,7 +9,7 @@
 //! toolchain: which hotkey binds by default, and what happens the moment it's held while the
 //! panel itself has focus. Host-specific pieces (tray, WebView2 navigation/capability wiring,
 //! Windows Hello/WebAuthn, the real `RegisterHotKey` call) live in the actual Tauri app
-//! (`src-tauri/`, scaffolded separately, CI-only per docs/work/windows.md -- this Mac has no
+//! (`src-tauri/`, scaffolded separately, CI-only per team/archive/work-journals/windows.md -- this Mac has no
 //! `cargo` in this session, so nothing here has been locally built or tested, same as when
 //! `hotkey.rs` was first written).
 

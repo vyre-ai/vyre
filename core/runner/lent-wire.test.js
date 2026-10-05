@@ -1,5 +1,5 @@
 // The lent-computer wire on the REAL kernel: a member's computer runs one of the Space's sessions through the kernel's remote call (the in-memory stand-in for Wink), with the real Offers,
-// the real leases and the real remote server on the home side, and the lent home service in front of the checkpoint store. Every refusal in docs/work/runner.md is a test here.
+// the real leases and the real remote server on the home side, and the lent home service in front of the checkpoint store. Every refusal in team/archive/work-journals/runner.md is a test here.
 import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
@@ -24,7 +24,8 @@ function fakeSealer() {
   const st = { live: new Map(), revoked: new Set() }; let n = 0;
   const one = c => { if (!c || c.hops.length !== 1 || c.hops[0].actor.kind !== "person") throw Object.assign(new Error("human_only"), { code: "human_only" }); };
   return { st, lease: {
-    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.randomBytes(32).toString("base64"), ttlMs: 3600000 }; },
+    // like the real process, issue gives the same member and computer the same key while access holds
+    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.createHash("sha256").update(`${m}|${i.device}`).digest("base64"), ttlMs: 3600000 }; },
     renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
     revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
     reinstate: async () => ({ reinstated: true }),
@@ -45,8 +46,8 @@ async function rig(t, o = {}) {
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
   const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, leases: k.gateway.leases, lenderCap: () => o.cap,
-    specFor: async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] }) });
+  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap,
+    specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };
   return { k, owner, bob, g, mk, accept, home, server, sealer, as, dir };
@@ -281,4 +282,56 @@ test("access ended: the session stops, the encrypted workspace and everything in
     const held = []; const walkHome = d => { for (const n of fs.readdirSync(d)) { const p = path.join(d, n); fs.statSync(p).isDirectory() ? walkHome(p) : held.push(p); } }; walkHome(path.join(r.dir, "home"));
     assert.ok(held.some(f => f.includes("transcript")) && held.some(f => f.includes(`${path.sep}cp${path.sep}`)), "the transcript and a checkpoint are still at the home");
   } finally { await runner.stopAll().catch(() => {}); }
+});
+
+test("a restart reconciles: the session that outlived the daemon is ended and the workspace left locked while access stands, and access that ended while the daemon was down deletes the workspace", { skip: SKIP_RUN }, async t => {
+  const agentDir = fs.mkdtempSync(path.join(SCRATCH, "rc-agent-")); fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
+  const r = await rig(t, { keyIsDevice: true, specFor: async () => ({ command: process.execPath, args: [path.join(agentDir, "agent.js")], env: {}, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const root = path.join(r.dir, "mod4"); fs.mkdirSync(root, { recursive: true });
+  const mkCtx = () => { /** @type {Map<string, any>} */ const tools = new Map();
+    return { tools, ctx: { paths: { root }, config: { role: "local" }, events: { emit() {}, on: () => () => {} }, tool: (n, d) => tools.set(n, d), log() {},
+      kernel: { owner: BOB, runnerHost: () => ({ identity: async () => ({ deviceId: "dev_laptop", deviceKey: "dev_laptop" }) }), for: id => (id === SPACE ? remote : { hosted: true }), chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }) } } }; };
+  const base = path.join(root, "runner", "spaces");
+  const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const waitFor = async (f, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await f()) return true; await new Promise(res => setTimeout(res, 100)); } return false; };
+  const one = mkCtx(); const m1 = await mod.start(one.ctx);
+  const later = [];
+  try {
+    const started = await one.tools.get("runner.start").run({ space: SPACE, session: "s1" }, { caller: "cli" });
+    assert.ok(alive(started.pid), "the session runs");
+    const dirs = fs.readdirSync(base); assert.equal(dirs.length, 1);
+    assert.equal(fs.readFileSync(path.join(base, dirs[0], "space.id"), "utf8"), SPACE, "the folder says which Space it is for");
+    // the daemon dies (a second one starts on the same home; the first is abandoned, its session still running) with access standing
+    const two = mkCtx(); const m2 = await mod.start(two.ctx); later.push(m2);
+    assert.equal(await waitFor(() => !alive(started.pid)), true, "the session that outlived its runner is ended at the restart");
+    assert.equal(fs.existsSync(path.join(base, dirs[0])), true, "access stands: the workspace is kept");
+    assert.ok(fs.existsSync(path.join(base, dirs[0], "cipher")), "encrypted at rest, locked");
+    // the session is started again (resumes from the home's checkpoint), then the daemon dies again, and the Space ends this computer's access while it is down
+    const again = await two.tools.get("runner.start").run({ space: SPACE, session: "s2" }, { caller: "cli" });
+    assert.ok(alive(again.pid));
+    await r.k.gateway.grants.offers.unoffer(r.bob, r.accept.id, { presence: proof("grants.unoffer", { revoke: r.accept.id }, `vyre://${SPACE}/offer/${r.accept.id}`) });
+    const three = mkCtx(); const m3 = await mod.start(three.ctx); later.push(m3);
+    assert.equal(await waitFor(() => !alive(again.pid)), true, "its session is ended");
+    assert.equal(await waitFor(() => !fs.existsSync(path.join(base, dirs[0]))), true, "and the workspace, with everything in it, is deleted: access ended while the daemon was down");
+  } finally { for (const m of [m1, ...later]) await m.stop().catch(() => {}); }
+});
+
+test("a lent session may name its chat: kept only when the lender's person is in that chat, shape-checked, never on the wire", async t => {
+  const r = await rig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  const carol = r.k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  const mine = await r.g.chats.create(r.bob, { people: [] }), theirs = await r.g.chats.create(carol, { people: [] });
+  await c.spec({ session: "s1", chat: mine.id }); await c.spec({ session: "s2" }); await c.spec({ session: "s4", chat: theirs.id });
+  assert.deepEqual(r.home.rows().sort((a, b) => a.session.localeCompare(b.session)), [{ session: "s1", device: "dev_laptop", chat: mine.id }, { session: "s2", device: "dev_laptop" }, { session: "s4", device: "dev_laptop" }],
+    "someone else's chat is dropped: the session runs but is not shown as that chat's");
+  await c.spec({ session: "s5", chat: "chat_00000000-0000-4000-8000-000000000000" });
+  assert.equal(r.home.rows().find(x => x.session === "s5").chat, undefined, "a chat that does not exist is dropped");
+  await assert.rejects(c.spec({ session: "s3", chat: "../../x" }), e => e.code === "bad_input", "a chat is named by its id");
+  assert.equal(r.home.rows().some(x => x.session === "s3"), false, "a bad chat starts nothing");
+  assert.ok(r.home.rows().every(x => !("key" in x)), "a row carries no device key");
+});
+
+test("the lent service's rows are not a wire call", async () => {
+  const { CALLS } = await import("../../kernel/remote/wire.js");
+  assert.equal(CALLS.lent.includes("rows"), false);
 });

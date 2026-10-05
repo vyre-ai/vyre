@@ -1,7 +1,7 @@
 // @ts-check
 // client: the HTTP client for computerd, the helper inside each agent's computer.
 //
-// computerd speaks the table in docs/work/computers.md: GET /health, /apps, /tree?app=,
+// computerd speaks the table in team/archive/work-journals/computers.md: GET /health, /apps, /tree?app=,
 // /screenshot, and POST /act, /input, every one with `Authorization: Bearer <token>`. This file
 // adds timeouts and errors a person can read.
 //

@@ -493,10 +493,8 @@ test("device-first, real daemon: the owner's device calls spaces.host-here on th
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const session = links.sessionFor("srv");
-  // with no proof the server asks for one (the presence floor is the server's own, nothing here is trusted)
-  await assert.rejects(() => session.call("spaces.host-here", { name: "harlow" }), e => e.code === "presence_required");
-  // with the owner's proof in the input (the test world's presence takes any), the server's kernel hosts the space and answers its id
-  const made = await session.call("spaces.host-here", { name: "harlow", proof: { key: "k1" } });
+  // making a space is not a yes moment: the owner's authenticated call is enough, with no proof offered (a passkey browser has none to give right after pairing)
+  const made = await session.call("spaces.host-here", { name: "harlow" });
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
 });
@@ -638,19 +636,24 @@ test("a computer's own device key makes the owner's proof for an act that needs 
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
   const made = await links.sessionFor("srv").call("spaces.host-here", { name: "harlow" });
-  assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered after the device signed the server's presence_required");
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/, "host-here answered with no presence proof at all");
   assert.ok(f.w.d.kernel.spaces.hosts(made.space), "the space is hosted by the server's kernel");
+  // an act that DOES need presence (taking a started space back) is the one that checks the enrolled key
+  const second = await links.sessionFor("srv").call("spaces.host-here", { name: "second" });
+  const retired = await links.sessionFor("srv").call("spaces.retire-here", { id: second.space });
+  assert.ok(retired, "retire-here answered after the device signed the server's presence_required");
   // PW-1: with the dev switch off (a computer's own software key), nothing signs a presence challenge by itself
   const quiet = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "q", sign: m => devKey.sign(m), proveTool: devKey.proveTool,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => quiet.close());
-  await assert.rejects(() => quiet.sessionFor("srv").call("spaces.host-here", { name: "nope" }), e => e.code === "presence_required");
+  const third = await links.sessionFor("srv").call("spaces.host-here", { name: "third" });
+  await assert.rejects(() => quiet.sessionFor("srv").call("spaces.retire-here", { id: third.space }), e => e.code === "presence_required");
   // a key the server never enrolled proves nothing
   const stranger = deviceKey(path.join(tempHome(t), "stranger.json"));
   const bad = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "x", sign: m => devKey.sign(m), proveTool: stranger.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => bad.close());
-  await assert.rejects(() => bad.sessionFor("srv").call("spaces.host-here", { name: "other" }), e => e.code === "presence_required");
+  await assert.rejects(() => bad.sessionFor("srv").call("spaces.retire-here", { id: third.space }), e => e.code === "presence_required");
 });
 
 
@@ -950,7 +953,7 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op === "seal.reveal" && asked.data.request.challenge, JSON.stringify(asked).slice(0, 400));
   const { softwareProof } = await import("../core/spaces/presence-signer.js");
   const keyFile = path.join(droot, "wink-keys.json.device");
-  const proofFor = (/** @type {any} */ rq, /** @type {any} */ tweak = {}) => ({ ...softwareProof(keyFile, ident.id, { op: rq.op, payload_hash: rq.payload_hash, nonce: rq.challenge, home: rq.home, space: id }), ...tweak });
+  const proofFor = (/** @type {any} */ rq, /** @type {any} */ tweak = {}) => ({ ...softwareProof(keyFile, ident.id, { op: rq.op, fields: rq.fields, payload_hash: rq.payload_hash, nonce: rq.challenge, home: rq.home, space: id }), ...tweak });
   const hdr = (/** @type {any} */ p) => ({ "x-vyre-kernel-proof": Buffer.from(JSON.stringify(p)).toString("base64url") });
   const shown = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" }, hdr(proofFor(asked.data.request)));
   assert.ok(!shown.error && shown.data.value === "123-45-6789", JSON.stringify(shown).slice(0, 300));
@@ -1116,4 +1119,69 @@ test("typed pair on the kernel, over the relay as the app calls: the paired sess
   assert.equal(meHttp.data && meHttp.data.person, w.d.kernel.id.owner, `records.me over the relay answers the owner: ${JSON.stringify(meHttp)}`);
   const defHttp = await http("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }] }] } });
   assert.equal(defHttp.data && defHttp.data.applied, true, JSON.stringify(defHttp));
+});
+
+test("the My Cloud upgrade end to end: a space made on the person's server has a published key, My Cloud signs the receipt, it verifies, and only then does Personal freeze and point there", async t => {
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { tmp } = await import("../kernel/seal/testing.js");
+  const { softwareKey } = await import("../core/spaces/presence-signer.js");
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
+  // the server's kernel runs on a real sealing process that takes software keys (a development build)
+  const sealDir = tmp("m1-invite-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ident = await standinIdentity(t);
+  // M1's own device key (the file its Wink module offers in every pairing hello): pairing it as the owner's computer is what enrols it in the home's sealing process
+  const devKey = deviceKey(path.join(ident.home, "wink-keys.json.device"));
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, kind: "computer", presenceStorage: "software", devKey, kernelDoor: { usesKernelChain: true, ledgerKey: () => Buffer.alloc(32, 7).toString("base64") } });
+  const server = f.w.d;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  // M1: a computer with the SAME identity the server is owned by (the identity file is copied in, so its device key and id are the claimed ones)
+  const droot = ident.home;
+  fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "m1", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const { hooks: spacesHooks } = await import("../core/spaces/index.js");
+  const device = await start({ root: droot, kernel: true, presence: lenient, kernelPresence: { check: async () => null }, sessionFor: async () => links.sessionFor("srv"), log: m => { if (process.env.WLOG) console.error(m); } });
+  spacesHooks.sessionFor = async () => links.sessionFor("srv");
+  t.after(() => { spacesHooks.sessionFor = null; spacesHooks.buildRoot = undefined; });
+  t.after(() => device.stop());
+  const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
+  device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", ident.id, ident.id);
+  const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
+  const made = await dcall("spaces.create", { name: "mycloudup", displayName: "My Cloud", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!made.error && made.data.status === "done", JSON.stringify(made).slice(0, 300));
+  const id = made.data.space;
+  assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
+  // the hosted space has its key from creation, and the directory names it with that key
+  const home = device.kernel.id.space;
+  const resolved = await dcall("spaces.identity.resolve", { name: "mycloudup" });
+  assert.ok(!resolved.error && resolved.data.kind === "space" && resolved.data.spaceId === id, JSON.stringify(resolved).slice(0, 300));
+  // Personal records on this device's own home kernel
+  const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "body", kind: "text", label: "Body" }] };
+  assert.ok(!(await dcall("records.define", { space: home, diff: { add_types: [NOTE] } })).error);
+  const ids = [];
+  for (const n of ["one", "two", "three"]) { const r = await dcall("records.create", { space: home, type: "note", data: { title: n, body: `body ${n}` } }); assert.ok(!r.error, JSON.stringify(r.error)); ids.push(r.data.record.id); }
+  const plan = await dcall("spaces.upgrade.plan", { to: id });
+  assert.ok(!plan.error, JSON.stringify(plan.error));
+  assert.ok(plan.data.counts, JSON.stringify(plan).slice(0, 400));
+  assert.equal(plan.data.counts.records.note, 3);
+  // one approval: with none the device is asked for it, bound to this exact plan
+  const asked = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash });
+  assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op, JSON.stringify(asked).slice(0, 300));
+  const { softwareActProof } = await import("../core/spaces/presence-signer.js");
+  const proof = softwareActProof(path.join(droot, "wink-keys.json.device"), ident.id, asked.data.request);
+  const hdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify(proof)).toString("base64url") };
+  const done = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash }, hdr);
+  assert.ok(!done.error && done.data.upgraded, JSON.stringify(done).slice(0, 600));
+  assert.deepEqual([done.data.upgraded, done.data.moved.records.note, done.data.notMoved], [true, 3, []]);
+  // My Cloud's signed receipt verified against the space's published key, so Personal froze and points there
+  assert.equal(done.data.frozen, true, JSON.stringify(done.data));
+  const row = (await dcall("spaces.list")).data.find(x => x.id === home);
+  assert.equal(row && row.upgraded_to, id);
+  // the records are on the server, in the hosted space
+  for (const rid of ids) { const g = await dcall("records.get", { urn: `vyre://${id}/note/${rid}` }); assert.ok(!g.error && g.data.record.data.title, JSON.stringify(g.error)); }
+  const late = await dcall("records.create", { space: home, type: "note", data: { title: "late" } });
+  assert.equal(late.error && late.error.code, "moved", "Personal takes no new records");
 });

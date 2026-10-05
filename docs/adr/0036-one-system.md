@@ -115,6 +115,6 @@ line all render from `waiting.list`, so one answer clears every device.
 - A new surface gets screen, context, suggestions and needs from four calls.
 - Owners need small changes, each through its own contract: acting modules put `thread` and
   `call` on their acted events; the Capsule and chat call `context.report`; push reads
-  `waiting.list`. Each is listed in docs/work/cohesion.md with its owner.
+  `waiting.list`. Each is listed in team/archive/work-journals/cohesion.md with its owner.
 - Four more modules start on each machine. Each is idle until called or until an event it follows
   arrives, and none polls.
