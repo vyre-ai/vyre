@@ -81,9 +81,14 @@ struct Live {
     hotkey: Mutex<String>,
 }
 
+/// The short typed code (WINK-NNPP-PPPP) is off in a release build, on every platform (the user's ruling): pairing is the QR or the long code confirmed by three words, in the page. A development or
+/// walk build turns the bundled first-run page's typed path on at compile time with VYRE_TYPED_CODE=1. A release build has no such variable, so the page hides it and the command refuses.
+const TYPED_CODE: bool = matches!(option_env!("VYRE_TYPED_CODE"), Some("1"));
+
 #[derive(Serialize)]
 struct StateOut {
     paired: bool,
+    typed_code: bool,
     address: Option<String>,
     hotkey: String,
 }
@@ -189,7 +194,7 @@ fn bind_hotkey(app: &AppHandle) -> String {
 #[tauri::command]
 fn get_state(app: AppHandle, live: State<Live>) -> StateOut {
     let pin = pinned(&app);
-    StateOut { paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
+    StateOut { typed_code: TYPED_CODE, paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
 }
 
 // Commands that build a window are async: a synchronous command runs on the main thread, and creating a
@@ -324,6 +329,7 @@ fn unmount_drive(letter: String) -> Result<(), String> {
 /// box's own address. Only the bundled first-run page may call this; the address is checked by `pin_from_offer`.
 #[tauri::command]
 async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Option<String>, handle: Option<String>) -> Result<(), String> {
+    if !TYPED_CODE { return Err("Pairing by a typed code is off. Open your Vyre by its address and pair there.".into()); }
     // The address the pairing named, held to the rules for what the shell may pin (shell::pin_from_offer): on vyre.run it must be exactly the box's own handle's address.
     let choice = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "The pairing gave no address this app can open.")?;
     let pin = Pinned::parse(&choice.address).ok_or("The pairing gave no address this app can open.")?;

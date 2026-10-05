@@ -88,3 +88,16 @@ test("the TPM key signs only bytes the shell can summarise, behind the shell's o
   assert.match(rs, /MessageBoxW/);
   assert.match(read("../src/identity.rs"), /pub fn chain_summary/);
 });
+
+test("the typed code is hidden and refused in a release build, on Windows too: only VYRE_TYPED_CODE=1 at compile time turns it on (the user's ruling)", () => {
+  const rs = read("../app/src/main.rs");
+  assert.match(rs, /const TYPED_CODE: bool = matches!\(option_env!\("VYRE_TYPED_CODE"\), Some\("1"\)\);/, "off unless the build says 1");
+  const cmd = /async fn finish_typed_pair\([\s\S]*?\n}\n/.exec(rs)[0];
+  assert.ok(cmd.indexOf("if !TYPED_CODE") > -1 && cmd.indexOf("if !TYPED_CODE") < cmd.indexOf("pin_from_offer"), "the command refuses before it reads the pairing");
+  assert.match(rs, /StateOut \{ typed_code: TYPED_CODE,/, "the page is told");
+  const html = read("../app/ui/first-run.html");
+  assert.match(html, /<section id="typed" hidden>/, "the typed path is hidden by default");
+  assert.match(read("../app/ui/first-run.js"), /s\.typed_code\) document\.getElementById\("typed"\)\.hidden = false/, "shown only when the shell says so");
+  assert.ok(!/typed-go|WINK-7K4Q/.test(html.replace(/<section id="typed" hidden>[\s\S]*?<\/section>/, "")), "nothing about the typed code outside the hidden section");
+  assert.ok(!/VYRE_TYPED_CODE/.test(read("../../../.github/workflows/capsule-win.yml")), "the release workflow never sets it");
+});
