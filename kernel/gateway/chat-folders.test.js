@@ -114,10 +114,10 @@ test("unsharing takes the file back at once: the share record is removed (by who
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   const sh = await share(bob, `${dir}/shared.txt`);
   assert.ok(await D.get(dan, `${dir}/shared.txt`));
-  await k.gateway.records.remove(bob, "file-share", sh.id);
+  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused again");
   const again = await share(bob, `${dir}/shared.txt`);
-  await k.gateway.records.remove(ada, "file-share", again.id);
+  await k.gateway.records.remove(ada, "file-share", again.id, again.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "an admin may take a share back");
 });
 
