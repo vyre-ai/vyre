@@ -4,7 +4,7 @@
 // Deck (deck/fixtures/federation.json's move.plan/move.status/move.confirm, deck/fixtures/
 // onboard.json's status), the way deck/test/settings-drive.test.js checks Drive's rows against
 // Drive's shapes. onboard.machine is real and shipped (anywhere, 73d03d39); federation's move.*
-// contract is confirmed (docs/work/federation.md) but the engine itself is not built yet, so the
+// contract is confirmed (team/archive/work-journals/federation.md) but the engine itself is not built yet, so the
 // fixture is what this test (and the Deck) reads.
 
 import "../../scripts/mac-test-guard.mjs";

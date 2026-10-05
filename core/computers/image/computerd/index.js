@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // computerd: the helper inside every agent's computer, answering the routes in
-// docs/work/computers.md's computerd table. No framework dependency, matching the rest of this
+// team/archive/work-journals/computers.md's computerd table. No framework dependency, matching the rest of this
 // codebase's style (see modules/hands-desktop/client.js, which is the other end of this pipe).
 //
 // Every route requires `Authorization: Bearer <COMPUTERD_TOKEN>`. The token lives in an env var

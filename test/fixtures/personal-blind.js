@@ -1,5 +1,5 @@
 // @ts-check
-// A blind world for memory.answer (docs/work/memory-iq.md). The personal and held-out worlds are
+// A blind world for memory.answer (team/archive/work-journals/memory-iq.md). The personal and held-out worlds are
 // both used to tune the extraction rules now, so neither measures generalisation. This one was
 // written without reading the rules or either of those worlds' bodies, the way a solo developer
 // types to a coding assistant: lowercase, typos, run-ons, nicknames ("dani", "the wife", "ma",

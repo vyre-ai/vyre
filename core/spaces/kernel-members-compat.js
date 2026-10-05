@@ -5,7 +5,7 @@
 // `actor` and `presence` fields are ignored on this path (the chain says who acts, the kernel proof is the presence). A remote Space needs no chain.
 //
 // Not carried over, because the kernel does not have it: the legacy `emit` events (the kernel's own log is the history: member.set, owner.changed), a stored membership (nothing is
-// kept here), and the system actor of a join link (a link is a kernel invite). Role display names stay local to the module (not authority). See docs/work/kernel-2.md for the
+// kept here), and the system actor of a join link (a link is a kernel invite). Role display names stay local to the module (not authority). See team/archive/work-journals/kernel-2.md for the
 // callers still on the legacy shape.
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { SpacesError, abilitiesOf, roleRank } from "../../lib/spaces/members.js";

@@ -1,5 +1,5 @@
 // @ts-check
-// A fresh, sealed world for memory.answer (docs/work/memory-iq.md). It was written without reading
+// A fresh, sealed world for memory.answer (team/archive/work-journals/memory-iq.md). It was written without reading
 // the rules, the personal world, the held-out world, or the body of the blind world, so it measures
 // how far the rules generalise. Nobody tuning the rules should read past this header.
 //

@@ -1,5 +1,5 @@
 // @ts-check
-// The Vyre name directory on Cloudflare (docs/work/tailnet.md, plan sections 3.1 and 3.6c): a Worker
+// The Vyre name directory on Cloudflare (team/archive/work-journals/tailnet.md, plan sections 3.1 and 3.6c): a Worker
 // at names.vyre.run that holds the only vyre.run DNS credential. A box never sees it. One Durable
 // Object holds every name, so a claim and a limit can never race.
 //

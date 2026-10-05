@@ -7,8 +7,8 @@
 //   --out DIR   where to write the site (default: docs-site/ at the repo root, gitignored). The
 //               folder is emptied first.
 //
-// Publishes the pages docs/nav.json lists, in its order, and nothing else: docs/work/,
-// docs/proposals/ and docs/design/boards/ never go out. Each page is written twice, as HTML at
+// Publishes the pages docs/nav.json lists, in its order, and nothing else: docs/proposals/ and docs/design/boards/
+// never go out. Each page is written twice, as HTML at
 // its pretty URL (docs/using/capsule.md is /using/capsule) and as its own Markdown at the same
 // path with .md, for people who want the source and agents that read it. Pages that moved leave a
 // stub (`redirect:` in front matter); those become 301s in _redirects.

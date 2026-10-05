@@ -23,9 +23,9 @@ export const CALLS = Object.freeze({
   // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal carries the person's proof for the home's own challenge: the home checks it at its sealing process)
   seal: ["put", "reveal", "wrapKey", "import"],
   surfaces: ["open", "revoke"],
-  // A member's computer running one of this Space's sessions (docs/work/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
+  // A member's computer running one of this Space's sessions (team/archive/work-journals/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
   // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
-  leases: ["issue", "renew", "use"],
+  leases: ["issue", "renew", "use", "reinstate"],
   lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"],
 });
 

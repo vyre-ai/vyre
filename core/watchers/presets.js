@@ -310,7 +310,7 @@ export function buildPreset(o) {
   if (o.kind === "connector") {
     const decl = declared(String(o.connector || ""));
     if (!decl) throw new Error(`a connector preset names a connector this build declares (connector: ${Object.keys(DECLARATIONS).join(", ")})`);
-    return connectorPreset({ project: String(o.project || ""), connector: decl, poll: String(o.poll || ""), credential: String(o.credential || ""), vars: o.vars, when: o.when, label: o.label, lookback_days: o.lookback_days });
+    return connectorPreset({ project: String(o.project || ""), connector: decl, poll: String(o.poll || ""), credential: o.credential === undefined ? undefined : String(o.credential), ...(o.google ? { google: String(o.google) } : {}), vars: o.vars, when: o.when, label: o.label, lookback_days: o.lookback_days });
   }
   if (o.kind === "pr") return prPreset({ ...o, project: String(o.project || "") });
   if (o.kind === "feed") return feedPreset({ ...o, project: String(o.project || "") });
