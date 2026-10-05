@@ -1478,12 +1478,15 @@ test("agree key and held web: a web-held entry that carries agree at genesis or 
   await assert.rejects(C_.applyOp(state, op, { now: w.clock.t + 1 }), e => e.code === "web_key" || e.code === "exists");
 });
 
-test("spaces.identity.devices answers a module caller (memory reads it with ctx.call): the home person's own devices with their points, no private field", async t => {
+test("spaces.identity.devices.read answers memory and files (a module is not a person, so spaces.identity.devices denies it): the home person's own devices with their points, no private field, and nobody else", async t => {
   world(t);
   const d = await device(t);
   const made = await d.ok("spaces.identity.create", { name: "devmod" });
-  const r = await d.call("spaces.identity.devices", { person: made.id }, "module:memory");
+  assert.equal((await d.call("spaces.identity.devices", { person: made.id }, "module:memory")).error?.code, "denied", "the person read stays for people");
+  const r = await d.call("spaces.identity.devices.read", { person: made.id }, "module:memory");
   assert.ok(!r.error, JSON.stringify(r.error));
+  assert.ok(!(await d.call("spaces.identity.devices.read", { person: made.id }, "module:files")).error);
+  for (const caller of ["module:wink", "cli", "agent:kit"]) assert.ok((await d.call("spaces.identity.devices.read", { person: made.id }, caller)).error, caller);
   assert.equal(r.data.devices.length, 1);
   assert.deepEqual(Object.keys(r.data.devices[0]).sort(), ["agree", "device"]);
   assert.equal(r.data.devices[0].agree, fileIdentityStore(d.space).agree());

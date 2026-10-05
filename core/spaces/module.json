@@ -322,6 +322,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.devices.read",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.ecdh",
     "reach": "modules"
    },

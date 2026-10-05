@@ -1794,7 +1794,8 @@ export default {
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     // The devices of a person you share a space with, as public data only: each listed device's id and its key-agreement point (`agree`, the key a chat key is wrapped to). No label, no signing key, no other
     // field. The caller must be that person or share a space with them (both members of one space this device knows); a stranger gets nothing, the same answer as a person with no such devices.
-    tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => {
+    /** The public devices of a person the caller shares a space with (see spaces.identity.devices). @param {any} i @param {any} meta */
+    const devicesOf = async (i, meta) => {
       const target = String(i.person || "");
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(target)) return { devices: [] };
       const caller = await callerPerson(meta);
@@ -1810,7 +1811,15 @@ export default {
       const st = await stateOfPerson(target);
       const entries = st && Array.isArray(st.entries) ? st.entries : [];
       return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
-    }, { effect: "read" });
+    };
+    tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => devicesOf(i, meta), { effect: "read" });
+    // The same public read for the first-party modules that wrap keys server-side (memory, files): a module caller is not a person (spaces.identity.devices is reach person), so this is its own internal tool, with the same
+    // share-a-space check, answered for the person the call acts for (this home's person when no token rides). Public data only: a device id and its agreement point.
+    tool("spaces.identity.devices.read", "The devices of a person you share a space with: each one's id and its key-agreement point, for a first-party module that wraps a chat key. Public data only.", obj({ person: str }, ["person"]), async (i, meta) => {
+      onlyModules(meta, ["memory", "files"]);
+      return devicesOf(i, meta);
+    }, { internal: true });
+
     // This device's key-agreement step: ECDH between its agreement key (the `agree` point on its identity entry) and a peer's ephemeral public point. Only the 32-byte shared secret returns, never the private scalar.
     // First-party only: `files` unwraps a chat key with it. A module that is not on the list, an agent and a surface are refused (a secret that opens a wrapped key is not for them).
     tool("spaces.identity.ecdh", "ECDH with this device's key-agreement key: the shared secret for a peer's ephemeral public point (base64url, 65-byte uncompressed P-256). For first-party modules only.", obj({ epk: str }, ["epk"]), async (i, meta) => {
