@@ -19,6 +19,7 @@
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
+import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -1264,6 +1265,8 @@ export default {
       const rows = await listSpacesRaw(i0, meta0);
       return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id) })));
     };
+    /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
+    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
@@ -1273,7 +1276,7 @@ export default {
           let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames().label : null, displayName: id === K.space ? homeNames().displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
         return mine;
       }
@@ -1288,6 +1291,14 @@ export default {
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ tier: tierOf(row.home), ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
+      // the person's own (home) space, when this home has a kernel and they are its person: it is not a row of the module's table, so it is added here, always with a name and a tier
+      try {
+        if (K && typeof K.space === "string" && K.owner && !out.some(x => x.id === K.space)) {
+          const sId = /** @type {string} */ (me().id);
+          const m = typeof K.membership === "function" ? await K.membership(sId, K.space).catch(() => null) : null;
+          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+        }
+      } catch { /* no home row */ }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
       try {
         for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'member-of/%'").all())) {
@@ -1302,17 +1313,81 @@ export default {
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
 
+    /**
+     * Which Cloud space keeps this person's encrypted personal items and identity home: their own server's home space when this machine is a server (My Cloud), else the Cloud space they chose
+     * (`spaces.personal-host.set`) while they are still in it, else the earliest one they joined, else null. @param {{ id: string }[]} cloud the Cloud rows, earliest first
+     */
+    const personalHostOf = async (cloud) => {
+      if (config.isServer(ctx.config && ctx.config.machine) && K && typeof K.space === "string") return K.space;
+      const chosen = await kv.get("personal-host");
+      if (chosen && typeof chosen.space === "string" && cloud.some(c => c.id === chosen.space)) return chosen.space;
+      return cloud.length ? cloud[0].id : null;
+    };
+    // ---- the team server's per-member object storage (lib/spaces/member-storage.js): ciphertext a member keeps on a space this server hosts, for their own personal items and identity home. The caller
+    // is the member themself (the chain's one person, a member of that space); each call reaches only that person's own folder. The space's owner sets the cap. ----
+    const storage = createMemberStorage({ dir: root });
+    const MAX_OBJECT = 8 * 1024 * 1024;
+    /** @param {string} space @param {any} meta @param {boolean} [owner] @returns {Promise<{ person: string, role: string }>} */
+    const storageCaller = async (space, meta, owner = false) => {
+      if (!K || !K.spaces || typeof K.spaces.hosts !== "function" || K.spaces.hosts(String(space)) !== true) throw refuse("This server does not host that space.", "not_found");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person) throw refuse("Only a person can use their storage.", "forbidden");
+      const m = await K.membership(person, String(space)).catch(() => null);
+      if (!m || m.member !== true) throw refuse("You are not a member of that space.", "forbidden");
+      if (owner && m.role !== "owner") throw refuse("Only an owner can set a storage cap.", "forbidden");
+      return { person, role: String(m.role) };
+    };
+    const decode = (/** @type {any} */ v) => { if (typeof v !== "string" || v.length > Math.ceil(MAX_OBJECT * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(v)) throw refuse("An object is base64 text of at most 8 MB.", "bad_input"); return Buffer.from(v, "base64"); };
+    const wrapStorage = (/** @type {() => any} */ f) => { try { return f(); } catch (e) { const c = /** @type {any} */ (e).code; if (c === "over_cap") throw refuse("Your storage on this server is full.", "over_cap"); if (c === "bad_input") throw refuse(String(/** @type {Error} */ (e).message), "bad_input"); throw e; } };
+    tool("spaces.storage.put", "Keep an object (ciphertext, base64) in your own storage on a space this server hosts. Refused once your storage reaches the cap the owner set.", obj({ space: str, name: str, data: str }, ["space", "name", "data"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.put(i.space, person, i.name, decode(i.data)));
+    });
+    tool("spaces.storage.put-if", "Keep an object only if it is still what you last saw: `expected` is its sha256 in hex, or null when it should not exist yet. Answers { ok, sha256 }, with the sha256 that is there now.", obj({ space: str, name: str, data: str, expected: { type: ["string", "null"] } }, ["space", "name", "data", "expected"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.putIf(i.space, person, i.name, decode(i.data), i.expected));
+    });
+    tool("spaces.storage.get", "Read one of your objects: { data (base64), sha256 }, or null when it is not there.", obj({ space: str, name: str }, ["space", "name"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      const r = wrapStorage(() => storage.get(i.space, person, i.name));
+      return r ? { data: r.data.toString("base64"), sha256: r.sha256 } : null;
+    });
+    tool("spaces.storage.list", "Your objects under a prefix, one level: `names`, and `entries` ({ name, sha, size }) to compare against.", obj({ space: str, prefix: str }, ["space"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => ({ names: storage.list(i.space, person, i.prefix || ""), entries: storage.entries(i.space, person, i.prefix || "") }));
+    });
+    tool("spaces.storage.delete", "Delete one of your objects. With `expected` (its sha256, or null for \"must not exist\") it deletes only if it is still what you last saw, else answers { ok: false, sha256 } and deletes nothing. Never refused for the cap.", obj({ space: str, name: str, expected: { type: ["string", "null"] } }, ["space", "name"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return wrapStorage(() => storage.delete(i.space, person, i.name, i.expected));
+    });
+    tool("spaces.storage.usage", "How much of your storage on this space you have used, and the cap.", obj({ space: str }, ["space"]), async (i, meta) => {
+      const { person } = await storageCaller(i.space, meta);
+      return storage.usage(i.space, person);
+    });
+    tool("spaces.storage.set-cap", "As an owner: set the storage cap in bytes (0 for none) for one member, or for everyone with person \"*\".", obj({ space: str, person: str, bytes: { type: "number" } }, ["space", "person", "bytes"]), async (i, meta) => {
+      await storageCaller(i.space, meta, true);
+      return wrapStorage(() => storage.setCap(i.space, i.person, i.bytes));
+    });
+
+    tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
+      let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
+      if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");
+      await kv.put("personal-host", { space: i.space });
+      return { personal_host: i.space };
+    });
     tool("spaces.tier", "Which tier a space is on (basic or cloud), and the Cloud spaces this person is in. For a module that must refuse on a Basic personal space (Planner, tasks). With no space named, the home's own.",
       obj({ space: str }), async (/** @type {any} */ i, /** @type {any} */ meta) => {
         /** @type {any[]} */ let rows = [];
         try { rows = await listSpaces({}, meta); } catch { rows = []; }
         const cloud = rows.filter(r => r.tier === "cloud").map(r => ({ id: r.id, name: r.name ?? null, label: r.label ?? null }));
+        const personalHost = await personalHostOf(cloud);
         if (i.space && !(K && i.space === K.space)) {
           const r = rows.find(x => x.id === i.space);
           if (!r) throw refuse("No such space here.", "not_found");
-          return { tier: r.tier, cloud, time_zone: r.time_zone ?? null };
+          return { tier: r.tier, cloud, time_zone: r.time_zone ?? null, personal_host: personalHost };
         }
-        return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null };
+        return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null, personal_host: personalHost };
       }, { internal: true });
 
     tool("spaces.time-zone.set", "As an owner or admin: set a space's home time zone (an IANA zone such as America/Los_Angeles). Tasks, Flow schedules and business hours read it.", obj({ space: str, zone: str }, ["space", "zone"]), async (i, meta) => {
@@ -1325,6 +1400,11 @@ export default {
       await kv.put(`zone/${row.id}`, { zone: i.zone });
       return { space: row.id, time_zone: i.zone };
     });
+    // The Spaces this person belongs to, by name and role, for what an agent is told at the start of a session (core/sessions/environment.js): names and roles only, and only for a module.
+    tool("spaces.brief", "The person's Spaces by name and role, and which one this home is: what an agent's environment brief says. Names and roles only. Modules only.", obj(), async (i, meta) => {
+      const rows = /** @type {any[]} */ (await listSpaces(i, meta));
+      return { spaces: rows.map(x => ({ name: String(x.label || x.name || x.id), role: x.role || null, current: Boolean(K && x.id === K.space), zone: typeof x.time_zone === "string" ? x.time_zone : typeof x.zone === "string" ? x.zone : null })) };
+    }, { internal: true, callers: ["module"] });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);

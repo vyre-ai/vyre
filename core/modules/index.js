@@ -802,7 +802,8 @@ export class Registry {
       if (!base || base.hosted !== true || !base.gateway) return base; // a remote Space is reached by its own client, not by a module tool here
       return Object.freeze({ ...base, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
     };
-    return Object.freeze(Object.create(h, { for: { value: forSpace, enumerable: true } }));
+    // an own-key copy, getters kept live (`owner` follows an adoption), so the handle shows exactly the keys the kernel gave it (kernel/home.test.js)
+    return Object.freeze(Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(h), for: { value: forSpace, enumerable: true } }));
   }
 
   /**

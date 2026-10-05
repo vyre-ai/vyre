@@ -81,12 +81,47 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+  {
+    "name": "spaces.brief", "effect": "read", "reach": "modules"
+  },
    {
     "name": "spaces.tier", "effect": "read",
     "reach": "modules"
    },
    {
     "name": "spaces.time-zone.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.personal-host.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.put", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.put-if", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.get", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.list", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.delete", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.usage", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.set-cap", "effect": "write",
     "reach": "person"
    },
    {

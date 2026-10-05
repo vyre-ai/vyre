@@ -48,7 +48,7 @@ export default function NeedDetail() {
         <Text style={[type.title, { color: color.text }]}>{n.title}</Text>
         {who ? <Text style={[type.meta, { color: color.label }]}>{who}</Text> : null}
         {n.to?.length ? <Field label="To" value={n.to.join(", ")} /> : null}
-        <Field label={n.source === "gate" ? "What" : "Step"} value={n.detail} mono={n.mono} />
+        <Field label="Step" value={n.detail} mono={n.mono} />
         {n.why ? <Field label="Why" value={n.why} /> : null}
         {n.error ? <Field label="Last try" value={n.error} /> : null}
         <View style={styles.buttons}>
@@ -126,7 +126,7 @@ function HeldSend({ n }: { n: Need }) {
         ))}
         {!item && !line ? <Text style={[type.meta, { color: color.text2 }]}>Opening it…</Text> : null}
         {n.error ? <Field label="Last try" value={n.error} /> : null}
-        {line ? <Text accessibilityRole="alert" style={[type.read, { color: color.err }]}>{line}</Text> : null}
+        {line ? <Text accessibilityRole="alert" style={[type.read, { color: color.text }]}>{line}</Text> : null}
         {item && n.presence.required && !n.presence.covered ? <Text style={[type.meta, { color: color.text2 }]}>Sending asks for your yes on this device. Nothing goes until you give it.</Text> : null}
         <View style={styles.buttons}>
           <Button kind="primary" label={busy === "send" ? "Sending" : "Send"} disabled={!item || busy !== ""} onPress={() => void run("send")} />

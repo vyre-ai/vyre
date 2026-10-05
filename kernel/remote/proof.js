@@ -41,6 +41,8 @@ const CALLS = {
   unlend: (s, o) => ({ action: "grants.unoffer", resource: urn(s, "offer", "lend"), input: { unlend: { member: o.member, device: o.device } } }),
   inviteCreate: (s, i) => ({ action: "grants.invite", resource: urn(s, "invite"), input: i }),
   moveOut: (s, i) => ({ action: "project.move_out", resource: i.project, input: { to: i.to, plan_hash: i.plan_hash } }),
+  // the batch form of moveOut (one approval for every project in an upgrade): the proof binds the target, the plan hash and the sorted list of projects
+  moveOutMany: (s, i) => ({ action: "project.move_out", resource: urn(s, "project", "batch"), input: { to: i.to, plan_hash: i.plan_hash, projects: [...i.projects].map(String).sort() } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 
