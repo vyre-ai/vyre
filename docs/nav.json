@@ -11,6 +11,9 @@
     {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
       "using/chat.md",
+      "using/private-chats.md",
+      "using/spaces.md",
+      "using/time-zones.md",
       "using/cli.md",
       "using/claude-code.md",
       "using/sessions.md",

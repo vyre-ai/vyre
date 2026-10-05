@@ -80,6 +80,12 @@ Typing into a session you started in a terminal makes Vyre resume it from then o
 > The session's folder does not exist on the machine serving the Vyre app, so it cannot be resumed
 > there. Type into it on the machine where it ran.
 
+## Reply to a message
+
+Swipe a message on a phone, or long-press it anywhere, and choose **Reply**. The reply stays in the same timeline and carries a small quote of the message it answers: who said it and its first words (up to 140 characters). Tap the quote to jump to the original, which lights up for a moment. A reply never makes a side thread.
+
+**Highlight to assistant** is different: it pins a message, or the part of it you selected, above the composer as a quoted reference. Nothing is sent until you send your message.
+
 ## Answer a question inline
 
 When the session needs your approval, a card appears in the conversation with a **Needs you**
