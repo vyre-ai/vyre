@@ -1520,14 +1520,22 @@ export default {
       return { proof: b64u(await k.sign(Buffer.from(pullMessage(String(i.from), space, String(i.move_id), String(i.nonce))))) };
     }, { internal: true });
     // ---- upgrading this device's Personal space to My Cloud (kernel/gateway/upgrade.js, lib/spaces/upgrade.js). The device carries it: it holds this home's gateway and My Cloud's over the paired session. ----
-    /** The upgrade ports of the modules that own sealed data (memory, chats): `<module>.upgrade.plan` and `<module>.upgrade.move { to }`, for module callers only. A module without them is simply not part of the plan. @param {string} prefix */
-    const upgradePort = (prefix) => ({
-      plan: async () => { const r = await ctx.call(`${prefix}.plan`, {}); if (r && r.error) { if (r.error.code === "no_such_tool") return null; throw Object.assign(new Error(String(r.error.message || "not available")), { code: String(r.error.code || "unavailable") }); } return r.data; },
-      move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(`${prefix}.move`, a); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; },
-    });
-    const upgradePorts = async () => {
+    /**
+     * The upgrade ports of the modules that own sealed data. Chats are `work.chat.upgrade-plan { to }` and `work.chat.upgrade-move { to }`, memory is `memory.upgrade.plan` and `memory.upgrade.move { to }`:
+     * module callers only, and each runs AS THE PERSON in both Spaces, so this module relays the person it is acting for (`relay: true`, an allowlist in core/modules/index.js). A module without the tools is
+     * simply not part of the plan.
+     */
+    const PORT_TOOLS = { chats: { plan: "work.chat.upgrade-plan", move: "work.chat.upgrade-move" }, memory: { plan: "memory.upgrade.plan", move: "memory.upgrade.move" } };
+    const upgradePorts = async (/** @type {string} */ to) => {
       /** @type {Record<string, any>} */ const ports = {};
-      for (const [k, prefix] of [["chats", "chats.upgrade"], ["memory", "memory.upgrade"]]) { const p = upgradePort(prefix); let plan = null; try { plan = await p.plan(); } catch { plan = { blockers: ["could not be read"], counts: null }; } if (plan !== null) ports[k] = { plan: async () => plan, move: p.move }; }
+      for (const [k, t] of Object.entries(PORT_TOOLS)) {
+        let plan = null;
+        try {
+          const r = await ctx.call(t.plan, { to }, { relay: true });
+          if (r && r.error) { if (r.error.code === "no_such_tool") continue; plan = { blockers: [`could not be read: ${String(r.error.message || r.error.code).slice(0, 80)}`], counts: null }; } else plan = r.data;
+        } catch (e) { if (String(/** @type {any} */ (e).code) === "no_such_tool") continue; plan = { blockers: ["could not be read"], counts: null }; }
+        ports[k] = { plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(t.move, a, { relay: true }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
+      }
       return ports;
     };
     const upgradeSides = async (/** @type {string} */ to, /** @type {any} */ meta) => {
@@ -1544,13 +1552,13 @@ export default {
     };
     tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
       const { local, remote } = await upgradeSides(i.to, meta);
-      const ports = await upgradePorts();
+      const ports = await upgradePorts(String(i.to));
       try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
     tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. Afterwards this space points to My Cloud.", obj({ to: str, plan_hash: str }, ["to", "plan_hash"]), async (i, meta) => {
       const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
-      const ports = await upgradePorts();
+      const ports = await upgradePorts(String(i.to));
       let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
       if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
       if (plan.blockers.length) throw refuse(`This cannot start yet: ${plan.blockers.join("; ")}`, "blocked");
