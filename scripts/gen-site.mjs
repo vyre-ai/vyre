@@ -274,7 +274,7 @@ const homeBody = `
       <div class="piece"><span class="num">02</span>${I.server}<h3>Machines</h3><p>A Linux server, a Mac that stays on, your Windows PC, your phone. One Vyre across them.</p></div>
       <div class="piece"><span class="num">03</span>${I.agents}<h3>Agents</h3><p>Teammates with roles and notes. Watchers that act within your rules. They hand work to each other.</p></div>
       <div class="piece"><span class="num">04</span>${I.modules}<h3>Modules</h3><p>The building blocks you or your agents add: tools, connections and screens.</p></div>
-      <div class="piece"><span class="num">05</span>${I.people}<h3>People</h3><p>Next: spaces where a team shares a server and each person keeps their own. See the <a href="/direction/">direction</a>.</p></div>
+      <div class="piece"><span class="num">05</span>${I.people}<h3>People</h3><p>Next: team spaces, tagged Cloud, where a team shares a server and each person keeps their own. Your own space is Personal on your devices and My Cloud on your own server. See the <a href="/direction/">direction</a>.</p></div>
     </div>
   </div>
 </section>
@@ -447,7 +447,7 @@ const homeBody = `
       <div class="piece"><span class="num">Next</span><h3>Hardening</h3><p>Touch ID for sensitive terminal actions, fixes, and real-device passes.</p></div>
       <div class="piece"><span class="num">0.2.2</span><h3>Sessions</h3><p>Version history for every project, group chats with people and agents, memory across resets.</p></div>
       <div class="piece"><span class="num">0.2.3</span><h3>Scale</h3><p>Many sessions on one server, with a fair-share scheduler.</p></div>
-      <div class="piece"><span class="num">0.2.5</span><h3>Spaces</h3><p>One space for all your devices. Shared spaces for teams.</p></div>
+      <div class="piece"><span class="num">0.2.5</span><h3>Spaces</h3><p>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</p></div>
       <div class="piece"><span class="num">Modules</span><h3>In parallel</h3><p>Automation, texts and email, a CRM, documents and e-signature.</p></div>
     </div>
     <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
@@ -775,11 +775,12 @@ ${part('01', 'short', 'The short version', ul([
 ]))}
 ${part('02', 'server', 'Your data stays on your server', `<p>Vyre keeps its data on the machine you installed it on: sessions, memory, project files you chose, the vault, logs and settings. On a Linux server that is a set of Docker volumes; on a Mac that runs Vyre directly it is the <code>~/.vyre</code> folder. The vault is sealed on that machine. Nothing in it is sent to Vyre.</p>
 <p>When an agent works, your server sends the prompt to the AI provider you picked (Claude, Codex, Grok or OpenRouter), under your own account, and that provider's terms and privacy policy apply to it. The sign-in for each AI account stays on your server. Anything else you connect, such as GitHub, Google or Tailscale, is likewise your own account under that service's terms. Vyre requires Tailscale today, so Tailscale's policy covers the private network between your devices and your server.</p>
-<p>Voice is the same: when you talk to your assistant, your server sends the audio to the speech service you chose (Deepgram, OpenAI or ElevenLabs) with your own key. When a reply is spoken, your server sends the text of that reply, at most 2,000 characters, to the speech service you chose.</p>`)}
-${part('03', 'memory', 'Your personal memory and assistant', `<p>Your personal memory and your assistant are encrypted with your own key. They can be stored on a space's server, and the owners and admins of that server cannot read them.</p>
+<p>Voice is the same: when you talk to your assistant, your server sends the audio to the speech service you chose (Deepgram, OpenAI or ElevenLabs) with your own key. When a reply is spoken, your server sends the text of that reply, at most 2,000 characters, to the speech service you chose.</p>
+<p>Where a space lives has a name. Your space on your devices is Personal: it keeps chats and projects on your devices, with an encrypted backup to a team's Cloud. Your space on your own server is My Cloud: it adds Records, flows and Planner, reachable from anywhere. Team spaces run on a server and are tagged Cloud.</p>`)}
+${part('03', 'memory', 'Your personal memory and assistant', `<p>Your personal memory and your assistant are encrypted with your own key. They can be stored on a Cloud space's server, and the owners and admins of that server cannot read them.</p>
 <p>While your assistant is unlocked, your memory is readable only inside the running program and is never written to disk unencrypted. While your assistant is working on a server you don't own, that server's operator could in principle see what it is working on. To avoid that, run your assistant on your own computer or your own server.</p>
-<p>If you get your own server, your personal memory can move there.</p>`)}
-${part('04', 'chats', 'Your chats and their files', `<p>Each chat and its files are encrypted to the people in that chat. A space's owners and admins cannot read chats they are not in, even with access to the server's disk. File names are encrypted too.</p>
+<p>If you set up My Cloud on your own server, your personal memory can move there.</p>`)}
+${part('04', 'chats', 'Your chats and their files', `<p>Each chat and its files are encrypted to the people in that chat. A Cloud space's owners and admins cannot read chats they are not in, even with access to the server's disk. File names are encrypted too.</p>
 <p>While an agent works in a chat on a server, that server's operator could see that chat in use.</p>`)}
 ${part('05', 'relay', 'What the relay sees', `<p>The relay at <code>relay.vyre.run</code> lets a phone, a browser, a Windows PC or the setup page reach your server without a direct path. Your server connects to it when the relay is on, which pairing a device turns on. It carries traffic and nothing else.</p>
 ${ul([
