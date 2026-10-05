@@ -3,6 +3,15 @@
 # Normally built through box/compose.build.yml, or pulled as ghcr.io/vyre-ai/vyre.
 # Base images are pinned by digest, so `compose build --pull` (a source build) cannot be handed other bytes under the same tag. Bump a pin on purpose,
 # with the tag it was taken from in the comment (test/box-init.test.js fails an unpinned FROM or COPY --from).
+# The Wink node program (wink/forwarder, Go): built here from the repo's own source with its pinned dependency (go.sum), static, so the final image carries one binary and no Go.
+# golang:1.27-bookworm, taken 5 Oct 2026.
+FROM golang:1.27-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS winknode
+WORKDIR /src
+COPY wink/forwarder/go.mod wink/forwarder/go.sum ./
+RUN go mod download
+COPY wink/forwarder/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wink-forwarder .
+
 FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
 
 ARG CLAUDE_CODE_VERSION=latest
@@ -14,7 +23,20 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini iptables \
  && rm -rf /var/lib/apt/lists/*
 
-# No Tailscale in the image (user, 4 Oct): nothing in 0.3 depends on it. The Wink core reports "no-binary" until a built-in network replaces it.
+# The built-in network (Wink): Headscale for the control plane and wink-forwarder for the node. No Tailscale product is in the image: nothing to install, sign in to or see (user, 4 Oct).
+# vyred starts both on a server home (core/wink/netd.js); without them it reports "no-binary" and the relay carries everything. Headscale is one static release binary, pinned and
+# checked against the sum below before it is installed (bump the version and both sums together; test/box-wink-net.test.js keeps the pins in step with the Go node's).
+ARG HEADSCALE_VERSION=0.29.4
+ARG HEADSCALE_SHA256_AMD64=212ed0a884c0d3541e094c4bebbe94397df6f4e01bd3d7f059c520cb55e0d757
+ARG HEADSCALE_SHA256_ARM64=cbad8f02524cc6a94955a107a72e1d4cc652ae3f22e740d5c60884e7f384d60e
+RUN arch=$(dpkg --print-architecture) \
+ && case "$arch" in amd64) sum=$HEADSCALE_SHA256_AMD64 ;; arm64) sum=$HEADSCALE_SHA256_ARM64 ;; *) echo "no pinned headscale for $arch" >&2; exit 1 ;; esac \
+ && curl -fsSL --retry 3 -o /tmp/headscale "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${arch}" \
+ && echo "$sum  /tmp/headscale" | sha256sum -c - \
+ && install -m 0755 /tmp/headscale /usr/local/bin/headscale \
+ && rm /tmp/headscale \
+ && headscale version
+COPY --from=winknode /out/wink-forwarder /usr/local/bin/wink-forwarder
 
 # The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
 # /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's

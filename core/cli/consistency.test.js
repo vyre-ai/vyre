@@ -121,6 +121,9 @@ test("every read takes --json and prints JSON", async t => {
     let parsed;
     assert.doesNotThrow(() => { parsed = JSON.parse(r.out); }, `vyre ${args.join(" ")} --json printed: ${r.out.slice(0, 300)}`);
     assert.equal(r.out.trim().split("\n").length, 1, `vyre ${args.join(" ")} --json printed more than one line`);
+    // The planner keeps its records in the kernel: on a home with the kernel off it says so, plainly, and as JSON (the one answer this test allows to be an error).
+    const noKernel = /^(agenda|alarm|todo|notes)$/.test(args[0]) && parsed && parsed.error && parsed.error.code === "unavailable";
+    if (noKernel) continue;
     assert.ok(!(parsed && parsed.error), `vyre ${args.join(" ")} --json failed: ${r.out}`);
     assert.equal(r.code, 0, `vyre ${args.join(" ")} --json exited ${r.code}`);
   }

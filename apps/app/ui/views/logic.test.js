@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewRows, viewsOf } from "./logic.js";
+import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -217,4 +217,42 @@ test("a record's reveal and fill go to the box held for the owner's yes: the pag
   assert.match(page, /Hidden from AI; your assistant sees a placeholder/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
   assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
+});
+
+test("a type with several stored views of one kind: the first is the default, a name picks another", () => {
+  const matter = def("matter");
+  const t = { ...matter, views: [
+    { name: "all", type: "list", label: "All", columns: ["stage"] },
+    { name: "big", type: "list", label: "Big fees", columns: ["fee"], filter: "fee > 1000" },
+    { name: "by_stage", type: "board", groupBy: "stage" },
+  ] };
+  assert.deepEqual(storedViewsOf(t, "list"), [{ name: "all", label: "All", type: "list" }, { name: "big", label: "Big fees", type: "list" }]);
+  assert.deepEqual(viewDefOf(t).list.columns, ["stage"]);
+  assert.deepEqual(viewDefOf(t, undefined, "big").list, { ...viewDefOf(t, undefined, "big").list, columns: ["fee"], filter: "fee > 1000" });
+  assert.deepEqual(viewDefOf(t, undefined, "nope").list.columns, ["stage"], "an unknown name is the default");
+  assert.equal(viewDefOf(t, undefined, "big").board.groupBy, "stage", "a name picks within its own kind only");
+});
+
+test("a type with no stage gets a board on its first choice field", () => {
+  const lead = { name: "lead", label: "Lead", fields: [{ name: "name", kind: "text" }, { name: "practice_area", kind: "choice", label: "Practice area", options: ["PI", "EP"] }, { name: "city", kind: "text" }] };
+  const vd = viewDefOf(lead);
+  assert.equal(vd.board.groupBy, "practice_area");
+  assert.deepEqual(viewsOf(lead), ["list", "board"]);
+  const b = boardColumns(lead, [{ data: { practice_area: "PI" } }, { data: {} }], vd);
+  assert.deepEqual(b.columns.map((c) => c.id), ["PI", "EP", ""]);
+  assert.equal(viewDefOf({ name: "note", label: "Note", fields: [{ name: "title", kind: "text" }] }).board, undefined, "no choice field, no board");
+});
+
+test("the Space's own bookkeeping types are not a screen of the person's", () => {
+  for (const n of ["def-flow", "flow-state", "kit-proposal", "kit-install", "goal"]) assert.equal(isHiddenType({ name: n }), true, n);
+  for (const n of ["contact", "project", "kit", "flowers", "lead"]) assert.equal(isHiddenType({ name: n }), false, n);
+  assert.equal(isHiddenType({ name: "x", internal: true }), true);
+});
+
+test("a stored filter reads as words in the Filtered row", () => {
+  const t = { fields: [{ name: "stage", label: "Stage" }, { name: "fee", label: "Fee" }, { name: "due", label: "Due" }] };
+  assert.equal(filterWords(t, 'stage == "Intake"'), "Stage is Intake");
+  assert.equal(filterWords(t, 'stage != "Closed" and fee >= 100'), "Stage is not Closed and Fee is at least 100");
+  assert.equal(filterWords(t, "not empty(due)"), "Due is filled in");
+  assert.equal(filterWords(t, "empty(due)"), "Due is empty");
 });

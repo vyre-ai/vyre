@@ -146,3 +146,14 @@ every `unrung` answer.
 - The lock screen shows "Alarm", not the label. Showing labels would need its own opt-in.
 - A box with the wrong clock rings at the wrong time. The box image keeps NTP on; the drift
   check logs a jump but cannot fix the clock.
+
+## Amendment (5 Oct 2026): the planner is built on Vyre Records
+
+The user decided the planner has no place of its own. Its data is the Space's records, with one mechanism for each part:
+
+- Alarms, timers, reminders and `/later` tasks are `reminder` records; notes are `note` records. Both are plain record types the module declares (`needs.kernel.types`), so Records lists them and a Kit can link to them. Times a person reads (`at`, `snooze_until`, `done_at`) are datetimes; the engine's own moments (`next_fire`) are numbers.
+- Todos are the kernel's Tasks, assigned to the person (doer: the owner, output: a note). What a Task has no field for (list, priority, tags, pinned, project, repeat) rides in the Task's `form.planner`. The kernel's Tasks gained `edit` (words, note, due time, form, parent: the doer, a person, or whoever assigned it), `reopen` (done or skipped, no checker, no outward act) and `parent` (a sub-item); `task.edited` and `task.reopened` are events, and done and skipped stay terminal in the transition table (reopen is its own act, `TASK_REOPENS`). A repeating todo is a series: finishing one makes the next. The person may give a todo to an assistant (`assignee`), which then finishes it as its doer; a todo an assistant made for the person is the person's to finish, which the kernel enforces.
+- The calendar is the Space's `event` records: a connector's sync writes them, and the planner's own events are made as source `vyre`. The planner keeps no copy of any calendar (`planner_calendar` is gone) and no poll: it reads a window (a day back to 14 days ahead) and follows the kernel's `event.*` events.
+- Rings (`planner_firing`) and settings (`planner_state`) are system record types.
+
+The scheduler stays in the engine. It reads a working set loaded from the records at start, so every ring is as exact as before, and every change is queued to the gateway in order (a tool answers once it is saved). A record changed from outside is read back through the kernel's `reminder.*`, `note.*`, `task.*` and `event.*` events. `planner.fired`, `planner.acked`, the ring keys and the box ringing when the Mac is shut are unchanged. The planner needs the kernel; with it off every tool but `planner.parse` answers `unavailable`. `planner_items`, `planner_firings`, `planner_calendar`, `planner_state` and their migrations are deleted; there was no data to migrate. Decisions 1 to 11 above that name those tables describe the earlier store.
