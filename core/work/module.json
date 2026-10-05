@@ -97,6 +97,11 @@
         "effect": "read"
       },
       {
+        "name": "work.space-brief",
+        "effect": "read",
+        "reach": "modules"
+      },
+      {
         "name": "work.team.context",
         "summary": "what a teammate starts with for a project, minus sealed fields",
         "reach": "anyone",

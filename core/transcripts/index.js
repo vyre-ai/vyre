@@ -18,6 +18,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { redact } from "./sanitize.js";
+import { Linker } from "./links.js";
+import { withoutSeed } from "../../lib/seed.js";
 
 export { redact, scan } from "./sanitize.js";
 
@@ -26,7 +28,8 @@ export const CLIP = 4000;
 
 /**
  * @typedef {{ id: string, file: string, parent: string|null, size: number, mtime: number }} Entry
- * @typedef {{ seq: number, role: "user"|"assistant", ts: number, text: string, model?: string }} Turn
+ * @typedef {{ kind: string, ref: string }} Link
+ * @typedef {{ seq: number, role: "user"|"assistant", ts: number, text: string, model?: string, links?: Link[] }} Turn
  * @typedef {{ id: string, file: string, cwd: string|null, name: string|null, title: string|null,
  *   started: number, ended: number, human: number, parent: string|null, turns: Turn[], redacted: number, bad: number }} Transcript
  */
@@ -148,6 +151,8 @@ export function turnOf(o) {
   if (typeof c === "string") text = c;
   else if (Array.isArray(c)) text = c.filter(p => p && p.type === "text" && typeof p.text === "string").map(p => p.text).join("\n");
   text = text.trim();
+  // A rolled session's first message is Vyre's seed (lib/seed.js) and then the person's words: the seed repeats what earlier windows already stored, so only the words are the turn.
+  if (role === "user") text = withoutSeed(text).trim();
   // The model that wrote an assistant line (Claude Code records it on the message); a placeholder like "<synthetic>" is no model.
   const model = role === "assistant" && typeof m.model === "string" && m.model && !m.model.startsWith("<") ? m.model.slice(0, 80) : null;
   return text ? { role, text, ...(model ? { model } : {}) } : null;
@@ -175,6 +180,7 @@ export function read(file, who = {}) {
   const t = { id, file, cwd: null, name: null, title: null, started: 0, ended: 0, human: 1,
     parent: who.parent ?? null, turns: [], redacted: 0, bad: 0 };
   let program = null;
+  const linker = new Linker(null);
   // Line by line over the bytes rather than one giant string: a runaway transcript can be
   // hundreds of megabytes, and one string that size is the thing that falls over.
   let start = 0;
@@ -191,25 +197,62 @@ export function read(file, who = {}) {
       if (typeof o.customTitle === "string" && o.customTitle.trim()) t.name = redact(o.customTitle.trim().slice(0, 120)).text;
       continue;
     }
-    if (t.cwd === null && typeof o.cwd === "string" && o.cwd) t.cwd = o.cwd;
+    if (t.cwd === null && typeof o.cwd === "string" && o.cwd) { t.cwd = o.cwd; linker.setCwd(t.cwd); }
     if (program === null && (o.isSidechain !== undefined || o.entrypoint !== undefined)) {
       program = o.isSidechain === true || /^sdk/.test(String(o.entrypoint || ""));
     }
     const ts = Date.parse(o.timestamp || "") || 0;
     if (ts) { if (!t.started || ts < t.started) t.started = ts; if (ts > t.ended) t.ended = ts; }
+    linker.line(o);
     const turn = turnOf(o);
     if (!turn) continue;
     const clean = redact(turn.text.length > CLIP ? turn.text.slice(0, CLIP) : turn.text);
     t.redacted += clean.hits.length;
     t.turns.push({ seq: t.turns.length, role: turn.role, ts, text: clean.text, ...(turn.model ? { model: turn.model } : {}) });
+    linker.turn(t.turns);
     // The first real thing the user typed is a better title than anything generated. Command
     // echoes and injected context start with a tag and are not what anyone would call it.
     if (t.title === null && turn.role === "user" && !clean.text.startsWith("<") && clean.text.length > 3) {
       t.title = clean.text.replace(/\s+/g, " ").slice(0, 120);
     }
   }
+  linker.done(t.turns);
   if (program || t.parent) t.human = 0;
   return t;
+}
+
+/**
+ * The same turns read() counts, with each one's whole text (redacted, capped at TEXT_CAP rather
+ * than CLIP), for the seqs asked for. read() keeps a turn's first CLIP characters for the search
+ * index; a person asking for a turn verbatim gets all of it. `cut` says the cap still shortened it.
+ * @param {string} file @param {Iterable<number>} wanted
+ * @returns {Map<number, { role: "user"|"assistant", ts: number, text: string, cut: boolean }>}
+ */
+export function fullTurns(file, wanted) {
+  const want = new Set(wanted);
+  /** @type {Map<number, { role: "user"|"assistant", ts: number, text: string, cut: boolean }>} */
+  const out = new Map();
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return out; }
+  let start = 0, seq = 0;
+  const last = Math.max(-1, ...want);
+  while (start < buf.length && seq <= last) {
+    let end = buf.indexOf(0x0a, start);
+    if (end < 0) end = buf.length;
+    const line = buf.toString("utf8", start, end);
+    start = end + 1;
+    if (!line.trim()) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    const turn = turnOf(o);
+    if (!turn) continue;
+    if (want.has(seq)) {
+      const text = clean(turn.text, TEXT_CAP);
+      out.set(seq, { role: turn.role, ts: Date.parse(o.timestamp || "") || 0, text, cut: /\n\[\+\d+ characters\]$/.test(text) });
+    }
+    seq++;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -120,12 +120,13 @@ export function retriever({ search, personal = null, graph = null, askDir = null
 
   /**
    * @param {{ question: string, project_cwds?: string[], k?: number, personal?: boolean,
-   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, replies?: boolean, thread?: string|null, hint?: string, knobs?: any }} input
+   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, replies?: boolean, thread?: string|null, hint?: string, knobs?: any, links?: { kind?: string, ref: string }[] }} input
+   *   links: keep only turns that touched these (recall.search's links), for "what did we do to auth.ts"
    *   replies: a user turn carries the assistant turn that followed it (reply)
    *   thread: the thread asked from; its turns are favoured, never the only ones
    * @returns {Promise<{ passages: { id: string, session: string, seq: number, role: string, ts: number, text: string, name: string|null, cwd: string|null, score: number, via: string[], reply?: { seq: number, text: string } }[], expanded: string[], window: [number, number]|null }>}
    */
-  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, replies = true, thread = null, hint = "", knobs = {} }) {
+  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, replies = true, thread = null, hint = "", knobs = {}, links = [] }) {
     const words = contentWords(question);
     const base = words.length ? words.join(" ") : String(question);
     // A project is its folders and the sessions attached to it from elsewhere (picked threads).
@@ -134,7 +135,7 @@ export function retriever({ search, personal = null, graph = null, askDir = null
     const seen = expand && hint ? onScreen(hint, { project_cwds }) : [];
     const extra = [...new Set([...(expand ? expansions(question, { personal: seesPersonal, project_cwds }) : []), ...seen])].slice(0, MAX_EXPAND + seen.length);
     const queries = [{ q: base, limit: PER_SEARCH, via: "question" }, ...extra.map(x => ({ q: `${x} ${base}`, limit: PER_EXPANSION, via: `expand:${x}` }))];
-    const lists = await Promise.all(queries.map(async x => ({ via: x.via, hits: await search({ q: x.q, limit: x.limit, per_session: 3, ...scope, ...(hybrid ? {} : { hybrid: false }), ...knobs }) })));
+    const lists = await Promise.all(queries.map(async x => ({ via: x.via, hits: await search({ q: x.q, limit: x.limit, per_session: 3, ...scope, ...(links.length ? { links } : {}), ...(hybrid ? {} : { hybrid: false }), ...knobs }) })));
     const win = when ? timeWindow(question, now()) : null;
     const t0 = now();
     /** @type {Map<string, any>} */

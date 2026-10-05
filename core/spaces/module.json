@@ -81,6 +81,9 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+  {
+    "name": "spaces.brief", "effect": "read", "reach": "modules"
+  },
    {
     "name": "spaces.tier", "effect": "read",
     "reach": "modules"
