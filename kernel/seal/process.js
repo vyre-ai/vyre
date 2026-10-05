@@ -74,6 +74,14 @@ export class Sealer {
     const hint = r.hint_allowed ? hintOf(r.value) : undefined;
     return { ref: { sealed: cls.label, ref: meta.ref, present: true, valid_format: meta.valid_format, set_at: meta.set_at, ...(hint ? { hint } : {}) } };
   }
+  /** Move a sealed value into another Space's namespace without it leaving this process: opened under the source chain, sealed again under the target's (a new ref there). Both chains must be the same one person, no model in either; the kernel authorised the move (its records in both logs) before asking. */
+  reseal(r) {
+    const from = this.ctxOf(r.ctx), to = this.ctxOf(r.to_ctx);
+    need(from.one_person && to.one_person && !from.model_originated && !to.model_originated && from.person && from.person === to.person && from.space !== to.space, "human_only");
+    need(typeof r.to_record === "string" && typeof r.field === "string", "bad_input");
+    const v = this.open(from, r.ref);
+    return this.put({ ctx: to, record: r.to_record, field: r.field, class: v.meta.class, value: v.plaintext });
+  }
   open(ctx, ref) { const v = this.store.read("values", ref, ctx.space); need(v, "not_found"); return v; }
 
   /** Merge sealed slots into a template body. The merged text is a sealed derivative; the caller learns only that it happened. */
@@ -214,7 +222,7 @@ export class Sealer {
   async handle(req) {
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
-      case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
+      case "reseal": return this.reseal(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
       case "lookup": return this.lookup(req); case "match": return this.match(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }

@@ -40,6 +40,7 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     api: {
       put: i => withCtx("put", i, { record: i.record, field: i.field, class: i.class, value: i.value, hint_allowed: i.hint_allowed, unique: i.unique }),
       use: i => withCtx("use", i, { body: i.body, bindings: i.bindings ?? [{ slot: i.slot, ref: i.ref }], destination: i.destination, template: i.template, template_version: i.template_version, proof: i.proof }),
+      reseal: i => withCtx("reseal", i, { to_ctx: chainCtx(i.to_chain), ref: i.ref, to_record: i.to_record, field: i.field }),
       reveal: i => withCtx("reveal", i, { ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
     },
     deliver: i => withCtx("deliver", i, { output_ref: i.output_ref, sink: i.sink, envelope: i.envelope, proof: i.proof }),

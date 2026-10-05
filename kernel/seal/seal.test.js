@@ -575,3 +575,23 @@ test("SW-2: a real sealing child from a release-stamped copy ignores VYRE_SEAL_D
   assert.deepEqual([got.attested, got.strength], [false, "unattested"]);
   assert.deepEqual(await s.presenceProve({ chain: pch, op: "task.decide", fields: { k: "v" }, proof: phone.proof(pch, "task.decide", { k: "v" }) }), { ok: true, method: "unattested", strength: "unattested" });
 });
+
+test("reseal: a sealed value moves to another Space's namespace inside the process, for the same person only, and the old Space's chain cannot open the new ref", async t => {
+  const { dir, s, alex } = await setup(t);
+  const { ref } = await put(s, "123-45-6789");
+  const SPACE2 = "spc_testspace0002", REC2 = `vyre://${SPACE2}/contact/c_jane`;
+  const from = person(), to = person("per_alex", "deck", SPACE2);
+  const moved = await s.api.reseal({ chain: from, to_chain: to, ref: ref.ref, to_record: REC2, field: "ssn" });
+  assert.notEqual(moved.ref.ref, ref.ref, "a new reference in the target");
+  assert.deepEqual(Object.keys(moved.ref).sort(), ["present", "ref", "sealed", "set_at", "valid_format"], "a placeholder, no value");
+  assert.equal(diskHolds(dir, "123-45-6789"), null, "no plaintext on disk");
+  // The target reveals it to the person with a proof; the source's chain does not open the new ref.
+  const proof = alex.proof(to, "seal.reveal", { ref: moved.ref.ref, purpose: "check" });
+  assert.equal((await s.api.reveal({ chain: to, ref: moved.ref.ref, purpose: "check", proof })).value, "123-45-6789");
+  assert.equal(await code(s.api.reveal({ chain: from, ref: moved.ref.ref, purpose: "check", proof: alex.proof(from, "seal.reveal", { ref: moved.ref.ref, purpose: "check" }) })), "not_found");
+  // Refused: another person on either end, a model on either end, the same Space, a ref that is not the source's.
+  assert.equal(await code(s.api.reseal({ chain: from, to_chain: person("per_zoe", "deck", SPACE2), ref: ref.ref, to_record: REC2, field: "ssn" })), "human_only");
+  assert.equal(await code(s.api.reseal({ chain: withAgent(), to_chain: to, ref: ref.ref, to_record: REC2, field: "ssn" })), "human_only");
+  assert.equal(await code(s.api.reseal({ chain: from, to_chain: from, ref: ref.ref, to_record: REC, field: "ssn" })), "human_only");
+  assert.equal(await code(s.api.reseal({ chain: to, to_chain: from, ref: ref.ref, to_record: REC, field: "ssn" })), "not_found");
+});
