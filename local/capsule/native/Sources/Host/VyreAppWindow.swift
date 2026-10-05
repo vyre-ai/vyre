@@ -56,6 +56,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         cfg.userContentController.add(WeakScriptHandler(self), name: "vyre")
         // A boxless window says so before the bridge is made, so the page can start as a browser with no box of its own.
         if boxless { cfg.userContentController.addUserScript(WKUserScript(source: "window.__vyreBoxless = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
+        // The app's version, for the page to show the line that matches it (a release candidate's install line differs from a stable one's).
+        cfg.userContentController.addUserScript(WKUserScript(source: Self.versionScript(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
         view.navigationDelegate = self
@@ -140,6 +142,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         guard JSONSerialization.isValidJSONObject(v), let d = try? JSONSerialization.data(withJSONObject: v), let s = String(data: d, encoding: .utf8) else { return "null" }
         return s
     }
+    /// Sets window.__vyreVersion before the bridge is made.
+    static func versionScript(_ version: String) -> String { "window.__vyreVersion = \(js(version));" }
     static func js(_ s: String) -> String { json([s]).dropFirst().dropLast().description }
 
     // MARK: Navigation and files
@@ -175,6 +179,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
       window.__vyreShell = {
         kind: "mac",
         boxless: !!window.__vyreBoxless,
+        version: window.__vyreVersion || "",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },

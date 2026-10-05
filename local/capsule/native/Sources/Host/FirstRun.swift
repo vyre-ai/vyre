@@ -71,8 +71,16 @@ public enum FirstRunWords {
 
     public static let serverStepTitle = "Run this on your server"
     public static let serverStepLine = "Open the server's terminal and paste the line. It shows a code when it is ready."
-    /// The one line a server runs (what vyre.run/i serves).
-    public static let installLine = "curl -fsSL vyre.run/i | sh"
+    /// The one line a server runs for a stable release (what vyre.run/i serves).
+    public static let stableInstallLine = "curl -fsSL vyre.run/i | sh"
+
+    /// The line for this app's version. A release candidate (a hyphen in the version, such as 0.3.0-rc.1) is not on vyre.run/i, so its line comes from that
+    /// release's own files; a stable version, or a version that is not plain version characters, gets the stable line.
+    public static func installLine(version: String?) -> String {
+        guard let v = version, v.contains("-"), v.range(of: "^[0-9A-Za-z][0-9A-Za-z.+-]*$", options: .regularExpression) != nil else { return stableInstallLine }
+        let base = "https://github.com/vyre-ai/vyre/releases/download/v\(v)"
+        return "curl -fsSL \(base)/install-box.sh | VYRE_BOX_URL=\(base)/ sh"
+    }
     public static let copyLine = "Copy the line"
     public static let serverShowsCode = "My server shows a code"
 

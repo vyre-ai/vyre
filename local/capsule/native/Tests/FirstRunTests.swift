@@ -65,6 +65,8 @@ let firstRunSuite = Suite("first run") { t in
         MainActor.assumeIsolated {
             t.ok(VyreAppWindow.bridgeSource.contains("boxless: !!window.__vyreBoxless"))
             t.eq(VyreAppWindow.shared.boxless, false, "closed, it is not boxless")
+            t.ok(VyreAppWindow.bridgeSource.contains("version: window.__vyreVersion"), "the bridge carries the app version")
+            t.eq(VyreAppWindow.versionScript("0.3.0-rc.1"), "window.__vyreVersion = \"0.3.0-rc.1\";")
         }
     }
 
@@ -80,7 +82,11 @@ let firstRunSuite = Suite("first run") { t in
         t.ok(FirstRunWords.failure("could not download node").body.hasSuffix("then try again. Nothing was changed."), "network words")
         t.eq(FirstRunWords.failure("").body, "Setting up did not finish. Nothing was changed.")
         t.eq(FirstRunWords.failure(nil), FirstRunWords.failure(""))
-        t.eq(FirstRunWords.installLine, "curl -fsSL vyre.run/i | sh")
+        t.eq(FirstRunWords.stableInstallLine, "curl -fsSL vyre.run/i | sh")
+        t.eq(FirstRunWords.installLine(version: "0.3.0"), "curl -fsSL vyre.run/i | sh")
+        t.eq(FirstRunWords.installLine(version: nil), "curl -fsSL vyre.run/i | sh")
+        t.eq(FirstRunWords.installLine(version: "0.3.0-rc.1"), "curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/ sh")
+        t.eq(FirstRunWords.installLine(version: "0.3.0-rc.1; rm -rf ~"), "curl -fsSL vyre.run/i | sh", "a version that is not plain characters never reaches the line")
         t.eq(FirstRunWords.settingSteps.count, 3)
         for w in [FirstRunWords.title, FirstRunWords.line, FirstRunWords.hereLine, FirstRunWords.serverLine, FirstRunWords.passwordNote] {
             t.ok(!w.contains("\u{2014}") && !w.contains("port"), "no dash, no technical words: \(w)")

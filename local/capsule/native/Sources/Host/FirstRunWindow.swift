@@ -165,13 +165,13 @@ struct FirstRunView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(FirstRunWords.serverStepTitle).font(.system(size: 22, weight: .semibold))
             Text(FirstRunWords.serverStepLine).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Text(FirstRunWords.installLine)
+            Text(FirstRunWords.installLine(version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String))
                 .font(.system(size: 13, design: .monospaced)).textSelection(.enabled)
                 .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.12)))
             Button(FirstRunWords.copyLine) {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(FirstRunWords.installLine, forType: .string)
+                NSPasteboard.general.setString(FirstRunWords.installLine(version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String), forType: .string)
             }
             HStack {
                 Button(FirstRunWords.serverShowsCode) { controller.serverShowsCode() }.keyboardShortcut(.defaultAction)
