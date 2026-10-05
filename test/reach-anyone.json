@@ -1421,6 +1421,18 @@
    "module": "threads",
    "reason": "callers list (harness) plus a check in the daemon route: the pid must be the caller's own process or one above it, where the OS can tell; claudeOf needs a running claude; a live session bound to another process is refused"
   },
+  "threads.chat-of": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; it names a run's chat and nothing in it"
+  },
+  "threads.chat-stop": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
+  "threads.chat-switch": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
   "threads.commands": {
    "module": "threads",
    "reason": "read-only: the slash commands a thread offers"
@@ -1460,6 +1472,10 @@
   "threads.model": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.of-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the module (work.chat.get) has already checked that the person is in the chat"
   },
   "threads.queue": {
    "module": "threads",
@@ -1909,6 +1925,30 @@
    "module": "work",
    "reason": "held at the Gate: the call goes through the generated tool surface, so the caller's own grants decide and an outward act is held as a task for a person or asks for presence; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   },
+  "work.chat.change": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
+  },
+  "work.chat.create": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
+  },
+  "work.chat.get": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; read-only"
+  },
+  "work.chat.list": {
+   "module": "work",
+   "reason": "read-only: the chat rows the caller may read through Records (title, project, who, when, status, where it lives); `open` comes from the kernel's chat read, never from the record's people; the kernel: every call is authorized with the chain the kernel builds for the caller"
+  },
+  "work.chat.move": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
+  },
+  "work.chat.rename": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
+  },
   "work.know.answer": {
    "module": "work",
    "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"
@@ -1936,14 +1976,6 @@
   "work.project.rename": {
    "module": "work",
    "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
-  },
-  "work.session.move": {
-   "module": "work",
-   "reason": "guarded: the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
-  },
-  "work.session.rename": {
-   "module": "work",
-   "reason": "guarded: the record update runs under the CALLER's own chain (records.update); the thread side is threads.rename, which refuses a caller who may not reach that thread"
   },
   "work.situation": {
    "module": "work",

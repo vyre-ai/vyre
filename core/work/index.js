@@ -95,6 +95,11 @@ export default {
       hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
       hear("thread.started", p => hubOf().onStarted(p));
       hear("thread.stopped", p => hubOf().onStopped(p));
+      // a terminal session's chat was made (the switchboard, from the Harness's SessionStart)
+      hear("thread.chat", p => hubOf().onChatLinked(p));
+      // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
+      hear("chat.created", p => hubOf().onChatCreated(p));
+      hear("chat.changed", p => hubOf().onChatChanged(p));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => hubOf().onThreadRenamed(p));
@@ -102,7 +107,7 @@ export default {
       hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "session-summary.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this build: the other directions still work */ }
+        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
       // every Space has a General project, made with it
       void hubOf().generalProject().catch(() => {});
@@ -264,20 +269,89 @@ export default {
         return { project: r.urn, slug: r.data.slug, name: r.data.name, drive_path: r.data.drive_path };
       },
     });
-    ctx.tool("work.session.rename", {
-      description: "Rename a session, from Records' side: the record's title and the thread's name agree, the session's id does not change.",
-      input: obj({ thread: { type: "string" }, title: { type: "string" } }, ["thread", "title"]),
+    // A person reads a chat's row through Records (title, who, when, project, where it lives) if they may read the project; the chat itself (its messages, its runs) only if they are in it: the kernel's own
+    // chat read decides, never the record's `people`.
+    const inChat = (/** @type {any} */ chain, /** @type {string} */ chat) => { try { kernelOf().chats.read(chain, chat); return true; } catch { return false; } };
+    const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
+    ctx.tool("work.chat.list", {
+      description: "The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
+      input: obj({ project: { type: "string" }, q: { type: "string" }, mine: { type: "boolean" }, limit: { type: "integer" } }),
       run: async (input, extra) => {
-        const rec = await hubOf().sessionRecord(input.thread);
-        if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
-        const r = await hubOf().renameSession(rec, input.title, "record", await chainOf(extra));
-        return { thread: r.data.thread, title: r.data.title };
+        const chain = await chainOf(extra);
+        const k = kernelOf();
+        const proj = input.project ? await hubOf().projectOf(input.project) : null;
+        const res = await k.records.query(chain, "chat-record", { page: { limit: Math.min(Number(input.limit) || 200, 500) } });
+        const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
+        let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
+        // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
+        const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
+          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
+          if (!inChat(chain, r.data.chat)) return base;
+          const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
+          const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
+          return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
+        }));
+        if (input.mine) rows = rows.filter((/** @type {any} */ r) => r.open);
+        rows.sort((/** @type {any} */ a, /** @type {any} */ b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
+        return { chats: rows };
       },
     });
-    ctx.tool("work.session.move", {
-      description: "Move to project: file a session under another Project (a short name or a record address). Its record, Drive folder and the project's session list follow; its id, times and transcript pointer stay.",
-      input: obj({ thread: { type: "string" }, project: { type: "string" } }, ["thread", "project"]),
-      run: async (input, extra) => { const r = await hubOf().moveSession(input.thread, input.project, await chainOf(extra)); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
+    ctx.tool("work.chat.get", {
+      description: "One chat you are in: its record plus its slots (the assistants and models running in it, with thread, provider, model, account and status) and its transcript address. A chat you are not in does not exist for you.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        const chat = String(input.chat);
+        const c = (() => { try { return kernelOf().chats.read(chain, chat); } catch { return null; } })();
+        if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const rec = await hubOf().chatRecord(chat);
+        const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
+        const slots = runs.map((/** @type {any} */ r) => ({ slot: r.agent ? `agent:${r.agent}` : `model:${r.provider || "claude"}/${r.model || ""}#${r.thread.slice(0, 6)}`, thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
+        return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
+      },
+    });
+    ctx.tool("work.chat.create", {
+      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.",
+      input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } } }),
+      run: async (input, extra) => {
+        if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
+        const chain = await chainOf(extra);
+        const made = await kernelOf().chats.create(chain, { people: input.people || [], assistants: input.agents || [] });
+        const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
+        return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
+      },
+    });
+    ctx.tool("work.chat.change", {
+      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
+      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } } }, ["chat"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents });
+        return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
+      },
+    });
+    ctx.tool("work.chat.rename", {
+      description: "Rename a chat: the record's title and every run's name agree; its id does not change.",
+      input: obj({ chat: { type: "string" }, title: { type: "string" } }, ["chat", "title"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const rec = await hubOf().chatRecord(String(input.chat));
+        if (!rec) throw Object.assign(new Error("no record of that chat"), { code: "not_found" });
+        const r = await hubOf().renameChat(rec, input.title, "record", chain);
+        return { chat: r.data.chat, title: r.data.title };
+      },
+    });
+    ctx.tool("work.chat.move", {
+      description: "Move to project: file a chat under another Project (a short name or a record address). Its record and Drive folders follow; its id, times and who is in it stay.",
+      input: obj({ chat: { type: "string" }, project: { type: "string" } }, ["chat", "project"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const r = await hubOf().moveChat(String(input.chat), input.project, chain);
+        return { chat: r.data.chat, project: r.data.project && r.data.project.urn, drive: r.data.drive, location: r.data.location };
+      },
     });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",

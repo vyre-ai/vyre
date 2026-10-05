@@ -47,7 +47,7 @@ function rig(t, which, now = () => Date.now(), extra = /** @type {any} */ ({})) 
   };
   const send = async (/** @type {string} */ grp, /** @type {string} */ who, /** @type {string} */ message, /** @type {string} */ text, /** @type {string[]} */ to) => {
     const meta = await call(grp, who);
-    const r = await groups.send({ session: grp, text, message, to, cwd: "/tmp" }, meta);
+    const r = await groups.send({ chat: grp, text, message, to, cwd: "/tmp" }, meta);
     await groups.idle();
     return r;
   };

@@ -101,7 +101,7 @@ async function world(t) {
     const stop = async () => { s.closeAllConnections(); s.close(); await reg.stop(); db.close(); };
     const watch = async (/** @type {string} */ who, /** @type {string} */ session) => {
       /** @type {any[]} */ const frames = [];
-      const c = connect({ open: async ({ from }) => { const r = await as(who)("stream.open", { session, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${port}${r.data.path}`); }, onFrame: f => frames.push(f), backoff: { base: 5, cap: 10 } });
+      const c = connect({ open: async ({ from }) => { const r = await as(who)("stream.open", { chat: session, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${port}${r.data.path}`); }, onFrame: f => frames.push(f), backoff: { base: 5, cap: 10 } });
       t.after(() => c.close());
       return { frames, close: () => c.close() };
     };
@@ -121,7 +121,7 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const bob = await b.watch("bob", chat.id);
-  const sent = await b.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
+  const sent = await b.as("bob")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
   await until(() => b.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
   const kit = kitThread(b, chat.id);
@@ -152,10 +152,10 @@ test("a turn asked by carol is stamped with carol's session, and chat and asker 
   const carol = await b.watch("carol", chat.id);
   // carol also names another chat and another asker in her own call: the stream takes them from the group and the caller's chain, never from the input
   // (the input schema now refuses a key the tool does not take, so the spoof is refused outright and nothing is sent or asked)
-  const spoof = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work, chat: other.id, asker: BOB });
+  const spoof = await b.as("carol")("stream.send", { chat: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work, chat: other.id, asker: BOB });
   assert.equal(spoof.error && spoof.error.code, "bad_input", "chat and asker are not inputs of stream.send");
   assert.equal(w.asked.length, 0, "nothing was asked of the Switchboard for the spoof");
-  const sent = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work });
+  const sent = await b.as("carol")("stream.send", { chat: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
   await until(() => carol.frames.some(f => f.type === "session.text-done"), "the reply", 20_000);
   assert.match(textOf(carol.frames), /hello from carol/);
@@ -172,7 +172,7 @@ test("a person who is not in the chat gets no session and no reply, from the str
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const bob = await b.watch("bob", chat.id);
   // ada is not in the chat: the stream refuses her send
-  const out = await b.as("ada")("stream.send", { session: chat.id, text: "ADASECRET", to: ["assistant:assistant"], cwd: w.work });
+  const out = await b.as("ada")("stream.send", { chat: chat.id, text: "ADASECRET", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(out.error, "an outsider's send is refused");
   assert.equal(w.asked.length, 0, "no session was asked for");
   // and a turn the stream itself starts for an asker who is not in the chat: the kernel refuses the session, nothing is opened, no reply reaches the chat
@@ -194,7 +194,7 @@ test("a restart in the middle of a turn: the seam reopens the person's session, 
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const bob1 = await b1.watch("bob", chat.id);
-  const sent = await b1.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
+  const sent = await b1.as("bob")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && sent.error.message);
   await until(() => b1.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
   const kit = kitThread(b1, chat.id);
@@ -206,7 +206,7 @@ test("a restart in the middle of a turn: the seam reopens the person's session, 
   t.after(() => b2.stop().catch(() => {}));
   const bob = await b2.watch("bob", chat.id);
   await until(() => b2.ks.list().length === 1, "the session to be reopened by reopenPending");
-  const again = await b2.as("bob")("stream.send", { session: chat.id, text: "after the restart", to: ["assistant:assistant"], cwd: w.work });
+  const again = await b2.as("bob")("stream.send", { chat: chat.id, text: "after the restart", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!again.error, again.error && again.error.message);
   await until(() => /after the restart/.test(textOf(bob.frames)), "the reply after the restart", 20_000);
   assert.ok(!bob.frames.some(f => f.type === "session.status" && f.data.state === "failed"), "nothing says it could not resume");
@@ -217,7 +217,7 @@ test("a restart where the person can no longer be reopened: the turn is given up
   const w = await world(t);
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
-  const sent = await b1.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
+  const sent = await b1.as("bob")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && sent.error.message);
   await until(() => b1.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
   const kit = kitThread(b1, chat.id);
@@ -250,7 +250,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
   // carol asks (she also writes `as` naming bob (`asker` is not an input any more): the author is the chain the call was made under, never the input)
-  const first = await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work, as: `person:${BOB}` });
+  const first = await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work, as: `person:${BOB}` });
   assert.ok(!first.error, first.error && first.error.message);
   await until(() => textOf(watcher.frames).includes("SECRET"), "carol's turn to be running");
   const [sid] = b.ks.list();
@@ -259,7 +259,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   const before = await grant();
   assert.notEqual(before, "allowed", "an action carol's turn may not do is refused");
   // the admin speaks while carol's turn runs
-  const second = await b.as("bob")("stream.send", { session: chat.id, text: "ok, continue", to: ["assistant:assistant"], cwd: w.work });
+  const second = await b.as("bob")("stream.send", { chat: chat.id, text: "ok, continue", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!second.error, second.error && second.error.message);
   await until(() => userMsgs(watcher.frames).includes("ok, continue"), "the admin's own words in the chat");
   assert.equal(w.asked.length, 1, "...while the admin has no turn yet");
@@ -282,10 +282,10 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
-  assert.ok(!(await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
-  assert.ok(!(await b.as("bob")("stream.send", { session: chat.id, text: "B-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
-  assert.ok(!(await b.as("ada")("stream.send", { session: chat.id, text: "A-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("ada")("stream.send", { chat: chat.id, text: "A-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => userMsgs(watcher.frames).length >= 3, "both words in the chat");
   assert.deepEqual(userMsgs(watcher.frames).slice(1), ["B-ONE", "A-ONE"], "both are in the chat at once, in arrival order");
   assert.equal(w.asked.length, 1, "neither has a turn yet");
@@ -301,12 +301,12 @@ test("V3: the stream does not hold, retry or queue: the Switchboard queues anoth
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
-  assert.ok(!(await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
   /** @type {any[]} */ const sends = [];
   const real = b.reg.call.bind(b.reg);
   b.reg.call = async (/** @type {any} */ ...a) => { const r = await real(...a); if (a[0] === "threads.send" && /QUEUEDONE/.test(String(a[1] && a[1].text))) sends.push({ input: a[1], r }); return r; };
-  assert.ok(!(await b.as("bob")("stream.send", { session: chat.id, text: "QUEUEDONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "QUEUEDONE", to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => sends.length >= 1, "the send");
   assert.equal(sends[0].input.asker, BOB, "the asker is the bare person id (per_...), converted at the boundary");
   assert.equal(sends[0].input.chat, chat.id);
@@ -343,9 +343,9 @@ test("V4: a restart with a message queued at the Switchboard: the queue is the S
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watch1 = await b1.watch("bob", chat.id);
-  assert.ok(!(await b1.as("carol")("stream.send", { session: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b1.as("carol")("stream.send", { chat: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => textOf(watch1.frames).includes("SECRET"), "the running turn");
-  assert.ok(!(await b1.as("bob")("stream.send", { session: chat.id, text: "WAITING-B", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b1.as("bob")("stream.send", { chat: chat.id, text: "WAITING-B", to: ["assistant:assistant"], cwd: w.work })).error);
   const kit = kitThread(b1, chat.id);
   const outbox = () => { const db = open(w.paths.db); try { return db.prepare("SELECT text FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid").all(); } finally { db.close(); } };
   const inbox = () => { const db = open(w.paths.db); try { return db.prepare("SELECT text, kturn FROM threads_inbox WHERE thread = ? ORDER BY id").all(kit); } finally { db.close(); } };
