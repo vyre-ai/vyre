@@ -88,7 +88,7 @@ export async function addThisDevice(o) {
   };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
-    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}) };
+    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}), ...(typeof o.key.agree === "string" ? { agree: o.key.agree } : {}) };
     const base = { commit, tag, name: deviceName.slice(0, 64), entry };
     const first = await wait(base);
     const nb = String(first && first.nb || "");

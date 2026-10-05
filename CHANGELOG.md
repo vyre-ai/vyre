@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(wink): pairing passes the phone's key-agreement point (`agree`) into `spaces.identity.enrol` beside its key and label (platform-3's daemon-agree), so a newly paired device can open private chats at once. The phone's wait call and the phone client (relay/client/phonepair.js) carry `entry.agree`; only a 65-byte uncompressed P-256 point is passed on, anything else is dropped and the pairing still completes.
+
 - fix(runner): the home keeps a lent session's chat id only when the lender's person is in that chat (the kernel's chat read decision), and otherwise drops it, so a lender can no longer make someone else's chat show as running on their computer (reviewer-4's LOW on runner.places).
 
 - feat(runner): `runner.places { space }` (reach person) answers where the caller's chats run: `[{ chat, session, computer, device, online }]`. `runner.start` takes an optional `chat` id (checked for shape, kept in the home's lent table, never on the wire); the home lists its lent sessions to the daemon only. Only chats the caller is in (kernel chats.mine) appear; no chat list means no rows. The computer's name and online state come from relay.devices.all.
