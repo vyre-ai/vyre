@@ -84,3 +84,20 @@ test("a /rename inside Claude Code reaches the record: only a CHANGE in the tran
   assert.equal(await title(), "Set in Records", "the transcript's unchanged name does not overwrite it");
   void rec;
 });
+
+test("a Basic personal space keeps a project as a plain device folder: no Drive, the record's folder is this computer's home for it, and a session is filed under it", async () => {
+  const { kernel, rows } = fake();
+  delete /** @type {any} */ (kernel).drive;
+  /** @type {string[]} */ const asked = [];
+  const hub = createHub({ kernel, call: async (tool, input) => { asked.push(tool); return tool === "projects.adopt" ? { data: { slug: input.slug, name: input.name, home: "/home/alex/Work/rivera" } } : null; } });
+  const proj = await hub.createProject({ who: "person" }, { name: "Rivera" });
+  assert.equal(proj.data.drive_path, "/home/alex/Work/rivera", "the device folder, not a Drive path");
+  assert.ok(asked.includes("projects.adopt"));
+  assert.equal([...rows.values()].filter(r => r.type === "project").length, 1);
+  const general = await hub.createProject({ who: "person" }, { name: "Other" });
+  assert.equal(general.data.drive_path, "/home/alex/Work/rivera", "each adopt answers its own home (the stand-in answers one)");
+  // moving a session between projects has no folders to move, and does not fail for it
+  const sess = await kernel.records.create(null, "session-summary", { title: "Intake", thread: "0f0e0d0c-0b0a-4908", project: { urn: proj.urn }, drive: proj.data.drive_path });
+  const moved = await hub.moveSession(sess.data.thread, general.urn, { who: "p" });
+  assert.equal(moved.data.project.urn, general.urn);
+});
