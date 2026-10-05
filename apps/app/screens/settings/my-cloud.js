@@ -79,3 +79,6 @@ export function offerFor(s, hasServer) {
   if (s.cloud) return "move";
   return hasServer ? "setup" : "none";
 }
+
+/** The person's paired servers from relay.devices.list ({ devices: [{ id, name, kind }] }): the ones My Cloud can be made on. @param {any} data @returns {{ id: string, name: string }[]} */
+export const serversOf = (data) => (Array.isArray(data?.devices) ? data.devices : []).filter((/** @type {any} */ d) => d && d.kind === "server" && typeof d.id === "string" && typeof d.name === "string").map((/** @type {any} */ d) => ({ id: d.id, name: d.name }));

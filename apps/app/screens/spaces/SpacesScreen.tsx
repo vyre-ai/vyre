@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
+import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, IconButton, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
@@ -44,6 +45,7 @@ export function SpacesScreen() {
   return (
     <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
       actions={<Menu trigger={<IconButton icon="plus" label="Create or join a space" />} items={[{ label: "Create a space", onPress: () => router.push("/u/install/create" as never) }, { label: "Join a space", onPress: () => router.push("/u/install/join" as never) }]} />}>
+      {MOCK ? null : <MyCloudCard />}
       {ELSEWHERE ? (
         <Banner icon="refresh">
           <View className="gap-s2">

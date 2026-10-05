@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
+import { serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
 
 const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
 
@@ -44,4 +44,9 @@ test("my cloud: the offer follows the rows: setup, then move, then done", () => 
   assert.equal(offerFor(cloudState([personal, cloud]), false), "move");
   assert.equal(offerFor(cloudState([{ ...personal, upgraded_to: "spc_c" }, cloud]), true), "moved");
   assert.equal(offerFor(cloudState([{ id: "spc_t", tier: "cloud", displayName: "Northwind" }]), true), "none", "a team space is not My Cloud and there is no Personal row");
+});
+
+test("my cloud: only paired servers can host it", () => {
+  assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "app" }, { id: "srv", name: "Studio mini", kind: "server" }] }), [{ id: "srv", name: "Studio mini" }]);
+  assert.deepEqual(serversOf(null), []);
 });
