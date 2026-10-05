@@ -165,3 +165,11 @@ test("the short typed code is off unless a development build turns it on", async
   }
   assert.match(readFileSync(new URL("./MacServer.tsx", import.meta.url), "utf8"), /if \(!RC\.typedCode\)/, "and the Mac's typed-code window");
 });
+
+test("the words step after a long code uses the session's own kind: a real (watch) session shows the words and waits for the yes, never the typed-words form", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  const step = src.slice(src.indexOf('} else if (step === "scanwords") {'), src.indexOf('} else if (step === "recovery") {'));
+  assert.match(step, /<PairServer session=\{session\}/);
+  assert.doesNotMatch(step, /<PairWords/);
+});

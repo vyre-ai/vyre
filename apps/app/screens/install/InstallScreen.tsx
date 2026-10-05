@@ -385,7 +385,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "scanwords") {
     body = session ? (
       <Page title="Check the three words" sub="Your other device shows the same three words.">
-        <PairWords session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={() => { setSession(null); setWrong(pairSayHere(COPY.rejected)); setStep(scanStep); }} />
+        <PairServer session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={(say) => { setSession(null); setWrong(say ?? pairSayHere(COPY.rejected)); setStep(scanStep); }} />
       </Page>
     ) : null;
   } else if (step === "recovery") {
