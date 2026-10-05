@@ -543,15 +543,16 @@ export function createTasks(cfg) {
     /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
-     * @param {{ id: string, chain: any, action: string, resource: string, bind?: string }} q
+     * @param {{ id: string, chain: any, action: string, resource: string, bind?: string, outward?: boolean }} q
      */
     approvedAct(q) {
       const a = api.approvalFor(q.id), t = tasks.get(q.id);
       // The bind: when the approval recorded the bind of exactly what the person saw (form.bind, a digest of the request as it would be sent), the request being sent must carry that same one: a different
-      // request, or one that states none, is a different act and is refused (the connectors' calendar sync checks it for itself; this makes it universal for every outward act). An approval that recorded
-      // none is judged as before.
+      // request, or one that states none, is a different act and is refused (the connectors' calendar sync checks it for itself; this makes it universal for every outward act). A task approved for an outward act always records one (a Flow's held act, the calendar sync, the vault's held request).
       const recorded = t && t.form && typeof /** @type {any} */ (t.form).bind === "string" ? /** @type {any} */ (t.form).bind : null;
       const asked = typeof q.bind === "string" && q.bind ? q.bind : null;
+      // One rule, no older looser path: an OUTWARD approval that recorded no bind covers nothing, since it could be spent on any act of that kind.
+      if (q.outward === true && recorded === null) return false;
       if (recorded !== null && recorded !== asked) return false;
       return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
     },

@@ -139,3 +139,16 @@ test("a tool that says `asks: true` is outward and names the test that proves it
   }
   for (const n of Object.keys(ASKS_PROOF)) assert.ok(tools.some(t => t.name === n && t.asks), `${n} is in ASKS_PROOF but does not say asks: true`);
 });
+
+test("every outward tool the registry holds is bound to its exact input: a card carries a digest of the whole input, and a changed input has another digest", async () => {
+  const { holdFields } = await import("../core/approvals/index.js");
+  const held = tools.filter(t => t.outward === true && !t.asks).map(t => t.name);
+  assert.ok(held.length > 10, `found the registry-held outward tools (${held.length})`);
+  for (const name of held) {
+    const a = holdFields({ tool: name, to: "x@example.com", body: "one", nested: { n: [1, 2] } }), b = holdFields({ tool: name, to: "x@example.com", body: "two", nested: { n: [1, 2] } });
+    const c = holdFields({ nested: { n: [1, 2] }, body: "one", to: "x@example.com", tool: name });
+    assert.match(a.input_sha256, /^[0-9a-f]{32}$/, `${name}: a digest of the whole input`);
+    assert.notEqual(a.input_sha256, b.input_sha256, `${name}: a changed input is another act`);
+    assert.equal(a.input_sha256, c.input_sha256, `${name}: key order is not a different act`);
+  }
+});

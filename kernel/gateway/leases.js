@@ -138,8 +138,8 @@ export function createLeases(cfg) {
       const action = ["GET", "HEAD"].includes(method) ? "service.read" : "service.call";
       // LF-1: everything is decided first (the service, then each Drive file), and only when ALL allow is each decision counted through `enforce`, which is what applies a grant's
       // rate, budget (meter) and once. A request refused anywhere counts nothing; a request that goes ahead is counted exactly once per decision, like any gated act.
-      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval), ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) } : {}) } : {}) });
-      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, ...(typeof i.session !== "string" ? { bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) } : {}) };
+      const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/service/${encodeURIComponent(connector)}`, ...(i.approval ? { approval: String(i.approval), bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) } : {}) });
+      if (d.effect === "ask") return { held: true, kind: action, summary: `${method} ${connector}${path}`, decision: d.decision, bind: requestBind({ connector, method, path, query: i.query, body: i.body, headers: i.headers, upload: i.upload, saveTo: i.saveTo }) };
       if (d.effect !== "allow") throw new KernelError("not_found", "that request is not open to this caller");
       const decisions = [d];
       const file = i.upload !== undefined || i.saveTo !== undefined || i.stream === true;
