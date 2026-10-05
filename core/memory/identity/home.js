@@ -34,6 +34,18 @@ export class FileBackend {
   put(name, bytes) { const f = this.path(name); fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, bytes, { mode: 0o600 }); fs.renameSync(tmp, f); }
   /** @param {string} name @returns {Buffer|null} */
   get(name) { const f = this.path(name); try { return fs.readFileSync(f); } catch { return null; } }
+  /**
+   * A write that lands only if the object is what the writer last saw (its sha256, or null for "not there"): the one compare-and-set a second device needs so two devices never overwrite each other. A server's
+   * own storage does this atomically; here it is check-then-write.
+   * @param {string} name @param {Buffer|string} bytes @param {string|null} expected @returns {boolean}
+   */
+  putIf(name, bytes, expected) {
+    const cur = this.get(name);
+    const have = cur ? crypto.createHash("sha256").update(cur).digest("hex") : null;
+    if (have !== expected) return false;
+    this.put(name, bytes);
+    return true;
+  }
   /** @param {string} prefix @returns {string[]} */
   list(prefix) {
     const base = this.path(prefix.replace(/\/$/, ""));

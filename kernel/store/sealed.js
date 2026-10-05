@@ -45,64 +45,116 @@ export function createSealedStore(cfg) {
   const sealed = (/** @type {any} */ v, /** @type {string} */ what) => enc(seal(JSON.stringify(v), key, aad(identity, what)));
   const opened = (/** @type {any} */ b, /** @type {string} */ what) => JSON.parse(open(dec(b), key, aad(identity, what)).toString("utf8"));
 
-  // what is on the server now, and its size, so the cap and the status are exact
-  /** @type {Map<string, number>} */ const sizes = new Map();
-  const put = (/** @type {string} */ name, /** @type {Buffer} */ b) => { backend.put(name, b); sizes.set(name, b.length); };
-  const del = (/** @type {string} */ name) => { backend.delete(name); sizes.delete(name); };
-  for (const n of [keyFile]) sizes.set(n, bytes(backend.get(n)));
+  // What is on the server now, with each object's sha256 (what this device last saw, for the compare-and-set) and size (the cap and the status are exact).
+  /** @type {Map<string, { sha: string, size: number }>} */ let known = new Map();
+  const sha = (/** @type {Buffer} */ b) => crypto.createHash("sha256").update(b).digest("hex");
+  const noteKnown = (/** @type {string} */ name, /** @type {Buffer|null} */ b) => { if (b) known.set(name, { sha: sha(b), size: b.length }); else known.delete(name); };
+  const device = String(cfg.device || "d").replace(/[^A-Za-z0-9]/g, "").slice(0, 16) || "d";
+  const typesName = `${dir(identity)}/types.json`;
+  /** @type {Record<string, any>} */ let typeMap = {};
+  /** How many entries of the change log THIS device has written (it appends only to its own segments, so two devices never write the same object). */
+  let ownChanges = 0;
 
-  // load: types, records and the change log, opened into process memory
-  /** @type {any[]} */ const types = [], records = [], changes = [];
-  const typesRaw = backend.get(`${dir(identity)}/types.json`);
-  if (typesRaw) { sizes.set(`${dir(identity)}/types.json`, bytes(typesRaw)); for (const t of Object.values(opened(typesRaw, "types"))) types.push(t); }
-  for (const n of backend.list(`${dir(identity)}/rec`)) { const b = backend.get(n); sizes.set(n, bytes(b)); records.push(opened(b, "rec")); }
-  const segs = backend.list(`${dir(identity)}/chg`).sort((/** @type {string} */ a, /** @type {string} */ b) => Number(a.split("/").pop()) - Number(b.split("/").pop()));
-  for (const n of segs) { const b = backend.get(n); sizes.set(n, bytes(b)); changes.push(...opened(b, "chg")); }
-  let nChanges = changes.length;
-  const typeMap = Object.fromEntries(types.map(t => [t.name, t]));
+  /** Everything on the server, opened into process memory: types, records, and the change log (every device's segments merged by time). */
+  const load = () => {
+    known = new Map();
+    /** @type {any[]} */ const types = [], records = [], changes = [];
+    const kf = backend.get(keyFile); noteKnown(keyFile, kf);
+    const typesRaw = backend.get(typesName); noteKnown(typesName, typesRaw);
+    typeMap = typesRaw ? opened(typesRaw, "types") : {};
+    for (const t of Object.values(typeMap)) types.push(t);
+    for (const n of backend.list(`${dir(identity)}/rec`)) { const b = backend.get(n); if (!b) continue; noteKnown(n, b); records.push(opened(b, "rec")); }
+    ownChanges = 0;
+    for (const n of backend.list(`${dir(identity)}/chg`)) {
+      const b = backend.get(n); if (!b) continue; noteKnown(n, b);
+      const seg = opened(b, "chg");
+      if (n.split("/").pop()?.startsWith(`${device}-`)) ownChanges += seg.length;
+      changes.push(...seg);
+    }
+    changes.sort((x, y) => (x.at || 0) - (y.at || 0));
+    changes.forEach((e, i) => { e.cursor = `c${i + 1}`; });
+    return { types, records, changes };
+  };
+  /** A fingerprint of what the server holds, to see whether another device wrote. */
+  const serverState = () => {
+    const out = [];
+    for (const n of [typesName, ...backend.list(`${dir(identity)}/rec`), ...backend.list(`${dir(identity)}/chg`)]) { const b = backend.get(n); if (b) out.push(`${n}:${sha(b)}`); }
+    return out.sort().join("|");
+  };
+  /** The same fingerprint from what this device has read and written itself: equal to the server's when no other device has written. */
+  const mine = () => [...known.entries()].filter(([n]) => n !== keyFile).map(([n, v]) => `${n}:${v.sha}`).sort().join("|");
 
-  const usedBytes = () => { let n = 0; for (const v of sizes.values()) n += v; return n; };
+  const usedBytes = () => { let n = 0; for (const v of known.values()) n += v.size; return n; };
   const capNow = () => (cfg.cap ? Number(cfg.cap()) || 0 : 0);
   const WRITES = new Set(["create", "update", "remove", "restore", "define"]);
+  const conflict = () => { stale = true; return fail("version_conflict", "another of the person's devices changed this: it was reloaded, try again"); };
+  /** One write: only if the object is what this device last saw; a second device's write is never overwritten. */
+  const put = (/** @type {string} */ name, /** @type {Buffer} */ b) => {
+    const was = known.get(name);
+    if (typeof backend.putIf === "function") { if (!backend.putIf(name, b, was ? was.sha : null)) throw conflict(); } else backend.put(name, b);
+    noteKnown(name, b);
+  };
+  const del = (/** @type {string} */ name) => { backend.delete(name); known.delete(name); };
 
-  /** @type {any} */ let inner = createMemoryStore({
-    ...(cfg.clock ? { clock: cfg.clock } : {}),
-    initial: { types, records, changes },
-    hook: (op, args) => {
-      if (!WRITES.has(op)) return;
-      if (op === "define" && allow) for (const t of (args[0].add_types || [])) if (!allow.has(t.name)) throw fail("unsupported", `a personal store keeps only ${[...allow].join(", ")}`);
-      const cap = capNow();
-      if (cap > 0 && usedBytes() >= cap) throw fail("unavailable", "this person's storage on the server is full: the space owner sets the limit");
-    },
-    persist: {
-      type: (name, def) => { if (def) typeMap[name] = def; else delete typeMap[name]; put(`${dir(identity)}/types.json`, sealed(typeMap, "types")); },
-      record: r => { put(`${dir(identity)}/rec/${nameOf(r.type, r.id)}`, sealed(r, "rec")); },
-      change: e => {
-        const n = Math.floor(nChanges / SEG), name = `${dir(identity)}/chg/${n}`;
-        const cur = n * SEG < nChanges && backend.get(name) ? opened(backend.get(name), "chg") : [];
-        cur.push(e); nChanges++;
-        put(name, sealed(cur, "chg"));
+  let stale = false;
+  const build = () => {
+    const loaded = load();
+    return createMemoryStore({
+      ...(cfg.clock ? { clock: cfg.clock } : {}),
+      initial: loaded,
+      hook: (op, args) => {
+        if (!WRITES.has(op)) return;
+        if (op === "define" && allow) for (const t of (args[0].add_types || [])) if (!allow.has(t.name)) throw fail("unsupported", `a personal store keeps only ${[...allow].join(", ")}`);
+        const cap = capNow();
+        if (cap > 0 && usedBytes() >= cap) throw fail("unavailable", "this person's storage on the server is full: the space owner sets the limit");
       },
-      destroy: (type, id) => del(`${dir(identity)}/rec/${nameOf(type, id)}`),
-      scrub: (type, fields) => {
-        for (const name of backend.list(`${dir(identity)}/chg`)) {
-          const seg = opened(backend.get(name), "chg");
-          for (const e of seg) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
-          put(name, sealed(seg, "chg"));
-        }
+      persist: {
+        type: (name, def) => { if (def) typeMap[name] = def; else delete typeMap[name]; put(typesName, sealed(typeMap, "types")); },
+        record: r => { put(`${dir(identity)}/rec/${nameOf(r.type, r.id)}`, sealed(r, "rec")); },
+        change: e => {
+          const n = Math.floor(ownChanges / SEG), name = `${dir(identity)}/chg/${device}-${n}`;
+          const have = backend.get(name);
+          const cur = have ? opened(have, "chg") : [];
+          cur.push(e); ownChanges++;
+          put(name, sealed(cur, "chg"));
+        },
+        destroy: (type, id) => del(`${dir(identity)}/rec/${nameOf(type, id)}`),
+        scrub: (type, fields) => {
+          for (const name of backend.list(`${dir(identity)}/chg`)) {
+            const seg = opened(backend.get(name), "chg");
+            for (const e of seg) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+            put(name, sealed(seg, "chg"));
+          }
+        },
       },
-    },
-  });
+    });
+  };
+  /** @type {any} */ let inner = build();
+  /** Another device (or a failed write) changed what the server holds: read it again before answering, so the phone sees what the laptop wrote and the other way round. */
+  const refresh = () => {
+    if (!inner) return;
+    if (!stale && serverState() === mine()) return;
+    inner = build(); stale = false;
+  };
 
   const locked = () => fail("unavailable", "the personal records are locked: they open for the person's own assistant after their yes");
   // The store a caller sees: every call goes to the live store, and none after `lock()`.
-  const store = new Proxy({}, { get: (_t, prop) => { if (prop === "then") return undefined; if (prop === "version") return async () => ({ store: "sealed-personal", version: "1", conformance: CONFORMANCE_REVISION }); return (/** @type {any[]} */ ...a) => { if (!inner) return Promise.reject(locked()); const f = inner[prop]; return typeof f === "function" ? f.apply(inner, a) : f; }; } });
+  const store = new Proxy({}, { get: (_t, prop) => { if (prop === "then") return undefined; if (prop === "version") return async () => ({ store: "sealed-personal", version: "1", conformance: CONFORMANCE_REVISION });
+    return (/** @type {any[]} */ ...a) => {
+      if (!inner) return Promise.reject(locked());
+      try { refresh(); } catch (e) { return Promise.reject(e); }
+      const f = inner[prop];
+      if (typeof f !== "function") return f;
+      // a write that lost to another device is refused as version_conflict and the next call reads what that device wrote
+      const r = f.apply(inner, a);
+      return r;
+    }; } });
   return Object.freeze({
     store: /** @type {any} */ (store),
     /** The bytes on the server, the owner's limit, and what is left. */
     status: () => ({ used_bytes: usedBytes(), cap_bytes: capNow() }),
     /** Wipe the key and drop the in-memory rows: nothing is readable until it is opened again from the IMK. */
-    lock() { key.fill(0); inner = null; },
+    lock() { key.fill(0); inner = null; known = new Map(); },
     get unlocked() { return inner !== null; },
   });
 }
