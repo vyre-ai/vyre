@@ -31,7 +31,6 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
-    /** @type {any} */ let engine = null;
     /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
@@ -73,11 +72,14 @@ export default {
       });
     }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
+    // One engine per Space: a call that runs in a hosted Space has that Space's own kernel handle and its own database (`ctx.store.db` is a router that picks the running Space's file), and an engine built once
+    // holds the home's. Keyed by the running Space's id, built inside the call.
+    /** @type {Map<string, any>} */ const engines = new Map();
     const engineOf = () => {
-      if (engine) return engine;
       const k = kernelOf();
+      if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
-      return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
+      const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
     };
     const engineerOf = () => {
       if (engineer) return engineer;
