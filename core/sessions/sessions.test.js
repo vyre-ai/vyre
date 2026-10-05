@@ -207,7 +207,8 @@ for (const driver of ["cli", "sdk"]) {
     const argv = w.launches().at(-1).argv;
     const i = argv.indexOf("--append-system-prompt");
     assert.ok(i >= 0, "appended");
-    assert.equal(argv[i + 1], "Vyre's own words.\n\nAnswer alex in short paragraphs.");
+    assert.ok(argv[i + 1].startsWith("[Vyre environment]"), "the environment first");
+    assert.ok(argv[i + 1].endsWith("[/Vyre environment]\n\nVyre's own words.\n\nAnswer alex in short paragraphs."));
 
     // A bad edit, undone: a new version holding the old text.
     await set("assistant", "Something worse.");
@@ -223,7 +224,9 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(b.id);
     const argv2 = w.launches().at(-1).argv;
     assert.ok(!argv2.includes("--append-system-prompt"));
-    assert.equal(argv2[argv2.indexOf("--system-prompt") + 1], "You are juno, and nothing else.\n\nVyre's own words.");
+    const replaced = argv2[argv2.indexOf("--system-prompt") + 1];
+    assert.ok(replaced.startsWith("[Vyre environment]"), "a replacing prompt replaces only the role layer");
+    assert.ok(replaced.endsWith("[/Vyre environment]\n\nYou are juno, and nothing else.\n\nVyre's own words."));
     const p = (await w.tool("sessions.prompt.preview", {})).data;
     assert.equal(p.mode, "replace");
   });

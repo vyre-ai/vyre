@@ -90,12 +90,13 @@ const shim = (t, w, name) => {
   fs.mkdirSync(bin, { recursive: true });
   fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-acp.js"), path.join(bin, name));
   const saved = { PATH: process.env.PATH, FAKE_ACP_STORE: process.env.FAKE_ACP_STORE };
+  process.env.FAKE_ACP_LOG = path.join(w.root, "acp.log");
   process.env.PATH = `${bin}:${process.env.PATH}`;
   process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
   fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
   // Codex starts in "agent" and Vyre moves it to "workspace-write" (drivers/codex.js).
   Object.assign(process.env, { FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "agent" });
-  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 };
 const noMemoryBlocks = w => {
   const real = w.d.registry.call.bind(w.d.registry);
@@ -119,13 +120,14 @@ for (const driver of ["cli", "sdk"]) {
     const at = launch.argv.indexOf("--append-system-prompt");
     seen.claude = at >= 0 ? launch.argv[at + 1] : "";
     for (const provider of ["grok", "codex"]) {
+      const n0 = w.acpPrompts().length;
       const th = (await w.tool("threads.start", { cwd: w.work, provider, prompt: "where is it hosted", surface: "deck" })).data;
       await w.finished(th.id);
-      seen[provider] = (await w.said(th.id))[0];
+      seen[provider] = w.acpPrompts()[n0].join("");
       // A second prompt does not repeat it.
       await w.tool("threads.send", { thread: th.id, text: "and the domain", surface: "deck" });
       await w.finished(th.id, 2);
-      assert.doesNotMatch((await w.said(th.id))[1], /Vyre environment/, `${provider}: once per process`);
+      assert.doesNotMatch(w.acpPrompts().at(-1).join(""), /Vyre environment/, `${provider}: once per process`);
     }
     for (const [who, text] of Object.entries(seen)) {
       assert.ok(text.includes("[Vyre environment]"), who);
@@ -141,7 +143,7 @@ for (const driver of ["cli", "sdk"]) {
     await w.tool("threads.stop", { thread: th.id });
     await w.tool("threads.send", { thread: th.id, text: "after the stop", surface: "deck" });
     await w.finished(th.id, 2);
-    assert.match((await w.said(th.id))[1], /\[Vyre environment\][\s\S]*after the stop$/, "a resumed session knows the state as it is now");
+    assert.match(w.acpPrompts().at(-1).join(""), /\[Vyre environment\][\s\S]*after the stop$/, "a resumed session knows the state as it is now");
   });
 
   test(`${driver}: a replacing role prompt replaces only the role layer: the environment stays, first`, { skip }, async t => {

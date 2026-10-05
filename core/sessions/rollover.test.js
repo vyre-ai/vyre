@@ -26,10 +26,11 @@ const withGrok = (t, w) => {
   fs.mkdirSync(bin, { recursive: true });
   fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-acp.js"), path.join(bin, "grok"));
   const saved = { PATH: process.env.PATH, FAKE_ACP_STORE: process.env.FAKE_ACP_STORE };
+  process.env.FAKE_ACP_LOG = path.join(w.root, "acp.log");
   process.env.PATH = `${bin}:${process.env.PATH}`;
   process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
   fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
-  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { delete process.env.FAKE_ACP_LOG; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 };
 
 for (const driver of ["cli", "sdk"]) {
@@ -220,8 +221,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.payload.share > 0.75 && ev.payload.window === 258_400, JSON.stringify(ev.payload));
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck" })).error, undefined);
     await w.finished(th.id, 3);
-    const said = (await w.said(th.id)).at(-1);
-    assert.match(said, /^echo: \[Vyre continuation:/);
+    const said = "echo: " + w.acpPrompts().at(-1).join("");
+    assert.match(said, /^echo: \[Vyre environment\][\s\S]*\[\/Vyre environment\][\s\S]*\[Vyre continuation:/, "an ACP agent is told its environment again with the first prompt of the fresh session, then the seed");
     assert.match(said, /plan the Northwind menu/);
     assert.match(said, /\n\]\n\nand the prices$/);
     // The conversation is kept as Claude Code's own layout under the home, and read back word for word through the same tool as any other session.
@@ -231,7 +232,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(got.session.id, mirror);
     assert.equal(got.turns[0].text, "plan the Northwind menu");
     assert.equal(got.turns[0].role, "user");
-    assert.equal(got.turns[1].text, "echo: plan the Northwind menu");
+    assert.match(got.turns[1].text, /^echo: [\s\S]*plan the Northwind menu$/);
     assert.equal(got.turns.find(x => x.text === "and the prices")?.role, "user");
     assert.ok(!got.turns.some(x => x.text.startsWith("[Vyre")), "a seed is not a turn");
     const origin = (await w.internal("threads.origin", { session: mirror })).data;
