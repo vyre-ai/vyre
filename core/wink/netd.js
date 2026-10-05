@@ -277,7 +277,7 @@ export function createNetd(o) {
       if (st.state !== "up" || !hs || !url) return null;
       const key = await hs.createPreauthKey({ ttlMs: 300_000 });
       watchJoin(300_000);
-      return { controlUrl: url, authKey: key.key, space, box: await o.box(), ...(ps && ps.pin && !o.controlUrl ? { pin: ps.pin } : {}), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
+      return { controlUrl: url, authKey: key.key, space, box: await o.box(), ...(v4(ips) ? { peerAddr: `${v4(ips)}:${PEER_PORT}` } : {}), ...(ps && ps.pin && !o.controlUrl ? { pin: ps.pin } : {}), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
     },
   };
 }

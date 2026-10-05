@@ -177,6 +177,7 @@ test("join policy: a node that joined inside a key's window waits for its row, a
   await n.start();
   const h = await n.handover({ device: "devB" });
   assert.equal(h.hostname, nodeNameFor("devB"));
+  assert.equal(h.peerAddr, "100.99.1.1:8443", "a paired server is told where the home's door is");
   nodes.push({ id: 2, name: h.hostname, ips: ["100.99.1.2"] });   // the device used its key
   await n.deviceChanged();
   assert.ok(!f.calls.includes("hs.delete 2"), "inside the window a node is not deleted");

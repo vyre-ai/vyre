@@ -31,6 +31,7 @@ import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
 import { createNetd } from "./netd.js";
+import { createNetJoin } from "./netjoin.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
 import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -315,6 +316,7 @@ export function createWink(inject = {}) {
     const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
     /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
+    /** @type {ReturnType<typeof createNetJoin> | null} */ let liveJoin = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
@@ -700,7 +702,8 @@ export function createWink(inject = {}) {
       root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
       space: spaceId,
       box: async () => { const r = /** @type {any} */ (await ctx.call("relay.route.id", {})); return String((r && r.data && (r.data.box || r.data.route)) || ""); },
-      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; },
+      // a device on the identity list, else a live paired server of this home (its key is derived from the peer secret this home holds for it, core/wink/directkey.js)
+      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); const e = r && !r.error ? (r.data !== undefined ? r.data : r) : null; return e || pairing.peers.directEntry(eid); },
       serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
       onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
       devices: () => { try { return /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE removed_at IS NULL").all()).map(r => String(r.id)); } catch { return []; } },
@@ -722,9 +725,14 @@ export function createWink(inject = {}) {
     });
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
       ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged())] : [];
-    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
+    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();
+    // A paired server's side: what the home handed over at adopt time (controlUrl, join key, node name, the home's door) joins the home's network, direct with the relay as fallback.
+    const join = inject.netjoin === false ? null : createNetJoin({ root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), ownHandover: () => pairing.ownHandover(), log: m => ctx.log(m), ...(inject.netjoin || {}) });
+    const offJoin = join ? [ctx.events.on("wink.server-adopted", () => { void join.refresh(); }), ctx.events.on("wink.server-released", () => { void join.refresh(); })] : [];
+    liveJoin = join;
+    if (join) void join.start();
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -781,6 +789,7 @@ export function createWink(inject = {}) {
       bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       ownHandover: () => pairing.ownHandover(),
+      join: () => liveJoin,
       async stop() {
         live = null;
         liveLinks = null;
@@ -793,6 +802,7 @@ export function createWink(inject = {}) {
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
         try { if (netd) await netd.stop(); } catch {}
+        try { if (join) { for (const off of offJoin) { try { off(); } catch {} } await join.stop(); } } catch {}
       },
     };
   },
@@ -808,6 +818,7 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
   Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
   Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
+  Object.defineProperty(mod, "join", { enumerable: false, get: () => (live && live.join ? live.join() : null) });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;
