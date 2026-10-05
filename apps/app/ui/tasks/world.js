@@ -1,9 +1,9 @@
 // @vyre/ui tasks world: one read of the store into the plain data the screens draw (model.js World). No React.
-import { aid } from "../../../../deck/ui/kernel-view.js";
-import { viewDefOf } from "../../../../deck/ui/view-defs.js";
+import { aid } from "../../src/vendor/deck/ui/kernel-view.js";
+import { viewDefOf } from "../../src/vendor/deck/ui/view-defs.js";
 
 /**
- * @param {import("../../../../deck/ui/contracts.js").Store} store @param {() => number} [clock]
+ * @param {import("../../src/vendor/deck/ui/contracts.js").Store} store @param {() => number} [clock]
  * @returns {Promise<import("./model.js").World>}
  */
 export async function loadWorld(store, clock = Date.now) {
@@ -19,7 +19,7 @@ export async function loadWorld(store, clock = Date.now) {
   return { me, actors, spaces, types: new Map(types.map((t) => [t.name, t])), tasks, events, calendar, records, now: clock() };
 }
 
-/** Every record of a type that holds work (Matters, Projects, Trips), with its definition. @param {import("./model.js").World} w @param {import("../../../../deck/ui/contracts.js").Store} store */
+/** Every record of a type that holds work (Matters, Projects, Trips), with its definition. @param {import("./model.js").World} w @param {import("../../src/vendor/deck/ui/contracts.js").Store} store */
 export async function loadWork(w, store) {
   const work = [...w.types.values()].filter((t) => viewDefOf(t).holdsWork);
   const lists = await Promise.all(work.map(async (def) => ({ def, rows: await store.list(def.name) })));
@@ -28,7 +28,7 @@ export async function loadWork(w, store) {
 
 /**
  * Everything a project page draws: the world, the record of a type that holds work (found by its id), its type, its events and the records it links to.
- * @param {import("../../../../deck/ui/contracts.js").Store} store @param {string} id @param {() => number} [clock]
+ * @param {import("../../src/vendor/deck/ui/contracts.js").Store} store @param {string} id @param {() => number} [clock]
  */
 export async function loadProject(store, id, clock = Date.now) {
   const world = await loadWorld(store, clock);

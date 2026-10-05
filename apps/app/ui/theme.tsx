@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { Platform, StyleSheet, useColorScheme, useWindowDimensions, View } from "react-native";
 import { vars } from "nativewind";
-import { resolveTheme } from "../../../deck/ui/theme.js";
+import { resolveTheme } from "../src/vendor/deck/ui/theme.js";
 import { create } from "zustand";
 import { PortalHost } from "@rn-primitives/portal";
 import { ToastHost } from "./components/Toast";

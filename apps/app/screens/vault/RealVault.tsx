@@ -11,7 +11,7 @@ import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
-import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
+import { simulatedProof } from "../../src/vendor/deck/ui/kernel-view.js";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
 import { NEW_KINDS, personalUnlockRefusal, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 

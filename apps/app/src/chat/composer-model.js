@@ -3,8 +3,8 @@
 // / commands), how candidates rank, what a record's sealed fields say, and what Send does while a
 // turn is on (it queues; the composer is never disabled). Reuses chat core's finders.
 
-import { findMention, findVaultMention, applyMention, applyVault } from "../../../../deck/chat/core/composer-state.js";
-import { findCommand, rankCommands, applyCommand } from "../../../../deck/chat/core/commands.js";
+import { findMention, findVaultMention, applyMention, applyVault } from "../vendor/deck/chat/core/composer-state.js";
+import { findCommand, rankCommands, applyCommand } from "../vendor/deck/chat/core/commands.js";
 import { busyState } from "./frames.js";
 
 /** @typedef {{ kind: "person" | "record" | "command", range: { start: number, end: number, query: string } }} Trigger */

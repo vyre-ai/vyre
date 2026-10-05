@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { aid } from "../../../../deck/ui/kernel-view.js";
-import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
+import { aid } from "../../src/vendor/deck/ui/kernel-view.js";
+import { simulatedProof } from "../../src/vendor/deck/ui/kernel-view.js";
 import { AssignPicker } from "../../screens/teammates/AssignPicker";
-import { handEvidence } from "../../../../deck/ui/tasks.js";
+import { handEvidence } from "../../src/vendor/deck/ui/tasks.js";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";

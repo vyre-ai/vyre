@@ -2,8 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { runClientPays } from "../../../../deck/ui/scenario.js";
+import { createMockStore } from "../../src/vendor/deck/ui/mock-store.js";
+import { runClientPays } from "../../src/vendor/deck/ui/scenario.js";
 import { isRawId, plainLine, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
 import { loadWorld } from "./world.js";
 

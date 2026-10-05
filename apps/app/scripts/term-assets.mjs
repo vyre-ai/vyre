@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = path.resolve(here, "..");
 const out = path.join(app, "public", "term");
-const vendor = path.resolve(app, "../../deck/vendor/xterm");
+const vendor = path.resolve(app, "src/vendor/deck/vendor/xterm");
 fs.mkdirSync(out, { recursive: true });
 const files = [
   [path.join(vendor, "xterm.js"), "xterm.js"], [path.join(vendor, "addon-fit.js"), "addon-fit.js"], [path.join(vendor, "xterm.css"), "xterm.css"],

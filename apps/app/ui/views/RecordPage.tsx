@@ -21,7 +21,7 @@ import { useStore } from "../store";
 import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
+import { simulatedProof } from "../../src/vendor/deck/ui/kernel-view.js";
 import { ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
