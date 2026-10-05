@@ -1249,7 +1249,7 @@ export class Registry {
       // The home's peer door for a paired device's stream, set by the daemon (core/daemon/peer-door.js); only the relay module bridges it.
       // This device's open peer session to a server it paired (`sessionFor(serverId)` -> { call, close }) and the kernel's remote client over it, handed up by the wink module; only the modules that
       // reach a paired server's kernel are given them (spaces: where a space is hosted; runner: lending), late-bound because wink starts after them.
-      ...(["spaces", "runner"].includes(m.name) ? {
+      ...(["spaces", "runner", "files"].includes(m.name) ? {
         sessionForReady: () => typeof (/** @type {any} */ (this.deps)).winkSessionFor === "function",
         sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id); },
         // an invitee's session to the home a space's directory record names (the spaces module only; the hello is signed by the invitee's identity)

@@ -564,6 +564,19 @@ export default {
       },
     });
 
+    // What an agent is told about the Space it starts in (core/sessions/environment.js): the Space's id and the record types with their field names, from the kernel's own definitions read as
+    // this module's service. Definitions only, never a record or a value. Modules only.
+    ctx.tool("work.space-brief", {
+      description: "The Space this install is and its record types with their field names, for an agent's environment brief. Definitions only, never a record. Modules only.",
+      input: obj(),
+      callers: ["module"],
+      run: async () => {
+        const k = kernelOf();
+        const defs = (k.definitions ? await k.definitions(typeof k.serviceChain === "function" ? k.serviceChain("work") : undefined) : []) || [];
+        return { space: k.space, types: (Array.isArray(defs) ? defs : []).filter((/** @type {any} */ t) => t && t.name && !String(t.name).startsWith("_")).map((/** @type {any} */ t) => ({ name: String(t.name), ...(t.kind ? { kind: String(t.kind) } : {}), fields: (Array.isArray(t.fields) ? t.fields : []).map((/** @type {any} */ f) => String((f && f.name) || f)).slice(0, 40) })).slice(0, 60) };
+      },
+    });
+
     ctx.tool("work.team.context", {
       description: "What a teammate starts with on a project: its role instructions, the project and its linked records without sealed fields, and the Kit's templates.",
       input: obj({ project: { type: "string" }, role: { type: "object" }, templates: { type: "array" } }, ["project"]),
