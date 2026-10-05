@@ -1299,9 +1299,9 @@ export default {
         const backend = upgradeBackend();
         if (!backend) return { objects: 0, bytes: 0, skipped: 0, failed: [] };
         if (identity && identity.unlocked) { try { identity.save(); } catch { /* the autosave seals it too */ } }
-        // literal tool names (the reach scan reads a computed one as an unreviewed call)
-        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i),
-          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i) };
+        // literal tool names (the reach scan reads a computed one as an unreviewed call); `relay: true` carries the proven person of the running call (windows' RELAY_ALLOWED lets memory relay to spaces.storage. only)
+        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i, { relay: true }), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i, { relay: true }),
+          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i, { relay: true }), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i, { relay: true }) };
         return carry(backend, spacesTransport((tool, i) => /** @type {any} */ (storage)[tool](i), String(input.to)), String(idCfg.id));
       },
     });
