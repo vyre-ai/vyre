@@ -78,3 +78,17 @@ test("no legal words in the core types either: their names, labels, options and 
   const WORDS = /practice|attorney|lawyer|\blaw\b|legal|\bcourt|\bcase\b|\bmatter|trust|estate|injury|accident|hearing|consult|retainer|litigation|plaintiff|settle|demand|signing|immigration|criminal|family|probate|counsel/i;
   assert.equal(WORDS.test(JSON.stringify(CORE_TYPES)), false, "legal words in the core types");
 });
+
+test("a seed by the kernel or a module is never a duplicate: a core type with a person-added field is re-seeded without refusal, a person's own twin is refused", async () => {
+  const host = createRecordsHost({ space: SPACE, owner: "per_owner", store: createMemoryStore() });
+  await host.defineCore();
+  const R = host.kernel.records, o = host.ownerChain(), svc = host.forFlow({});
+  const note = CORE_TYPES.find((t) => t.name === "note") || CORE_TYPES.find((t) => t.name === "template");
+  // a person adds a field to a core type
+  await R.define(o, { change_types: [{ ...note, fields: [...note.fields, { name: "mine", kind: "text", label: "Mine" }] }] });
+  // the kernel's re-seed of the bare core type is not refused (and a different name with the same label, from a service, is a seed too)
+  await R.define(svc, { add_types: [{ ...note }] });
+  await R.define(svc, { add_types: [{ name: `${note.name}_copy`, label: note.label, fields: note.fields }] });
+  // a person's own second type with that label is refused
+  await assert.rejects(() => R.define(o, { add_types: [{ name: `${note.name}_mine`, label: note.label, fields: note.fields }] }), { code: "type_exists" });
+});

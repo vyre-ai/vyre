@@ -275,12 +275,14 @@ export function createRecords(cfg) {
     }
   }
   /**
-   * A new type needs its own label: a second type with the label of one the Space already has (another name, same words) is refused. An add of an existing name is
+   * A person's new type needs its own label: a second type with the label of one the Space already has (another name, same words) is refused. An add of an existing name is
    * not a new type (it is how a module or a Kit says what it needs again), and the store refuses anything that would take fields away.
    */
-  async function checkNames(/** @type {any} */ diff) {
+  async function checkNames(/** @type {any} */ diff, /** @type {any} */ chain, /** @type {any} */ o) {
     const adding = diff.add_types || [];
-    if (!adding.length) return;
+    // Only a person's own define: a seed by the kernel or a module (a service in the chain, or an approved Kit's waiver) says what it needs again and is never a second copy
+    const personal = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" && o.waiver === undefined;
+    if (!adding.length || !personal) return;
     let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
     const words = (/** @type {any} */ s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
     const seen = new Map();
@@ -673,7 +675,7 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff);
+      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff, chain, o);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
