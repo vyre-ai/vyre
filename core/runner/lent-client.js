@@ -42,11 +42,13 @@ export function createLentClient(o) {
     getCheckpoint: session => o.invoke("lent.getCheckpoint", [session]),
   };
   return {
+    /** The id the Space's home gives this computer (from what the transport proved): the Offers are made for it. */
+    whoami: () => o.invoke("lent.whoami", []),
     sync,
     vault: {
       lease: async () => { const r = await o.invoke("leases.issue", [{ device: o.device, device_key: o.deviceKey }]); if (r && r.id) lease = r.id; return r; },
       renew: ({ id }) => o.invoke("leases.renew", [{ id }]),
-      credential: req => o.invoke("leases.use", [{ session: req.session, route: req.route, method: req.method, path: req.path }]),
+      credential: req => o.invoke("leases.use", [{ session: req.session, route: req.route, method: req.method, path: req.path }]).catch(e => { if (process.env.VYRE_DEBUG_LENT) process.stderr.write(`lent credential: ${e && e.code} ${e && e.message}\n`); throw e; }),
     },
     /** The Space's definition of the session, written at the home with the lender's cap already applied. */
     spec: ({ session }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey }]),

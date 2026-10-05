@@ -82,6 +82,8 @@ export function createHolds(o = {}) {
     onSession,
     /** Is the device connected right now? @param {string} device */
     has: device => Boolean(openOne(idOf(device))),
+    /** The ids of the devices with a connection open now (the ones the home can call down). */
+    devices: () => [...sessions.keys()].filter(id => openOne(id)),
     /**
      * The channel to a device: `{ call(tool, input, opt) }` down the connection it holds. A call that finds none waits `waitMs` for the device to reconnect.
      * @param {string} device

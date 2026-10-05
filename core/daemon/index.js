@@ -39,6 +39,7 @@ import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { lentServiceFor } from "./lent-service.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -338,6 +339,16 @@ async function startLocked(opts, root, p, release) {
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(basic ? { basic } : {}), modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
+      // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
+      resolveCredential: async (/** @type {any} */ q) => {
+        const port = /** @type {any} */ (registry.deps).credentialsPort;
+        // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
+        const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
+        if (process.env.VYRE_DEBUG_LENT) log(`lent: credential ${String(q && q.ref).slice(0, 40)} resolved: ${typeof v === "string" ? `${v.length} chars, starts ${v.slice(0, 11)}` : "nothing"}`);
+        if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
+        return v;
+      },
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
         // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
@@ -513,7 +524,22 @@ async function startLocked(opts, root, p, release) {
         return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
+        providerAccount: async (/** @type {any} */ i) => {
+          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
+          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          try {
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
+            if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
+            if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
+            return null;
+          } catch { return null; }
+        },
+        // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
+        onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) h.onSession(caller, session); } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
