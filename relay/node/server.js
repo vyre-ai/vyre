@@ -449,6 +449,7 @@ export function createRelay(o = {}) {
   function onBoxControl(route, peer) {
     const challenge = crypto.randomBytes(32);
     peer.json({ t: "challenge", n: challenge.toString("base64url") });
+    let upSince = 0;
     let authed = false;
     peer.onmessage = (data, binary) => {
       if (authed || binary) { if (!authed) peer.close(CLOSE.refused, "expected auth"); return; }
@@ -469,6 +470,7 @@ export function createRelay(o = {}) {
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
       peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box && !x.tunnel).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: o.tunnel ? [...FEATURES, "tunnel"] : FEATURES }) });
+      upSince = Date.now();
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
       // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
@@ -500,7 +502,7 @@ export function createRelay(o = {}) {
     };
     peer.onclose = () => {
       const r = routes.get(route);
-      if (r && r.control === peer) { r.control = null; r.ticket = null; refusePending(route); keepCode(route); log("box.disconnected", { route }); }
+      if (r && r.control === peer) { r.control = null; r.ticket = null; refusePending(route); keepCode(route); log("box.disconnected", { route, upMs: Date.now() - upSince }); }
       tidy(route);
     };
   }
