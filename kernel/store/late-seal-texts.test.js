@@ -30,7 +30,9 @@ test("late sealing clears the task texts that quote the old values, and no copy 
   const quoting = await k.gateway.ask.request(owner, { title: `Call Jane about ${PLAIN[0]}`, output: { kind: "note" }, source: "manual", doer: { kind: "person", id: OWNER, space: SPACE }, form: { note: `her number is ${PLAIN[1]} ok` } });
   const plainTask = await k.gateway.ask.request(owner, { title: "Water the plants", output: { kind: "note" }, source: "manual", doer: { kind: "person", id: OWNER, space: SPACE } });
   const rows = () => db.prepare("SELECT task, text FROM kernel_task_texts").all();
-  assert.ok(rows().some(r => r.text.includes(PLAIN[0])), "the text is stored before the seal");
+  // Tasks are Records (774a899ee): a task's title and note are words on its record, and the text store holds the form, the answer and the stuck reason. The form quotes PLAIN[1]; the title's PLAIN[0] is on the record and
+  // is searched for in the raw bytes at the end, like every other copy.
+  assert.ok(rows().some(r => r.text.includes(PLAIN[1])), "the form's text is stored before the seal");
   const out = await k.gateway.migrate.sealField(owner, { type: "person", field: "ssn", class: "us-ssn" });
   assert.equal(out.moved, 2);
   assert.equal(rows().some(r => PLAIN.some(p => r.text.includes(p))), false, "no task text quotes a value any more");
