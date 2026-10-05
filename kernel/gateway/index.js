@@ -206,7 +206,8 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
-  upgrade = createUpgrade({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon });
+  upgrade = createUpgrade({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, verifyReceipt: cfg.verifyUpgradeReceipt,
+    countLocal: async () => { let n = 0; for (const t of await cfg.store.types()) { const r = await cfg.store.aggregate(t.name, { group_by: [], measures: [{ fn: "count" }] }); n += Number(r && r[0] && r[0].values && r[0].values.count) || 0; } return n; } });
   const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence, remoteEvidence: cfg.remoteMoveEvidence, verifyReceipt: cfg.verifyMoveReceipt });
 
   return Object.freeze({
