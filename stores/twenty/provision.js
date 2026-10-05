@@ -155,11 +155,11 @@ export function firewallRules(o) {
  * @typedef {{ exec: (cmd: string, args: string[], opts?: { cwd?: string, input?: string }) => Promise<{ stdout: string, stderr: string }>,
  *   fetch: typeof fetch, sleep: (ms: number) => Promise<void> }} Runner
  */
-/** The real runner: docker on this machine. @returns {Runner} */
-export function realRunner() {
+/** The real runner: docker on this machine. `env` is the environment docker runs with (a Mac server names Colima's socket in DOCKER_HOST); default this process's. @param {{ env?: Record<string, string | undefined> }} [ro] @returns {Runner} */
+export function realRunner(ro = {}) {
   return {
     exec: (cmd, args, opts = {}) => new Promise((resolve, reject) => {
-      const p = execFile(cmd, args, { cwd: opts.cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => (err ? reject(Object.assign(new Error(`${cmd} ${args.slice(0, 3).join(" ")} failed: ${String(stderr || err.message).slice(0, 400)}`), { stdout, stderr })) : resolve({ stdout, stderr })));
+      const p = execFile(cmd, args, { cwd: opts.cwd, maxBuffer: 64 * 1024 * 1024, ...(ro.env ? { env: /** @type {any} */ (ro.env) } : {}) }, (err, stdout, stderr) => (err ? reject(Object.assign(new Error(`${cmd} ${args.slice(0, 3).join(" ")} failed: ${String(stderr || err.message).slice(0, 400)}`), { stdout, stderr })) : resolve({ stdout, stderr })));
       if (opts.input) p.stdin?.end(opts.input);
     }),
     fetch,

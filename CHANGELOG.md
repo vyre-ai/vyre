@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(mac): a Mac server's Spaces run Twenty in Colima's own Docker with the same pinned images and compose as a server: `stores/twenty/mac.js` (`macStoreOptions`, spread into `createStoreFor`) points docker at Colima's socket (DOCKER_HOST from vyre.env; no `docker context use`), makes the preflight ask `vyre-runtime room N` (a full VM says so plainly and offers the person's server), and makes a new Space call `makeRoom` first ("Making room for a new space"). `realRunner` takes an optional `{ env }`. Reaching Twenty from the Mac host is not solved here (see docs/work/launch.md).
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
