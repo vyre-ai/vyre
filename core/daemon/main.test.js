@@ -13,7 +13,7 @@ import * as config from "../config/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "main.js");
-const FAKE_TAILSCALE = path.join(HERE, "..", "..", "deck", "test", "fake-tailscale.js");
+const FAKE_TAILSCALE = path.join(HERE, "..", "..", "web", "test", "fake-tailscale.js");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** @param {string} root @param {number} after ms between "stops are handled" (a message from main.js) and the SIGTERM */
