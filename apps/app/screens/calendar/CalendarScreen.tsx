@@ -1,11 +1,13 @@
 // The space calendar: every record with a date on it, by day, week or month. Read from the Store (records.list per type on a real vyred), so an Event, a
 // matter's closing date and a task's due date sit in one place. A tap opens the record. Nothing here knows a type; logic.js reads the definitions.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Card, Divider, EmptyState, ErrorState, IconButton, LoadingState, Row, Segmented, Text, Button, useRecordsWorld, useUiTheme } from "@vyre/ui";
 import { Frame } from "../places/Frame";
-import { byDay, collect, dayHeading, heading, monthGrid, rangeOf, step, subLine, VIEWS, type Item } from "./logic.js";
+import { byDay, collect, dayHeading, heading, monthGrid, occurrencesFrom, rangeOf, step, subLine, VIEWS, withOccurrences, type Item } from "./logic.js";
+import { tool } from "../../src/real/box";
+import { allowsMock } from "@vyre/ui";
 
 type Mode = (typeof VIEWS)[number];
 const LABEL: Record<Mode, string> = { day: "Day", week: "Week", month: "Month" };
@@ -20,8 +22,16 @@ export default function CalendarScreen() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [picked, setPicked] = useState<string | null>(null);
 
-  const items: Item[] = useMemo(() => (world ? collect(world.types, world.byType) : []), [world]);
   const { from, to } = rangeOf(view, anchor);
+  // A repeating Event's occurrences in the window come from the box (planner.agenda); a box without it shows the event once, at its first date.
+  const [occ, setOcc] = useState<Item[]>([]);
+  useEffect(() => {
+    if (allowsMock()) return;
+    let live = true;
+    tool("planner.agenda", { from: from.toISOString(), to: to.toISOString() }).then((a) => { if (live) setOcc(occurrencesFrom(a)); }).catch(() => { if (live) setOcc([]); });
+    return () => { live = false; };
+  }, [from.getTime(), to.getTime()]);
+  const items: Item[] = useMemo(() => withOccurrences(world ? collect(world.types, world.byType) : [], occ), [world, occ]);
   const days = useMemo(() => byDay(items, from, to), [items, from.getTime(), to.getTime()]);
   const onDay = (k: string) => days.find((d) => d.day === k)?.items ?? [];
   const open = (i: Item) => router.push(`/u/record/${i.id}` as never);

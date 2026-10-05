@@ -66,3 +66,22 @@ test("the month grid is weeks of seven, Monday first, null outside the month", (
   assert.ok(g.every((w) => w.length === 7));
   assert.deepEqual([g[0].filter(Boolean).length, g[0].findIndex(Boolean), g.flat().filter(Boolean).length], [4, 3, 31]);
 });
+
+import { occurrencesFrom, withOccurrences } from "./logic.js";
+test("a repeating Event's occurrences come from planner.agenda and replace its single first-date item; the app expands no rule", () => {
+  const T = Date.UTC(2026, 9, 6, 9);
+  // planner.agenda's entries for a repeating event, as core/planner's events-repeat test reads them: record, start and end in ms, occurrence, rrule.
+  const agenda = { entries: [
+    { record: "ev1", title: "Board meeting", start: T, end: T + 3_600_000, occurrence: 0, rrule: "FREQ=WEEKLY" },
+    { record: "ev1", title: "Board meeting", start: T + 7 * 86_400_000, end: T + 7 * 86_400_000 + 3_600_000, occurrence: 1, rrule: "FREQ=WEEKLY" },
+    { record: "al1", title: "Ring", start: T, source: "planner" },
+  ] };
+  const occ = occurrencesFrom(agenda);
+  assert.deepEqual(occ.map((o) => o.start.getTime()), [T, T + 7 * 86_400_000]);
+  assert.equal(occ[0].end.getTime(), T + 3_600_000);
+  const first = { urn: "vyre://s/event/ev1", id: "ev1", type: "event", typeLabel: "Event", title: "Board meeting", field: "start", fieldLabel: "Start", start: new Date(T - 200 * 86_400_000), end: null, allDay: false, event: true };
+  const other = { urn: "vyre://s/event/ev2", id: "ev2", type: "event", typeLabel: "Event", title: "One-off", field: "start", fieldLabel: "Start", start: new Date(T + 3_600_000), end: null, allDay: false, event: true };
+  const merged = withOccurrences([first, other], occ);
+  assert.deepEqual(merged.map((i) => [i.id, i.start.getTime()]), [["ev1", T], ["ev2", T + 3_600_000], ["ev1", T + 7 * 86_400_000]]);
+  assert.deepEqual(withOccurrences([first], []), [first], "no box answer: the first-date item stays");
+});

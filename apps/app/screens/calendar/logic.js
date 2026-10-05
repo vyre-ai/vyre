@@ -151,3 +151,25 @@ export function monthGrid(anchor) {
   while (cells.length % 7) cells.push(null);
   return Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7));
 }
+
+/**
+ * A repeating Event's occurrences come from the box, not from the app: planner.agenda { from, to } answers every occurrence of an Event inside the window, each with its record, start and end (ms),
+ * all_day, url, occurrence and the rrule (core/planner, planner-events). The app does not expand a rule itself. An entry is an occurrence when it has a record and a rule.
+ * @param {any} agenda planner.agenda's answer: { entries: [...] } @returns {Item[]}
+ */
+export function occurrencesFrom(agenda) {
+  const rows = Array.isArray(agenda?.entries) ? agenda.entries : [];
+  /** @type {Item[]} */ const out = [];
+  for (const e of rows) {
+    if (!e || typeof e.record !== "string" || !e.rrule || typeof e.start !== "number") continue;
+    out.push({ urn: `occurrence:${e.record}:${e.start}`, id: e.record, type: "event", typeLabel: "Event", title: String(e.title ?? "Event"), field: "start", fieldLabel: "Start", start: new Date(e.start), end: typeof e.end === "number" && e.end >= e.start ? new Date(e.end) : null, allDay: e.all_day === true, event: true });
+  }
+  return out;
+}
+
+/** The record items with each repeating Event's single first-date item replaced by the box's occurrences in the window. @param {Item[]} items @param {Item[]} occurrences */
+export function withOccurrences(items, occurrences) {
+  if (!occurrences.length) return items;
+  const repeating = new Set(occurrences.map((o) => o.id));
+  return [...items.filter((i) => !(i.event && repeating.has(i.id))), ...occurrences].sort((a, b) => a.start.getTime() - b.start.getTime() || a.title.localeCompare(b.title));
+}
