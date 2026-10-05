@@ -67,7 +67,7 @@ test("typed code end to end: ten sessions from many addresses close the code and
       body: JSON.stringify({ rv: w.shown.rv, s: "AAAAAAAAAAAAAAAAAAAAAA".slice(0, 21) + "ABCDEFGHIJ"[i], n: 1, m: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE" }) });
   }
   // Under load the close and the fresh code take longer than a fixed wait: look for them for up to 5 s.
-  for (let i = 0; i < 100 && !(w.events.find(e => e[0] === "wink.code.closed") && w.wink.status().code !== first); i++) await new Promise(r => setTimeout(r, 50));
+  for (let i = 0; i < 100 && !(w.events.find(e => e[0] === "wink.code.closed") && (w.wink.status() || {}).code && (w.wink.status() || {}).code !== first); i++) await new Promise(r => setTimeout(r, 50));
   assert.equal(/** @type {any} */ (w.events.find(e => e[0] === "wink.code.closed"))[1].reason, "too_many");
   const now = w.wink.status();
   assert.ok(now && now.code !== first, "a fresh code with no tap");
