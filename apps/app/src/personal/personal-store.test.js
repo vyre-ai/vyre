@@ -73,10 +73,10 @@ test("phone: reads what the laptop wrote, writes a reminder the laptop then sees
   const laptop = await laptopWrites(server, imk, phoneKey);
   const phone = await openPersonalStore({ call: server.tool, space: "spc_team", identity: "per_alex", agree: { holder: fingerprint(phoneKey.publicJwk), ecdh: ecdhFrom(phoneKey.privateJwk) }, device: "phone" });
   const first = await phone.store.get("reminder", ID1);
-  assert.equal(first.fields?.text ?? first.text, "Call the dentist about Dana Reyes");
+  assert.equal(first.data.text, "Call the dentist about Dana Reyes");
   await phone.store.create("reminder", ID2, { text: "Pick up the keys", due_at: 2000, done: false });
   const seen = await laptop.store.get("reminder", ID2);
-  assert.equal(seen.fields?.text ?? seen.text, "Pick up the keys", "the laptop sees the phone's write");
+  assert.equal(seen.data.text, "Pick up the keys", "the laptop sees the phone's write");
   const everything = [...server.files.entries()].map(([n, b]) => n + Buffer.from(b).toString("utf8")).join("\n");
   assert.ok(!everything.includes("dentist") && !everything.includes("keys") && !everything.includes("Dana"), "nothing readable on the server");
   phone.lock();
