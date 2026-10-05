@@ -28,6 +28,7 @@ final class SignerException: GenericException<(code: String, message: String)> {
 }
 
 private let personAlias = "vyre.person"
+private let agreeAlias = "vyre.agree"
 
 private func b64url(_ data: Data) -> String {
   data.base64EncodedString()
@@ -118,6 +119,26 @@ private func coordinates(_ key: SecKey) throws -> [String: String] {
 public class VyreSignerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("VyreSigner")
+
+    // The agreement key (ECDH, no prompt per use): a P-256 key in the Secure Enclave (a software Keychain key in the simulator, the same API), no biometry flag, usable while the phone is unlocked.
+    // `agree(epk)` is the 32-byte shared secret, the raw X coordinate; HKDF and AES-GCM stay portable code in the app (lib/keywrap.js). Its public point goes in the identity entry as `agree`.
+    AsyncFunction("agreePublic") { (create: Bool) throws -> String in
+      guard let key = try findKey(agreeAlias) ?? (create ? makeKey(agreeAlias, biometric: false) : nil) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      guard let pub = SecKeyCopyPublicKey(key) else { throw fail("ERR_NO_KEY", "the key has no public half") }
+      var error: Unmanaged<CFError>?
+      guard let raw = SecKeyCopyExternalRepresentation(pub, &error) as Data?, raw.count == 65, raw.first == 0x04 else { throw fail("ERR_NO_KEY", "the public key is not an uncompressed P-256 point: \(describe(error))") }
+      return b64url(raw)
+    }
+
+    AsyncFunction("agree") { (epk: String) throws -> String in
+      guard let point = fromB64url(epk), point.count == 65, point.first == 0x04 else { throw fail("ERR_INPUT", "that is not a public key") }
+      guard let key = try findKey(agreeAlias) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      var error: Unmanaged<CFError>?
+      let attrs: [String: Any] = [kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeyClass as String: kSecAttrKeyClassPublic, kSecAttrKeySizeInBits as String: 256]
+      guard let peer = SecKeyCreateWithData(point as CFData, attrs as CFDictionary, &error) else { throw fail("ERR_INPUT", "that is not a public key") }
+      guard let secret = SecKeyCopyKeyExchangeResult(key, .ecdhKeyExchangeStandard, peer, [:] as CFDictionary, &error) as Data?, secret.count == 32 else { throw fail("ERR_AGREE", "the key could not open that: \(describe(error))") }
+      return b64url(secret)
+    }
 
     AsyncFunction("ensureKey") { (alias: String, options: EnsureOptions) throws -> [String: String] in
       let key = try findKey(alias) ?? makeKey(alias, biometric: options.biometric)

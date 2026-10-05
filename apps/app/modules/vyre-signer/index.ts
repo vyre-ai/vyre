@@ -50,6 +50,8 @@ type Native = {
   deleteKey(alias: string): Promise<boolean>;
   info(): SignerInfo;
   randomBytes(n: number): string;
+  agreePublic?(create: boolean): Promise<string>;
+  agree?(epk: string): Promise<string>;
   appAttestSupported?(): Promise<boolean>;
   appAttestGenerateKey?(): Promise<string>;
   appAttestAttest?(keyId: string, clientDataHash: string): Promise<string>;
@@ -75,6 +77,19 @@ export function deleteKey(alias: Alias): Promise<boolean> {
 
 export function info(): SignerInfo {
   return native.info();
+}
+
+/**
+ * This phone's agreement key: ECDH on P-256, in the Secure Enclave or the Android Keystore (Android 12 and later), no prompt per use. `agreePublic` is its raw uncompressed point (65 bytes,
+ * base64url), made on first use with `create`; `agree(epk)` is the 32-byte shared secret with a peer's point. A phone that cannot hold one rejects, and its identity entry carries no `agree`.
+ */
+export function agreePublic(create: boolean): Promise<string> {
+  if (!native.agreePublic) return Promise.reject(Object.assign(new Error("this build has no agreement key"), { code: "ERR_NO_AGREE" }));
+  return native.agreePublic(create);
+}
+export function agree(epk: string): Promise<string> {
+  if (!native.agree) return Promise.reject(Object.assign(new Error("this build has no agreement key"), { code: "ERR_NO_AGREE" }));
+  return native.agree(epk);
 }
 
 /** `n` bytes from the platform's secure random source, as base64url (Hermes has no getRandomValues). */
