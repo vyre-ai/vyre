@@ -10,7 +10,8 @@ import { listReal, putReal, revealReal, revokeReal, stateReal, unlockPersonalRea
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
-import { NEW_KINDS, personalUnlockRefusal, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
+import { DevicesPage, EditSheet, ItemHistory, PassesPage, SharedPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
+import { NEW_KINDS, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -30,6 +31,9 @@ export default function RealVault() {
   const [adding, setAdding] = useState<NewItem | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
+  const [section, setSection] = useState<"items" | "passes" | "shared" | "devices" | "health">("items");
+  const [editing, setEditing] = useState(false);
+  const [ssh, setSsh] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});
   const [shown, setShown] = useState<{ key: string; value: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,6 +84,9 @@ export default function RealVault() {
     putReal(p.input).then(() => { showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
   };
 
+  /** Open an item from another page (Watchtower): the Items section, on that item's tab. */
+  const openFrom = (name: string) => { const r = rows?.find((x) => x.name === name); if (!r) return; hide(); setTab(tabOf(r.kind)); setSel(name); setPushed(true); setSection("items"); };
+
   const detail = cur ? (
     <Card>
       <View className="gap-s3">
@@ -129,17 +136,27 @@ export default function RealVault() {
             </Card>
           ) : <Text tone="muted">Only you.</Text>}
         </Sec>
+        <ItemHistory name={cur.id} />
+        {claimBlocked() ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Change" onPress={() => setEditing(true)} /></View>}
       </View>
     </Card>
   ) : null;
 
+  const editSheet = <EditSheet item={editing && cur ? { name: cur.id, description: rows?.find((r) => r.name === cur.id)?.description ?? "", fields: cur.fields } : null} onClose={() => setEditing(false)} onSaved={load} />;
+
   if (phone && pushed && cur) {
-    return <Frame title={cur.name} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}</Frame>;
+    return <Frame title={cur.name} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
   }
 
   return (
     <Frame title="Vault" sub="Logins, keys and cards.">
       <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
+      {!err && rows && !locked ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={[["items", "Items"], ["passes", "Passes"], ["shared", "Shared"], ["devices", "Devices"], ["health", "Health"]]} /> : null}
+      {!err && rows && !locked && section === "passes" ? <PassesPage rows={rows} reload={load} openItem={openFrom} /> : null}
+      {!err && rows && !locked && section === "shared" ? <SharedPage rows={rows} reload={load} openItem={openFrom} /> : null}
+      {!err && rows && !locked && section === "devices" ? <DevicesPage rows={rows} reload={load} openItem={openFrom} /> : null}
+      {!err && rows && !locked && section === "health" ? <WatchtowerPage rows={rows} reload={load} openItem={openFrom} /> : null}
+      {section !== "items" ? null : <>
       <Tabs<Tab> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"]]} />
       {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
         <Text strong>Your personal vault is locked</Text>
@@ -150,7 +167,7 @@ export default function RealVault() {
           <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} disabled={busy || !pw} onPress={doUnlockPersonal} /></View>
         </>}
       </View></Card> : null}
-      {!err && rows && !locked ? (claimBlocked() ? <Text size="caption" tone="label">{ON_PHONE.replace("Do this", "Add items")}</Text> : <View className="self-start"><Button kind="primary" icon="plus" label="Add an item" onPress={() => { setProblem(""); setAdding({ kind: "login", name: "", username: "", secret: "", url: "" }); }} /></View>) : null}
+      {!err && rows && !locked ? (claimBlocked() ? <Text size="caption" tone="label">{ON_PHONE.replace("Do this", "Add items")}</Text> : <View className="self-start"><View className="flex-row flex-wrap gap-s2"><Button kind="primary" icon="plus" label="Add an item" onPress={() => { setProblem(""); setAdding({ kind: "login", name: "", username: "", secret: "", url: "" }); }} /><Button kind="ghost" label="Make an SSH key" onPress={() => setSsh(true)} /></View></View>) : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
       {!err && rows && locked ? (
@@ -179,6 +196,9 @@ export default function RealVault() {
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
         </View>
       ) : null}
+      </>}
+      {editSheet}
+      <SshSheet open={ssh} onClose={() => setSsh(false)} onMade={load} />
           <Sheet open={!!adding} onClose={() => setAdding(null)} title="Add to the vault">
         {adding ? (
           <View className="gap-s3">
