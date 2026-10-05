@@ -14,7 +14,7 @@
 //   - It does not place data. Where chunks live, copy counts, draining and healing are the vault team's pool engine. remove({ drain: true })
 //     only records the intent and keeps the grant until the engine calls completeDrain(id).
 //
-// The seam for the pool engine (also in docs/work/tailnet.md, "Wink storage"):
+// The seam for the pool engine (also in team/archive/work-journals/tailnet.md, "Wink storage"):
 //   const s = createStorageDevices({ ctx, grants, vault, scanners, s3, admin });
 //   s.poolOffers()                       -> every live offer, with credentialRef and everything else the engine needs (internal; never a tool)
 //   await s.getCredentials(ref, { by })  -> { kind, location, accessKey, secretKey } for s3 and volume; { kind, location } for a drive; refuses unless `by` is the owner
@@ -69,11 +69,12 @@ export const realReach = {
 /**
  * @param {{ ctx: any, grants: { create(i: any, issuer: any): Promise<any>, revoke(id: string, why: string): Promise<any>, get?(id: string): Promise<any> }, vault: VaultPort,
  *   scanners?: any[], s3?: { probe(c: any): Promise<any> }, admin: AdminPort, space: () => string | Promise<string>, reach?: typeof realReach,
- *   now?: () => number, from?: () => string, fromDevice?: () => string | undefined, probeEveryMs?: number }} o
+ *   now?: () => number, from?: () => string, fromDevice?: () => string | undefined, probeEveryMs?: number,
+ *   remoteCandidates?: () => Promise<{ found: any[], notes?: string[] }>, viaReach?: (device: string) => Promise<boolean> | boolean }} o
  */
-export function createStorageDevices({ ctx, grants, vault, scanners, s3 = createS3(), admin, space, reach = realReach, now = Date.now, from = () => String((ctx.config && ctx.config.name) || "this device"), fromDevice = () => undefined, probeEveryMs = SLOWEST_PROBE_MS }) {
+export function createStorageDevices({ ctx, grants, vault, scanners, s3 = createS3(), admin, space, reach = realReach, now = Date.now, from = () => String((ctx.config && ctx.config.name) || "this device"), fromDevice = () => undefined, remoteCandidates, viaReach, probeEveryMs = SLOWEST_PROBE_MS }) {
   const db = ctx.store.db;
-  const discovery = createDiscovery({ scanners: scanners || realScanners(), from, fromDevice, now });
+  const discovery = createDiscovery({ scanners: scanners || realScanners(), from, fromDevice, ...(remoteCandidates ? { extra: remoteCandidates } : {}), now });
   const log = (/** @type {string} */ m) => { try { ctx.log(m); } catch { /* no log */ } };
   const ownerKey = (/** @type {Owner} */ o) => `${o.kind}:${o.id}`;
 
@@ -180,7 +181,7 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
       const { owner, self } = await resolveOwner(input.owner);
       const t = terms(input);
       const capacity = capacityOf(input.capacity, c.size);
-      const up = await api.reachable({ kind: c.kind, loc: { host: c.host, share: c.share, path: c.path } });
+      const up = await api.reachable({ kind: c.kind, loc: { host: c.host, share: c.share, path: c.path, ...(c.seenFromDevice ? { via: c.seenFromDevice } : {}) } });
       if (!up.ok) throw fail("unreachable", up.reason);
       /** @type {Record<string, string> | undefined} */
       const secrets = input.username || input.password ? { username: String(input.username || ""), password: String(input.password || "") } : undefined;
@@ -209,6 +210,8 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
 
     /** Is this thing there right now? @param {{ kind: string, loc: any, vaultRef?: string | null }} d @returns {Promise<{ ok: boolean, reason?: string }>} */
     async reachable(d) {
+      // A drive only another device can reach is as reachable as that device's connection to this home: this home cannot dial it, so nothing here tries to.
+      if (d.loc && typeof d.loc.via === "string" && viaReach) return (await viaReach(d.loc.via)) ? { ok: true } : { ok: false, reason: "The device that has this drive is not connected right now." };
       if (d.kind === "s3" || d.kind === "volume") {
         let accessKey, secretKey;
         try { const name = String(d.vaultRef || "").replace(/^vault:\/\//, ""); accessKey = await vault.fetch(name, "accessKey"); secretKey = await vault.fetch(name, "secretKey"); }

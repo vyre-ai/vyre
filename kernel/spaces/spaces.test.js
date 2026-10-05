@@ -300,6 +300,34 @@ test("retire (RT-1, more): a database that cannot be read refuses with the folde
   // member.removed and grant.revoked are allowed only because any record they could hide stays in the table, where it is found
 });
 
+test("every hosted Space has its own Drive: its own pool folder and pool key, and one Space's files are not there in another and are not readable with the other's key", async () => {
+  const { spaces, root } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  assert.ok(a.gateway.drive && b.gateway.drive, "each hosted Space has a Drive at creation");
+  const text = Buffer.from("Projects/Harlow: the retainer, in the clear ".repeat(30));
+  await a.gateway.drive.put(ca, "Projects/Harlow/retainer.txt", new Uint8Array(text));
+  assert.deepEqual(Buffer.from(await a.gateway.drive.get(ca, "Projects/Harlow/retainer.txt")), text, "the file reads back in its own Space");
+  // the other Space's Drive does not have it: not by path, not by listing
+  await assert.rejects(() => b.gateway.drive.get(cb, "Projects/Harlow/retainer.txt"), e => e.code === "not_found" || e.code === "unavailable");
+  const listed = await b.gateway.drive.list(cb, "");
+  assert.equal(JSON.stringify(listed).includes("retainer"), false, "and it is not in B's listing");
+  // separate pools on disk, each under its own Space's folder, and only ciphertext in them
+  const dirOf = id => path.join(root, "kernel", "spaces", id, "drive");
+  const files = d => { const out = []; const walk = x => { for (const n of fs.existsSync(x) ? fs.readdirSync(x) : []) { const p = path.join(x, n); fs.statSync(p).isDirectory() ? walk(p) : out.push(p); } }; walk(d); return out; };
+  const inA = files(path.join(dirOf(a.space), "node")), inB = files(path.join(dirOf(b.space), "node"));
+  assert.ok(inA.length > 0 && inB.length === 0, "the chunks are in A's pool folder only");
+  for (const f of inA) assert.ok(!fs.readFileSync(f).includes(Buffer.from("retainer, in the clear")), "chunks are ciphertext");
+  // the two pools' keys differ: A's chunk is not openable by B's pool
+  const { Pool } = await import("../storage/pool.js");
+  const idxA = JSON.parse(fs.readFileSync(path.join(dirOf(a.space), "index.json"), "utf8"));
+  const cid = Object.keys(idxA.chunks)[0];
+  const blob = fs.readFileSync(path.join(dirOf(a.space), "node", "c", cid));
+  const keyB = Buffer.from((await import("node:crypto")).hkdfSync("sha256", fs.readFileSync(path.join(root, "kernel", "spaces", b.space, "kernel.key"), "utf8").trim().length ? Buffer.from(fs.readFileSync(path.join(root, "kernel", "spaces", b.space, "kernel.key"), "utf8").trim(), "hex") : Buffer.alloc(32), b.space, "vyre pool key v1", 32));
+  const poolB = new Pool({ dir: fs.mkdtempSync(path.join(os.tmpdir(), "vyre-poolb-")), key: keyB });
+  assert.equal(poolB.open(cid, blob), null, "B's key does not open A's chunk");
+});
+
 test("a new Space has the person's default assistant as an actor from its start, the personal Space and a hosted one alike, so a task there can go to it", async () => {
   const { spaces, personal, pid } = await home();
   const a = await spaces.host({ owner: ME });
@@ -337,6 +365,89 @@ test("moving a project between two Spaces of one home: approved once where it st
   // the source cannot be named as the target, and a move to oneself is refused
   await assert.rejects(() => a.gateway.moves.out(ca, { ...req, to: a.space }, sign(a.space, "moveOut", { ...req, to: a.space })), { code: "bad_input" });
   await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, from: b.space }), { code: "bad_input" });
+});
+
+test("moving several projects at once: one approval covers the target, the plan and the exact list; each project is then received on its own, single use", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  const ids = ["0190c3f2-1111-4abc-8def-000000000011", "0190c3f2-1111-4abc-8def-000000000012", "0190c3f2-1111-4abc-8def-000000000013"];
+  const projects = ids.map(x => `vyre://${a.space}/project/${x}`);
+  const plan_hash = "p".repeat(43);
+  const req = { projects, to: b.space, plan_hash };
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req), { code: "needs_presence" });
+  // a proof for fewer projects, another plan or another target is no proof for this batch
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, projects: projects.slice(0, 2) })), { code: /needs_presence|bad_proof|wrong/ });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, plan_hash: "q".repeat(43) })), { code: /needs_presence|bad_proof|wrong/ });
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 0, "nothing was started by a refused call");
+  // every project is checked before the proof is spent; a duplicate or a foreign one is refused
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [projects[0], projects[0]] }), { code: "bad_input" });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [`vyre://${b.space}/project/${ids[0]}`] }), { code: "bad_input" });
+  const proof = sign(a.space, "moveOutMany", req);
+  const out = await a.gateway.moves.outMany(ca, req, proof);
+  assert.equal(out.moves.length, 3);
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 3, "one event per project");
+  // the same proof cannot start the batch again
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, proof), { code: /needs_presence|bad_proof|replay|used|wrong/ });
+  for (const m of out.moves) {
+    const got = await b.gateway.moves.in(cb, { from: a.space, project: m.project, plan_hash, move_id: m.move_id });
+    assert.deepEqual(got, { received: true, move_id: m.move_id });
+  }
+  assert.equal(b.kernel.log.read({ type: "project.move_in" }).length, 3);
+  await assert.rejects(() => b.gateway.moves.in(cb, { from: a.space, project: out.moves[0].project, plan_hash, move_id: out.moves[0].move_id }), { code: "invalid" });
+});
+
+test("a move to a Space on another home: signed evidence from the source, checked against the source's published key; a receipt back; the source clears only after it", async () => {
+  const { generateKeyPairSync, sign: edSign, verify: edVerify } = await import("node:crypto");
+  const { canonical } = await import("../core/canonical.js");
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  // each Space has its own published key: the "directory" below is what the target and the source trust, never a key the courier hands over
+  const keys = { [a.space]: generateKeyPairSync("ed25519"), [b.space]: generateKeyPairSync("ed25519") };
+  const published = Object.fromEntries(Object.entries(keys).map(([k, v]) => [k, v.publicKey]));
+  const signAs = (space, tag, obj) => ({ pub: space, sig: edSign(null, Buffer.from(`${tag}\n${canonical(obj)}`), keys[space].privateKey).toString("base64url") });
+  const check = (tag, obj, bundle, expectSpace) => bundle && published[expectSpace] && bundle.pub === expectSpace && edVerify(null, Buffer.from(`${tag}\n${canonical(obj)}`), published[expectSpace], Buffer.from(bundle.sig, "base64url"));
+  const hooks = {
+    remoteEvidence: async (bundle, c) => (bundle && bundle.evidence && bundle.evidence.from === c.from && bundle.evidence.to === c.to && check("vyre-move-evidence-v1", bundle.evidence, bundle, c.from) ? bundle.evidence : null),
+    verifyReceipt: async (receipt, c) => (receipt && receipt.body && receipt.body.from === c.from && receipt.body.to === c.to && check("vyre-move-receipt-v1", receipt.body, receipt, c.to) ? receipt.body : null),
+  };
+  spaces.setMoveHooks(hooks);
+  const project = `vyre://${a.space}/project/0190c3f2-1111-4abc-8def-0000000000a1`;
+  const plan_hash = "p".repeat(43);
+  const req = { project, to: b.space, plan_hash };
+  const out = await a.gateway.moves.out(ca, req, sign(a.space, "moveOut", req));
+  // the evidence is the source's own log's, for the person who started it, with the fixed fields
+  const evidence = a.gateway.moves.evidenceOf(ca, { move_id: out.move_id });
+  assert.deepEqual(Object.keys(evidence), ["v", "from", "to", "project", "plan_hash", "move_id", "person", "at"]);
+  assert.deepEqual([evidence.v, evidence.from, evidence.to, evidence.project, evidence.person], [1, a.space, b.space, project, ME]);
+  assert.throws(() => a.gateway.moves.evidenceOf(ca, { move_id: "0190c3f2-1111-4abc-8def-0000000000ff" }), { code: "not_found" }, "a move that was not started here has no evidence");
+  const bundle = { evidence, ...signAs(a.space, "vyre-move-evidence-v1", evidence) };
+  const recv = { from: a.space, project, plan_hash, move_id: out.move_id, bundle };
+  // tampered evidence, another target, another person, a signature from the wrong Space: none of them is that move
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...recv, bundle: { ...bundle, evidence: { ...evidence, plan_hash: "q".repeat(43) } } }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...recv, bundle: { ...signAs(b.space, "vyre-move-evidence-v1", evidence), evidence } }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...recv, bundle: { ...bundle, evidence: { ...evidence, extra: 1 } } }), { code: "not_found" }, "unknown fields are refused");
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...recv, plan_hash: "q".repeat(43) }), { code: "not_found" });
+  const got = await b.gateway.moves.in(cb, recv);
+  assert.deepEqual(got, { received: true, move_id: out.move_id });
+  await assert.rejects(() => b.gateway.moves.in(cb, recv), { code: "invalid" }, "single use");
+  // the target finishes after the copy: counts and the root of the per-file hashes, and a receipt body to sign
+  await assert.rejects(() => b.gateway.moves.finishTarget(cb, { move_id: "0190c3f2-1111-4abc-8def-0000000000fe", counts: {}, files_root: "a".repeat(64) }), { code: "not_found" });
+  const body = await b.gateway.moves.finishTarget(cb, { move_id: out.move_id, counts: { records: { contact: 2 }, files: 3 }, files_root: "a".repeat(64) });
+  assert.deepEqual([body.v, body.move_id, body.from, body.to], [1, out.move_id, a.space, b.space]);
+  assert.deepEqual(await b.gateway.moves.finishTarget(cb, { move_id: out.move_id, counts: {}, files_root: "b".repeat(64) }), body, "a second finish answers the same receipt");
+  assert.equal(b.kernel.log.read({ type: "project.move_done" }).length, 1);
+  // the source clears nothing until a receipt signed by the TARGET's key arrives
+  const receipt = { body, ...signAs(b.space, "vyre-move-receipt-v1", body) };
+  await assert.rejects(() => a.gateway.moves.finishSource(ca, { move_id: out.move_id, receipt: { body, ...signAs(a.space, "vyre-move-receipt-v1", body) } }), { code: "not_found" }, "a receipt signed by the source itself proves nothing");
+  await assert.rejects(() => a.gateway.moves.finishSource(ca, { move_id: out.move_id, receipt: { ...receipt, body: { ...body, counts: { files: 0 } } } }), { code: "not_found" }, "a changed receipt is refused");
+  assert.equal(a.kernel.log.read({ type: "project.moved" }).length, 0, "nothing was marked moved by a refused receipt");
+  const fin = await a.gateway.moves.finishSource(ca, { move_id: out.move_id, receipt });
+  assert.deepEqual([fin.moved, fin.to, fin.files_root], [true, b.space, "a".repeat(64)]);
+  assert.equal(a.kernel.log.read({ type: "project.moved" }).length, 1);
+  await a.gateway.moves.finishSource(ca, { move_id: out.move_id, receipt });
+  assert.equal(a.kernel.log.read({ type: "project.moved" }).length, 1, "finishing twice marks it once");
 });
 
 test("a module tool's cross-space action: the hosted Space's own authorize allows a member's chain and refuses a stranger and another Space's chain", async () => {

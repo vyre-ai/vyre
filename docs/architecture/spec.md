@@ -606,9 +606,9 @@ through `ctx` or the API, never by importing its files.
 | gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
-in `docs/work/LAUNCH.md`.
+in `team/archive/work-journals/LAUNCH.md`.
 
-Each workstream keeps `docs/work/<stream>.md` current: what is done, what is next, what it needs
+Each workstream keeps `team/archive/work-journals/<stream>.md` current: what is done, what is next, what it needs
 from others. A workstream merges to `main` only with its tests passing and the full suite green.
 
 ---

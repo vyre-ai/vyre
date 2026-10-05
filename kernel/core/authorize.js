@@ -165,7 +165,8 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
- * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
+ * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string, outward?: boolean }) => boolean | Promise<boolean>} [approvedPeek] the same check as approvedAct that spends nothing: an approval is a single-use authority for exactly its act, for the task's doer
+ * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
  * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | { ok: boolean, reason?: string } | Promise<boolean | { ok: boolean, reason?: string }>} [verifyPresence] the hardware-signer check (core/presence.js); default none
@@ -239,6 +240,10 @@ export function createAuthorizer(cfg) {
       // Fail closed: a draft-only rule on an action whose door does not prepare a draft would be a rule that does nothing, so the act is refused instead.
       if (draftRule && !def.draftable) { ruleOf = draftRule; return deny("rule_draft_unsupported"); }
 
+      // An approval is a single-use authority for EXACTLY the bound act, given to the task's doer (the approval queue's own token, no new permission): when the doer presents an approved task whose decision was
+      // signed by the right person, with the same bind, not expired and not spent, the act needs no standing grant of its own. It is only looked at here (nothing is spent); the one use is counted below.
+      const heldApproval = typeof input.approval === "string" && OUTWARD.has(risk) && typeof cfg.approvedPeek === "function"
+        && await cfg.approvedPeek({ id: input.approval, chain, action, resource, outward: true, ...(typeof input.bind === "string" ? { bind: input.bind } : {}) }) === true;
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
       /** @type {any[]} */ const obligations = [];
@@ -253,6 +258,7 @@ export function createAuthorizer(cfg) {
         if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
+          if (heldApproval) continue;
           if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource))) return deny("not_a_member");
           continue;
         }
@@ -272,6 +278,7 @@ export function createAuthorizer(cfg) {
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
+        if (!chosen && heldApproval) continue; // the approval stands for the act; the use below counts it
         if (!chosen) return deny(best);
         used.push(chosen.id);
         for (const o of chosenObs) {
@@ -309,7 +316,7 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
+      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await (input.peek === true && cfg.approvedPeek ? cfg.approvedPeek : cfg.approvedAct)({ id: input.approval, chain, action, resource, ...(OUTWARD.has(risk) ? { outward: true } : {}), ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 

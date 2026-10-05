@@ -91,6 +91,106 @@ search the box's own sessions only. The decision is [ADR 0021](../adr/0021-box-r
 Memory's facts come from the sessions indexed on the machine itself, so the box's graph holds no
 facts from the Mac's sessions.
 
+## Read a turn word for word
+
+A search hit is a passage. The turn around it is one tool call away, exactly as it was said: no summary, no model.
+Agents get this as `memory_turn`; the same tool is `recall.turn`, which you can call yourself:
+
+```
+vyre call recall.turn '{"session":"3f9c2a10","seq":14,"before":2,"after":2}'   # turn 14 and two either side
+vyre call recall.turn '{"session":"3f9c2a10","from":10,"span":5}'              # a range
+vyre call recall.links '{"ref":"auth.ts"}'                                      # every turn that touched a file
+vyre call recall.links '{"kind":"commit","ref":"c0ffee1"}'                      # the turn that made a commit
+```
+
+Every turn comes back with its **pointer** (`session:turn`, a session id or the first 8 characters of one), its time, and what it
+touched: files it changed or read, commits it made or named, and urls. A long turn that the search index holds only the start of is
+read whole from the transcript. Everything is redacted the way search is, and a session is readable only by the callers that could
+search it: an agent reads inside its own projects, and a session outside them is "not found", not "denied".
+
+`memory_search` takes `file` and `commit` to keep only turns that touched them: `memory_search {query: "login", file: "auth.ts"}`.
+The links are plain lookups the indexer writes when it reads a transcript, with no model: a tool call's file goes to the next
+assistant turn of its exchange, and a hash printed by `git commit` goes to the turn that made it.
+
+## Long sessions: Vyre rolls the window over
+
+An agent's own compaction keeps a summary and loses the lines. Vyre rolls over first. For every session it runs (a chat, a project
+session, an agent's), once a turn has ended and the window is 60% full and nothing is running, Vyre ends the agent's session and starts a fresh
+one in the same folder. The thread, its history and its folder do not change; the transcript says once "Continued in a fresh session".
+The person's next message goes to the fresh session with a **seed** in front of it:
+
+- the decisions you made for this project, newest first;
+- the plan as the agent last left it;
+- an index of what came before, as pointers: your own requests with their turn numbers, the files touched, the commits made;
+- the last turns, word for word.
+
+Every turn the fresh window dropped is still stored, so the agent reads any of it back with `memory_search` and `memory_turn`.
+It works on any agent Vyre runs: Claude, Codex, Grok and the rest. An agent that does not say how full its window is has it counted from
+the characters said, and rolls at the earlier 50%. A conversation with an agent other than Claude is kept under your Vyre home, in Claude Code's
+own layout, so it is searchable like any other session.
+
+It waits for a running tool, subagent or background job for up to 3 turns, rolls at 75% whatever is running, and never rolls twice
+within 10 turns. Two settings (`vyre config`, in the Deck under Sessions; each can be set per project) change it:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `sessions.rollover` | on | Off lets the agent compact its own window instead. |
+| `sessions.rollover_at` | 60 | The percent of the window to roll at, from 20 to 90. |
+
+`vyre call threads.roll '{"thread":"<id>"}'` rolls a session now (or `vyre roll --thread <id>`), and `threads.rolls` lists a thread's rollovers.
+A rolled session's earlier windows are separate sessions in search, each readable by `memory_turn`.
+
+## Continue a long terminal session
+
+A Claude Code session you run in your own terminal is not Vyre's to stop. Vyre tells you instead: once, when the window passes the line
+(60% unless you changed it), the next prompt shows "This session's window is 61% full ..." Then:
+
+```
+/exit
+vyre roll
+```
+
+`vyre roll` builds the same seed, starts `claude` in this folder under a fresh session with the seed as its first message, and remembers
+which session it came out of, so a second roll reaches back through the first. `vyre roll --print` prints the seed and starts nothing, for any
+agent to use; `--session <id>` rolls a session other than the folder's newest; `--no-start` writes the seed to a file under `~/.vyre/rolls/` and
+says how to start it. A seed too long for a command line goes in that file, and the first message names it.
+
+## Three layers: identity, Spaces, projects
+
+Memory is kept in three layers, each with its own facts. A **project's** memory holds that project's facts, decisions and sessions. A **Space's** memory holds the Space's own. Your
+**identity** memory is yours alone: how you like to work, your writing style, how you run projects, your tech stack, what is true everywhere, plus a marker for every Space and
+project. Nothing learned in one Space or project is copied into another.
+
+Layers find each other by **markers**. A marker names a project's (or the Space's) memory with a short summary: counts of facts, decisions and sessions, and a few topics. It holds
+no content and grants nothing. `memory_markers` lists the markers you may see; `memory_follow` asks the memory behind one a question, with your own grants:
+
+```
+vyre call memory.markers '{}'
+vyre call memory.follow '{"marker":"Northwind","question":"what did we decide about the weekly invoice?"}'
+```
+
+You and your assistant follow every marker. An agent bound to a project reads only its own layer; a project it is not granted does not appear in its markers and is not counted, and
+following it answers as if there were none. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
+
+### Moving a project between Spaces
+
+When a project moves to another of your Spaces, its memory goes with it: the facts and notes filed to it, its decisions and your corrections. They travel sealed to a key the receiving Space makes for that one move, are checked by digest, and only then are removed from the old Space, which keeps a note of where they went (`moved_to`). The graph of people and topics is built again in the new Space from the sessions that arrive with the project. The move itself is one yes, given where it starts.
+
+### Where your identity memory lives
+
+On a space server, your identity memory is stored encrypted to your own key, so the people who run that server (admins, root) see only ciphertext at rest. On your own devices (phone,
+computer) your device key opens it with no prompt. On a shared space server you give one yes per server ("let my assistant use my memory here", `memory.identity.grant`), and it lasts until you
+revoke it from your phone (`memory.identity.revoke`). A server restart is answered by your phone without asking, unless you revoked. While it is open, the facts are held only in the
+server's memory, never written back to disk in the clear; new facts are stored as ciphertext, and after a crash the disk holds ciphertext only. In use, only the process memory is exposed, to
+the server's root, as the terms say. If you have a server of your own, even a small one, it can live there instead: `memory.identity.move` copies the encrypted memory across and leaves only a
+marker behind; nothing is decrypted on the way and the same phone unlocks it there.
+
+```
+vyre call memory.identity.status '{}'
+```
+
+Locked, the memory tools say "locked" rather than answering as if you knew nothing. Your recovery code can unlock it on your own device if you lose your phone.
+
 ## See what memory holds
 
 ```

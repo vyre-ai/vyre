@@ -285,4 +285,7 @@ export const MIGRATIONS = [
   CREATE TABLE memory_site_forgotten (key TEXT PRIMARY KEY, record TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;
   CREATE TABLE memory_site_gone (key TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID;
   CREATE TABLE memory_site_forgotten_items (key TEXT NOT NULL, part TEXT NOT NULL, id TEXT NOT NULL, item TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, part, id)) WITHOUT ROWID;`,
+  // A project's memory moved between Spaces (core/memory/move.js): one row per move and side, the receipt as JSON; the 'out' row is what says moved_to.
+  `CREATE TABLE memory_moves (move_id TEXT NOT NULL, side TEXT NOT NULL CHECK (side IN ('in','out')), project TEXT NOT NULL, other TEXT, receipt TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (move_id, side)) WITHOUT ROWID;
+  CREATE INDEX memory_moves_project ON memory_moves (project, side);`,
 ];

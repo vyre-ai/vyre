@@ -45,6 +45,11 @@
           "label": "Job title"
         },
         {
+          "name": "time_zone",
+          "kind": "text",
+          "label": "Time zone"
+        },
+        {
           "name": "organization",
           "kind": "link",
           "label": "Organization",
@@ -268,8 +273,8 @@
     {
       "name": "welcome",
       "kind": "email",
-      "subject": "Welcome to Harlow Legal",
-      "body": "Dear {{client.name}},\n\nThank you for choosing Harlow Legal for your estate plan. Your matter reference is {{matter.id}}.\n\nWe will start with a short call to learn about your household. Please have your Social Security number ready; we will ask for it on a secure form and never by email. Your number will be filled in here by our system: {{sealed:client.ssn}}.\n\nWarm regards,\nThe Harlow Legal team"
+      "subject": "Welcome to Juniper Studio",
+      "body": "Dear {{client.name}},\n\nThank you for choosing Juniper Studio for your estate plan. Your matter reference is {{matter.id}}.\n\nWe will start with a short call to learn about your household. Please have your Social Security number ready; we will ask for it on a secure form and never by email. Your number will be filled in here by our system: {{sealed:client.ssn}}.\n\nWarm regards,\nThe Juniper Studio team"
     }
   ],
   "roles": [

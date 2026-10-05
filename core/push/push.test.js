@@ -185,7 +185,7 @@ test("push: devices subscribe, the moments reach them as kind, title and path on
 });
 
 test("push: devices are keyed by endpoint, so two subscriptions of the same push service upsert to one device, never two", async t => {
-  // The /app/ -> / migration (docs/work/pwa.md) leans on this: the app's own launch-time
+  // The /app/ -> / migration (team/archive/work-journals/pwa.md) leans on this: the app's own launch-time
   // pushManager.getSubscription() re-sends the same endpoint the Deck already holds (same
   // browser, same push service registration), and push.unsubscribe by endpoint has to actually
   // reach the row that ring, not a stray duplicate.

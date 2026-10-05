@@ -6,6 +6,7 @@
 // nowhere else. Networking over Tailscale is layered on later by the names module; the socket
 // is always the local way in and never leaves the machine.
 
+import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
@@ -21,7 +22,7 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
-import { build, htmlWithBuild } from "./build.js";
+import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
@@ -39,6 +40,7 @@ import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { lentServiceFor } from "./lent-service.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -253,12 +255,9 @@ async function startLocked(opts, root, p, release) {
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
     const { storeMode } = await import("../../stores/twenty/space-store.js");
     const isServerInstall = config.isServer(cfg.machine);
-    // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
-    /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
-    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -272,7 +271,12 @@ async function startLocked(opts, root, p, release) {
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The Space's calendar, in step with an outside one, by default.
-      calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }) });
+      calendarSync: createCalendarSyncHost({ root, log }),
+      // The Google accounts the google module holds (a signed-in calendar), read and written through google.api as module:leases (the daemon's own label for the kernel's lease path)
+      google: {
+        accounts: async () => { const r = await registry.call("google.accounts", {}, "module:leases"); const d = r && !r.error ? r.data : null; return Array.isArray(d) ? d : d && Array.isArray(d.accounts) ? d.accounts : []; },
+        api: async (account, req) => { const r = await registry.call("google.api", { account, ...req }, "module:leases"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -317,6 +321,8 @@ async function startLocked(opts, root, p, release) {
     const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
+      // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
+      lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
@@ -336,8 +342,17 @@ async function startLocked(opts, root, p, release) {
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(basic ? { basic } : {}), modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
+      // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
+      resolveCredential: async (/** @type {any} */ q) => {
+        const port = /** @type {any} */ (registry.deps).credentialsPort;
+        // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
+        const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
+        if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
+        return v;
+      },
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
         // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
@@ -356,9 +371,11 @@ async function startLocked(opts, root, p, release) {
         return out.data;
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
-    // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
-    stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
+    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+    // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
+    // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
+    if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
@@ -398,38 +415,6 @@ async function startLocked(opts, root, p, release) {
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
-    // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
-    // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
-    // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
-    // Chat record (its mirror of who is in a chat). Only the event's own facts (ids), nothing is written back.
-    try {
-      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-chats", { type: "chat.*" }, (/** @type {any} */ e) => {
-        if (e && (e.type === "chat.created" || e.type === "chat.changed")) { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } }
-      });
-    } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
-    // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
-    const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
-      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
-      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
-      return isAssistant ? "assistant" : (q.agent || undefined);
-    };
-    registry.deps.chatFor = async (/** @type {{ thread: string, agent: string | null, agent_kind?: string | null, name?: string | null, project?: string | null }} */ q) => {
-      const person = await personChainFor(kernel.id.owner);
-      const grants = kernel.gateway.grants;
-      // The person's own assistant is identity-level and private: never a listed participant (its acts are the person's, marked via: "assistant"). Any other agent that runs in a Space is an actor of
-      // that Space; one that is not yet is registered through the kernel's own registration (grants.addActor), which asks whatever the gate asks. A refusal there is the run's chat refusal, never an
-      // owner-only chat that quietly drops the agent.
-      const a = q.agent_kind === "assistant" ? undefined : await kernelAgentOf({ agent: q.agent, rec: { agent_kind: q.agent_kind } });
-      const isAssistant = a === "assistant";
-      const listed = a && !isAssistant ? [a] : [];
-      const make = () => grants.chats.create(person, { assistants: listed });
-      try { return String((await make()).id); }
-      catch (e) {
-        if (!listed.length || !/belongs to the Space/.test(String(e && /** @type {any} */ (e).message))) throw e;
-        await grants.addActor(person, { kind: "agent", id: listed[0], space: kernel.id.space }, {});
-        return String((await make()).id);
-      }
-    };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -439,15 +424,11 @@ async function startLocked(opts, root, p, release) {
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
-      // A run with no agent is a model slot in its chat (team/0.3/DESIGN-one-chat.md): its token's agent hop is the slot id the switchboard minted, narrowed to the run's Project. It acts on the person's own
-      // chain, holds nothing of its own, and ends with its person's place in the chat. A run in no chat is as before.
-      let kernelAgent = await kernelAgentOf(q);
-      let project;
-      if (!kernelAgent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) {
-        kernelAgent = q.rec.slot;
-        if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project;
-      }
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), ...(project ? { project } : {}), ...(kernelAgent && kernelAgent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      // lib/kernel-session names a session for the agent it was started as and a plain session "session" (nobody's assistant), so the home's assistant must be named here as the Space's one assistant actor, not left to a default.
+      const kernelAgent = isAssistant ? "assistant" : (q.agent || undefined);
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -520,7 +501,23 @@ async function startLocked(opts, root, p, release) {
         return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
+        providerAccount: async (/** @type {any} */ i) => {
+          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
+          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          try {
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
+            if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
+            if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
+            return null;
+          } catch { return null; }
+        },
+        // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
+        onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
+      registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -867,7 +864,7 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
  * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
- * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * proved its session), for every tool: a label is only a claim (team/archive/work-journals/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
@@ -900,15 +897,17 @@ export async function asTaken(caller, socket, registry, thread, deps) {
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
       server: !w.inside && w.server ? w.server : null,
       couldNotTell: Boolean((w.nopid && canReadPeers) || w.unreadable),
+      // which half failed, for the log and the refusal: the kernel gave no pid for the socket, or the pid's ancestry could not be read
+      why: w.nopid && canReadPeers ? "peer_pid_unread" : w.unreadable ? "process_chain_unreadable" : undefined,
     }));
     v = mine;
     taken.set(socket, mine);
     // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": never a person, asked again on the next call, and logged ONCE per connection (a model's
     // shell must not be able to fill the log by calling again and again).
-    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`ancestry: unknown for a socket call (${a.why || "not definite"}; not a person; asked again next call)`); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) };
 }
 const PEER_RETRIES = 3;
 /** Sockets whose unknown ancestry was already logged. @type {WeakSet<object>} */
@@ -1339,10 +1338,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     /** @type {{ inside: boolean, outside?: boolean } | undefined} */
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
-    let result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
+    const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
+    let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
-    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
+    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
@@ -1419,13 +1420,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
   if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"), cfg);
   // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
-  // ../../relay/client/<file>.js (web/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
+  // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
   // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
   // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
   // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
   // (Settings, Add a Windows PC) imports - nothing else in relay/client/
   // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
-  // /pair/scan without this fell straight through to the catch-all shell (team-lead,
+  // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
@@ -1436,15 +1437,16 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
-  if (req.method === "GET" && WEB_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
+  if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
   // The verified-link files for the iPhone and Android apps (app-wire): public, tiny, and absent until the deploy sets the signing identities.
   if (req.method === "GET" && url.pathname.startsWith("/.well-known/")) {
     const body = associationFile(url.pathname);
     if (body) { res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" }); return res.end(body); }
   }
-  // The one app (ADR 0027). With config app.root (on by default: core/config/index.js) /app/* is a 301 to
-  // the same path under "/", so an installed /app/ Home Screen icon or a stale bookmark still opens.
-  // With it off, the app is served at /app/ and nothing answers at /.
+  // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
+  // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
+  // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
+  // still opens once "/" serves the app.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) {
     if (cfg.app?.root) {
       // Never let this become a protocol-relative Location: "/app//evil.example" (or a
@@ -1456,16 +1458,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       res.writeHead(301, { location: to, "cache-control": "no-cache" });
       return res.end();
     }
-    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
+    return serveApp(res, url.pathname);
   }
-  // The pre-app pages live in web/ (plain pages the app signs in through): the owner wizard, the device and passkey pages, sign-in and the signed release files.
-  // A file web/ does not hold falls through to the app.
-  if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
-  // With config app.root (on by default) the app answers every other page address, from an export built for the root (npm run export:web:root; precache.json names the base).
-  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname)) {
-    if (appBase(APP_DIST) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/; build it for the root with npm run export:web:root" } });
-    return serveApp(res, url.pathname, { csp: webHeaders(cfg)["content-security-policy"] });
-  }
+  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
+  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
+  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
+  // then the Deck answers as before.
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
+  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
 
@@ -1530,33 +1530,46 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
 /** At the root (config app.root) these stay the box's: the pre-app pages and what they load, and the signed release files. */
 const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon\.svg|favicon\.svg|icon-[^/]+|apple-touch-icon\.png|splash|kernel|lib)(\/|\.|$)/;
 
-/** The lib files vyred serves to the pre-app pages (pure, import-free, shared with Node). */
-const WEB_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
+/** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
+const DECK_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
 
 /**
- * The pre-app pages (web/): the owner wizard, the device and passkey pages and the person's sign-in, with the code, styles, fonts and
- * vendor files they load. Plain files, the same address in both modes. True when this answered; false when web/ holds no such file, so the
- * Deck (or, at the root, the app) answers as before. A folder with an index.html serves it (the build stamped in), a folder without one is not a file.
- * @param {any} res @param {string} pathname @param {any} cfg
+ * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
+ * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
+ * ever served, whatever the path says.
  */
-export function serveWeb(res, pathname, cfg) {
-  const dir = path.join(REPO, "web");
-  let rel;
-  try { rel = decodeURIComponent(pathname); } catch { return false; }
-  let file = path.resolve(dir, "." + path.posix.normalize(rel));
-  if (!file.startsWith(dir + path.sep)) return false;
-  // Tests and sample data live beside the pages in the repo and are never served.
-  // Compared in lower case: a Mac's file system is case-insensitive, so /TEST/x.js and /Fixtures/x.json reach the same files.
-  const low = path.relative(dir, file).toLowerCase();
-  if (low.split(path.sep).some(seg => seg === "test" || seg === "fixtures") || /\.test\.m?js$/.test(low)) return false;
-  let page = false;
-  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); page = true; } } catch { return false; }
+function serveDeck(res, pathname, cfg) {
+  const dir = path.join(REPO, "deck");
+  const shell = path.join(dir, "index.html");
+  let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
+  if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
+  // Sample data (deck/fixtures, deck/chat/fixtures) is for dev worlds and tests only: a real box
+  // never serves it, so no ?fixtures=1 link can put sample threads in front of a person (0.2
+  // honesty pass, PLAN.md D2). Dev worlds set VYRE_DECK_FIXTURES=1.
+  if (process.env.VYRE_DECK_FIXTURES !== "1" && path.relative(dir, file).split(path.sep).includes("fixtures")) {
+    return send(res, 404, { error: { code: "not_found", message: pathname } });
+  }
+  // A path that is not a file at all (any client route) wants the one shell. A path that IS a
+  // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
+  // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
+  // nothing about the URL said "this is a module", only that a browser asked for a page.
+  let wantsShell = false;
+  // The release's signed files (deck/sw.js verifyShell): a missing one is a plain 404, never the shell.
+  if (/^\/release\/(SHA256SUMS|SHA256SUMS\.sig|shell\.json)$/.test(pathname) && !fs.existsSync(file)) return send(res, 404, { error: { code: "not_found", message: pathname } });
+  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
+  catch { file = shell; wantsShell = true; }
   let buf;
-  try { buf = fs.readFileSync(file); } catch { return false; }
-  if (page || path.basename(file) === "index.html") buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...webHeaders(cfg) });
+  try { buf = fs.readFileSync(file); }
+  catch {
+    if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
+    if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
+  }
+  // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
+  // at once (deck/sw.js BUILD).
+  if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
+  if (file === shell || wantsShell) buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
-  return true;
 }
 
 /**
@@ -1582,17 +1595,17 @@ function relaySources(cfg) {
   return out.join(" ");
 }
 
-/** What every page and module file goes out with. @param {any} cfg */
-function webHeaders(cfg) {
+/** What every Deck file goes out with. @param {any} cfg */
+function deckHeaders(cfg) {
   return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
     "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
 }
 
-/** One module from outside web/ that a page imports (core/resilience, relay/client), with the page headers. @param {any} cfg */
+/** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */
 function serveFile(res, file, cfg) {
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
-  res.writeHead(200, { "content-type": "text/javascript", ...webHeaders(cfg) });
+  res.writeHead(200, { "content-type": "text/javascript", ...deckHeaders(cfg) });
   res.end(buf);
 }
 

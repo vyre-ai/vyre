@@ -1,5 +1,5 @@
 // @ts-check
-// The box's reads take in the paired Mac's rows (docs/work/federation.md, design 4 and the first
+// The box's reads take in the paired Mac's rows (team/archive/work-journals/federation.md, design 4 and the first
 // half of 5): projects.catalog, projects.list, recall.search, recall.sessions, recall.thread and
 // threads.list answer with both machines' rows, labelled, for the person only; agents, MCP,
 // guests and modules that do not ask get the box's own. A Mac that is away costs the box nothing

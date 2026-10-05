@@ -26,6 +26,10 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { holdKernelDrive } from "./storage/keys.js";
+import { backendFor } from "./storage/devices.js";
+import { createBridge } from "./storage/bridge.js";
+import { TASK } from "../records/core-types.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -84,7 +88,14 @@ export async function createKernel(cfg) {
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
+    // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
+    // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
+    records: store,
+    projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
+  // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
+  await store.define({ add_types: [TASK] });
+  await tasks.migrate();
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
@@ -95,8 +106,12 @@ export async function createKernel(cfg) {
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
     moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
+    // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
+    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); },
+    verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
+    verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
@@ -141,7 +156,7 @@ export async function createKernel(cfg) {
       space: cfg.space, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
       canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
-      records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      records, memory: gateway.memory, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -149,6 +164,9 @@ export async function createKernel(cfg) {
       proofFrom, acceptProofRequest: (/** @type {any} */ card, /** @type {string} */ person) => acceptProofRequest(cfg.space, card, person), proofChainHash: (/** @type {string} */ person) => proofChainHash(cfg.space, person), proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
       leases: gateway.leases, drive: gateway.drive, chats: gateway.grants && gateway.grants.chats ? Object.freeze({ ...gateway.grants.chats, mine: async (/** @type {any} */ chain) => { const ids = gateway.grants.chats.mineIds(chain); let recs = []; try { recs = (await records.query(chain, "chat-record", { page: { limit: 500 } })).rows || []; } catch { /* the record type is not defined here: ids only */ } const byChat = new Map(recs.map((/** @type {any} */ r) => [r.data.chat, r])); return ids.map((/** @type {string} */ id) => { const r = byChat.get(id); return { chat: id, ...(r ? { project: r.data.project && r.data.project.urn, location: r.data.location, title: r.data.title } : {}) }; }); }, append: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.append(token, message); }, beginTurn: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.beginTurn(token); }, appendOpen: (/** @type {string} */ token, /** @type {any} */ message) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.appendOpen(token, message); }, ...(needs.room === true ? { roomFor: (/** @type {string} */ token) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.roomFor(token); } } : {}), mayReceive: (/** @type {any} */ chain, /** @type {string} */ messageId) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.mayReceive(chain, messageId); } }) : undefined,
       // Only the pool's own module may record the index head; a head any module could write would make the rollback check worthless.
+      // The pool behind this Space's Drive, for the Wink module only: it adds a node for every storage device a person paired (core/wink/storage/pool.js) and builds each node's backend with `backendFor`; `createBridge` serves
+      // a drive on this computer to the Space's home. The Pool is what the Drive's chunks are placed on, so a module that holds it can place data: nothing else is given it.
+      ...(m.name === "wink" && cfg.drive && cfg.drive.pool ? { storage: Object.freeze({ pool: cfg.drive.pool, backendFor, createBridge }) } : {}),
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
@@ -333,6 +351,8 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
+        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
+        setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }
     /**
@@ -399,5 +419,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }

@@ -8,7 +8,7 @@ import { recordMessage } from "../../../../names/worker/id-messages.js";
 import { sealRecord } from "./seal.js";
 import { newCode, codeKey, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
-import { createPasskeyKey, passkeyRp, WRONG_ORIGIN_SAY } from "./passkey.js";
+import { createPasskeyKey } from "./passkey.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
@@ -23,7 +23,7 @@ function plain(e) {
 
 /**
  * @param {{ name: string, password?: string, deviceLabel?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
- *   params?: { memoryKiB: number, passes: number }, key?: import("./keys.js").DeviceKey, enclave?: string, agree?: string, held?: "web" | boolean, forceSoftware?: boolean, headers?: Record<string, string>,
+ *   params?: { memoryKiB: number, passes: number }, key?: import("./keys.js").DeviceKey, enclave?: string, agree?: string, forceSoftware?: boolean, headers?: Record<string, string>,
  *   beforeClaim?: (made: { name: string, id: string, eid: string, ops: any[], pin: any, key: import("./keys.js").DeviceKey }) => Promise<void> }} o
  */
 export async function claimIdentity(o) {
@@ -35,7 +35,7 @@ export async function claimIdentity(o) {
   const key = o.key ?? await generateDeviceKey({ forceSoftware: o.forceSoftware });
   const ts = now();
   const genesis = await C.makeGenesis({
-    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(/** @type {any} */ (key).alg === "webauthn-es256" ? { alg: "webauthn-es256", rp: /** @type {any} */ (key).rp } : {}), ...(o.enclave ? { enclave: o.enclave } : {}), ...(o.agree ? { agree: o.agree } : {}), ...(o.held ? { held: "web" } : {}) },
+    kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(key.alg === "webauthn-es256" ? { alg: key.alg, rp: key.rp } : {}), ...(o.enclave ? { enclave: o.enclave } : {}), ...(o.agree ? { agree: o.agree } : {}) },
     code: { eid: ck.eid, kind: "code", pub: ck.publicKey }, nonce: C.b64u(random(12)), ts, sign: m => key.sign(m),
   });
   const state = await C.verifyChain([genesis], { now: ts + 1 });
@@ -64,11 +64,6 @@ export async function claimIdentity(o) {
  * @param {Omit<Parameters<typeof claimIdentity>[0], "key"> & { rp?: string, webauthn?: { create(o: any): Promise<any>, get(o: any): Promise<any> } }} o
  */
 export async function claimIdentityWithPasskey(o) {
-  // The page decides where a passkey may be made (passkeyRp): app.vyre.run in a release build, also http://localhost in a development one. Anywhere else it is refused before the browser is asked,
-  // with the words that say where to go; that origin pairs as its own device with the typed code instead. A page with no location (a test with its own authenticator) uses the default.
-  const origin = typeof globalThis.location !== "undefined" ? globalThis.location.origin : undefined;
-  const rp = o.rp || (origin === undefined ? "app.vyre.run" : passkeyRp(origin, { dev: typeof process !== "undefined" && process.env.NODE_ENV !== "production" }));
-  if (!rp) throw Object.assign(new Error(WRONG_ORIGIN_SAY), { code: "wrong_origin" });
-  const key = await createPasskeyKey({ rp, name: o.name, ...(o.webauthn ? { webauthn: o.webauthn } : {}), ...(o.random ? { random: o.random } : {}) });
+  const key = await createPasskeyKey({ rp: o.rp || "app.vyre.run", name: o.name, ...(o.webauthn ? { webauthn: o.webauthn } : {}), ...(o.random ? { random: o.random } : {}) });
   return claimIdentity({ ...o, key: /** @type {any} */ (key) });
 }

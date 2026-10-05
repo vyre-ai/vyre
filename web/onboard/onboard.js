@@ -23,7 +23,7 @@ import { buildWinkCard } from "../js/wink-card.js";
 // computers, Vyre Drive) are not steps: nothing here is shown that does not work, and those live in Settings.
 const STEPS = [
   { id: "you", title: "You" },                    // 1
-  { id: "live", title: "Where should Vyre live?" }, // 1b, ahead of ADR 0039 (docs/work/launch-surfaces.md "Where should Vyre live?")
+  { id: "live", title: "Where should Vyre live?" }, // 1b, ahead of ADR 0039 (team/archive/work-journals/launch-surfaces.md "Where should Vyre live?")
   { id: "tailscale", title: "Tailscale" },         // 2a
   { id: "name", title: "Your address" },           // 2b
   { id: "claude", title: "Claude Code" },          // 3
@@ -57,10 +57,10 @@ const state = {
   /** The "How will Vyre run?" step's choice, config.machine's three values ("solo"|"server"|
    * "device", docs/design/anywhere.md, ADR 0039 — not config.role, which is unrelated and
    * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
-   * (asked, docs/work/launch-surfaces.md "Where should Vyre live?"). */
+   * (asked, team/archive/work-journals/launch-surfaces.md "Where should Vyre live?"). */
   /** @type {"solo"|"server"|"device"|null} */ live: null,
   /** The Device choice's "same Tailscale network" input: the existing server's tailnet name,
-   * for the `verify{node}` call once Tailscale connects (tailnet, docs/work/launch-surfaces.md
+   * for the `verify{node}` call once Tailscale connects (tailnet, team/archive/work-journals/launch-surfaces.md
    * "Two separate paths for 'I have a server'"). Client-only. */
   serverNode: "",
   /** Which of Device's two real join mechanisms is selected: same Tailscale network (no code,
@@ -370,7 +370,7 @@ const SCREENS = {
   //     yet), so nothing here reads it.
   //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
   //     surfaced yet either, for the same reason; will add once anywhere says it's populated.
-  //   - Device: two real paths, per tailnet, both built now (docs/work/launch-surfaces.md
+  //   - Device: two real paths, per tailnet, both built now (team/archive/work-journals/launch-surfaces.md
   //     "Concrete answer: relay.join for the code, onboard.join for Tailscale"), each its own
   //     inner radio under "device", not one made-up "setup code" field:
   //       - Same Tailscale network: this machine's own Tailscale connect (the existing
@@ -1234,7 +1234,7 @@ const SCREENS = {
   // Lumen tour (docs/design/onboarding-v2.md step 10), split out of "devices" so the
   // mandatory, non-skippable final screen is this one, not Mac/phone pairing. capsule-pro owns
   // the real, signed-in tour; this reuses the landing page's copy and hotkey
-  // (site/index.html, docs/work/launch-surfaces.md) as a starting shape.
+  // (site/index.html, team/archive/work-journals/launch-surfaces.md) as a starting shape.
   capsule(col, s) {
     col.append(
       h("h1", { class: "h1" }, "A tour of Lumen."),

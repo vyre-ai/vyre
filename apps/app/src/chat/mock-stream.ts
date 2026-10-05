@@ -1,5 +1,5 @@
 // A mock session stream, so the chat screen works with no server and the perf script has something
-// to measure. It speaks the 0.3 frame (docs/work/chat.md): { v, id, cur, session, turn, type, time,
+// to measure. It speaks the 0.3 frame (team/archive/work-journals/chat.md): { v, id, cur, session, turn, type, time,
 // corr, data } with gapless cursors, and plays one realistic turn: text deltas at about 40 tokens a
 // second, a Bash tool with ANSI terminal output, an Edit with a diff, a record found, a queued user
 // message picked up at the next safe point, a task that needs approval (the script waits for the

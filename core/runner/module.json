@@ -10,17 +10,20 @@
   "does": {
     "tools": [
       {
-        "name": "runner.status", "effect": "read",
+        "name": "runner.status",
+        "effect": "read",
         "summary": "whether this computer can run a space's sessions, and what is running",
         "reach": "anyone"
       },
       {
-        "name": "runner.place", "effect": "read",
+        "name": "runner.place",
+        "effect": "read",
         "summary": "where a session would run: here, the server, or waiting, with the reason",
         "reach": "anyone"
       },
       {
-        "name": "runner.start", "effect": "write",
+        "name": "runner.start",
+        "effect": "write",
         "summary": "start a session here: the kernel supplies its program, routes and credentials (both grants needed)",
         "reach": "person"
       },
@@ -30,18 +33,33 @@
         "reach": "modules"
       },
       {
-        "name": "runner.stop", "effect": "write",
+        "name": "runner.stop",
+        "effect": "write",
         "summary": "stop a session running here",
         "reach": "person"
       },
       {
-        "name": "runner.lock", "effect": "write",
+        "name": "runner.lock",
+        "effect": "write",
         "summary": "close the workspace on this computer; the data stays encrypted",
         "reach": "person"
       },
       {
-        "name": "runner.move", "effect": "write",
+        "name": "runner.move",
+        "effect": "write",
         "summary": "move a session to the space's server after a last checkpoint",
+        "reach": "person"
+      },
+      {
+        "name": "runner.revoke",
+        "effect": "write",
+        "summary": "the home says the grant ended: stop the sessions and delete the local work",
+        "reach": "modules"
+      },
+      {
+        "name": "runner.places",
+        "effect": "read",
+        "summary": "where each of your chats runs: on the server or on a computer, and whether it is connected",
         "reach": "person"
       }
     ]

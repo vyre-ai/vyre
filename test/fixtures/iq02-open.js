@@ -1,5 +1,5 @@
 // @ts-check
-// The OPEN half of the 0.2 eval world (docs/work/iq.md, task 1; the 0.2 plan, section 0). Open:
+// The OPEN half of the 0.2 eval world (team/archive/work-journals/iq.md, task 1; the 0.2 plan, section 0). Open:
 // tune on it. The sealed half is written separately and is never read by whoever tunes memory.
 //
 // About 90 days of Alex Rivera's work and life (Rivera Studio), across four projects:

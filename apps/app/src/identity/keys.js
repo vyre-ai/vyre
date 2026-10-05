@@ -7,7 +7,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { b64u, eidOf } from "../../../../kernel/identity/chain.js";
 
 /**
- * @typedef {{ publicKey: string, eid: string, software: boolean, sign(message: Uint8Array): Promise<Uint8Array>, keep(): any }} DeviceKey
+ * @typedef {{ publicKey: string, eid: string, software: boolean, sign(message: Uint8Array): Promise<Uint8Array>, keep(): any, alg?: string, rp?: string }} DeviceKey
  * `keep()` is what a store persists: the CryptoKey pair itself (structured-cloneable, not extractable), or the noble seed.
  */
 

@@ -1,4 +1,4 @@
-// The box client (apps/CONTRACT.md, docs/adr/0029-resilience.md): a thin adapter over the box's
+// The box client (team/archive/CONTRACT-native-apps.md, docs/adr/0029-resilience.md): a thin adapter over the box's
 // own resilience code, so the app follows events and delivers writes exactly as the Deck does.
 //   - events: core/resilience/stream.js follow(), over the platform's `open` (web.js open on the
 //     web, native-open.ts on the phone). It holds the cursor, resumes with Last-Event-ID, backs

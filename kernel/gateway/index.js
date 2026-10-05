@@ -8,16 +8,17 @@ import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { roomedAuthorizer } from "../core/room.js";
-import { folderGuard } from "../core/folders.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
 import { createLeases } from "./leases.js";
 import { createDriveGateway } from "./drive.js";
+import { createMemoryGateway, MEMORY_ACTIONS } from "./memory.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createMoves } from "./moves.js";
+import { createUpgrade } from "./upgrade.js";
 import { canonical as canon, sha256 as sha } from "../core/canonical.js";
 
 /**
@@ -29,22 +30,17 @@ export function createGateway(cfg) {
   const limits = cfg.limits || createLimits({ space: cfg.space, log: cfg.log, clock: cfg.clock });
   const enforce = (/** @type {any} */ chain, /** @type {any} */ d) => limits.enforce(chain, d);
   /** @type {any} */ let records;
+  /** @type {any} */ let upgrade = null;
   // Kernel attributes come from the gateway's own index (K2-7); a caller-supplied resolver only fills what the gateway does not hold.
   const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
   const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource), touches: (chain, action) => gs.rulesTouch(chain, action) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...(cfg.actions || [])] });
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...MEMORY_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
-  const roomed = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
-  // A chat's folders are its participants' only (kernel/core/folders.js); a participant's share of one file is an active kernel grant of `drive.read` on exactly that file.
-  const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
-    chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
-    chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
-    sharedRead: (/** @type {any} */ person, /** @type {string} */ resource) => gs.provider.forSubject(person).some((/** @type {any} */ g) => g.status === "active" && g.resource && g.resource.prefix === resource && !(g.resource.fields && g.resource.fields.length) && Array.isArray(g.actions) && g.actions.includes("drive.read")),
-  }) : roomed;
+  const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
+  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -107,6 +103,7 @@ export function createGateway(cfg) {
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
 
+  const memory = createMemoryGateway({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, clock: cfg.clock, enforce });
   const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
   const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, enforce, ...(drive ? { drive } : {}), log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, forward: cfg.forwardCredential, routeAction: cfg.routeAction }) : undefined;
 
@@ -198,7 +195,7 @@ export function createGateway(cfg) {
         else if (f.kind === "file" && v && typeof v === "object" && typeof v.file === "string") files++;
       }
     } catch { /* the counts are best effort; the forget itself does not depend on them */ }
-    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
+    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? await cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
     try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
     // Its sealed values are destroyed in the sealing process (overwritten, then removed); a value the process cannot drop is counted, never hidden.
     let sealed_dropped = 0;
@@ -209,21 +206,26 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
-  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+  upgrade = createUpgrade({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, verifyReceipt: cfg.verifyUpgradeReceipt,
+    countLocal: async () => { let n = 0; for (const t of await cfg.store.types()) { const r = await cfg.store.aggregate(t.name, { group_by: [], measures: [{ fn: "count" }] }); n += Number(r && r[0] && r[0].values && r[0].values.count) || 0; } return n; } });
+  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence, remoteEvidence: cfg.remoteMoveEvidence, verifyReceipt: cfg.verifyMoveReceipt });
 
   return Object.freeze({
     authorize: authorizer.authorize,
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
+    /** Upgrading this Personal space to My Cloud: `start` (approved once), `finish`, `movedTo`. kernel/gateway/upgrade.js. */
+    upgrade,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
+    memory,
     ...(drive ? { drive } : {}),
     ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, shareFile: gs.shareFile, unshareFile: gs.unshareFile, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead, mineIds: gs.chatMine }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, capOf: gs.capOf, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, capOf: gs.capOf, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);

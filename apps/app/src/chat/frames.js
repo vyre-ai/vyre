@@ -1,5 +1,5 @@
 // @ts-check
-// Stream frames folded into rows (docs/work/chat.md, 0.3 stream frame). Pure: no React, no clock.
+// Stream frames folded into rows (team/archive/work-journals/chat.md, 0.3 stream frame). Pure: no React, no clock.
 // A frame is { v:1, id, cur, session, turn, type, time, corr, data }. The folder keeps one item per
 // row, keyed so a re-read gives the same keys, and tells the caller what a frame touched:
 //   - `layout`: a row was added (the transcript re-lays); anything else only repaints its own row.

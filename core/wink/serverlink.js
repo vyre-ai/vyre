@@ -19,7 +19,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * @param {{ channelOf: (sid: string) => { relay: string, route: string, box: string } | null, connect: (o: any) => any, options?: any, name?: string,
- *   sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
+ *   serve?: (tool: string, input: any, from: string) => Promise<any>, sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
 export function createServerLinks(o) {
@@ -70,7 +70,7 @@ export function createServerLinks(o) {
         s.onhead = (/** @type {any} */ h) => { clearTimeout(timer); h && h.status === 200 ? resolve(undefined) : reject(err(h && h.status === 429 ? "rate_limited" : "denied", `the server refused the peer stream (${h && h.status})`)); };
         s.onreset = (/** @type {any} */ why) => { clearTimeout(timer); reject(err("unreachable", String(why || "reset"))); };
       });
-      const session = peerSession(streamPipe(s), { first: 1 });
+      const session = peerSession(streamPipe(s), { first: 1, ...(o.serve && !l.invitee ? { serve: (/** @type {string} */ tool, /** @type {any} */ input) => o.serve?.(tool, input, sid) } : {}) });
       l.peer = session;
       return session;
     })();
@@ -172,6 +172,24 @@ export function createServerLinks(o) {
     approvalStatus,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
     remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
+    /**
+     * A connection this device keeps to a server it paired, for what the server calls back down it (a storage drive only this device can reach: core/wink/storage/hold.js `holdDrive`'s `connect`). It
+     * opens the peer session now and says `up` while that session is open; `onchange` fires when it closes. A session that closed is made again by the next `hold`, which `holdDrive` makes after its wait.
+     * @param {string} sid
+     */
+    hold(sid) {
+      /** @type {Set<() => void>} */ const subs = new Set();
+      let stopped = false;
+      const tell = () => { for (const f of [...subs]) { try { f(); } catch { /* a listener's own */ } } };
+      const ready = openPeer(sid).then(p => { p.onclose = () => { tell(); }; return p; });
+      ready.catch(() => tell());
+      return {
+        status: () => { const l = links.get(sid); return { state: !stopped && l && l.peer && !l.peer.closed ? "up" : "down", path: "relay" }; },
+        onchange: (/** @type {() => void} */ f) => { subs.add(f); },
+        ready: (/** @type {number} */ ms = 45_000) => withinOrThrow(ready, ms, () => err("unreachable", "not connected")),
+        close() { stopped = true; subs.clear(); const l = links.get(sid); if (l && l.peer) { try { l.peer.close("done"); } catch { /* closed */ } l.peer = null; } },
+      };
+    },
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),
     /** Let go of the link to a server (its peer session and relay connection): the next call connects again from where pairing now says the server is. A removed and re-paired server is a new channel, never the old one. @param {string} sid */
     forget(sid) { const l = links.get(sid); if (!l) return; try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } links.delete(sid); },
