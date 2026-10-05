@@ -34,16 +34,16 @@ test("wink.server.home: the paired server, whether it answers, and its https nam
 
 test("wink.server.health: reach, latency and since, cached; unreachable says why", async () => {
   const r = rig();
-  const a = await r.run("wink.server.health"); assert.equal(a.reach, "relay"); assert.equal(typeof a.latencyMs, "number");
+  const a = await r.run("wink.server.health"); assert.deepEqual([a.state, a.path, a.reach], ["relayed", "relay", "relay"]); assert.equal(typeof a.latencyMs, "number");
   const n = r.calls.length; await r.run("wink.server.health"); assert.equal(r.calls.length, n, "a second read inside 15 seconds asks nothing");
   await r.run("wink.server.health", { fresh: true }); assert.ok(r.calls.length > n, "fresh asks again");
-  const d = await rig({ down: true }).run("wink.server.health"); assert.deepEqual([d.reach, d.reachable], ["none", false]); assert.ok(d.why);
+  const d = await rig({ down: true }).run("wink.server.health"); assert.deepEqual([d.state, d.reach, d.reachable], ["offline", "none", false]); assert.ok(d.why);
   assert.equal((await rig({ noServer: true }).run("wink.server.health")).reach, "none");
 });
 
-test("wink.server.call forwards one tool as { result }, adds the proof to the input, names an unreachable server server_unreachable, and refuses what is not a paired server", async () => {
+test("wink.server.call forwards one tool and returns the server tool's own answer, adds the proof to the input, names an unreachable server server_unreachable, and refuses what is not a paired server", async () => {
   const r = rig({ answers: { "records.me": (/** @type {any} */ i) => ({ me: "x", got: i }) } });
-  assert.deepEqual((await r.run("wink.server.call", { tool: "records.me", input: { a: 1 }, proof: { k: 1 } })).result, { me: "x", got: { a: 1, proof: { k: 1 } } });
+  assert.deepEqual(await r.run("wink.server.call", { tool: "records.me", input: { a: 1 }, proof: { k: 1 } }), { me: "x", got: { a: 1, proof: { k: 1 } } });
   await assert.rejects(r.run("wink.server.call", { tool: "records.me", device: "ph1" }), e => e.code === "not_found", "a phone is not a server");
   await assert.rejects(r.run("wink.server.call", { tool: "../x" }), e => e.code === "bad_input");
   await assert.rejects(r.run("wink.server.call", { tool: "nope.tool" }), e => e.code === "no_such_tool", "the server's own refusal comes through");

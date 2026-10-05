@@ -1128,9 +1128,9 @@ test("wink.server.home / call / health / events over the REAL relay: a paired de
   const home = await run("wink.server.home");
   assert.deepEqual([home.linked, home.reachable, home.box.device, home.box.name], [true, true, "srv", "Alex's server"], JSON.stringify(home));
   const health = await run("wink.server.health");
-  assert.deepEqual([health.reach, health.reachable], ["relay", true]); assert.equal(typeof health.latencyMs, "number");
+  assert.deepEqual([health.state, health.reach, health.reachable], ["relayed", "relay", true]); assert.equal(typeof health.latencyMs, "number");
   const me = await run("wink.server.call", { tool: "records.me" });
-  assert.ok(JSON.stringify(me.result).includes(f.owner.id), "a call on the server answers as this device's person");
+  assert.ok(JSON.stringify(me).includes(f.owner.id), "a call on the server answers as this device's person");
   await assert.rejects(run("wink.server.call", { tool: "no.such.tool" }), e => e.code === "no_such_tool");
   // the server's events, by cursor: the server emits one, and the device sees it after the cursor it had
   const first = await run("wink.server.events", { since: 0, limit: 5 });

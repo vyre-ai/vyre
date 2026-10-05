@@ -85,20 +85,20 @@ export function serverTools(d) {
 
   ctx.tool("wink.server.health", {
     effect: "read",
-    description: "How this computer reaches its paired server right now, for the menu bar: { reach: relay | none, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.",
+    description: "How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.",
     input: obj({ fresh: { type: "boolean" } }),
     run: async (i, meta = {}) => {
       person(meta, "reading the server's health");
       const s = await serverOf(undefined);
-      if (!s) return { reach: "none", reachable: false, why: "this computer is not paired with a server", since: null, latencyMs: null };
+      if (!s) return { state: "offline", path: "none", reach: "none", reachable: false, why: "this computer is not paired with a server", since: null, latencyMs: null };
       const p = await probe(s.sid, Boolean(i && i.fresh));
-      return { reach: p.ok ? "relay" : "none", reachable: p.ok, latencyMs: p.ms, since: p.since, ...(p.ok ? {} : { why: p.why || "the server did not answer" }) };
+      return { state: p.ok ? "relayed" : "offline", path: p.ok ? "relay" : "none", reach: p.ok ? "relay" : "none", reachable: p.ok, latencyMs: p.ms, since: p.since, ...(p.ok ? {} : { why: p.why || "the server did not answer" }) };
     },
   });
 
   ctx.tool("wink.server.call", {
     effect: "write",
-    description: "Call one tool on the paired server, as this computer's person: { device?, tool, input?, proof? } -> { result }. `device` defaults to the paired server; `proof` is a presence proof the server asked for, sent in the input. Answers server_unreachable when the server is away. Never for a model or a module acting for one.",
+    description: "Call one tool on the paired server, as this computer's person: { device?, tool, input?, proof? } -> the server tool's own answer (as link.call gave it). `device` defaults to the paired server; `proof` is a presence proof the server asked for, sent in the input. Answers server_unreachable when the server is away. Never for a model or a module acting for one.",
     input: obj({ device: str, tool: str, input: { type: "object" }, proof: { type: "object" } }, ["tool"]),
     run: async (i, meta = {}) => {
       person(meta, "calling the paired server");
@@ -107,7 +107,7 @@ export function serverTools(d) {
       const s = await serverOf(i.device);
       if (!s) throw err("not_found", "this computer has no paired server by that id");
       const input = i.input && typeof i.input === "object" ? i.input : {};
-      return { result: await callOn(s.sid, tool, i.proof !== undefined ? { ...input, proof: i.proof } : input) };
+      return callOn(s.sid, tool, i.proof !== undefined ? { ...input, proof: i.proof } : input);
     },
   });
 
