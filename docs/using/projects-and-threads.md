@@ -42,12 +42,8 @@ project's own repository.
 
 Paths are relative to the home folder. New projects are made in `projectsDir` (default
 `~/Vyre/projects`; on a new box, `/work/projects`, which VyreDrive can share to your Mac), and Vyre
-also looks for markers under `roots`. A box that already has projects in `~/Vyre/projects` keeps
-them there until you move them yourself: `vyre projects move --dry-run` lists what would move, what
-would be skipped and why, and changes nothing; `vyre projects move` then moves each home once,
-leaves a link at each old folder so older sessions still resume, and asks you to restart Vyre, which
-then uses `/work/projects`. The real move stays off until it has been tried on a copy of a box: it
-runs only with `VYRE_PROJECTS_MOVE=1` set, or `"projects": { "move": "enabled" }` in config.json.
+also looks for markers under `roots`. A box that already has projects in `~/Vyre/projects` keeps them there. (Moving a project to another Space is
+`work.project.move`, which makes a new project there and leaves a "moved to" marker; it is not a folder move.)
 Sessions come from the folders
 in `transcripts` (default `~/.claude/projects` and `~/.claude/projects-archive`). See
 [configuration](../reference/config.md).
