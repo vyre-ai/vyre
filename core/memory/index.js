@@ -14,6 +14,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
+import { projectMarker, spaceMarker, visible as visibleMarkers, find as findMarker } from "./markers.js";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
@@ -1041,14 +1042,7 @@ export default {
       // A user turn carries the reply that followed: the answer is often one turn after the question.
       next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
-    ctx.tool("memory.retrieve", {
-      effect: "read",
-      description: "The turns Vyre Memory would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
-      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
-        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
-        file: { type: "string", description: "keep only turns that changed or read this file (a path or just its name), or sit next to one" }, commit: { type: "string", description: "keep only turns that made or named this commit (short or full hash), or sit next to one" },
-        knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
-      run: async (input, extra = {}) => {
+    const retrieveRun = async (input, extra = {}) => {
         const { caller } = extra;
         const project_cwds = clean(input.project_cwds);
         let sees = true;
@@ -1059,6 +1053,73 @@ export default {
         return withWrites(await retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees, ...(links.length ? { links } : {}),
           expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: owner(caller) ? Object.fromEntries(Object.entries(input.knobs && typeof input.knobs === "object" ? input.knobs : {}).filter(([k]) => ["hybrid", "role", "per_session", "prefix"].includes(k))) : {} }),
           String(input.question || ""), scope);
+    };
+    ctx.tool("memory.retrieve", {
+      effect: "read",
+      description: "The turns Vyre Memory would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
+      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
+        file: { type: "string", description: "keep only turns that changed or read this file (a path or just its name), or sit next to one" }, commit: { type: "string", description: "keep only turns that made or named this commit (short or full hash), or sit next to one" },
+        knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
+      run: (input, extra = {}) => retrieveRun(input, extra),
+    });
+    // ---- the three layers (markers.js, team/0.3/DESIGN-memory-layers.md): the markers a layer holds for the layers below it, derived on every read
+    /** @returns {Promise<{ markers: import("./markers.js").Marker[], rooms: { slug: string, name: string, folders: string[] }[] }>} */
+    const layerMarkers = async () => {
+      const projects = await projectList().catch(() => []);
+      if (curator.setRooms(projects)) soon();
+      const rooms = curator.rooms();
+      const space = rawCtx.kernel && rawCtx.kernel.space ? String(rawCtx.kernel.space) : "local";
+      const db = ctx.store.db;
+      const sessionsIn = (/** @type {string[]} */ folders) => {
+        try {
+          let n = 0;
+          for (const f of folders) { const base = String(f).replace(/\/+$/, ""); n += Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM recall_sessions WHERE cwd = ? OR substr(cwd, 1, ?) = ?").get(base, base.length + 1, base + "/")).n) || 0; }
+          return n;
+        } catch { return 0; }
+      };
+      const markers = [];
+      if (rawCtx.kernel && rawCtx.kernel.space) markers.push(spaceMarker({ space, name: typeof rawCtx.kernel.spaces?.describe === "function" ? (rawCtx.kernel.spaces.describe(space) || {}).name : null, projects: rooms.length }));
+      for (const r of rooms) {
+        let facts = [], decisions = 0;
+        try { facts = graph.facts({ project_cwds: r.folders, room: r.slug, limit: 50 }).facts || []; } catch { facts = []; }
+        try { decisions = (await decisionRows(r.folders, null)).rows.filter((/** @type {any} */ d) => d.state === "current").length; } catch { decisions = 0; }
+        const topics = facts.flatMap((/** @type {any} */ f) => [f.subject, f.object, f.about].map(x => (x && typeof x === "object" ? x.label || x.name : null)).filter(Boolean));
+        markers.push(projectMarker({ space, slug: r.slug, name: r.name, facts: facts.length, decisions, sessions: sessionsIn(r.folders), topics, updated: facts.reduce((a, f) => Math.max(a, Number(f.seen || f.last_seen || 0)), 0) || null }));
+      }
+      return { markers, rooms };
+    };
+    /** What this caller may do with the layers: the person's own surfaces and the identity assistant follow everything; an agent the projects it is granted. @param {any} input @param {any} extra */
+    const layerReach = async (input, extra) => {
+      const r = await reach(input.agent, extra.caller);
+      return { all: Boolean(r.all), assistant: Boolean(r.assistant), slugs: r.slugs || new Set(), space: Boolean(r.all || r.assistant) };
+    };
+    ctx.tool("memory.markers", {
+      effect: "read",
+      description: "The markers of the layers below yours: one per project's memory (and the Space's own), each with its name and whether you may follow it. A marker you may follow carries a short summary, counts and topics; one you may not follow is only named. Following is memory.follow. Nothing learned in one project or Space is copied into another: you move between them by following a marker, under your own grants.",
+      input: { type: "object", properties: { ...agentField } },
+      run: async (input, extra = {}) => {
+        const { markers } = await layerMarkers();
+        return { markers: visibleMarkers(markers, await layerReach(input, extra)) };
+      },
+    });
+    ctx.tool("memory.follow", {
+      effect: "read",
+      description: "Follow a marker into the memory it points at and ask it a question, as yourself: the same passages memory.retrieve gives, but from that project's memory (or, for the Space's marker, the Space's own records and session lines). Refused, with the reason, when your grants do not reach it. Read a hit's turns with memory_turn.",
+      input: { type: "object", required: ["marker", "question"], properties: { marker: { type: "string", description: "a marker's urn, or a project's slug or name" }, question: { type: "string" }, k: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
+      run: async (input, extra = {}) => {
+        const { markers, rooms } = await layerMarkers();
+        const m = findMarker(markers, String(input.marker));
+        if (!m) throw Object.assign(new Error(`no marker ${plain(String(input.marker), 60)}: memory.markers lists them`), { code: "not_found" });
+        const seen = visibleMarkers([m], await layerReach(input, extra))[0];
+        if (seen.access !== "follow") throw denied(`${m.name}'s memory exists, but your grants do not reach it`);
+        if (m.kind === "space") {
+          const hits = await spaceHits((tool, x) => rawCtx.call(tool, x), String(input.question || ""), input.k ?? 8);
+          return { marker: m.urn, layer: "space", hits };
+        }
+        const room = rooms.find(x => x.slug === m.slug);
+        const r = await retrieveRun({ question: String(input.question || ""), project_cwds: room ? room.folders : [], k: input.k, ...(input.agent ? { agent: input.agent } : {}) }, extra);
+        return { marker: m.urn, layer: "project", ...r };
       },
     });
     // Vyre Memory's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over

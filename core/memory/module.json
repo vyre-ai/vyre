@@ -104,6 +104,8 @@
         "effect": "read"
       },
       "memory.retrieve",
+      "memory.markers",
+      "memory.follow",
       "memory.ask",
       "memory.suggest",
       {

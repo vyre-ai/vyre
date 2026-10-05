@@ -13,6 +13,18 @@ export const ALIASES = {
       file: { type: "string", description: "only turns that changed or read this file, by path or name" }, commit: { type: "string", description: "only turns that made or named this commit, by short or full hash" } } },
     map: a => ({ question: String(a.query || ""), ...(a.limit ? { k: a.limit } : {}), ...(a.file ? { file: String(a.file) } : {}), ...(a.commit ? { commit: String(a.commit) } : {}) }),
   },
+  memory_markers: {
+    tool: "memory.markers",
+    description: "The memory of the layers below yours: one marker per project (and the Space), each named, with a summary when you may follow it. Nothing learned in one project or Space is copied into another; you move between them with memory_follow.",
+    input: { type: "object", properties: {} },
+    map: () => ({}),
+  },
+  memory_follow: {
+    tool: "memory.follow",
+    description: "Follow a marker from memory_markers into that project's (or the Space's) memory and ask it a question, with your own grants. Refused when they do not reach it.",
+    input: { type: "object", required: ["marker", "question"], properties: { marker: { type: "string", description: "the marker's urn, or a project's name" }, question: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 30 } } },
+    map: a => ({ marker: String(a.marker || ""), question: String(a.question || ""), ...(a.limit ? { k: a.limit } : {}) }),
+  },
   memory_turn: {
     tool: "recall.turn",
     description: "Read a past stretch of a session word for word, exactly as it was said: no summary. session and seq come from memory_search results (each passage names them). seq with before and after gives the turns around it; from with to or span gives a range. Each turn carries its time and what it touched (files, commits, urls). A long turn is given whole.",

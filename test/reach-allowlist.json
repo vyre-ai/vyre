@@ -295,11 +295,19 @@
    "module": "memory",
    "default": "open to any caller"
   },
+  "memory.follow": {
+   "module": "memory",
+   "default": "callers admit a model"
+  },
   "memory.graph": {
    "module": "memory",
    "default": "open to any caller"
   },
   "memory.heard": {
+   "module": "memory",
+   "default": "callers admit a model"
+  },
+  "memory.markers": {
    "module": "memory",
    "default": "callers admit a model"
   },
