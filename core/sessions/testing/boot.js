@@ -43,7 +43,7 @@ export const until = async (fn, what, ms = 15_000) => {
  * A vyred in a temp home, on `driver`. `sessions` is config.json's sessions block; `vault` items
  * are put and granted to module threads (the box's own credential) unless `grant` is false.
  */
-export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [], kernel = false } = {}) {
+export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [], kernel = false, standIn = false } = {}) {
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise the
   // directory comes out from under a daemon (and any live child) still writing to it. `daemon` is
@@ -51,6 +51,8 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   // which does not exist yet at this point) is what makes the ordering work.
   let daemon = null;
   const root = tempHome(t, { stop: () => daemon && daemon.stop() });
+  // the development presence stand-in (a one-person test home): lets a test make a second person with grants.role
+  if (standIn) fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
   const log = path.join(root, "claude.log");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
     VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };

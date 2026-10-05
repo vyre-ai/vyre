@@ -10,8 +10,8 @@ import { boot, until } from "./testing/boot.js";
 process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1"; process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
 const png = (/** @type {string} */ tag) => Buffer.concat([Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"), Buffer.from(tag.repeat(30))]);
 
-async function world(/** @type {any} */ t) {
-  const w = await boot(t, { kernel: true });
+async function world(/** @type {any} */ t, /** @type {any} */ o = {}) {
+  const w = await boot(t, { kernel: true, ...o });
   await w.tool("projects.create", { name: "Northgate Intake", home: w.work }).catch(() => null);
   const owner = w.d.kernel.id.owner;
   const admin = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
@@ -161,7 +161,7 @@ test("Share to project: a person in the chat shares one of its files with the pr
 });
 
 test("a person who is not in the chat cannot share one of its files, nor take a share back: the kernel answers not_found as for a file that is not there", { timeout: 180_000 }, async t => {
-  const { w, chat, say, drive, root, admin } = await world(t);
+  const { w, chat, say, drive, root, admin } = await world(t, { standIn: true });
   await say("look at this", { images: [{ media_type: "image/png", data: png("dropped ").toString("base64"), name: "site photo" }] });
   const path = `${root}/chat/${chat}/site photo.png`;
   await until(async () => (await drive()).includes(path), "the dropped image in the chat's folder");
