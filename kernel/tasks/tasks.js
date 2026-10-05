@@ -11,6 +11,7 @@ import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
 import { createIdem } from "../core/idem.js";
+import { TASK_PERSON_FIELDS } from "./type.js";
 
 /** The actions task calls register with the authorizer (contract 6.1). */
 export const TASK_ACTIONS = Object.freeze([
@@ -20,7 +21,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -107,6 +108,57 @@ export function createTasks(cfg) {
   /** @type {Set<string>} tasks being decided right now: a second decide on one is refused before it can release again */ const deciding = new Set();
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
+  // ---- The task record (DESIGN-tasks-records) -----------------------------------------------------------------------------------------------------------------------------------------------
+  // With a record port (`cfg.records`, the Space's store) a task's title, note, due time, parent, project and every custom field live in its `task` record, the source of truth; what the kernel
+  // keeps is what decides who may act. `status` on the record mirrors the kernel's state and is written only here. Reads lay the record's fields over the kernel's task.
+  const recs = cfg.records || null;
+  const RESERVED = new Set([...TASK_PERSON_FIELDS, "status"]);
+  const CACHE_MS = 5000;
+  /** @type {Set<string>} tasks whose status the record has not been told yet */ const dirty = new Set();
+  /** @type {Map<string, { at: number, rec: any }>} */ const recCache = new Map();
+  const isoOf = (/** @type {number} */ ms) => new Date(ms).toISOString();
+  async function recGet(/** @type {string} */ id, /** @type {boolean} */ fresh = false) {
+    const c = recCache.get(id);
+    if (!fresh && c && Date.now() - c.at < CACHE_MS) return c.rec;
+    const rec = await recs.get("task", id);
+    recCache.set(id, { at: Date.now(), rec });
+    return rec;
+  }
+  /** The record's person-facing fields from a task: only what is there. */
+  const recFieldsOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.due !== undefined ? { due: isoOf(t.due) } : {}), status: t.state, ...(t.parent ? { parent: t.parent } : {}), ...(t.project ? { project: t.project } : {}) });
+  /** The task as a reader sees it: the kernel's task with the record's title, note, due, parent and project laid over it. A task whose record is not there yet reads as the kernel has it. */
+  async function overlay(/** @type {any} */ t) {
+    if (!recs) return t;
+    let r = null;
+    try { r = await recGet(t.id); } catch { r = null; }
+    if (!r) return t;
+    const d = r.data || {};
+    const { note: _n, due: _d, parent: _p, project: _pr, ...rest } = t;
+    return freeze({ ...rest, title: d.title ?? t.title, ...(d.note !== undefined && d.note !== null ? { note: d.note } : {}), ...(d.due ? { due: Date.parse(d.due) } : {}), ...(d.parent ? { parent: d.parent } : {}), ...(d.project ? { project: d.project } : {}) });
+  }
+  async function recUpdate(/** @type {string} */ id, /** @type {any} */ patch) {
+    for (let i = 0; i < 3; i++) {
+      const cur = await recGet(id, true);
+      if (!cur) throw new KernelError("unavailable", "the task's record is not there");
+      try { const n = await recs.update("task", id, patch, cur.version); recCache.set(id, { at: Date.now(), rec: n }); return n; }
+      catch (e) { if (!e || /** @type {any} */ (e).code !== "version_conflict") throw e; }
+    }
+    throw new KernelError("version_conflict", "the task's record kept changing");
+  }
+  /** Tell the record about every state change since last time. A record that cannot be reached keeps the change for the next call: the kernel's state is the truth either way. */
+  async function mirrorAll() {
+    if (!recs) return;
+    for (const id of [...dirty]) {
+      const t = tasks.get(id);
+      dirty.delete(id);
+      if (!t) continue;
+      try {
+        const cur = await recGet(id, true);
+        if (cur && cur.data.status !== t.state) await recUpdate(id, { status: t.state });
+      } catch { dirty.add(id); }
+    }
+  }
+
   /** A task names its project as a link to the Project record of THIS Space, one the chain may read: a link to another Space or to a record it cannot see names nothing. */
   async function checkProject(/** @type {any} */ chain, /** @type {any} */ project) {
     const m = typeof project === "string" ? /^vyre:\/\/([^/\s]+)\/project\/([A-Za-z0-9_-]{1,64})$/.exec(project) : null;
@@ -119,7 +171,7 @@ export function createTasks(cfg) {
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
   /** @type {Map<string, any>} */ const pending = new Map();
   /** @type {Set<string>} task|payload pairs already released (sent) whose approval event may not have been written yet */ const sent = new Set();
-  const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
+  const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); dirty.add(id); return next; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
   const unstage = (/** @type {string} */ id) => {
     const prev = pending.get(id); pending.delete(id);
@@ -246,6 +298,10 @@ export function createTasks(cfg) {
       const persons = checkersOf(/** @type {any} */ probe);
       if (checker && !persons.length) throw new KernelError(checker.role ? "no_checker" : "same_actor", checker.role ? "no person holds that role" : "the checker must be a person other than the doer");
       for (const d of spec.depends_on || []) if (!tasks.has(d)) throw new KernelError("bad_input", "a dependency does not exist");
+      if (spec.fields !== undefined) {
+        if (!recs) throw new KernelError("bad_input", "this Space keeps tasks without records: no custom fields");
+        if (!spec.fields || typeof spec.fields !== "object" || Array.isArray(spec.fields) || Object.keys(spec.fields).some(k => RESERVED.has(k))) throw new KernelError("bad_input", "fields are the type's own custom fields, not title, note, due, status, parent or project");
+      }
       if (spec.project !== undefined) await checkProject(chain, spec.project);
       if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
@@ -262,14 +318,20 @@ export function createTasks(cfg) {
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
       });
-      stage(id, t);
-      note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length });
+      let made = null;
+      if (recs) { made = await recs.create("task", id, { ...recFieldsOf(t), ...(spec.fields || {}) }); recCache.set(id, { at: Date.now(), rec: made }); }
+      try {
+        stage(id, t);
+        note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length });
+      } catch (e) { if (recs && made) await recs.remove("task", id, made.version).catch(() => {}); recCache.delete(id); throw e; }
+      dirty.delete(id);
       return t;
     },
 
     async get(/** @type {any} */ chain, /** @type {string} */ id) {
       try { await gate(chain, "tasks.read", urnOf(cfg.space, id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
-      return tasks.get(id) || null;
+      const t = tasks.get(id);
+      return t ? overlay(t) : null;
     },
 
     /**
@@ -282,13 +344,16 @@ export function createTasks(cfg) {
       const out = [];
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
-        if (q.project !== undefined && (t.project || null) !== q.project) continue;
-        if (q.parent !== undefined && (t.parent || null) !== q.parent) continue;
+        if (q.project !== undefined || q.parent !== undefined) {
+          const v = await overlay(t);
+          if (q.project !== undefined && (v.project || null) !== q.project) continue;
+          if (q.parent !== undefined && (v.parent || null) !== q.parent) continue;
+        }
         if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
-        out.push(t);
+        out.push(await overlay(t));
       }
       return out;
     },
@@ -513,6 +578,18 @@ export function createTasks(cfg) {
           next.parent = patch.parent;
         }
       }
+      if (recs) {
+        // The record is the source of truth for these fields: it is written first, and a refusal there leaves the task as it was.
+        const rp = {};
+        for (const k of Object.keys(patch)) {
+          if (k === "title") rp.title = next.title;
+          else if (k === "note") rp.note = patch.note === null || patch.note === "" ? null : next.note;
+          else if (k === "due") rp.due = patch.due === null ? null : isoOf(next.due);
+          else if (k === "parent") rp.parent = patch.parent === null ? null : next.parent;
+          else if (k === "project") rp.project = patch.project === null ? null : next.project;
+        }
+        if (Object.keys(rp).length) await recUpdate(id, rp);
+      }
       const n = stage(id, freeze({ ...next, updated_at: clock() }));
       note(chain, "task.edited", n, { fields: Object.keys(patch) });
       return n;
@@ -563,16 +640,17 @@ export function createTasks(cfg) {
       const person = personOf(chain);
       if (!person) return [];
       await gate(chain, "tasks.read", urnOf(cfg.space, "mine"));
-      return [...tasks.values()].filter(t =>
+      const mine = [...tasks.values()].filter(t =>
         (t.state === "needs_check" && checkersOf(t).some((/** @type {any} */ c) => same(c, person)))
         || (t.state === "ready" && same(t.doer, person))
         || (t.state === "stuck" && (same(t.doer, person) || (cfg.responsible ? cfg.responsible(person, t.doer) : false)))).sort((a, b) => (a.id < b.id ? -1 : 1));
+      return Promise.all(mine.map(t => overlay(t)));
     },
 
     /** The card the checker sees, built from the canonical payload. */
     async card(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.read", urnOf(cfg.space, id));
-      const t = get_(id);
+      const t = await overlay(get_(id));
       const b = bodies.get(id);
       return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },
@@ -683,6 +761,29 @@ export function createTasks(cfg) {
     }
     for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
   } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }
+  if (recs) {
+    /**
+     * Make a `task` record for every task the kernel holds that has none (the one-time move onto records, safe to run again: the task's id is the record's, so a task that has a record is skipped and a
+     * crash in the middle is finished by the next run). One `tasks.migrated` event says how many were made.
+     */
+    api.migrate = async () => {
+      let created = 0, existing = 0;
+      for (const [id, t] of [...tasks]) {
+        const have = await recs.get("task", id);
+        if (have) { existing++; continue; }
+        const made = await recs.create("task", id, recFieldsOf(t));
+        recCache.set(id, { at: Date.now(), rec: made });
+        created++;
+      }
+      if (created) { try { cfg.log.append(cfg.chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { type: "tasks.migrated", sv: 1, subject: urnOf(cfg.space, "all"), data: { created, existing } }); } catch { /* the records are the record of it */ } }
+      return { created, existing };
+    };
+    // Every call that can change a task's state tells the record afterwards; the kernel's state is the truth if the record cannot be reached.
+    for (const m of ["request", "start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix", "unblock", "skip", "edit", "reopen"]) {
+      const f = api[m];
+      api[m] = async (/** @type {any[]} */ ...a) => { try { return await f.apply(api, a); } finally { await mirrorAll(); } };
+    }
+  }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));

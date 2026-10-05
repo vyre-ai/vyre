@@ -11,6 +11,7 @@ import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
 import { exprNames } from "../expr/expr.js";
 import { isSealedShape } from "../store/values.js";
+import { actsAsPerson } from "../core/chain.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../expr/conditions.js";
 import { createIdem } from "../core/idem.js";
@@ -559,6 +560,8 @@ export function createRecords(cfg) {
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);
       for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
+      // a field the kernel owns (a task's status) is written by the kernel's own calls, never through here
+      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is moved by the kernel (for a task: tasks.move), not written`);
     }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
@@ -1215,8 +1218,38 @@ export function createRecords(cfg) {
   // A protected type is read and created only by an owner or admin (as themselves or through a service) and only the rows they or a service made are shown: a member who can write the type
   // cannot plant a row that a lookup finds first, and cannot read what the Kits keep.
   // Frozen: nobody who holds the gateway can replace a method. (kernel/index.js hands a module a Proxy over a COPY of this object, so the Proxy's own answers are not bound by this freeze.)
+  // A task is a record of the Space's store that the kernel's tasks own the authority of (DESIGN-tasks-records): making one through here makes the person's own plain to-do through `tasks.request`, a change to
+  // its words, due time, parent or project goes through `tasks.edit` (so the same who-may rules and checks apply), its status is the kernel's, and it is skipped, never removed.
+  const TASK_MAP = new Set(["title", "note", "due", "parent", "project"]);
+  const toMs = (/** @type {any} */ v) => { if (v === null) return null; const ms = typeof v === "number" ? v : Date.parse(String(v)); if (!Number.isFinite(ms)) throw new KernelError("bad_input", "due is a date and time"); return ms; };
+  async function taskCreate(/** @type {any} */ chain, /** @type {any} */ data) {
+    if (!cfg.tasks) throw new KernelError("unavailable", "this Space keeps no tasks");
+    if (!actsAsPerson(chain)) throw new KernelError("field_not_allowed", "a task is made by anyone but the person with tasks.request, naming who does it; the person's own to-do is made here");
+    const { title, note, due, parent, project, status, ...rest } = data || {};
+    if (status !== undefined) throw new KernelError("field_not_allowed", "status is moved by the kernel (tasks.move), not written");
+    const t = await cfg.tasks.request(chain, { title, doer: { ...chain.hops[0].actor }, output: { kind: "note" }, source: "manual", ...(note ? { note } : {}), ...(due ? { due: toMs(due) } : {}), ...(parent ? { parent } : {}), ...(project ? { project } : {}), ...(Object.keys(rest).length ? { fields: rest } : {}) });
+    return api.get(chain, "task", t.id);
+  }
+  async function taskUpdate(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ patch, /** @type {number | null} */ base) {
+    if (!cfg.tasks) throw new KernelError("unavailable", "this Space keeps no tasks");
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "status")) throw new KernelError("field_not_allowed", "status is moved by the kernel (tasks.move), not written");
+    const cur = await api.get(chain, "task", id);
+    if (!cur) throw new KernelError("not_found", "no such record");
+    if (base !== null && base !== undefined && base !== cur.version) throw new KernelError("version_conflict", `task ${id} is at version ${cur.version}, not ${base}`);
+    /** @type {any} */ const edit = {}, rest = {};
+    for (const [k, v] of Object.entries(patch || {})) { if (TASK_MAP.has(k)) edit[k] = k === "due" ? toMs(v) : v; else rest[k] = v; }
+    if (Object.keys(edit).length) await cfg.tasks.edit(chain, id, edit);
+    if (Object.keys(rest).length) { const fresh = await api.get(chain, "task", id); await api.update(chain, "task", id, rest, fresh.version); }
+    return api.get(chain, "task", id);
+  }
   return Object.freeze({
     ...api,
+    async create(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts = {}) { return type === "task" && cfg.taskRecords ? taskCreate(chain, data) : api.create(chain, type, data, opts); },
+    async update(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {any} */ base, /** @type {any} */ opts = {}) { return type === "task" && cfg.taskRecords ? taskUpdate(chain, id, patch, base) : api.update(chain, type, id, patch, base, opts); },
+    async remove(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ base, /** @type {any} */ opts = {}) {
+      if (type === "task" && cfg.taskRecords) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
+      return api.remove(chain, type, id, base, opts);
+    },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
       return api.get(chain, type, id);

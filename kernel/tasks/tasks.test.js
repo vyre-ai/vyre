@@ -14,6 +14,8 @@ import { canonical, sha256 } from "../core/canonical.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
 import { createApprovals } from "./approvals.js";
 import { createSealing } from "../gateway/sealing.js";
+import { createMemoryStore } from "../store/memory.js";
+import { TASK_TYPE } from "./type.js";
 
 const SPACE = "spc_aaaaaaaaaaaa";
 let T = 1_800_000_000_000;
@@ -51,7 +53,11 @@ function rig(over = {}) {
   const released = [];
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
+  // VYRE_TASKS_RECORDS=1 runs this whole file with the tasks kept as records (a memory store behind the port), to prove the behaviour is the same.
+  const records = process.env.VYRE_TASKS_RECORDS ? createMemoryStore({ clock }) : null;
+  if (records) records.define({ add_types: [TASK_TYPE] });
   const tasks = createTasks({
+    ...(records ? { records } : {}),
     space: SPACE, authorizer, log, presence, chains, clock,
     members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
