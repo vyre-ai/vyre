@@ -8,6 +8,7 @@
 // returns less, never an error, so Claude Code behaves exactly as it would without Vyre.
 
 import fs from "node:fs";
+import { timeLine, personZone } from "../../lib/time/index.js";
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
@@ -123,8 +124,10 @@ export default {
         const mine = Boolean(meta && typeof meta.thread === "string" && meta.thread === session);
         const verified = mine || !/^(?:mcp|harness)(?::|$)/.test(String((meta || {}).caller || ""));
         if (session && verified) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+        // The one time line every model brief carries (lib/time): now for the person, in the zone of the machine the call came from, and the Space's zone when it keeps its own.
+        const clock = timeLine({ now: Date.now(), person: personZone(meta), space: (ctx.config && typeof ctx.config.zone === "string" && ctx.config.zone) || null });
         const warning = session && !headless ? await secondWriter(session) : "";
-        const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
+        const withWarning = (/** @type {string} */ t) => [clock, warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
         // single pick. A session picked into several projects gets no brief rather than a guess.
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });

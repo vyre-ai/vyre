@@ -13,7 +13,7 @@ import { createKernel } from "../../kernel/index.js";
 import { CORE_TYPES } from "../../records/core-types.js";
 import { CAP_MS } from "./scheduler.js";
 import { localParts } from "./time.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { callerAllowed } from "../modules/index.js";
 
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;

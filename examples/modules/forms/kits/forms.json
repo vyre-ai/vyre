@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "forms-leads",
+  "version": 1,
+  "name": "Form leads",
+  "description": "The Lead record a public form files each answer as: a name, an email and what happened. Installing it only adds the type; the form module's own install card is what lets the module make them.",
+  "includes": {
+    "types": [
+      { "name": "lead", "label": "Lead", "icon": "IconUserPlus", "fields": [
+        { "name": "name", "kind": "text", "label": "Name", "required": true },
+        { "name": "email", "kind": "text", "label": "Email" },
+        { "name": "message", "kind": "text", "label": "What happened" }
+      ] }
+    ]
+  }
+}

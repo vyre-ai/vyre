@@ -16,6 +16,7 @@ import { readSession } from "../../lib/cli-session.js";
  * @param {string} method @param {string} path @param {any} [payload]
  * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string>, socket?: string }} [opts]
  */
+
 export function request(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
   // Inside a session Vyre started, VYRE_SOCKET is that session's own socket (ADR 0030 phase 3):
   // vyred binds the caller there, so what this says it is changes nothing. An explicit root or

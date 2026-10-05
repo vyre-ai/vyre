@@ -10,7 +10,7 @@ import path from "node:path";
 import { quality, prepare, tokenAt, EXACT, PREFIX, WORD, ID, INSIDE, SPREAD } from "./match.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));

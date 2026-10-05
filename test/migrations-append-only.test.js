@@ -10,12 +10,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrationHashes } from "./migrations-lists.mjs";
 
+/** Modules deleted on purpose, with why. A retired module's list is not run any more, so nothing can re-run a step; its table stays on a box that already has it and is never made on a new one. A name here may not come back with a list of its own. */
+const RETIRED = new Map([["events", "the event bus is kernel/bus.js over the kernel log (0.2.9); the old `events` table is orphaned on released boxes, with no conversion"]]);
 const released = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations.released.json"), "utf8")).modules;
 
 test("every module's released migration steps are where they were: nothing moved, edited or removed, new steps only at the end", { timeout: 120_000 }, async t => {
   const live = await migrationHashes(t);
   /** @type {string[]} */ const problems = [];
   for (const [module, hashes] of Object.entries(released)) {
+    if (RETIRED.has(module)) { if (live[module]) problems.push(`${module}: retired (${RETIRED.get(module)}) but a migration list is back`); continue; }
     const now = live[module];
     if (!now) { problems.push(`${module}: its migration list is gone (${hashes.length} released steps)`); continue; }
     if (now.length < hashes.length) problems.push(`${module}: ${hashes.length - now.length} released step(s) removed (released ${hashes.length}, now ${now.length})`);

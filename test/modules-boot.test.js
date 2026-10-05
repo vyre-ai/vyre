@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import * as config from "../core/config/index.js";
 import { tempHome } from "./helpers.js";
 

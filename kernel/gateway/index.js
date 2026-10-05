@@ -214,8 +214,7 @@ export function createGateway(cfg) {
     authorize: authorizer.authorize,
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
-    /** Upgrading this Personal space to My Cloud: `start` (approved once), `finish`, `movedTo`. kernel/gateway/upgrade.js. */
-    upgrade,
+    upgrade, // Personal to My Cloud: start (approved once), finish, movedTo (kernel/gateway/upgrade.js)
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     memory,
@@ -233,6 +232,23 @@ export function createGateway(cfg) {
     },
     /** The action registry: what each action is and how risky (ActionDef). */
     actions: () => [...authorizer.actions.values()],
+    /**
+     * A module's tools that may be a step of a Flow, as actions of the registry: `<module>.<tool>`, risk read, write or outward.send, on the resource type `module`. Only a name that starts with the module's own
+     * name, never one the kernel already has, and never a risk that is not one of those three (an admin or grant action is the kernel's). Idempotent for the same module.
+     * @param {string} module @param {{ action: string, risk: string, label?: string, gloss?: string }[]} defs @returns {string[]} the names registered
+     */
+    registerActions(module, defs) {
+      const out = [];
+      for (const d of Array.isArray(defs) ? defs : []) {
+        if (!d || typeof d.action !== "string" || !/^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]{0,60}$/.test(d.action) || !d.action.startsWith(module + ".")) throw new KernelError("bad_input", `an action of ${module} is written ${module}.<tool>`);
+        if (!["read", "write", "outward.send"].includes(d.risk)) throw new KernelError("bad_input", `${d.action}: a module's action is read, write or outward.send`);
+        const have = authorizer.actions.get(d.action);
+        if (have && have.module !== module) throw new KernelError("bad_input", `${d.action} is already an action of the kernel`);
+        authorizer.actions.set(d.action, Object.freeze({ action: d.action, resource_type: "module", risk: d.risk, label: String(d.label || d.action).slice(0, 80), gloss: String(d.gloss || "").slice(0, 200), module }));
+        out.push(d.action);
+      }
+      return out;
+    },
     members: Object.freeze({
       /** The role a member holds in this Space, or null. A role is read from the membership the kernel holds, never from the caller. */
       roleOf: (/** @type {any} */ a) => ((wiring.members || cfg.members).has(a) && (wiring.members || cfg.members).membership ? (wiring.members || cfg.members).membership(a)?.role ?? null : null),

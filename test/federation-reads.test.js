@@ -195,7 +195,7 @@ test("federation reads: recall.thread opens a Mac session from the box and store
   assert.deepEqual(db.prepare("SELECT id FROM recall_sessions").all().map(r => r.id), [BOX_ID]);
   assert.equal(Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM recall_turns WHERE session != ?").get(BOX_ID)).n), 0);
   assert.deepEqual(db.prepare("SELECT COUNT(*) AS n FROM recall_turns").get(), before);
-  const events = JSON.stringify(db.prepare("SELECT * FROM events").all());
+  const events = JSON.stringify(s.box.events.since(0, { limit: 1_000_000 }));
   assert.ok(!events.includes("above the fold") && !events.includes(MAC_ID), "no event carries the Mac's words or its session");
 });
 

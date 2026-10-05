@@ -701,9 +701,7 @@ export function createRecords(cfg) {
     let id = mintUuid(clock());
     if (opts.import === true) {
       if (!isUuid(String(opts.id))) throw new KernelError("bad_input", "an imported record keeps a time-prefixed uuid id");
-      id = String(opts.id);
-      checkType(type);
-      await gate(chain, "records.import", urn(type, id));
+      id = String(opts.id); checkType(type); await gate(chain, "records.import", urn(type, id));
     } else if (opts.id !== undefined) throw new KernelError("bad_input", "ids are the kernel's to mint; an import says so");
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);

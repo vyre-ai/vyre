@@ -140,7 +140,7 @@ const smallDetail = (/** @type {any} */ d) => { try { return d && typeof d === "
 /**
  * One session over a Pipe. Either side may call; `serve` (when given) answers calls from the other.
  * @param {Pipe} pipe
- * @param {{ serve?: (tool: string, input: any) => Promise<any>, first?: number, onframe?: (f: { type: number, id: number, payload: Buffer }) => boolean }} [o]
+ * @param {{ serve?: (tool: string, input: any, frame?: { zone?: string }) => Promise<any>, first?: number, onframe?: (f: { type: number, id: number, payload: Buffer }) => boolean }} [o]
  *   `serve` resolves to the tool's data and throws {code,message}; `first` is the first call id (odd for the opener, even for the answerer);
  *   `onframe` sees control frames (auth) before the session does and returns true if it consumed one.
  */
@@ -207,7 +207,7 @@ export function peerSession(pipe, o = {}) {
     if (type === T.call) {
       if (!o.serve) return answer(id, { ok: false, error: { code: "denied", message: "this side does not answer calls" } });
       if (!j || typeof j.tool !== "string" || !/^[a-z][a-z0-9_.-]{0,80}$/i.test(j.tool)) return answer(id, { ok: false, error: { code: "bad_input", message: "a call names a tool" } });
-      try { answer(id, { ok: true, data: await o.serve(j.tool, j.input ?? {}) }); }
+      try { answer(id, { ok: true, data: await o.serve(j.tool, j.input ?? {}, { zone: typeof j.zone === "string" ? j.zone : undefined }) }); }
       catch (e) { answer(id, { ok: false, error: { code: String(/** @type {any} */ (e)?.code || "internal"), message: String(/** @type {any} */ (e)?.message || e).slice(0, 500), ...(smallDetail(/** @type {any} */ (e)?.detail)) } }); }
     } else if (type === T.result) {
       const c = calls.get(id);
@@ -303,12 +303,12 @@ export function admitPeer(pipe, o) {
     const timer = setTimeout(() => fail("no proof in time"), o.timeoutMs ?? 5000);
     const session = peerSession(pipe, {
       first: 2,
-      serve: async (tool, input) => {
+      serve: async (tool, input, frame) => {
         if (!caller) throw err("denied", "not proven");
         const e = await o.entry(eid);
         if (!e || e.eid !== eid || !peerKindOk(e) || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
         if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call its bridge functions");
-        return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey });
+        return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey, ...(frame && frame.zone ? { zone: frame.zone } : {}) });
       },
       onframe: f => {
         if (f.type !== T.proof || settled || eid) return false;

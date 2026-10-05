@@ -129,7 +129,7 @@ test("SG-1 and SG-2: the signed list decides for every name it holds (an old mod
   // the host refuses the failing folder: a module folder named alpha that fails the list never loads as an added module, and a failing copy is not an OR either
   const { Registry, discover } = await import("../../core/modules/index.js");
   const { open } = await import("../../core/store/index.js");
-  const { Events } = await import("../../core/events/index.js");
+  const { Events } = await import("../bus.js");
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyCheck: k.firstPartyCheck, reservedName: k.reservedName });

@@ -1,13 +1,10 @@
 // @ts-check
-import "../../scripts/mac-test-guard.mjs";
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import path from "node:path";
-import { open } from "../store/index.js";
-import { Events, DRAIN_CAP } from "./index.js";
-import { tempHome } from "../../test/helpers.js";
+import { Events, DRAIN_CAP } from "./bus.js";
 
-const fresh = t => new Events(open(path.join(tempHome(t), "vyre.db")));
+const fresh = _t => new Events();
 
 test("events: emitted events are stored and read back in order", t => {
   const ev = fresh(t);

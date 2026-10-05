@@ -1,7 +1,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { proofRequest, proofFrom, PROOF_CALLS } from "./proof.js";
+import { proofRequest, proofFrom, PROOF_CALLS, sealExportApproveRequest } from "./proof.js";
 import { createKernel } from "../index.js";
 import { payloadHash } from "../seal/wire.js";
 
@@ -80,4 +80,13 @@ test("the wire's offer calls map to their proof requests, so a home's challenge 
     assert.equal(WIRE_TO_PROOF[wire], proof);
     assert.ok(PROOF_CALLS.includes(proof));
   }
+});
+
+test("sealExportApproveRequest: the one approval of a sealed-value move covers the plan hash, the target's key and the sorted, de-duplicated refs", () => {
+  const r = sealExportApproveRequest("spc_a", { plan_hash: "ph1", target_key: "TK", refs: ["b", "a", "b"] });
+  assert.equal(r.op, "seal.export_approve");
+  assert.deepEqual(r.fields, { plan_hash: "ph1", target_key: "TK", refs: ["a", "b"] });
+  assert.equal(r.payload_hash, payloadHash("seal.export_approve", "spc_a", r.fields));
+  assert.notEqual(sealExportApproveRequest("spc_a", { plan_hash: "ph2", target_key: "TK", refs: ["a", "b"] }).payload_hash, r.payload_hash, "another plan is another proof");
+  assert.throws(() => sealExportApproveRequest("spc_a", { plan_hash: "ph1", target_key: "TK", refs: [] }), { code: "bad_input" });
 });

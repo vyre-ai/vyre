@@ -770,6 +770,24 @@ export function createGrantsStore(cfg) {
     },
 
     /**
+     * A module's Flow actions (kernel-only, at boot): the owner and admin roles hold them over `module/<name>/*`, as role grants whose source is `install:<module>:actions`. The same hand that approved
+     * the module on its install card is the one who may run it from a Flow; nobody else gets them. Idempotent.
+     * @param {string} name @param {string[]} actions
+     */
+    async installFlowActions(name, actions) {
+      const k = kernelChain(), prefix = `vyre://${cfg.space}/module/${name}/*`, source = `install:${name}:actions`;
+      const want = [...actions].sort();
+      for (const role of ["owner", "admin"]) {
+        const mine = [...grants.values()].filter(g => g.status === "active" && g.source === source && g.subject.kind === "role" && g.subject.name === role);
+        if (mine.length && canonical([...mine[mine.length - 1].actions].sort()) === canonical(want)) continue;
+        for (const g of mine) { const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "reinstalled" }); grants.set(n.id, n); await note(k, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "reinstalled" }); }
+        if (!want.length) continue;
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "role", name: role }, actions: want, action_set_version: version, resource: { prefix }, conditions: {}, issuer: { kind: "service", id: "kernel", space: cfg.space }, source, status: "active", created_at: clock() });
+        grants.set(g.id, g);
+        await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      }
+    },
+    /**
      * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old
      * owner's grants are revoked and the owner role grants made again for the identity, each as an ordinary sealed event, so a rebuild reaches the same state. `owner.adopted` is written FIRST
      * and is the once-marker the rebuild reads (a snapshot carries it): any other `to` afterwards is refused `already_adopted`. A crash after the marker leaves the owner moved only in part; the next call
@@ -1222,7 +1240,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "lend", "unlend", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "lend", "unlend", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "installFlowActions", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {

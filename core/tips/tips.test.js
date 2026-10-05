@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import tips, { seams } from "./index.js";
 import { migrate } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { callerAllowed } from "../modules/index.js";
 
 const MIN = 60_000, HOUR = 60 * MIN;

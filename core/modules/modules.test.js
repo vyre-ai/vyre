@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } };
@@ -776,6 +776,12 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
   setCardRedeemer(null);
+  // The kernel's legacy gates, wired as the daemon wires them, leave the plain `outward: true` hold to this inline rule: it still holds the agent and still lets you through.
+  const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+  reg.deps.gates = createLegacyGates({ registry: reg });
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "mcp:agent:kit")).error.code, "held_for_approval", "deps.gates wired: an agent is still held");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "cli")).data.ran, "bakery.mailout", "deps.gates wired: you still run it");
+  delete reg.deps.gates;
   // a module acting for you (its origin is you) is you
   assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "module:notes", { origin: "cli" })).data.ran, "bakery.mailout");
   // modules: internal, hidden from everyone but another module.

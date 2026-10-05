@@ -40,6 +40,13 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     api: {
       put: i => withCtx("put", i, { record: i.record, field: i.field, class: i.class, value: i.value, hint_allowed: i.hint_allowed, unique: i.unique }),
       use: i => withCtx("use", i, { body: i.body, bindings: i.bindings ?? [{ slot: i.slot, ref: i.ref }], destination: i.destination, template: i.template, template_version: i.template_version, proof: i.proof }),
+      reseal: i => withCtx("reseal", i, { to_ctx: chainCtx(i.to_chain), ref: i.ref, to_record: i.to_record, field: i.field }),
+      /** Across servers: `wrapKey` answers this Space's public wrapping key; `export` (source process, the person's own proof) answers a blob wrapped to a target's key; `import` (target process) stores it. */
+      wrapKey: i => withCtx("wrap.pub", i),
+      /** One approval for a whole move: the person's proof once over `{ plan_hash, target_key, refs }`; then `export` with the same `plan_hash` takes each listed ref once, with no proof of its own. */
+      exportApprove: i => withCtx("export.approve", i, { plan_hash: i.plan_hash, target_key: i.target_key, refs: i.refs, proof: i.proof }),
+      export: i => withCtx("export", i, { ref: i.ref, target_key: i.target_key, record: i.record, to_record: i.to_record, field: i.field, proof: i.proof, plan_hash: i.plan_hash }),
+      import: i => withCtx("import", i, { blob: i.blob, record: i.record, field: i.field }),
       reveal: i => withCtx("reveal", i, { ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
     },
     deliver: i => withCtx("deliver", i, { output_ref: i.output_ref, sink: i.sink, envelope: i.envelope, proof: i.proof }),

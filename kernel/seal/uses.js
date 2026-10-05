@@ -27,6 +27,7 @@ export const ACTIONS = Object.freeze([
   { action: "seal.put", resource_type: "record", risk: "write", label: "Seal a value", gloss: "Moves a value into the sealed store." },
   { action: "seal.use", resource_type: "record", risk: "write", label: "Fill a sealed slot", gloss: "Merges a sealed value into a document or message.", sealed_ok: true },
   { action: "seal.deliver", resource_type: "record", risk: "outward.send", draftable: true, label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
+  { action: "seal.export", resource_type: "record", risk: "write", label: "Move a sealed value to another server", gloss: "Carries a sealed value, wrapped so only the new server can open it, when you approve the whole move. The sealing process asks for your own approval." },
   { action: "seal.reveal", resource_type: "record", risk: "admin", label: "Show a sealed value", gloss: "Shows it on your screen only, after Face ID." },
 ]);
 

@@ -9,7 +9,7 @@ import path from "node:path";
 import { normalize, bareUrl, cleanSummary, offMac, KEEP } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 // Words that must never reach an event or the table. Built here, so a leak names itself.

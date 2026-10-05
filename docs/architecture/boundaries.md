@@ -12,7 +12,7 @@ Each part of Vyre is independently modular. A part talks to another part only th
 registry (`ctx.call`, tools) and events. It never imports another part's files. A part can be
 switched off without breaking the rest.
 
-- **The kernel** is `core/config`, `core/store`, `core/events`, `core/modules`, `core/presence`
+- **The kernel** is `core/config`, `core/store`, `core/modules`, `core/presence`
   and `core/daemon`. Any part may import it.
 - **A part** is `core/<name>` (a folder, or a single file such as `core/quiet.js`),
   `local/<name>` or `modules/<name>`.
@@ -51,6 +51,8 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
+| `core/daemon -> core/runner` | homesandbox.js, sandbox.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
+| `core/daemon -> core/sessions` | drivers/openrouter.js | the daemon hands the kernel's inference door its providers: the API-key chat drivers' door side (the door scans first, this only makes the call with the key the session passes); one-way, the drivers import nothing from the daemon | lib |
 | `core/daemon -> core/runner` | homesandbox.js, sandbox.js, lent-home.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |

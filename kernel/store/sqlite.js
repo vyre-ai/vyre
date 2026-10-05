@@ -521,10 +521,6 @@ export function createSqliteStore(cfg) {
   // The memory store of this tree may not carry `scrub` (it arrives with records' merge); the store the gateway calls always does, and it forgets in memory and on disk.
   const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields) => { /** @type {any} */ (persistRef).scrub(type, fields); });
   // `create(type, id, data, { attrs, urn })`: the record's kernel attributes are written with it, in the same unit when one is open, so a record never exists without them
-  const create = async (/** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ data, /** @type {any} */ opts) => {
-    const r = await store.create(type, id, data);
-    if (opts && opts.attrs && typeof opts.urn === "string") meta.set(opts.urn, opts.attrs);
-    return r;
-  };
+  const create = async (/** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ data, /** @type {any} */ opts) => { const r = await store.create(type, id, data); if (opts && opts.attrs && typeof opts.urn === "string") meta.set(opts.urn, opts.attrs); return r; };
   return { ...store, create, scrub, meta, features: () => ({ ...store.features(), attr_filter: true }), /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }

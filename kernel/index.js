@@ -112,8 +112,7 @@ export async function createKernel(cfg) {
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
     moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
-    // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
-    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); },
+    remoteMoveEvidence: (/** @type {any} */ b, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.remoteEvidence !== "function") throw new KernelError("unavailable", "this home cannot check evidence from another home"); return h.remoteEvidence(b, c); }, // another home's evidence and receipts for a project move are checked by the spaces module (it holds the names client): late-bound through the Spaces registry, so a Space this home hosts asks the same one
     verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
     verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
@@ -359,7 +358,6 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
-        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
         setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }
@@ -427,5 +425,12 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
+  /** A module's tools that may be a Flow step become actions of this Space, and the owner and admin roles hold them (kernel/gateway registerActions, grants installFlowActions). Kernel-only: the registry calls it for a module that started. */
+  const registerFlowActions = async (/** @type {string} */ module, /** @type {any[]} */ defs) => {
+    if (!grantsStore) throw new Error("flow actions need the kernel's own grants store");
+    const names = gateway.registerActions(module, defs);
+    await grantsStore.installFlowActions(module, names);
+    return names;
+  };
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, registerFlowActions, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }

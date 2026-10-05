@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { Registry, discover } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { mechanism } from "./sandbox.js";
 import { createSupervisor } from "./supervisor.js";

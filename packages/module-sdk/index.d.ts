@@ -172,6 +172,8 @@ export interface Manifest {
     spend?: { dailyUsd: number };
     /** Daemon services handed to a built in module (names the loader knows: kernelSession, kernelThreads, sandbox, flowsHost, credentials, dataStores, devStandIn, modulesListReset, modulesListResetPayload). */
     daemon?: string[];
+    /** The record types and Drive folders it may reach, as narrow verbs on `ctx.kernel` (an added module; shown on the install card). Not the kernel handle: no defining types, no removing records. */
+    kernel?: { records?: string[]; files?: string[] };
     /** @planned Tools it calls with ctx.call, or "module.*". */
     tools?: string[];
     /** @planned Hosts it talks to. A declaration the person approves, not a wall, while in process. */
@@ -430,10 +432,30 @@ export interface ModuleContext {
    * built in module's tables are prefixed in vyre.db.
    */
   store: {
-    /** A node:sqlite DatabaseSync. Write only your own tables; use tools for anyone else's. */
-    db: any;
-    /** Ordered SQL steps, forward only, each applied once. */
-    migrate(steps: string[]): void;
+    /** A node:sqlite DatabaseSync, for a built in module in the daemon. A module installed from outside runs in a sandbox and has no `db`: use `exec`, `query` and `migrate`, which work everywhere. */
+    db?: any;
+    /** Ordered SQL steps, forward only, each applied once. Tables start with the module's name and an underscore. */
+    migrate(steps: string[]): void | Promise<void>;
+    /** Run one statement with `?` parameters. Answers { changes, lastInsertRowid }. */
+    exec(sql: string, params?: unknown[]): Promise<{ changes: number; lastInsertRowid: number }>;
+    /** Run one query with `?` parameters. Answers the rows. */
+    query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
+  };
+  /**
+   * What `needs.kernel` declared, as narrow verbs for the Space's own records and Drive (an added module; never the kernel's handle). They run under the person who installed the module, with the module
+   * beside them as an outside hop, and only on the declared record types and folders. Present only when declared.
+   */
+  kernel?: {
+    records?: {
+      create(type: string, data: Record<string, unknown>): Promise<{ urn: string; id: string; type: string; data: Record<string, unknown>; version: number }>;
+      get(urn: string): Promise<{ urn: string; data: Record<string, unknown>; version: number } | null>;
+      list(type: string, opts?: { filter?: unknown; limit?: number }): Promise<{ rows: Array<{ urn: string; data: Record<string, unknown>; version: number }>; next_cursor: string | null }>;
+      update(urn: string, patch: Record<string, unknown>, baseVersion: number): Promise<{ urn: string; data: Record<string, unknown>; version: number }>;
+    };
+    files?: {
+      /** Write a file into a declared Drive folder as a new version: `{ path, text }` or `{ path, base64 }`, at most 8 MB. */
+      write(file: { path: string; text?: string; base64?: string }): Promise<{ path: string; version: number; size: number }>;
+    };
   };
   /** @internal Every path but data is for built in modules. */
   paths: {
