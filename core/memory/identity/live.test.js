@@ -52,7 +52,7 @@ async function world(t, root = fs.realpathSync(tempHome(t))) {
   const device = newDeviceKey();
   // The person's phone says yes only over the exact request it was shown (a stand-in for the sealing process's proof check).
   /** @type {any[]} */ const shown = [];
-  configureYes({ softwareOk: () => true, verify: async i => (i.proof && i.proof.signed === true && i.op === "memory.identity.unlock" && shown.some(s => s.server === i.fields.server && s.identity === i.fields.identity) ? null : "bad_signature") });
+  configureYes({ softwareOk: () => true, verify: async i => (i.chain && Array.isArray(i.chain.hops) && i.chain.hops.length === 1 && i.chain.hops[0].actor.kind === "person" && i.proof && i.proof.signed === true && i.op === "memory.identity.unlock" && shown.some(s => s.server === i.fields.server && s.identity === i.fields.identity) ? null : "bad_signature") });
   t.after(() => configureYes({ verify: null }));
   const ask = (tool, input, caller = "cli") => as(d, tool, input, caller);
   const serverKey = () => JSON.parse(fs.readFileSync(path.join(root, "identity-server-key.json"), "utf8"));
