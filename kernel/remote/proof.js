@@ -43,6 +43,8 @@ const CALLS = {
   moveOut: (s, i) => ({ action: "project.move_out", resource: i.project, input: { to: i.to, plan_hash: i.plan_hash } }),
   // the batch form of moveOut (one approval for every project in an upgrade): the proof binds the target, the plan hash and the sorted list of projects
   moveOutMany: (s, i) => ({ action: "project.move_out", resource: urn(s, "project", "batch"), input: { to: i.to, plan_hash: i.plan_hash, projects: [...i.projects].map(String).sort() } }),
+  // upgrading a Personal space to My Cloud: one approval, bound to the target and the plan hash the person was shown
+  upgrade: (s, i) => ({ action: "space.upgrade", resource: urn(s, "space", "upgrade"), input: { to: i.to, plan_hash: i.plan_hash } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 
