@@ -7,11 +7,15 @@
 // and keeps its scheduler idle; an unpaired Mac runs the planner itself.
 
 import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
-import { openRecords, fromEvent } from "./records.js";
+import { openRecords, fromEvent, recordOf } from "./records.js";
+import { parseRule } from "./rrule.js";
+import { MIGRATIONS as LEGACY_MIGRATIONS, importLegacy } from "./legacy.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendar, shapeCal } from "./events.js";
+import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
+import { cloudGate } from "../../lib/cloud-gate.js";
 import { isPerson } from "../../lib/caller.js";
 
 /**
@@ -22,6 +26,8 @@ import { isPerson } from "../../lib/caller.js";
 export const seams = new Map();
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** The callers that are a person's own device in hand: their zone is where they are. (A shell on a server is the server's zone, which is never used.) */
+const FOLLOWS = new Set(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
 const AGENTS = ["mcp", "module", "harness"];
 /** What an agent may add with no permission (the user's rule): everything but an event, which is an invite. */
 const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note", "task"];
@@ -60,8 +66,10 @@ export default {
     const now = seam.now || Date.now;
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
-    const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how) });
-    if (K) await st.load();
+    const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how), zone: () => settings().timezone });
+    // An upgraded box still has the planner's old tables: their list stays registered (a module's migration list is append-only) and the tables stay. What is in them moves into Records once (legacy.js).
+    if (ctx.store && ctx.store.migrate) ctx.store.migrate(LEGACY_MIGRATIONS);
+    if (K) { await importLegacy({ db: ctx.store && ctx.store.db, K, log: ctx.log }); await st.load(); }
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
     // zone data (about 8 MB of RSS), which an idle planner never needs.
@@ -70,7 +78,7 @@ export default {
     /** @returns {import("./scheduler.js").Settings} */
     const settings = () => {
       const { timezone, ...kept } = st.state.get("settings") || {};
-      const out = /** @type {any} */ ({ escalate_after: 5, escalate_max: 3, event_lead: 10, ...kept });
+      const out = /** @type {any} */ ({ escalate_after: 5, escalate_max: 3, event_lead: 10, follow_device: true, ...kept });
       return Object.defineProperty(out, "timezone", { enumerable: true, get: () => timezone || defaultZone() });
     };
 
@@ -350,6 +358,8 @@ export default {
     /** An agent may change, finish, snooze or delete only what it added. */
     const owns = (item, w) => {
       if (w.person || (item && item.source === w.source)) return;
+      // A to-do the person gave to this assistant is the assistant's to finish.
+      if (item && item._task && item.assignee && w.source === `agent:${item.assignee}`) return;
       throw fail("an agent may change only the items it added", "denied");
     };
 
@@ -405,14 +415,21 @@ export default {
       let title = String(input.title ?? "").trim().slice(0, 500);
       if (!title) title = kind === "alarm" ? "Alarm" : kind === "timer" ? "Timer" : "";
       if (!title) throw fail(`a ${kind} needs a title`);
-      if (input.parent) throw fail("a to-do has no sub-items: make each one a to-do of its own");
+      if (input.parent && !(st.item(input.parent) && st.item(input.parent)._task && kind === "todo")) throw fail("a to-do's parent is another to-do", "not_found");
       if (input.waits_on && !st.item(input.waits_on)) throw fail("no such item to wait on", "not_found");
-      if (kind === "todo" && time.repeat) throw fail("a to-do does not repeat: set a reminder that repeats");
+      // Only the person gives a to-do to an assistant; the assistant then finishes it as its doer.
+      const assignee = input.assignee ? String(input.assignee).slice(0, 80) : null;
+      if (assignee) {
+        if (kind !== "todo") throw fail("only a to-do is given to an assistant");
+        if (!w.person) throw fail("only the person gives a to-do to an assistant", "denied");
+        if (await agentProjects(assignee) === null) throw fail(`no assistant or agent named ${assignee}`, "not_found");
+      }
+      if (kind !== "event" && (input.rrule || input.url)) throw fail("rrule and url are for events: a reminder repeats with repeat");
       if (kind === "event") return addEvent({ ...input, title, at: time.at, tz: time.tz || undefined }, w, t);
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
         tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name,
-        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused) };
+        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused), assignee };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
       const made = await st.create({ ...row, next_fire: n.next_fire }, w);
@@ -422,13 +439,29 @@ export default {
       return shape(st.item(made.id));
     };
 
+    /** An event's rule and link as the record keeps them: undefined when not given, null to clear, else checked. */
+    const rruleOf = v => {
+      if (v === undefined) return undefined;
+      if (v === null || String(v).trim() === "") return null;
+      try { parseRule(String(v)); } catch (e) { throw fail(`rrule: ${/** @type {Error} */ (e).message}`); }
+      return String(v).trim().replace(/^RRULE:/i, "");
+    };
+    const urlOf = v => {
+      if (v === undefined) return undefined;
+      if (v === null || String(v).trim() === "") return null;
+      const u = String(v).trim().slice(0, 2000);
+      if (!/^https?:\/\/\S+$/.test(u)) throw fail("url is a web address (https://...)");
+      return u;
+    };
+
     /** An event of the planner's own: an Event record (source "vyre"), the same record a connector's sync writes for an outside event. */
     const addEvent = async (input, w, t) => {
       const tz = input.tz || settings().timezone;
       if (input.at == null) throw fail("an event needs a start");
       const end = input.end != null ? input.end : input.at + (input.duration_ms ? Number(input.duration_ms) : 3_600_000);
+      const rrule = rruleOf(input.rrule), url = urlOf(input.url);
       const row = await st.cal.create({ title: input.title, starts_at: new Date(input.at).toISOString(), ends_at: new Date(end).toISOString(), all_day: false, time_zone: tz, source: "vyre",
-        ...(input.where ? { place: clip(input.where, 500) } : {}) });
+        ...(input.where ? { place: clip(input.where, 500) } : {}), ...(rrule ? { rrule } : {}), ...(url ? { url } : {}) }, w.person ? w.chain : undefined);
       const shown = cal.add({ ...row, own: true });
       counted(w);
       emit("planner.added", { item: row.id, kind: "event", title: input.title, at: input.at, ...(w.name ? { added_by: w.name } : {}) }, { project: input.project, thread: input.thread });
@@ -446,15 +479,18 @@ export default {
       const patch = {};
       if (i.title !== undefined) { const title = String(i.title).trim().slice(0, 500); if (!title) throw fail("the title cannot be empty"); patch.title = title; }
       if (i.where !== undefined) patch.place = clip(i.where, 500);
+      const rrule = rruleOf(i.rrule), url = urlOf(i.url);
+      if (rrule !== undefined) patch.rrule = rrule;
+      if (url !== undefined) patch.url = url;
       const timed = i.at !== undefined || i.date !== undefined || i.wall !== undefined;
       if (timed) {
         const time = resolveTime("event", { at: i.at, date: i.date, wall: i.wall, tz: i.tz }, settings(), now());
         patch.starts_at = new Date(time.at).toISOString();
         patch.ends_at = new Date(time.at + (row.end != null ? row.end - row.start : 3_600_000)).toISOString();
       }
-      const made = await st.cal.update(row.id, patch);
+      const made = await st.cal.update(row.rec ?? recordOf(row.id), patch);
       const shown = cal.add({ ...made, own: true });
-      emit("planner.changed", { item: row.id, kind: "event", fields: Object.keys(patch) }, {});
+      emit("planner.changed", { item: row.rec ?? row.id, kind: "event", fields: Object.keys(patch) }, {});
       return shapeCal(shown);
     };
 
@@ -503,11 +539,6 @@ export default {
         };
         if (item.kind === "timer" && ti.in_ms === undefined) throw fail("give a timer a new in_ms");
         Object.assign(patch, resolveTime(item.kind, ti, settings(), t), { snooze_until: null });
-      }
-      if (item._task) {
-        const fixed = Object.keys(patch).filter(k => k !== "state" && k !== "done_at");
-        if (fixed.length || timeChanged) throw fail("a to-do is a Task: its words, list and time are fixed once made. Finish or cancel it, or make a new one", "bad_input");
-        if (patch.state === "open") throw fail("a finished to-do does not reopen: make a new one", "bad_input");
       }
       patch.updated = t;
       const next = { ...item, ...patch, tags: JSON.stringify(patch.tags ?? JSON.parse(item.tags)), repeat: patch.repeat !== undefined ? (patch.repeat ? JSON.stringify(patch.repeat) : null) : item.repeat };
@@ -615,7 +646,14 @@ export default {
       const t = now();
       if (f && f.state === "ringing") ack(f, "done", w);
       const unrung = !f && due != null ? answerUnrung(item.id, item.kind, due, "done", w) : null;
-      if (item.repeat) {
+      if (item._task && item.repeat) {
+        // A repeating to-do is a series of Tasks: this one is finished and the next is made for the next time its rule names.
+        if (item.state === "open") {
+          st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t }, w);
+          emit("planner.changed", { item: item.id, kind: item.kind, fields: ["state", "done_at"] }, item);
+          spawning.push(nextOccurrence_(item, t, w));
+        }
+      } else if (item.repeat) {
         // A repeating item keeps going. Done with nothing ringing is done for this time round; by
         // key, only when that time is the one it waits for.
         const patch = /** @type {any} */ ({ snooze_until: null, updated: t });
@@ -629,6 +667,22 @@ export default {
       scheduler.arm();
       const g = f || unrung;
       return { item: shape(st.item(item.id)), firing: g ? shapeFiring(st.firing(g.id)) : null };
+    };
+
+    /** @type {Promise<any>[]} the next occurrences a done repeating to-do is making (the tool waits for them) */
+    const spawning = [];
+    const nextOccurrence_ = async (item, t, w) => {
+      const zone = zoneOf(item, settings());
+      const at = nextOccurrence({ wall: item.wall, tz: zone, after: Math.max(item.at ?? t, t), repeat: JSON.parse(item.repeat) });
+      if (at == null) return null;
+      const date = dateString(localDate(at, zone));
+      const row = { ...item, id: undefined, _task: undefined, at, date, due: date, next_fire: null, state: "open", done_at: null, deleted_at: null, snooze_until: null, created: t, updated: t, assignee: w.person ? item.assignee : null };
+      const made = await st.create(row, w);
+      const n = schedule(made, t);
+      made.next_fire = n.next_fire;
+      emit("planner.added", { item: made.id, kind: "todo", title: made.title, at }, made);
+      scheduler.arm();
+      return made;
     };
 
     const snooze = (i, w) => {
@@ -675,9 +729,9 @@ export default {
       const t = now();
       if (i.restore) {
         if (!item.deleted_at) return shape(item);
-        if (item._task) throw fail("a cancelled to-do does not come back: make a new one");
         const back = { ...item, deleted_at: null };
-        st.patch(item.id, { deleted_at: null, updated: t, next_fire: schedule(back, t).next_fire });
+        // A deleted to-do was skipped; restoring it opens the Task again.
+        st.patch(item.id, { deleted_at: null, updated: t, next_fire: schedule(back, t).next_fire, ...(item._task && item.state === "cancelled" ? { state: "open" } : {}) }, w);
         emit("planner.added", { item: item.id, kind: item.kind, title: item.title, ...(item.at != null ? { at: item.at } : {}) }, item);
         scheduler.arm();
         return shape(st.item(item.id));
@@ -689,6 +743,28 @@ export default {
       emit("planner.removed", { item: item.id, kind: item.kind }, item);
       scheduler.arm();
       return { removed: item.id, restore_until: t + 30 * 86_400_000 };
+    };
+
+    /**
+     * Delete or restore one of the planner's own events. The record goes to the records' bin (records.remove) and comes back with records.restore, so a restore works after a
+     * restart and from any record id: the event's, or one of a repeating event's occurrences (`<record>~<start>`). An outside calendar's event is changed on that calendar.
+     */
+    const removeEvent = async (i, w) => {
+      if (!w.person) throw fail("an agent may change only the items it added", "denied");
+      const rec = recordOf(i.item);
+      if (i.restore) {
+        const row = await st.cal.restore(rec);
+        if (!row) throw fail("no such event in the bin", "not_found");
+        const shown = cal.add({ ...row, own: row.own });
+        emit("planner.added", { item: rec, kind: "event", title: row.title, at: row.start }, {});
+        return shapeCal(shown);
+      }
+      const row = cal.row(i.item);
+      if (row && !row.own) throw fail("that event belongs to an outside calendar: delete it there", "denied");
+      if (!(await st.cal.remove(rec))) throw fail("no such event", "not_found");
+      cal.forget(rec);
+      emit("planner.removed", { item: rec, kind: "event" }, {});
+      return { removed: rec, kind: "event", restore: "planner.delete with restore: true, or the Records bin" };
     };
 
     // ---- Agenda -------------------------------------------------------------------------------
@@ -742,7 +818,7 @@ export default {
       for (const c of await st.eventsBetween(from, to)) {
         const e = shapeCal(c);
         entries.push({ source: e.source, ...(e.account ? { account: e.account } : {}), event: e.event, item: e.id, kind: "event", title: e.title, at: e.at, start: e.start, end: e.end,
-          all_day: e.all_day, where: e.where, url: e.url });
+          all_day: e.all_day, where: e.where, url: e.url, record: e.record, ...(e.rrule ? { rrule: e.rrule } : {}), ...(e.occurrence ? { occurrence: true } : {}) });
       }
       // By start; on the same instant, all-day first, then the planner's own, then by title.
       entries.sort((a, b) => a.at - b.at || Number(b.all_day) - Number(a.all_day) || Number(b.source === "planner") - Number(a.source === "planner")
@@ -824,6 +900,7 @@ export default {
       const cur = settings();
       const next = { ...(st.state.get("settings") || {}) };
       if (i.timezone !== undefined) { if (!validZone(i.timezone)) throw fail(`${i.timezone} is not a time zone`); next.timezone = String(i.timezone); }
+      if (i.follow_device !== undefined) next.follow_device = Boolean(i.follow_device);
       const int = (k, lo, hi) => {
         if (i[k] === undefined) return;
         const v = Number(i[k]);
@@ -884,7 +961,7 @@ export default {
           endAt = ms(i.end);
           if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
         }
-        return await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread, duration_ms: endAt != null ? endAt - startAt : 3_600_000, where: i.where }, w);
+        return await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread, duration_ms: endAt != null ? endAt - startAt : 3_600_000, where: i.where, rrule: i.rrule, url: i.url }, w);
       }
       const input = { title: String(i.title ?? ""), start: googleTime(i.start, tz), account: String(i.account), time_zone: tz,
         ...(i.end !== undefined ? { end: googleTime(i.end, tz) } : {}), ...(i.where ? { where: String(i.where) } : {}),
@@ -899,9 +976,14 @@ export default {
     /** A reminder, note or to-do the records say changed from outside: its next ring follows its time, and a finished one stops ringing. */
     const external = (row, how) => {
       if (how === "removed") { cancelRinging(row.id); scheduler.arm(); return; }
-      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null && !row._task) {
+      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null) {
         const n = schedule(row, now());
-        if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
+        // A to-do's ring time is not stored (the Task has its due time): it is worked out here, in the working set only, with its date and time of day read from the due time in its zone.
+        if (row._task) {
+          row.next_fire = n.next_fire;
+          if (row.at != null) { const p = localParts(row.at, zoneOf(row, settings())); row.date = dateString(p); row.wall = wallString(p); row.due = row.date; }
+        }
+        else if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
       }
       if (row.state !== "open" || row.deleted_at != null) cancelRinging(row.id);
       emit(how === "added" ? "planner.added" : "planner.changed", how === "added" ? { item: row.id, kind: row.kind, title: row.title, ...(row.at != null ? { at: row.at } : {}) } : { item: row.id, kind: row.kind, fields: ["records"] }, row);
@@ -915,10 +997,12 @@ export default {
     const repeatSchema = { type: "object", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
       days: { type: "array", items: int }, interval: int, until: str } };
     const itemFields = { title: str, body: str, list: str, priority: int, parent: str, project: str, thread: str, tags: { type: "array", items: str },
-      pinned: bool, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
+      pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
       // /later: waits_on chains a task after another item's own done, instead of a time; paused
       // stops just this one item (rule 2) without deleting it or losing its run history.
-      waits_on: str, paused: bool };
+      waits_on: str, paused: bool,
+      // An event's own fields: how it repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO) and where it is on its calendar.
+      rrule: { anyOf: [str, { type: "null" }] }, url: { anyOf: [str, { type: "null" }] } };
     const ref = { type: "object", properties: { firing: str, item: str, key: { type: "string", description: "planner-<item>-<due in seconds>, as planner.upcoming and the push give it" } } };
 
     /**
@@ -926,17 +1010,26 @@ export default {
      * owner; an agent's call carries `as` so the box applies the agent's rules. A `local` tool
      * (the parser: pure, no state) answers where it is asked.
      */
-    const READS = new Set(["planner.list", "planner.get", "planner.ringing", "planner.agenda", "planner.upcoming", "planner.parse"]);
+    const READS = new Set(["planner.list", "planner.get", "planner.ringing", "planner.agenda", "planner.bin", "planner.upcoming", "planner.parse"]);
     const tool = (name, description, input, run, { agents = false, local = false } = {}) => ctx.tool(name, {
       // `as` is the Mac's forward of an agent's call to the box (who() honours it only from a person's label).
       description, input: { ...input, properties: { ...(input.properties || {}), as: { type: "object" } } }, effect: READS.has(name) ? "read" : "write", callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
       run: async (i, meta) => {
         const w = await who(i, meta.caller, meta.thread || null, meta.agent || null);
         const { as: _as, ...rest } = i || {};
-        if (!K && !local && !(role === "local" && (await checkLink()))) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
-        if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
+        // A Mac paired with a box hands every call to the box, which is where the planner lives and decides; only a call that stays here is asked whether this space can hold the planner.
+        const paired = !local && role === "local" && (await checkLink());
+        // A Basic personal space has no store for the planner: it needs a Cloud space, and the answer lists the ones the person is in.
+        if (!local && !paired) { const gate = await cloudGate(ctx, K ? K.space : undefined); if (gate) throw gate; }
+        if (!K && !local && !paired) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
+        if (paired) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
-        if (!local && !READS.has(name)) w.chain = await K.chain(meta).catch(() => null);
+        if (!local && (!READS.has(name) || name === "planner.bin")) w.chain = await K.chain(meta).catch(() => null);
+        // A personal reminder follows the person: a device they are using says which zone it is in (lib/time), and the planner's zone (which floating alarms are read in) moves to it, unless they turned that off.
+        if (!local && K && w.person && FOLLOWS.has(callerKind(meta.caller)) && meta.zone && (role === "local" || callerKind(meta.caller) !== "cli")) {
+          const here = zoneFrom(meta.zone, "");
+          if (here && settings().follow_device !== false && here !== settings().timezone && name !== "planner.settings") { try { changeSettings({ timezone: here }); } catch (e) { ctx.log(`planner: zone not followed (${/** @type {Error} */ (e).message})`); } }
+        }
         const out = await run(rest, w);
         // A write answers once the records have it; a write the gateway refused is the caller's error.
         if (!local && !READS.has(name)) await st.flush();
@@ -988,7 +1081,7 @@ export default {
       async (i, w) => await update(i, w), { agents: true });
 
     tool("planner.done", "Done: acknowledge a firing (an alarm stops ringing; a repeating one keeps its schedule) or finish a todo or reminder. Give firing, item, or the ring's key (a device answering a ring it rang itself).",
-      ref, async (i, w) => done(i, w), { agents: true });
+      ref, async (i, w) => { const out = done(i, w); await Promise.all(spawning.splice(0)); return out; }, { agents: true });
 
     tool("planner.snooze", "Snooze a firing or an item: it rings again after minutes (9 by default).",
       { type: "object", properties: { ...ref.properties, minutes: { type: "number" } } }, async (i, w) => snooze(i, w), { agents: true });
@@ -996,8 +1089,15 @@ export default {
     tool("planner.dismiss", "Stop a firing without finishing a todo. A one-off alarm, timer or reminder ends.",
       ref, async (i, w) => dismiss(i, w), { agents: true });
 
-    tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days.",
-      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => remove(i, w), { agents: true });
+    tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days. An event goes to the records' bin and can be restored from there (restore: true with its id).",
+      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => {
+        // An event is a record of the Space's calendar, not a planner row: its delete and restore go through the records' bin.
+        if (!st.item(i.item) && (cal.row(i.item) || (i.restore && i.item))) return removeEvent(i, w);
+        return remove(i, w);
+      }, { agents: true });
+
+    tool("planner.bin", "The events you deleted that can still be restored (planner.delete with restore: true and the id), newest first.",
+      { type: "object", properties: {} }, async (i, w) => ({ events: await st.cal.binned(w.chain) }), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
       { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
@@ -1010,14 +1110,14 @@ export default {
 
     tool("planner.calendar.create", "Make an event. Without account it is the planner's own event. With account it is written to that Google calendar through google.calendar.create; attendees mean invites, which wait at the Gate for the user (returns { held, message }). Agents may only ask for an invite (account and attendees).",
       { type: "object", required: ["title", "start"], properties: { title: str, start: when, end: when, where: str, attendees: { anyOf: [str, { type: "array", items: str }] },
-        account: str, tz: str, why: str, project: str, thread: str } },
+        account: str, tz: str, why: str, project: str, thread: str, rrule: str, url: str } },
       async (i, w) => createEvent(i, w), { agents: true });
 
     tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item { kind, title, at (ms), tz, duration?, repeat? }, { ambiguous, reason } when they cannot be placed, or null. kind is a hint. Answers where it is asked, never forwarded.",
       { type: "object", required: ["text"], properties: { text: str, kind: { type: "string", enum: KINDS } } }, async i => parseText(i.text, now(), i.kind), { agents: true, local: true });
 
     tool("planner.settings", "The planner's zone (floating alarms follow it), escalate_after (minutes, from 1), escalate_max (rings after the first) and event_lead (minutes). With no input, the current settings.",
-      { type: "object", properties: { timezone: str, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));
+      { type: "object", properties: { timezone: str, follow_device: bool, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));
 
     // ---- Start --------------------------------------------------------------------------------
 
@@ -1033,7 +1133,7 @@ export default {
     for (const [type, consumer] of [["reminder.*", "planner-reminders"], ["note.*", "planner-notes"], ["task.*", "planner-tasks"]]) {
       const off = K.events.subscribe(K.serviceChain(), consumer, { type }, e => {
         // What the planner itself wrote is already in its working set.
-        if (String(e.actor || "").startsWith("service:planner")) return;
+        if (String(e.actor || "").split("@")[0] === "service:planner") return;
         const parts = String(e.subject || "").split("/");
         const id = parts.pop(), kind = parts.pop();
         if (id && kind) return st.external({ type: kind, id }).catch(err => ctx.log(`planner: a change to ${kind} ${id} was not read (${err.message})`));

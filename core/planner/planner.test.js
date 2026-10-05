@@ -312,10 +312,10 @@ test("planner: anyone adds alarms, reminders, todos and notes; an agent changes 
   await w.ok("planner.update", { item: rem.id, priority: 3 }, kit);
   await w.ok("planner.snooze", { item: alarm.id, minutes: 5 }, kit);
   await w.ok("planner.done", { item: rem.id }, kit);
-  // A to-do is a Task: finishing it is the person's act, and its words are fixed once made.
-  assert.equal((await w.call("planner.done", { item: todo.id }, kit)).error.code, "not_allowed", "an assistant does not finish a to-do");
+  // A to-do is a Task. Its doer is the person, so an assistant that added it for them cannot finish it (the kernel says so); the person can, and can edit it.
+  assert.equal((await w.call("planner.done", { item: todo.id }, kit)).error.code, "not_allowed", "an assistant does not finish a to-do it added for the person");
   assert.equal((await w.ok("planner.get", { item: todo.id })).item.state, "open", "and it stays open");
-  assert.match((await w.call("planner.update", { item: todo.id, priority: 3 }, kit)).error.message, /fixed once made/);
+  assert.equal((await w.ok("planner.update", { item: todo.id, priority: 3 }, kit)).priority, 3, "the assistant edits what it added");
   await w.ok("planner.delete", { item: alarm.id }, kit);
   await w.ok("planner.delete", { item: alarm.id, restore: true }, kit);
   // Nothing anyone else added: the person's, the assistant's, another module's.

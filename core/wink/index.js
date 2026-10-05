@@ -33,6 +33,7 @@ import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
 import { createNetd } from "./netd.js";
+import { createNetJoin } from "./netjoin.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, resumeServing, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL, SCAN_TOOL } from "./storage/bridge.js";
 import { createHolds, holdDrive } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -870,6 +871,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
+        for (const off of offNetd) { try { off(); } catch {} }
         for (const off of offHold) { try { off(); } catch {} }
         try { offBridge(); } catch {}
         dropHold();
