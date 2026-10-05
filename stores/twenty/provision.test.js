@@ -211,7 +211,7 @@ test("a Space made from the saved database: its compose file restores it once, s
   const g = composeFile({ space: "harlow", golden: true });
   assert.match(g, /\n  restore:\n/);
   assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
-  assert.match(g, /\.\/golden\.dump:\/golden\.dump:ro/);
+  assert.match(g, /\$\{GOLDEN_DUMP:-\.\/golden\.dump\}:\/golden\.dump:ro/);
   assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
   assert.match(g, /printenv ADMIN_PASSWORD/, "the new password comes from the Space's own env file, never from the saved file");
   assert.ok(!/-c .*ADMIN_PASSWORD|\$\$?ADMIN_PASSWORD/.test(g), "and is read inside psql from its environment, never put on a command line that a process list shows");
@@ -238,4 +238,16 @@ test("findGolden returns a saved database only for exactly the image the Space w
   assert.equal(findGolden({ image: other, dirs: [dir] }), null, "a different image (same tag, another digest) is not used");
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "");
   assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "an empty dump is not a saved database");
+});
+
+test("no compose file publishes a Twenty port: not a plain Space, not one made from the saved database, and a Mac server's proxy publishes on 127.0.0.1 only and never from the server", () => {
+  for (const o of [{}, { golden: true }, { migrated: true }, { memory: "small" }]) {
+    const y = composeFile({ space: "harlow", ...o });
+    assert.ok(!/^\s*ports:/m.test(y), `no ports for ${JSON.stringify(o)}`);
+    assert.match(y, /networks:\n  store:\n    internal: true/, "the network stays internal");
+  }
+  const mac = composeFile({ space: "harlow", publish: "loopback", golden: true });
+  assert.deepEqual([...mac.matchAll(/^\s+- "([^"]+:3000)"$/gm)].map(m => m[1]), ["127.0.0.1:${TWENTY_HOST_PORT:?}:3000"], "one published port, on the loopback only");
+  const server = mac.slice(mac.indexOf("\n  server:"), mac.indexOf("\n  worker:"));
+  assert.ok(!/ports:/.test(server) && !/\n    ports/.test(mac.slice(mac.indexOf("\n  worker:"), mac.indexOf("\n  proxy:") === -1 ? undefined : mac.indexOf("\n  proxy:"))), "Twenty's own containers publish nothing; only the proxy does");
 });

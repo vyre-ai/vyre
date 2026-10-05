@@ -1366,14 +1366,41 @@ sp_secrets() {
   printf 'PG_PASSWORD=%s\nREDIS_PASSWORD=%s\nAPP_SECRET=%s\nENCRYPTION_KEY=%s\n' "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" >"$t" && chmod 600 "$t" && rename_over "$t" "$f" || { rm -f "$t"; return 1; }
 }
 sp_rnd() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# sp_golden NAME: a NEW Space starts from the saved database the vyre image carries (stores/twenty/golden, one dump per pinned Twenty image) when there is one: about a minute to a working Space,
+# not thirteen. Root takes the dump out of the image once per image (docker create + cp, never a mount) into private/golden/, read-only, and every Space's restore step reads it from there
+# (GOLDEN_DUMP in its secrets.env, the one mount sp_lint allows). Root makes the Space's admin password, puts it in the Space's secrets (ADMIN_PASSWORD, for the restore step) and in
+# status/admin-NAME (0600, the daemon's uid, removed after ten minutes) for the one sign-in vyred does to make the Space's key. No golden, or any failure here, is the slow path: nothing else changes.
+sp_golden() {
+  n=$1; d=$SP_PRIV/spaces/$n; gd=$SP_PRIV/golden
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
+  if [ "$(cat "$gd/image-id" 2>/dev/null || true)" != "$img" ] || [ ! -s "$gd/golden.dump" ]; then
+    mkdir -p "$gd" && chmod 755 "$gd" && rm -f "$gd/image-id" "$gd/golden.dump" || return 1
+    # shellcheck disable=SC2016 # the script is node's, not the shell's
+    p=$(timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
+      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(g)process.stdout.write(g.dump)})' 2>/dev/null || true)
+    case "$p" in /*.dump) ;; *) return 1 ;; esac
+    case "$p" in *..*|*[!A-Za-z0-9._/-]*) return 1 ;; esac
+    cid=$(timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker create --network none "$img" 2>/dev/null || true)
+    [ -n "$cid" ] || return 1
+    timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; rc=$?
+    timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker rm -f "$cid" >/dev/null 2>&1 || true
+    [ "$rc" = 0 ] && [ -s "$gd/golden.dump.new" ] || { rm -f "$gd/golden.dump.new"; return 1; }
+    chmod 444 "$gd/golden.dump.new" && mv -f "$gd/golden.dump.new" "$gd/golden.dump" && printf '%s\n' "$img" >"$gd/image-id" || return 1
+  fi
+  pw=$(sp_rnd)
+  printf 'GOLDEN_DUMP=%s\nADMIN_PASSWORD=%s\n' "$gd/golden.dump" "$pw" >>"$d/secrets.env" || return 1
+  t=$(mktemp "$SP_STATE/admin-$n.XXXXXX") && printf '%s\n' "$pw" >"$t" && chmod 600 "$t" && chown "$DAEMON_UID:$DAEMON_UID" "$t" 2>/dev/null; mv -f "$t" "$SP_STATE/admin-$n" 2>/dev/null || return 1
+  : >"$d/golden"
+}
 # sp_lint FILE NAME: a closed check of the regenerated compose: only the keys the generator uses, only the Space's own named volumes and the one empty folder,
 # only the images root recorded, the network internal. Anything else is a refusal, so a bug in the generator cannot become host access.
 sp_lint() {
   awk -v name="$2" '
   function bad(m) { print "lint: " m; ok = 0 }
-  BEGIN { ok = 1; split("image restart mem_limit memswap_limit networks volumes environment depends_on healthcheck command", a, " "); for (i in a) allowed[a[i]] = 1
-    vol["      - server-data:/app/packages/twenty-server/.local-storage"] = 1; vol["      - ./empty-front:/app/packages/twenty-server/dist/front:ro"] = 1; vol["      - db-data:/var/lib/postgresql/data"] = 1
-    split("server worker db redis", s, " "); for (i in s) svc["  " s[i] ":"] = 1 }
+  BEGIN { ok = 1; split("image restart mem_limit memswap_limit networks volumes environment depends_on healthcheck command entrypoint", a, " "); for (i in a) allowed[a[i]] = 1
+    vol["      - server-data:/app/packages/twenty-server/.local-storage"] = 1; vol["      - ./empty-front:/app/packages/twenty-server/dist/front:ro"] = 1; vol["      - db-data:/var/lib/postgresql/data"] = 1; vol["      - ${GOLDEN_DUMP:-./golden.dump}:/golden.dump:ro"] = 1
+    split("server worker db redis restore", s, " "); for (i in s) svc["  " s[i] ":"] = 1 }
   NR == FNR { img[$2] = 1; next }
   /^#/ || /^$/ { next }
   /^[a-z]/ { k = $1; sub(/:.*/, "", k); if (k != "name" && k != "services" && k != "networks" && k != "volumes") bad("top-level key " k)
@@ -1389,6 +1416,7 @@ sp_lint() {
   END { exit ok ? 0 : 1 }' "$SP_PRIV/images" "$1"
 }
 # sp_run_gen NAME OUT: the generator, inside the image root recorded (by id): unprivileged, read-only, no network, no mounts, stdout only, capped at 64 KB.
+# sp_run_gen NAME OUT [golden|migrated]: the third word says the Space starts from the saved database (golden: the restore step, once) or already did (migrated: the server skips its migration steps).
 sp_run_gen() {
   img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
   printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
@@ -1399,7 +1427,7 @@ sp_run_gen() {
   case "$tot" in ""|*[!0-9]*) tot=0 ;; esac
   # shellcheck disable=SC2016 # the script is node's, not the shell's
   { timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
-      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>process.stdout.write(m.composeFile({space:process.argv[1],memory:process.argv[2],totalMb:Number(process.argv[3])||undefined})))' "$1" "$mem" "$tot" 2>/dev/null || true; } | head -c 65537 >"$2"
+      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>process.stdout.write(m.composeFile({space:process.argv[1],memory:process.argv[2],totalMb:Number(process.argv[3])||undefined,golden:process.argv[4]==="golden",migrated:process.argv[4]==="migrated"})))' "$1" "$mem" "$tot" "${3:-}" 2>/dev/null || true; } | head -c 65537 >"$2"
   sz=$(wc -c <"$2")
   [ "$sz" -ge 200 ] && [ "$sz" -le 65536 ] && head -n 1 "$2" | grep -q '^# Generated by Vyre'
 }
@@ -1407,7 +1435,8 @@ sp_gen() {
   n=$1; d=$SP_PRIV/spaces/$n
   [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
   t=$(mktemp "$d/compose.XXXXXX") || return 1
-  if ! sp_run_gen "$n" "$t"; then rm -f "$t"; MSG="the compose file could not be regenerated"; return 1; fi
+  fl=""; if [ -f "$d/golden" ]; then fl=golden; elif [ -f "$d/migrated" ]; then fl=migrated; fi
+  if ! sp_run_gen "$n" "$t" "$fl"; then rm -f "$t"; MSG="the compose file could not be regenerated"; return 1; fi
   # RH-7: a store never starts by itself. A restart policy would bring it up after a reboot or a Docker restart with no rule in the (new) vyre container; only `up` starts a Space.
   sed 's/^    restart: unless-stopped$/    restart: "no"/' "$t" >"$t.r" && mv "$t.r" "$t"
   # Images by DIGEST, from root's own record (made at install and at every update, from a pull): a tag the registry moves later cannot change what `up` runs.
@@ -1457,19 +1486,24 @@ sp_swap() {
 sp_up() {
   n=$1
   sp_name_ok "$n" || { MSG="not a Space name"; return 1; }
+  fresh=0
   if ! sp_known "$n"; then
+    fresh=1
     [ "$(find "$SP_PRIV/spaces" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" -lt "$SPACES_CAP" ] || { MSG="too many Spaces on this server"; return 1; }
     # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
     mkdir -p "$SP_PRIV/spaces/$n" && chmod 700 "$SP_PRIV/spaces/$n" && : >"$SP_PRIV/spaces/$n/record" || { MSG="could not make the Space's folder"; return 1; }
   fi
   sp_swap || true
   sp_secrets "$n" || { MSG="could not make the Space's secrets"; return 1; }
+  [ "$fresh" = 0 ] || sp_golden "$n" || true
   sp_gen "$n" || return 1
   sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
   # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
   sp_attach "$n" || return 1
   sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
   if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
+  # the saved database has been restored: from here the compose file has no restore step, and the server skips its migration steps
+  if [ -f "$SP_PRIV/spaces/$n/golden" ]; then mv -f "$SP_PRIV/spaces/$n/golden" "$SP_PRIV/spaces/$n/migrated"; sp_gen "$n" || true; fi
   MSG="the store is up and the agents are firewalled from it"
 }
 sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
@@ -1626,6 +1660,7 @@ space_helper_run() {
   umask 077; LC_ALL=C; export LC_ALL
   if ! sp_dirs_ok; then echo "vyre: $SPACES_ROOT (or a folder above it) is not as the Space helper needs it; nothing was done" >&2; exit 0; fi
   set_root_run
+  find "$SP_STATE" -maxdepth 1 -name 'admin-*' -type f -mmin +10 -delete 2>/dev/null || true
   mkdir -p "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null; chmod 700 "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null || true
   # A request claimed by a run that did not finish is answered "interrupted", never replayed.
   for c in "$SP_PRIV"/claim/req-*; do

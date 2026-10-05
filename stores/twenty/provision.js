@@ -137,7 +137,8 @@ ${o.golden ? `  restore:
     image: ${POSTGRES_IMAGE}
     restart: "no"
     networks: [store]
-    volumes: [./golden.dump:/golden.dump:ro]
+    volumes:
+      - \${GOLDEN_DUMP:-./golden.dump}:/golden.dump:ro
     environment: { PGPASSWORD: "\${PG_PASSWORD}", ADMIN_PASSWORD: "\${ADMIN_PASSWORD}" }
     entrypoint: ["sh", "-c", "set -e; pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error /golden.dump; psql -h db -U postgres -d default -v ON_ERROR_STOP=1 <<'SQL'\\n\\\\set pw \`printenv ADMIN_PASSWORD\`\\nDELETE FROM core.\\"signingKey\\";\\nUPDATE core.workspace SET \\"isPasswordAuthEnabled\\" = true;\\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\\nUPDATE core.\\"user\\" SET \\"passwordHash\\" = crypt(:'pw', gen_salt('bf', 10));\\nDROP EXTENSION pgcrypto;\\nSQL"]
     depends_on:
