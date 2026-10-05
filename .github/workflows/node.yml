@@ -116,6 +116,9 @@ jobs:
         run: |
           $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
           $env:VYRE_NO_DIALOGS = "1"
+          # The kernel is on everywhere now and its key must live in a sealing process, which does not run on Windows yet (the OS keystore path is not built: Windows parity is deferred).
+          # This job proves the socket's privacy, not the kernel, so a development checkout (this is one) takes the developer's file key; a packaged daemon ignores the switch.
+          $env:VYRE_KERNEL_FILE_KEY = "1"
           New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
           $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
             -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
