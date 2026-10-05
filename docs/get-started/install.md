@@ -24,7 +24,7 @@ The whole path takes about fifteen minutes. Other ways to install are at the end
 
 - [ ] A Linux server you can open a terminal on, with an account that can use `sudo`. Docker is
       installed for you if it is missing, after you say yes. Or a Mac that stays on and plugged in.
-- [ ] Size: one space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
+- [ ] Size: one space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow. If a server has too little free memory for Twenty, the installer says so and Vyre offers the small built-in store instead.
 - [ ] A Claude, ChatGPT (Codex) or Grok account. One is enough to go on, and you can add the
       others later.
 - [ ] A current browser for the setup page: Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer, or Firefox 130 or newer.
@@ -102,7 +102,7 @@ A wrong pick prints `Those were not the words the app shows, so nothing was pair
 try again. If five minutes pass before a device asks, it prints `The code ran out before a device
 asked. Nothing was paired.` and asks `Make a new code? [y/N]`. When it works, the install finishes with `Your server is ready.`, a line about your keys
 (the sealing key is a file owned by the sealing process's own user, so root on this server, or a
-stolen disk, can read it), and `Connected to <name> (<name>.vyre.run). Finish setting up on your device.` Run with
+stolen disk, can read it), and `Connected to <name>. Finish setting up on your <device>.` (the name is your space's name as the server reports it, address included; with no device name it says "device"). Run with
 `--yes`, or with no terminal, it prints the QR and the long code and then `Finish setting up on
 your device once it has paired.` To show the code again later, run `vyre call wink.server.code
 '{"qr":true}'` on the server. A server has no first-run page: there is no browser link and no tunnel.
