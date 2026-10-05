@@ -5,7 +5,7 @@
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
 #   --from DIR         use the box files in a local checkout DIR and build the image from it
-#   --print-link       end with only VYRE_LINK=<url> (and VYRE_SSH=<line>) on stdout, for a
+#   --print-link       end with only VYRE_PAIRED=<space> or VYRE_PAIR=<command> on stdout, for a
 #                      program to read; everything else goes to stderr (or VYRE_LINK_ONLY=1)
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
@@ -171,7 +171,7 @@ finish() {
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
-      say "  The setup link went to stdout for the program that asked."
+      say "  Whether it is paired went to stdout for the program that asked."
     else
       if [ "$PAIRED" = 1 ]; then
         say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."

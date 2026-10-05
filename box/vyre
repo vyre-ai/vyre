@@ -3,10 +3,10 @@
 # on the host is the same one command as on a Mac. Installed to /usr/local/bin/vyre by
 # scripts/install-box.sh. The stack lives in VYRE_DIR (default /srv/vyre).
 #
-#   vyre up        start the stack if needed, then print the onboarding link or the address
+#   vyre up        start the stack if needed, then say whether this server is paired, and how to pair it
 #   vyre up --print-link
-#                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
-#                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
+#                  the same, but stdout is only VYRE_PAIRED=<space> or VYRE_PAIR=<command>, for a
+#                  program to read (or VYRE_LINK_ONLY=1)
 #   vyre update [--channel stable|beta] [--to <version>] [--allow-unsigned]
 #                  bring the box to the newest release (ADR 0033, section 4). The release comes
 #                  from GitHub Releases (repo vyre-ai/vyre; stable is the newest
@@ -351,18 +351,16 @@ cli() {
   exit $?
 }
 
-# print_link: run the CLI's `vyre up`, and reduce what it prints to VYRE_LINK and VYRE_SSH.
-# The link is the onboarding URL, or the box's address once onboarding is done.
+# print_link: run the CLI's `vyre up`, and reduce what it prints to one machine-readable line. A server has no setup link (the kernel is always on):
+# VYRE_PAIRED=<space> once it is paired, or VYRE_PAIR=<the command that shows the pairing code> while it is not. Only a `vyre up` that printed neither fails.
 print_link() {
   esc=$(printf '\033')
   out=$(compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
     -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre up 2>&1 | sed "s/${esc}\[[0-9;]*m//g")
-  link=$(printf '%s\n' "$out" | sed -n 's|^ *\(https\{0,1\}://[^ ]*/onboard?t=[^ ]*\).*|\1|p' | head -n 1)
-  [ -n "$link" ] || link=$(printf '%s\n' "$out" | sed -n 's|^ *your address: *\(https://[^ ]*\).*|\1|p' | head -n 1)
-  if [ -z "$link" ]; then printf '%s\n' "$out" >&2; die "vyre up printed no link"; fi
-  ssh=$(printf '%s\n' "$out" | sed -n 's|^ *\(ssh -N -L .*[^ ]\) *$|\1|p' | head -n 1)
-  printf 'VYRE_LINK=%s\n' "$link"
-  if [ -n "$ssh" ]; then printf 'VYRE_SSH=%s\n' "$ssh"; fi
+  paired=$(printf '%s\n' "$out" | sed -n 's|^ *paired to \([^ ·]*\).*|\1|p' | head -n 1)
+  if [ -n "$paired" ]; then printf 'VYRE_PAIRED=%s\n' "$paired"; return 0; fi
+  if printf '%s\n' "$out" | grep -q 'not paired yet'; then printf '%s\n' "VYRE_PAIR=vyre call wink.server.code '{\"qr\":true}'"; return 0; fi
+  printf '%s\n' "$out" >&2; die "vyre up said neither paired nor how to pair"
 }
 
 # The image the vyre service runs: built here as vyre:local, or pulled.

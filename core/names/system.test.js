@@ -525,13 +525,11 @@ esac
 exit 0` };
 
 const E = "\u001b";
-const ONBOARDING = [
-  "", `  vyred ${E}[32mrunning${E}[0m ${E}[2m· 0.3.0 · box${E}[0m`, "",
-  `  Open this link to set up Vyre ${E}[2m(it works once, for an hour)${E}[0m:`, "",
-  `    ${E}[32mhttp://127.0.0.1:7300/onboard?t=abc123${E}[0m`, "",
-  "  This box is headless. On your own computer, run this first, then open the link there:",
-  "    ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4", "",
+const UNPAIRED = [
+  "", `  vyred ${E}[32mrunning${E}[0m ${E}[2m· 0.3.0 · box${E}[0m`,
+  `  not paired yet. Pair this server from your Vyre app: run ${E}[32mvyre call wink.server.code '{"qr":true}'${E}[0m here, then scan the QR or paste the long code.`, "",
 ].join("\n");
+const PAIR_LINE = `VYRE_PAIR=vyre call wink.server.code '{"qr":true}'\n`;
 
 function linkBox(t, printed) {
   const box = setup(t, UP_PRINTS);
@@ -542,34 +540,34 @@ function linkBox(t, printed) {
   return { ...box, env: { ...box.env, VYRE_TEST_UP: up } };
 }
 
-test("box/vyre: up --print-link prints only VYRE_LINK and VYRE_SSH", t => {
-  const box = linkBox(t, ONBOARDING);
+test("box/vyre: up --print-link prints only how to pair an unpaired server (no link: there is no setup page)", t => {
+  const box = linkBox(t, UNPAIRED);
   for (const [args, env] of [[["up", "--print-link"], {}], [["up"], { VYRE_LINK_ONLY: "1" }]]) {
     const r = spawnSync("sh", [WRAPPER, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...box.env, ...env } });
     assert.equal(r.status, 0, r.stderr);
-    assert.equal(r.stdout, "VYRE_LINK=http://127.0.0.1:7300/onboard?t=abc123\nVYRE_SSH=ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4\n");
+    assert.equal(r.stdout, PAIR_LINE);
   }
 });
 
-test("box/vyre: up --print-link after onboarding gives the address, and fails with no link", t => {
-  const done = linkBox(t, `  vyred is already running · 0.3.0 · box\n  your address: ${E}[32mhttps://alex.vyre.run${E}[0m\n`);
+test("box/vyre: up --print-link on a paired server names its space, and fails only when vyre up said neither", t => {
+  const done = linkBox(t, `  vyred is already running · 0.3.0 · box\n  paired to ${E}[32malex${E}[0m${E}[2m · by Alex's phone${E}[0m\n`);
   const r = spawnSync("sh", [WRAPPER, "up", "--print-link"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: done.env });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, "VYRE_LINK=https://alex.vyre.run\n");
+  assert.equal(r.stdout, "VYRE_PAIRED=alex\n");
 
-  const none = linkBox(t, "  onboarding is not available: something broke\n");
+  const none = linkBox(t, "  pairing is not available on this server: something broke\n");
   const bad = spawnSync("sh", [WRAPPER, "up", "--print-link"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: none.env });
   assert.equal(bad.status, 1);
   assert.equal(bad.stdout, "");
-  assert.match(bad.stderr, /something broke[\s\S]*vyre up printed no link/);
+  assert.match(bad.stderr, /something broke[\s\S]*neither paired nor how to pair/);
 });
 
 test("install-box.sh: --print-link ends with only the machine-readable lines on stdout", t => {
   const up = path.join(tempHome(t), "up.txt");
-  fs.writeFileSync(up, ONBOARDING);
+  fs.writeFileSync(up, UNPAIRED);
   const r = runScript(t, ["--yes", "--print-link", "--from", REPO], UP_PRINTS, () => {}, { VYRE_TEST_UP: up });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, "VYRE_LINK=http://127.0.0.1:7300/onboard?t=abc123\nVYRE_SSH=ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4\n");
+  assert.equal(r.stdout, PAIR_LINE);
   assert.match(r.stderr, /the stack goes in/);
   assert.ok(r.calls.includes("docker compose exec -T -e SSH_CONNECTION= -e VYRE_HOST_USER=alex vyre vyre up"), r.calls.join("\n"));
 });
