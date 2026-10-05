@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(app): the Assign to picker lists the task's project teammates under "On this project": the task's `project` link (a vyre:// address, from platform2's task.project) gives the Project record id, team.list reads that project, and a task with no project behaves as before (taskProjectId, projectActorIds, useProjectActors).
 - refactor(app): the Team tab, the Teammates tab and the Assign picker key teammates by the Project record's id, as the team.* tools now take it (cleanup's work/cleanup-team d45d3b8df; the box refuses a short name). A project with no slug has a team; projectSlug is gone; the Assistants page names each project through work.project.ref. Needs that branch on the box side: team.list, team.add, team.retire and the other team.* tools with a `project` input now want the id or the vyre:// address; team.default.get and team.default.set take the id too.
 
 - fix(tests): the assistants' model list is the box's own (sessions.models.get aliases through the chat core's modelChoices), not a copy in agent-model.ts (cohesion-drift); the docs-shots test expects web/css/deck.css and the sorted order; the Windows pairing-page import check reads every page script in native-win/app/ui, since pair.js and seed.js became first-run-pair.js, typed-pair.js and link.js.

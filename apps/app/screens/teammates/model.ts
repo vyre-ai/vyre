@@ -92,3 +92,14 @@ export function projectId(row: { id?: unknown } | null | undefined): string {
 
 /** A project's name for the Assistants page: the box's answer for its id, else a plain word, never the raw id. */
 export const projectTitle = (id: string, names: Record<string, string>) => (id ? names[id] || "A project" : "Everywhere");
+
+/** The Project record id a task links to (`task.project`): the box answers a vyre://<space>/project/<id> address; an id or a { urn | id } object reads too. Empty when the task names no project. */
+export function taskProjectId(task: { project?: unknown } | null | undefined): string {
+  const p: any = task?.project;
+  const s = typeof p === "string" ? p : typeof p?.urn === "string" ? p.urn : typeof p?.id === "string" ? p.id : "";
+  const m = /^vyre:\/\/[^/]+\/project\/([^/?#]+)$/.exec(s.trim());
+  return m ? m[1] : /^[^/\s]+$/.test(s.trim()) ? s.trim() : "";
+}
+
+/** The actor ids of a project's teammates, as the Assign to picker lists them under "On this project". */
+export const projectActorIds = (rows: Teammate[]): string[] => [...new Set(rows.map((t) => t.agent).filter(Boolean))];

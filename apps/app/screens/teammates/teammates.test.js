@@ -113,3 +113,18 @@ test("teammates: a refusal throws with the box's words, and an unreadable pane p
   const p = await s.pane({ agent: "t", project: "d", role: "r", brief: "", filler: null, state: "idle", queued: 0, current: null, last: null });
   assert.equal(p.notes, null); assert.equal(p.errors, 1 + 0 + 0, "only the notes read failed");
 });
+
+test("teammates: a task's project link gives the Project record id, and its teammates are the 'On this project' actors", { skip: !strip }, async () => {
+  const { taskProjectId, projectActorIds, assignGroups } = await import("./model.ts");
+  const urn = "vyre://spc_aaaaaaaaaaaa/project/p1";
+  assert.equal(taskProjectId({ project: urn }), "p1", "tasks.get answers the project as a vyre:// address");
+  assert.equal(taskProjectId({ project: { urn } }), "p1");
+  assert.equal(taskProjectId({ project: "p2" }), "p2", "a bare id reads as itself");
+  for (const none of [{}, { project: "" }, { project: null }, { project: "vyre://spc_aaaaaaaaaaaa/contact/c1" }, null, undefined]) assert.equal(taskProjectId(none), "", JSON.stringify(none));
+  const rows = [{ agent: "juno" }, { agent: "juno" }, { agent: "kit" }, { agent: "" }];
+  assert.deepEqual(projectActorIds(/** @type {any} */ (rows)), ["juno", "kit"]);
+  const actors = [{ id: "sam", name: "Sam Park", family: "person" }, { id: "juno", name: "juno", family: "agent" }, { id: "kit", name: "kit", family: "agent" }];
+  const g = assignGroups(actors, projectActorIds(/** @type {any} */ (rows)));
+  assert.deepEqual(g.map((x) => [x.title, x.rows.map((r) => r.id)]), [["On this project", ["juno", "kit"]], ["Everyone", ["sam"]]]);
+  assert.deepEqual(assignGroups(actors, []).map((x) => x.title), ["People and assistants"], "a task with no project behaves as before");
+});

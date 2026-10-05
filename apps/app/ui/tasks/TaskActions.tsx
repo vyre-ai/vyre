@@ -3,6 +3,8 @@ import { View } from "react-native";
 import { aid } from "../../src/store-core/kernel-view.js";
 import { simulatedProof } from "../../src/store-core/kernel-view.js";
 import { AssignPicker } from "../../screens/teammates/AssignPicker";
+import { taskProjectId } from "../../screens/teammates/model";
+import { useProjectActors } from "../../screens/teammates/useProjectActors";
 import { handEvidence } from "../../src/store-core/tasks.js";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
@@ -90,6 +92,7 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
 function Sheets({ world, open, close, confirmProof, run, go }: { world: World; open: Open; close: () => void; confirmProof: (t: Task, id: "send" | "approve" | "yes") => void; run: (t: Task, id: string, i?: string) => void; go: (p: string) => void }) {
   const store = useStore();
   const task = open?.task;
+  const onProject = useProjectActors(taskProjectId(task), open?.kind === "reassign");
   const rec = task ? world.records.get(task.record) : undefined;
   return (
     <>
@@ -120,7 +123,7 @@ function Sheets({ world, open, close, confirmProof, run, go }: { world: World; o
           </>
         ) : null}
       </Sheet>
-      <AssignPicker open={open?.kind === "reassign"} onClose={close} title={open?.kind === "reassign" ? `Reassign ${task.title}` : "Assign to"} actors={world.actors} exclude={open?.kind === "reassign" ? [aid(task.doer)] : []} onPick={async (a) => {
+      <AssignPicker open={open?.kind === "reassign"} onClose={close} title={open?.kind === "reassign" ? `Reassign ${task.title}` : "Assign to"} actors={world.actors} onProject={onProject} exclude={open?.kind === "reassign" ? [aid(task.doer)] : []} onPick={async (a) => {
         try { await store.reassign(task.id, a.id, world.me); showToast(`${task.title} is with ${a.name}.`); close(); } catch (e) { say(e); }
       }} />
       <Sheet open={open?.kind === "file"} onClose={close} title={open?.kind === "file" ? `Add: ${typeof task.output?.target === "string" ? task.output.target : "the file"}` : undefined}>
