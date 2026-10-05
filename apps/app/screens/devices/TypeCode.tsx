@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
 import { joinWithCode, redeemInviteCode } from "@vyre/relay-client/join.js";
-import { about, relayCrypto, relayKeyStore, savePairing } from "../../src/api/relay";
+import { about, presenceKey, relayCrypto, relayKeyStore, savePairing } from "../../src/api/relay";
 import { tool } from "../../src/real/box";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -24,7 +24,7 @@ export async function redeemInvite(code: string, onAck: (ack: string) => void): 
  */
 export async function redeemPairing(code: string, onAck: (ack: string) => void): Promise<Typed> {
   const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s) => { if (s.state === "ack" && s.code) onAck(s.code); },
-    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about } });
+    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey() } });
   if (!r.ok) throw new Error(inviteReasonSay(r.reason === "closed" ? "refused" : r.reason));
   await savePairing({ relay: r.paired.relay, route: r.paired.route, box: r.paired.box, name: r.paired.name, device: r.paired.device, presence: null });
   return {};

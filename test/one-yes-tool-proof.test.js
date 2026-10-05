@@ -72,3 +72,21 @@ test("a release build refuses the software-key proof for the same three tools", 
     assert.ok(["software_key", "presence_required"].includes(String(r.error?.code)), `${tool}: refused on a release build (${JSON.stringify(r.error || r.data)})`);
   }
 });
+
+test("typing the ack back (wink.code.ack) takes the owner's software yes on a development build, bound to its offer and typed code", { timeout: 120_000 }, async t => {
+  withEnv(t, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1", VYRE_KERNEL_PATH_RULE: "1" });
+  const root = tempHome(t);
+  homeIdentity(root);
+  assert.equal(run("dev-enrol-software-key.mjs", ["--home", root]).status, 0);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 100));
+  const input = { offer: "of_notreal", typed: "WINK-AAAA-AAAA" };
+  /** @param {any} i */
+  const sign = i => { const r = run("dev-sign-proof.mjs", ["--home", root, "--yes", "pair", "--tool", "wink.code.ack", "--input", JSON.stringify(i), "--header"]); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); };
+  const at = (/** @type {any} */ i, /** @type {string} */ h) => call("wink.code.ack", i, { root, caller: "cli", ...(h ? { headers: { "x-vyre-presence": h } } : {}) });
+  assert.equal((await at(input)).error?.code, "presence_required", "no proof, no way in");
+  assert.equal((await at(input, sign({ ...input, typed: "WINK-BBBB-BBBB" }))).error?.code, "presence_required", "a proof for another typed code is not this call's");
+  const r = await at(input, sign(input));
+  assert.notEqual(r.error?.code, "presence_required", `the owner's software proof stands (${JSON.stringify(r.error)})`);
+});
