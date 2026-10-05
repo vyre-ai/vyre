@@ -1383,9 +1383,9 @@ sp_golden() {
     case "$p" in *..*|*[!A-Za-z0-9._/-]*) return 1 ;; esac
     cid=$(timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker create --network none "$img" 2>/dev/null || true)
     [ -n "$cid" ] || return 1
-    timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; rc=$?
+    timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; cprc=$?
     timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker rm -f "$cid" >/dev/null 2>&1 || true
-    [ "$rc" = 0 ] && [ -s "$gd/golden.dump.new" ] || { rm -f "$gd/golden.dump.new"; return 1; }
+    [ "$cprc" = 0 ] && [ -s "$gd/golden.dump.new" ] || { rm -f "$gd/golden.dump.new"; return 1; }
     chmod 444 "$gd/golden.dump.new" && mv -f "$gd/golden.dump.new" "$gd/golden.dump" && printf '%s\n' "$img" >"$gd/image-id" || return 1
   fi
   pw=$(sp_rnd)
