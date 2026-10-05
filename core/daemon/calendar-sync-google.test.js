@@ -14,11 +14,15 @@ import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1"; process.env.TZ = "UTC";
 const ME = "alex@example.com";
 
+// the kernel's check of a signed decision (as test/kits-restart-daemon.test.js): the proof must be for exactly this op and these fields, once
+const canonical = (/** @type {any} */ x) => JSON.stringify(x, Object.keys(x).sort());
+const signedPresence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
+
 async function world(/** @type {any} */ t) {
   const fake = await startFakeGoogle(t);
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence() });
   t.after(() => d.stop());
   const cli = (/** @type {string} */ tool, input = {}) => call(tool, input, { root, caller: "cli" });
   assert.ok((await cli("vault.put", { name: "work-google", kind: "secret", fields: { value: fake.serviceAccount(ME) } })).data);
@@ -61,6 +65,24 @@ test("an event made in Vyre is pushed to the Google account only through the app
   assert.equal(pushed.inserted, 0, "not sent without a yes: " + JSON.stringify(pushed));
   assert.equal(fake.calendar.events.length, before, "Google was not written");
   assert.ok(!(await events()).some((/** @type {any} */ r) => r.data.title === "Closing call" && r.data.external_id));
+});
+
+// REPRODUCTION (fails today): on the real kernel an approved held write is never allowed, because approvedAct needs the acting chain to be the task's doer (service:flows), which holds no
+// service.call grant. Expected once approvedAct is fixed: the approved write goes out once, and an approval for one body is refused for another.
+test("on the real kernel the owner's yes lets exactly that write go out, once", { timeout: 120_000 }, async t => {
+  const { fake, d, admin, sync } = await world(t);
+  await sync().runNow();
+  const gw = d.kernel.gateway;
+  await gw.records.create(admin, "event", { title: "Closing call", starts_at: "2026-10-20T17:00:00.000Z", ends_at: "2026-10-20T18:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
+  const out = await sync().runNow();
+  assert.equal(out["google-work"].pushed.held, 1, JSON.stringify(out));
+  const task = (await gw.ask.list(admin, {})).find((/** @type {any} */ x) => /Calendar:/.test(x.title));
+  const row = await gw.ask.get(admin, task.id);
+  await gw.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
+  const before = fake.calendar.events.length;
+  for (let i = 0; i < 100 && fake.calendar.events.length < before + 1; i++) await new Promise(r => setTimeout(r, 100));
+  await sync().runNow();
+  assert.equal(fake.calendar.events.length, before + 1, "the approved write went out once");
 });
 
 test("google.api is for Vyre's own modules, Calendar events and Gmail reads only: a model or a person's surface is refused, and so is any other Google path or a write to Gmail", { timeout: 60_000 }, async t => {
