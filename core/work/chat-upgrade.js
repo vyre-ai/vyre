@@ -4,7 +4,7 @@
 // its record and its folders (chat/ and made/) move with it, the files sealed through the move's own carry (`from.carry`), never read by the mover. Agents that exist in the target stay in it, others
 // and people who are not members of the target are listed as `former`. Resumable: a chat already in the target is skipped.
 import crypto from "node:crypto";
-import { carryChat } from "./chat-carry.js";
+import { carryChat, carriedOf } from "./chat-carry.js";
 
 const CHAT = "chat-record", PROJECT = "project";
 /** Where a chat's history travels: numbered chunks and a manifest in the chat's own folder (sealed with its files), never anywhere else. */
@@ -116,8 +116,9 @@ export async function runUpgrade({ from, to, rows, ports = {} }) {
         const inv = (await from.drive.inventory(from.chain, r.data.drive, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat && foldersOf(r.data).some(f => String(e.path).startsWith(`${f}/`)));
         const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${root}${String(e.path).slice(String(r.data.drive).length)}`, sha256: e.sha256, size: e.size }));
         if (entries.length) {
-          const got = await from.carry(entries, { move_id: ports.move_id, ...(ports.upgrade_id ? { upgrade_id: ports.upgrade_id } : {}), to: to.space });
-          const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
+          const answer = carriedOf(await from.carry(entries, { move_id: ports.move_id, ...(ports.upgrade_id ? { upgrade_id: ports.upgrade_id } : {}), to: to.space }));
+          if (answer.skipped.length) throw new Error("the carry skipped files of this chat (you may not read them): it stays where it is");
+          const byPath = new Map(answer.carried.map((/** @type {any} */ g) => [g.dest, g.sha256]));
           for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw new Error(`a chat file did not arrive intact (${e.path})`);
           files += entries.length;
           if (typeof from.drive.removeMoved === "function") await from.drive.removeMoved(from.chain, entries.map((/** @type {any} */ e) => e.path));

@@ -558,9 +558,15 @@ test("moving chats to another Space and putting a history back are the person's 
   const chat = (await d.kernel.gateway.grants.chats.create(chain, {})).id;
   const asAssistant = { token: (await d.kernel.surfaces.open(chain, { agent: "assistant" })).token };
   const asPerson = { token: (await d.kernel.surfaces.open(chain, {})).token };
-  for (const [tool, input] of [["work.chat.upgrade-move", { to: "spc_nonesuch0000" }], ["work.chat.history-import", { chat }]]) {
+  const asModel = { token: (await d.kernel.surfaces.open(chain, { chat, agent: "model:claude/opus#1", slot_open: true })).token };
+  for (const [tool, input] of [["work.chat.upgrade-plan", { to: "spc_nonesuch0000" }], ["work.chat.upgrade-move", { to: "spc_nonesuch0000" }], ["work.chat.history-import", { chat }]]) {
     const agent = await d.registry.call(tool, input, "cli", asAssistant);
     assert.equal(agent.error && agent.error.code, "denied", `${tool} by an assistant session: ${JSON.stringify(agent.error || agent.data).slice(0, 120)}`);
+    const model = await d.registry.call(tool, input, "cli", asModel);
+    assert.equal(model.error && model.error.code, "denied", `${tool} by a model slot: ${JSON.stringify(model.error || model.data).slice(0, 120)}`);
+    // a module that is not relaying a person has no person to act for
+    const mod = await d.registry.call(tool, input, "module:work");
+    assert.ok(mod.error && !mod.data, `${tool} by a module with no relayed person: ${JSON.stringify(mod.error || mod.data).slice(0, 120)}`);
     const person = await d.registry.call(tool, input, "cli", asPerson);
     assert.notEqual(person.error && person.error.code, "denied", `${tool} by the person's own session is let through to its own checks: ${JSON.stringify(person.error).slice(0, 120)}`);
   }

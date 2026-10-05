@@ -349,7 +349,11 @@ export default {
       input: obj({ to: { type: "string" } }, ["to"]),
       run: async (input, extra) => {
         const k = kernelOf();
-        const from = withCarry(await sideOf(k.space, extra), await sideOf(String(input.to), extra));
+        const here = await sideOf(k.space, extra);
+        mustBeThePerson(here.chain, "planning to move your chats to another Space");
+        const to = await sideOf(String(input.to), extra);
+        mustBeThePerson(to.chain, "planning to move your chats to another Space");
+        const from = withCarry(here, to);
         return planUpgrade({ from, rows: await upgradeRows(from) });
       },
     });

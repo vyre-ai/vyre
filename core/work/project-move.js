@@ -8,7 +8,7 @@
 //
 // A side is { space, records, drive?, chain }: a gateway's records and drive with the mover's chain in THAT Space. Sealed fields cannot be copied by this code (it never sees a value): they move only
 // through `ports.reseal`, the sealing process's own transfer between the two Spaces; with sealed fields in the plan and no such port, the plan has a blocker and nothing runs.
-import { carryChat, mapChatPath } from "./chat-carry.js";
+import { carryChat, mapChatPath, carriedOf } from "./chat-carry.js";
 import crypto from "node:crypto";
 import { isSealedValue } from "../../lib/sealed.js";
 
@@ -218,8 +218,11 @@ export async function runMove({ from, to, plan, ports = {} }) {
     // a chat that stays behind (nobody who was in it is a member of the target) keeps its folders where they are
     const leftIds = Object.keys(state.leftChats || {});
     const entries = all.filter((/** @type {any} */ e) => !leftIds.some(id => e.path.slice(oldRoot.length).startsWith(`/chat/${id}/`) || e.path.slice(oldRoot.length).startsWith(`/made/${id}/`)));
-    const got = await from.carry(entries, { move_id: ports.move_id, to: to.space });
-    const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
+    const answer = carriedOf(await from.carry(entries, { move_id: ports.move_id, to: to.space }));
+    // the carry skips what the mover may not read (a chat they are not in); a chat that was to move never has its files skipped, or it would move without them: stop before anything is removed
+    const skippedChats = [...new Set(answer.skipped.map((/** @type {any} */ x) => x && x.chat).filter(Boolean))].filter(c => !(state.leftChats || {})[String(c)]);
+    if (skippedChats.length) throw Object.assign(new Error(`the carry skipped the files of a chat that was to move (${skippedChats.join(", ")}); nothing was removed from the old Space`), { code: "verify_failed" });
+    const byPath = new Map(answer.carried.map((/** @type {any} */ g) => [g.dest, g.sha256]));
     for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw Object.assign(new Error(`a chat file did not arrive intact (${e.path}); nothing was removed from the old Space`), { code: "verify_failed" });
     state.chat_carried = entries.map((/** @type {any} */ e) => e.path);
   }

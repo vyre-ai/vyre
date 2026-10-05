@@ -372,3 +372,28 @@ test("a chat nobody in the target was part of stays in the source Space: the mov
   assert.deepEqual(done.chats_left_behind.map(/** @param {any} x */ x => x.chat).sort(), ["chat_oth", "chat_priv"], "the private chat and the one the mover was not in both stay");
   assert.ok(a.files.has(othPath) && !removed.includes(othPath), "and the files of the chat the mover was not in");
 });
+
+
+test("the carry's two answer shapes are read alike, and a carry that skips the files of a chat that was to move stops the move before anything is removed", async () => {
+  const { a, b, proj } = await seed();
+  const chatPath = [...a.files.keys()].find(p => p.includes("/chat/"));
+  /** @type {any} */ (a.drive).survey = async () => ({ files: 1, bytes: 5 });
+  /** @type {any} */ (a.drive).inventory = async () => [{ path: chatPath, size: 5, sha256: "h", chat: true }];
+  /** @type {string[]} */ const removed = [];
+  /** @type {any} */ (a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ p) => { removed.push(...p); return { removed: p.length }; };
+  // network-2's shape: { carried, skipped }
+  /** @type {any} */ (a).carry = async (/** @type {any[]} */ e) => ({ carried: e.map(x => ({ dest: x.dest, sha256: x.sha256 })), skipped: [] });
+  const ok = await runMove({ from: a, to: b, plan: await planMove({ from: a, to: b, project: proj.urn }), ports: { move_id: "mvs1" } });
+  assert.ok(ok.target);
+  // a chat whose files the carry skipped, though it was to move: stop, remove nothing
+  const s2 = await seed();
+  const p2 = [...s2.a.files.keys()].find(p => p.includes("/chat/"));
+  /** @type {any} */ (s2.a.drive).survey = async () => ({ files: 1, bytes: 5 });
+  /** @type {any} */ (s2.a.drive).inventory = async () => [{ path: p2, size: 5, sha256: "h", chat: true }];
+  /** @type {any} */ (s2.a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ p) => { removed.push(...p); return { removed: p.length }; };
+  const oldChat = [...s2.a.rows.values()].find(r => r.type === "chat");
+  /** @type {any} */ (s2.a).carry = async () => ({ carried: [], skipped: [{ path: p2, chat: oldChat.id }] });
+  removed.length = 0;
+  await assert.rejects(() => runMove({ from: s2.a, to: s2.b, plan: await planMove({ from: s2.a, to: s2.b, project: s2.proj.urn }), ports: { move_id: "mvs2" } }), /** @param {any} e */ e => e.code === "verify_failed" && /skipped the files of a chat/.test(e.message));
+  assert.deepEqual(removed, [], "nothing was removed from the old Space");
+});

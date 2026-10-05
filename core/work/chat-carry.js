@@ -35,3 +35,9 @@ export function mapChatPath(rel, chatMap) {
   const m = /^\/(chat|made)\/([^/]+)(\/.*)?$/.exec(rel);
   return m && chatMap[m[2]] ? `/${m[1]}/${chatMap[m[2]]}${m[3] || ""}` : rel;
 }
+
+/** What a carry answered, in either shape: the older bare list of { dest, sha256 }, or network-2's { carried: [...], skipped: [{ path, chat? }] }. @param {any} got */
+export function carriedOf(got) {
+  if (Array.isArray(got)) return { carried: got, skipped: /** @type {any[]} */ ([]) };
+  return { carried: Array.isArray(got && got.carried) ? got.carried : [], skipped: Array.isArray(got && got.skipped) ? got.skipped : [] };
+}
