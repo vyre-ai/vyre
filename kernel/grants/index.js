@@ -50,6 +50,9 @@ export const GRANT_ACTIONS = Object.freeze([
   // Which agents may reach a Project's data (its files, sessions, memory). A person holds it by role; an AGENT holds it only by a grant of its own on that Project record. This replaces the
   // projects module's own access table: one permission system, the kernel's.
   { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
+  // Carrying the access agents had before reach became a grant over into grants: ONE act, approved once by the owner as a held act (the approval is single use, bound to this action and the Space), then done as them by the
+  // Work service. No role holds it: only an approval gives it to the doer.
+  { action: "projects.access.restore", resource_type: "project", risk: "write", label: "restore who could see your projects", gloss: "Give your agents back the project access they had before this update." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
