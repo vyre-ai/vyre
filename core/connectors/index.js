@@ -16,8 +16,7 @@ import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
-import { toCredentialConfig, isOutward } from "../../records/connectors/format.js";
-import { connectorWatcherName } from "../watchers/connector-preset.js";
+import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };

@@ -9,16 +9,12 @@
 //   items       carry the mapped fields as given (kind, at, subject, people, source_key ...) beside id, title and at, so a Flow armed on this watcher reads them as trigger.item
 
 import { MAPPER_SOURCE } from "../../records/connectors/mapper.js";
-import { buildRequest, checkDeclaration } from "../../records/connectors/format.js";
+import { buildRequest, checkDeclaration, connectorWatcherName } from "../../records/connectors/format.js";
 import { parseWhen } from "./when.js";
 
 export const OVERLAP_MS = 10 * 60_000;
 
 const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-/** The watcher's folder name: the connector and what it watches (the mailbox, the calendar, or the label). @param {{ id: string }} d @param {{ poll: string, vars?: Record<string, string>, label?: string }} o */
-export function connectorWatcherName(d, o) {
-  return `${slug(d.id)}-${slug(o.label || Object.values(o.vars || {})[0] || o.poll)}`.slice(0, 60).replace(/-+$/, "");
-}
 
 /** The generic loop. `PLAN` is prepended as JSON, `M` is the mapper. */
 const LOOP = `

@@ -375,3 +375,9 @@ export function mergedCredentialConfig(ds, o = {}) {
     },
   };
 }
+
+/** The folder name of the watcher that polls one of a connector's polls: the connector and what it watches (the mailbox, the calendar, or the label). A watcher and the logging recipe both name it, so it is made here. @param {{ id: string }} d @param {{ poll: string, vars?: Record<string, string>, label?: string }} o */
+export function connectorWatcherName(d, o) {
+  const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${slug(d.id)}-${slug(o.label || Object.values(o.vars || {})[0] || o.poll)}`.slice(0, 60).replace(/-+$/, "");
+}
