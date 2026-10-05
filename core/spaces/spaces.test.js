@@ -1437,7 +1437,9 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
   const dir = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "upt-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 }) });
+  const cloudStore = createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 });
+  await cloudStore.define({ add_types: [...(await import("../../records/core-types.js")).CORE_TYPES] }); // the core types are in My Cloud's Twenty before its kernel starts
+  const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: cloudStore });
   const chainOf = (k) => k.chains.fromFacts({ kind: "device", device_key_id: "d1", person: ME, path: "direct" });
   const kernelFor = () => ({
     space: PERSONAL, owner: ME, membership: async () => ({ member: true, role: "owner" }),
