@@ -89,3 +89,24 @@ test("discovery: two asks at once share one scan", async () => {
   await Promise.all([d.discover(), d.discover()]);
   assert.equal(scans, 1);
 });
+
+test("what other devices saw is listed beside this device's own, with that device's label and id, once per drive", async () => {
+  const mine = { name: "local", scan: async () => ({ found: [{ name: "Office NAS", kind: "smb", host: "nas.local", share: "Files" }] }) };
+  const d = createDiscovery({ scanners: [mine], from: () => "home", now: () => 0,
+    extra: async () => ({ found: [
+      { name: "Office NAS", kind: "smb", host: "nas.local", share: "Files", seenFrom: "Mini", seenFromDevice: "dev_mini" },
+      { name: "usbdisk1", kind: "usb-disk", path: "/Volumes/usbdisk1", size: 5, seenFrom: "Mini", seenFromDevice: "dev_mini" },
+      { name: "junk", kind: "toaster", seenFrom: "Mini", seenFromDevice: "dev_mini" },
+    ], notes: ["Mini has no avahi."] }) });
+  const r = await d.discover();
+  assert.deepEqual(r.candidates.map((/** @type {any} */ c) => [c.name, c.seenFrom, c.seenFromDevice]), [["Office NAS", "home", undefined], ["usbdisk1", "Mini", "dev_mini"]], "a drive both saw is listed once, from the home's own look; an unknown kind is dropped");
+  assert.deepEqual(r.notes, ["Mini has no avahi."]);
+  assert.equal(d.candidate(r.candidates[1].id).seenFromDevice, "dev_mini", "a pick can find a candidate another device saw");
+});
+
+test("a device that cannot look is a note, not a failed search", async () => {
+  const d = createDiscovery({ scanners: [], from: () => "home", now: () => 0, extra: async () => { throw new Error("no answer"); } });
+  const r = await d.discover();
+  assert.deepEqual(r.candidates, []);
+  assert.match(r.notes[0], /another device could not look: no answer/);
+});

@@ -468,7 +468,7 @@ async function startLocked(opts, root, p, release) {
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec });
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) h.onSession(caller, session); } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

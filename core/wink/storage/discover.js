@@ -194,10 +194,11 @@ export function realScanners(o = {}) {
 
 /**
  * The cached, rate-limited discovery used by wink.storage.discover.
- * @param {{ scanners: { name: string, scan(a: { from: string }): Promise<{ found: Found[], note?: string }> }[], from: () => string, fromDevice?: () => string | undefined, now?: () => number, gapMs?: number }} o
+ * @param {{ scanners: { name: string, scan(a: { from: string }): Promise<{ found: Found[], note?: string }> }[], from: () => string, fromDevice?: () => string | undefined, extra?: () => Promise<{ found: (Found & { seenFrom?: string, seenFromDevice?: string })[], notes?: string[] }>, now?: () => number, gapMs?: number }} o
  * `fromDevice` is the id of the device the scan runs on, kept beside the label `from` (the home needs the id to call that device).
+ * `extra` is what other devices saw (the home asks each device that holds a connection to scan its own network): drives that only they can reach, each with the device's label and id.
  */
-export function createDiscovery({ scanners, from, fromDevice = () => undefined, now = Date.now, gapMs = MIN_SCAN_GAP_MS }) {
+export function createDiscovery({ scanners, from, fromDevice = () => undefined, extra = undefined, now = Date.now, gapMs = MIN_SCAN_GAP_MS }) {
   /** @type {{ at: number, candidates: any[], notes: string[], from: string } | null} */
   let last = null;
   let running = /** @type {Promise<any> | null} */ (null);
@@ -224,6 +225,19 @@ export function createDiscovery({ scanners, from, fromDevice = () => undefined, 
             }
             if (r.note) notes.push(r.note);
           } catch (err) { notes.push(`${s.name} could not look: ${String(/** @type {Error} */ (err).message).slice(0, 120)}`); }
+        }
+        if (extra) {
+          try {
+            const r = await extra();
+            for (const f of r.found || []) {
+              if (!f || !KINDS.has(f.kind)) continue;
+              const id = candidateId(f);
+              if (seen.has(id)) continue;
+              seen.add(id);
+              candidates.push({ id, name: String(f.name).slice(0, 80), kind: f.kind, ...(f.host ? { host: f.host } : {}), ...(f.share ? { share: f.share } : {}), ...(f.path ? { path: f.path } : {}), ...(Number.isFinite(f.size) ? { size: f.size } : {}), seenFrom: String(f.seenFrom || "another device"), ...(f.seenFromDevice ? { seenFromDevice: String(f.seenFromDevice) } : {}) });
+            }
+            notes.push(...(r.notes || []));
+          } catch (err) { notes.push(`another device could not look: ${String(/** @type {Error} */ (err).message).slice(0, 120)}`); }
         }
         last = { at: now(), candidates, notes, from: where };
         return shape(last, false);
