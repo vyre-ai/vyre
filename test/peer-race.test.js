@@ -114,9 +114,10 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   const deps = { peerPid: async () => 4242, delayMs: 1, alive: () => true, processTable: () => () => null,
     insideClaude: () => (++n <= 3 ? { inside: false, unknown: true } : { inside: true, by: 700 }) };  // three looks per answer: first, two retries
   const first = await asTaken("cli", socket, registry, undefined, deps);
-  assert.deepEqual(first, { caller: "cli", model: false }, "unknown keeps the label for this call");
+  const mini = (/** @type {any} */ v) => ({ caller: v.caller, model: v.model });
+  assert.deepEqual(mini(first), { caller: "cli", model: false }, "unknown keeps the label for this call");
   const second = await asTaken("cli", socket, registry, undefined, deps);
-  assert.deepEqual(second, { caller: "mcp", model: true }, "and is asked again on the next call");
+  assert.deepEqual(mini(second), { caller: "mcp", model: true }, "and is asked again on the next call");
   n = 0;
   const outside = {};
   const clean = { ...deps, insideClaude: () => ({ inside: false }) };
@@ -132,7 +133,7 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   assert.equal(one.model, true, "unreadable is a model's this time");
   await new Promise(r => setImmediate(r));
   const two = await asTaken("cli", flaky, registry, undefined, fdeps);
-  assert.deepEqual(two, { caller: "cli", model: false }, "and is asked again, not kept");
+  assert.deepEqual(mini(two), { caller: "cli", model: false }, "and is asked again, not kept");
 });
 
 test("peer race: a named server keeps its label when the chain is unreadable", async () => {
