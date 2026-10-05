@@ -64,7 +64,7 @@ export function boxStream(session: string): BoxStream {
         if (d.info.viewer) viewer = d.info.viewer;
         return d;
       }
-      const r = await call<{ path: string; viewer?: string; head?: number }>("stream.open", { session, from });
+      const r = await call<{ path: string; viewer?: string; head?: number; session?: string }>("stream.open", { chat: session, from });
       if (r.error) throw new Error(reason(r.error));
       if (typeof r.data.head === "number") head = r.data.head;
       if (r.data.viewer) viewer = r.data.viewer;
@@ -74,7 +74,7 @@ export function boxStream(session: string): BoxStream {
     },
     // After a reset the folder starts clear; resume from the oldest frame the log still holds.
     snapshot: async () => {
-      const r = await call<{ floor: number }>("stream.open", { session });
+      const r = await call<{ floor: number }>("stream.open", { chat: session });
       return { cur: r.data?.floor ?? 0 };
     },
   });
@@ -103,15 +103,15 @@ export function boxStream(session: string): BoxStream {
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
-      const r = await write("stream.send", { session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
+      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };
     },
-    keepAnswer: (group, message) => note("stream.keep", { session, group, keep: message }),
-    reactTo: (message, emoji, on = true) => note("stream.react", { session, message, emoji, on }),
-    pinMessage: (message, on = true) => note("stream.pin", { session, message, on }),
-    markReadTo: (upto) => note("stream.mark-read", { session, upto }),
+    keepAnswer: (group, message) => note("stream.keep", { chat: session, group, keep: message }),
+    reactTo: (message, emoji, on = true) => note("stream.react", { chat: session, message, emoji, on }),
+    pinMessage: (message, on = true) => note("stream.pin", { chat: session, message, on }),
+    markReadTo: (upto) => note("stream.mark-read", { chat: session, upto }),
     editRetry: (message, text) => done("threads.edit-retry", { thread: session, message, text, surface: SURFACE }),
     retry: (message) => done("threads.retry", { thread: session, message, surface: SURFACE }),
     branch: (at) => done("threads.branch", { thread: session, at, surface: SURFACE }),

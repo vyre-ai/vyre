@@ -1,4 +1,5 @@
 // One assistant or agent: its job, a line to talk to it, what wakes it, what it has used, its model and its computer (the Deck's /agents/:name, ported).
+import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -151,6 +152,8 @@ function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, e: string) =
 }
 
 function ComputerCard({ a, onChange }: { a: AgentFull; onChange: () => void }) {
+  // An agent's own desktop to watch or take over is Screen Share (0.3.1): hidden for 0.2.9.
+  if (!RC.glass) return null;
   const [c, setC] = useState<Computer | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(false);

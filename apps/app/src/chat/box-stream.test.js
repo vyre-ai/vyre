@@ -23,3 +23,11 @@ test("a refusal reads in plain words: no ids, no thread or session", async () =>
   assert.equal(reason({ code: "denied", message: "this call is not from chat_abc123 yet" }), "this call is not from yet");
   assert.equal(reason({ code: "x" }), "x");
 });
+
+test("every stream.* call names the chat, not a session (the engine's stream tools took the rename)", () => {
+  for (const tool of ["stream.open", "stream.send", "stream.keep", "stream.react", "stream.pin", "stream.mark-read"]) {
+    const calls = src.split("\n").filter((l) => l.includes(`"${tool}"`));
+    assert.ok(calls.length, tool);
+    for (const l of calls) { assert.match(l, /\{ chat: session/, `${tool}: ${l.trim().slice(0, 80)}`); assert.ok(!/\{ session[,: ]/.test(l), tool); }
+  }
+});

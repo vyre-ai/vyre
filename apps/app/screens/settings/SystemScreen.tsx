@@ -1,4 +1,5 @@
 // This computer: what runs here, history search, and the advanced network cards (the Deck's settings.js machine, history, webhooks, guests, agent nodes, egress, hand-back, lock and drive sections, ported).
+import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Select, Text, showToast } from "@vyre/ui";
@@ -101,7 +102,7 @@ function Advanced() {
   useEffect(() => {
     Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.egress(), system.handback()]).then(([h, hs, w, e, b]) => {
       // A tool this box does not have leaves its card out.
-      setCards([h && hooksCard(h, hs), w && winkCard(w), e && egressCard(e)].filter(Boolean) as StatusCard[]);
+      setCards([h && hooksCard(h, hs), w && winkCard(w), RC.glass && e && egressCard(e)].filter(Boolean) as StatusCard[]);
       setHb(b ? handbackOf(b) : null);
     });
   }, []);
@@ -111,7 +112,7 @@ function Advanced() {
   return (
     <Sec title="Advanced">
       {cards.map((c) => <StatusCardView key={c.title} c={c} />)}
-      {hb ? (
+      {hb && RC.glass ? (
         <Card className="gap-s2">
           <Text strong>Glass hand-back</Text>
           <Text size="secondary" tone="muted">{`When you take over an agent's computer and stop typing and moving, the keyboard goes back to the agent. You get a ${hb.warn} s warning first.`}</Text>

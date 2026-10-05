@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Glass (renamed Screen Share, computer use under it) is hidden for 0.2.9 behind RC.glass: no Glass card or pill in a chat, no /u/glass page, no agent desktop in an agent's page or New agent, no egress or hand-back in This computer, no screen block in a transcript. refactor(app): every stream.* call names the chat (stream tools took the rename); merged trunk 3bbd663f0.
+
 - feat(app): a passkey-claimed browser offers its passkey as its presence key in the pairing hello: P-256 SPKI, alg -7, signer webauthn_platform and the site (rp). Signing a yes with it is not built yet.
 
 - fix(app): found by walking the chat screens against a box with work.chat.* (scripts/app-walk-chat.mjs): a real chat no longer shows sample people (alex, juno); who is in it comes from work.chat.get and records.actors (the viewer is You, a nameless person is Someone); the viewer is left out of a chat's line in the list; the header reads the chat's title, not "Session"; "Ask all" counts the chat's own assistants and models, not the space's; a refusal reads in plain words with no ids, and a stop uses threads.chat-stop.
