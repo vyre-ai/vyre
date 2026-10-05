@@ -107,6 +107,15 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
         if (!m || !(await mayReadLine(chain, m.record))) return [];
         return lines.recall(session, from, to).map(l => ({ ...l, address: lineAddress(session, l.seq) }));
       },
+      /**
+       * The exact lines of one session, for a caller who has already proved access ANOTHER way: work.chat.span names only the runs of a chat the asker is in, so the chat's own gate decides, not the session's
+       * record. Scrubbed on the way in, so sealed values are placeholders. Never exposed as a tool on its own.
+       * @param {string} session @param {number} from @param {number} to
+       */
+      exact(session, from, to) {
+        if (!lines.meta(session)) return null;
+        return lines.recall(session, from, to).map(l => ({ ...l, address: lineAddress(session, l.seq) }));
+      },
       async window(/** @type {any} */ chain, /** @type {any} */ q) {
         const m = lines.meta(q.session);
         if (!m || !(await mayReadLine(chain, m.record))) return [];

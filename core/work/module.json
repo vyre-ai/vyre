@@ -113,6 +113,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.span",
+        "summary": "an exact span of a chat you are in, word for word, by line range; sealed values stay placeholders",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.upgrade-plan",
         "summary": "what moving your chats to your other Space would carry (counts and blockers)",
         "reach": "anyone",
@@ -351,17 +357,69 @@
           "label": "Chat",
           "icon": "IconMessage",
           "fields": [
-            { "name": "title", "kind": "text", "label": "Title" },
-            { "name": "project", "kind": "link", "label": "Project", "to": "project" },
-            { "name": "chat", "kind": "text", "label": "Chat id", "unique": true },
-            { "name": "people", "kind": "text", "label": "People" },
-            { "name": "agents", "kind": "text", "label": "Agents" },
-            { "name": "former", "kind": "text", "label": "Former participants (people and agents who could not move with it)" },
-            { "name": "started", "kind": "datetime", "label": "Started" },
-            { "name": "last_active", "kind": "datetime", "label": "Last active" },
-            { "name": "status", "kind": "choice", "label": "Status", "options": ["working", "idle", "stopped", "failed"] },
-            { "name": "drive", "kind": "text", "label": "Project Drive folder" },
-            { "name": "location", "kind": "text", "label": "This chat's Drive folder" }
+            {
+              "name": "title",
+              "kind": "text",
+              "label": "Title"
+            },
+            {
+              "name": "project",
+              "kind": "link",
+              "label": "Project",
+              "to": "project"
+            },
+            {
+              "name": "chat",
+              "kind": "text",
+              "label": "Chat id",
+              "unique": true
+            },
+            {
+              "name": "people",
+              "kind": "text",
+              "label": "People"
+            },
+            {
+              "name": "agents",
+              "kind": "text",
+              "label": "Agents"
+            },
+            {
+              "name": "former",
+              "kind": "text",
+              "label": "Former participants (people and agents who could not move with it)"
+            },
+            {
+              "name": "started",
+              "kind": "datetime",
+              "label": "Started"
+            },
+            {
+              "name": "last_active",
+              "kind": "datetime",
+              "label": "Last active"
+            },
+            {
+              "name": "status",
+              "kind": "choice",
+              "label": "Status",
+              "options": [
+                "working",
+                "idle",
+                "stopped",
+                "failed"
+              ]
+            },
+            {
+              "name": "drive",
+              "kind": "text",
+              "label": "Project Drive folder"
+            },
+            {
+              "name": "location",
+              "kind": "text",
+              "label": "This chat's Drive folder"
+            }
           ]
         },
         {
@@ -369,7 +427,12 @@
           "label": "Shared file",
           "icon": "IconShare",
           "fields": [
-            { "name": "path", "kind": "text", "label": "File path", "required": true }
+            {
+              "name": "path",
+              "kind": "text",
+              "label": "File path",
+              "required": true
+            }
           ]
         }
       ]

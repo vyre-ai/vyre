@@ -19,7 +19,6 @@ import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
-import crypto from "node:crypto";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -500,6 +499,40 @@ export default {
           total.frames += st.frames || 0; total.members += st.members || 0; total.runs += th.runs || 0; total.events += th.events || 0; total.chunks++;
         }
         return { chat, ...total };
+      },
+    });
+    // Exact recall (the user's ruling, 5 Oct 2026: 0.2.9): a span of a chat, word for word, addressed by chat and line range. The ONE gate is the chat: the kernel's chats.read on the asker's own chain (a person in
+    // it, or an assistant the chat lists), so a non-member is told "no such chat" exactly as for a chat that does not exist. The words come from the lines the Space's memory already keeps for each run
+    // (core/work/memory/lines.js: scrubbed on the way in, so a sealed value is a placeholder), never a second store. Only the user's and the assistant's words come back; tool output stays out.
+    ctx.tool("work.chat.span", {
+      description: "Read an exact span of a chat you are in, word for word: the lines from..to of each run (or one slot) as the Space's memory kept them, with the line address of each. Sealed values are placeholders. A chat you are not in does not exist for you.",
+      input: obj({ chat: { type: "string" }, slot: { type: "string", description: "one run of the chat, as work.chat.get names it (agent:<id> or model:<provider>/<model>#<n>); all runs when absent" }, from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0, description: "the last line, inclusive; at most 199 lines after from are read in one call" } }, ["chat", "from"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        const chat = String(input.chat);
+        const c = (() => { try { return kernelOf().chats.read(chain, chat); } catch { return null; } })();
+        if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const from = Number(input.from);
+        if (!Number.isInteger(from) || from < 0) throw fail("bad_input", "from is a line number, 0 or more");
+        const to = input.to === undefined ? from + 99 : Number(input.to);
+        if (!Number.isInteger(to) || to < from) throw fail("bad_input", "to is the last line, inclusive, and not before from");
+        const last = Math.min(to, from + 199);
+        const allRuns = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
+        const slotOf = (/** @type {any} */ r) => r.slot || (r.agent ? `agent:${r.agent}` : null);
+        const runs = input.slot ? allRuns.filter((/** @type {any} */ r) => slotOf(r) === String(input.slot)) : allRuns;
+        if (input.slot && !runs.length) throw Object.assign(new Error("no such slot in that chat"), { code: "not_found" });
+        const e = engineOf();
+        /** @type {any[]} */ const out = [];
+        let budget = 96 * 1024;
+        for (const r of runs) {
+          const got = e.lines.exact(String(r.thread), from, last);
+          const words = (got || []).filter((/** @type {any} */ l) => l.role === "user" || l.role === "assistant");
+          const lines = [];
+          for (const l of words) { budget -= Buffer.byteLength(l.text); if (budget < 0) break; lines.push({ seq: l.seq, role: l.role, text: l.text, at: l.at, address: l.address }); }
+          const cut = lines.length < words.length;
+          out.push({ slot: slotOf(r), thread: r.thread, kept: got !== null, lines, ...(cut ? { more: true, next: words[lines.length].seq } : last < to ? { more: true, next: last + 1 } : {}) });
+        }
+        return { chat, from, to: last, runs: out, sealed: "placeholders" };
       },
     });
     ctx.tool("work.chat.create", {
