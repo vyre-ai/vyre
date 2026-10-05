@@ -173,6 +173,21 @@ test("merge over Twenty: the dropped contact's unique phone moves to the kept on
   assert.equal((await R.get(c, "contact_point", part.id)).data.contact.urn, b.urn);
 });
 
+// TODO(windows): a many to many link follows a merge over Twenty. Today the relink answers store_disagreed ("the store's answer does not match what was asked"); the same merge passes on the memory store
+// (kernel/gateway/gateway.test.js). Windows owns the relation fix and is filing the issue; this becomes a plain test when it lands.
+test("merge over Twenty: a many to many link (Communication.contacts) follows the merge, and unmerge puts it back", { todo: "windows: many to many relink over Twenty answers store_disagreed (issue being filed)" }, async () => {
+  const { host } = await boot();
+  await host.defineCore();
+  const c = host.ownerChain(), R = host.kernel.records;
+  const a = await R.create(c, "contact", { name: "Jane Doe", email: "jane@example.test" });
+  const b = await R.create(c, "contact", { name: "Jane Doe", email: "jane2@example.test", phone: "+15550100" });
+  const mail = await R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:1", from: "jane2@example.test", contacts: [{ urn: b.urn }] });
+  const res = await R.merge(c, "contact", a.id, b.id);
+  assert.deepEqual((await R.get(c, "communication", mail.id)).data.contacts.map((x) => x.urn), [a.urn]);
+  await R.unmerge(c, res.merge_id);
+  assert.deepEqual((await R.get(c, "communication", mail.id)).data.contacts.map((x) => x.urn), [b.urn]);
+});
+
 test("computed fields over Twenty: a total over linked records, an expression, a hidden-from role, and a removed field keeps its data", async () => {
   const { host } = await boot();
   const c = host.ownerChain(), R = host.kernel.records;
