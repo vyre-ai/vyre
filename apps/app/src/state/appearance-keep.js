@@ -46,7 +46,7 @@ export function changedLooks(looks, defaults = DEFAULTS) {
 }
 
 /** The looks a space starts with (screens/shell/spaces.js DEFAULT_LOOKS): "mine" as it is, the sample space not at all. */
-export const DEFAULTS = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, harlow: null };
+export const DEFAULTS = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, juniper: null };
 
 /** The text to keep. @param {{ person: any, looks: Record<string, any> }} s */
 export function pack(s) {

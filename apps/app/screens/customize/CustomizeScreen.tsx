@@ -18,7 +18,7 @@ export function CustomizeScreen() {
   const showing = useSpaces((s) => s.space);
   const shell = useShell((s) => s.data);
   useEffect(() => { void load(real && showing !== "all" ? showing : undefined); }, [showing]);
-  const [space, setSpace] = useState("harlow");
+  const [space, setSpace] = useState("juniper");
   const [sheet, setSheet] = useState<null | { tpl: string; name: string; work: boolean }>(null);
   const list = real ? types : types.filter((t) => t.spaces.includes(space));
   const spaceName = real ? showingName(shell, showing) : CUSTOMIZE_SPACES.find(([id]) => id === space)?.[1] ?? space;

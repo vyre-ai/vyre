@@ -8,7 +8,7 @@ import { px } from "../lib/measure";
 
 /**
  * The header of every pushed page (ui-system.md section 7): one row, 56 high, a back chevron (44 target), up to three faces (or one emblem) with "+N" past
- * three, the title on one line (headline role, truncated) and one context line under it (caption, truncated: "Jane Doe · Harlow Legal"). No chips, no actions, no
+ * three, the title on one line (headline role, truncated) and one context line under it (caption, truncated: "Jane Doe · Juniper Studio"). No chips, no actions, no
  * status. Top-level pages (Now, Chat, Projects) keep the large title instead. `onPress` makes the whole header open the About sheet, only where a page has one.
  */
 export function PageHeader({ title, context, faces = [], onBack, onPress }: { title: string; context?: string; faces?: AvatarRef[]; onBack?: () => void; onPress?: () => void }) {

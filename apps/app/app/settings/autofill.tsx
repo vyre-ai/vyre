@@ -83,7 +83,7 @@ export default function AutofillSettings() {
             <TextInput
               value={server}
               onChangeText={setServer}
-              placeholder="https://vault.harlow.test"
+              placeholder="https://vault.juniper.example"
               placeholderTextColor={color.label}
               autoCapitalize="none"
               autoCorrect={false}
