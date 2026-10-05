@@ -11707,12 +11707,13 @@ What this module recorded when the owner confirmed a device: { id, kind, owner, 
 
 ### `wink.events.read`
 
-On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. `type` is an exact name or a prefix ending in * (thread.*). Waits up to wait_ms (at most 25000) for the first new event.
+On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. `type` or `types` are exact names or a prefix ending in .* (thread.*); several are an OR. Waits up to wait_ms (at most 25000) for the first new event.
 
 - Input:
   - `limit` number
   - `since` number
   - `type` string
+  - `types` list of string
   - `wait_ms` number
 - Callers: any caller
 - Registered only on the box.
@@ -12008,6 +12009,7 @@ The paired server's events after a cursor, over the Wink path: { since?, type?, 
   - `limit` number
   - `since` number
   - `type` string
+  - `types` list of string
   - `wait_ms` number
 - Callers: any caller
 - Registered only on the box.
