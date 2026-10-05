@@ -57,6 +57,28 @@ export class Events {
     }
   }
 
+  /**
+   * A home from before the bus moved into the kernel log kept its events (thread history, activity, watcher deliveries) in an `events` table of the home's database. Once, the first time the kernel log is
+   * attached on such a home, those rows are copied into the log in their own order, with their own times, so a thread's history and the activity feed are still there after the upgrade. The old table is left
+   * as it is (a released table is never dropped), and a marker row says it was done, so a restart copies nothing twice. Returns how many were copied.
+   * @param {any} db the home's database
+   */
+  importLegacy(db) {
+    if (!db || typeof db.prepare !== "function") return 0;
+    try {
+      if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").get()) return 0;
+      db.exec("CREATE TABLE IF NOT EXISTS bus_import (name TEXT PRIMARY KEY, at INTEGER NOT NULL, copied INTEGER NOT NULL)");
+      if (db.prepare("SELECT 1 FROM bus_import WHERE name = 'events'").get()) return 0;
+      let copied = 0;
+      for (const r of /** @type {any[]} */ (db.prepare("SELECT at, type, source, project, thread, payload FROM events ORDER BY id").all())) {
+        let payload; try { payload = JSON.parse(r.payload); } catch { continue; }
+        try { this.#append(String(r.source), String(r.type), payload, { project: r.project || undefined, thread: r.thread || undefined, at: Number(r.at) }); copied++; } catch { /* a row the log refuses is not carried over */ }
+      }
+      db.prepare("INSERT INTO bus_import (name, at, copied) VALUES ('events', ?, ?)").run(Date.now(), copied);
+      return copied;
+    } catch { return 0; }
+  }
+
   /** The subject an event is filed under in the log: its thread when it has one (an indexed read of one thread's history), else its source. @param {string} source @param {string | undefined} thread */
   #subject(source, thread) {
     const seg = (/** @type {string} */ x) => String(x).toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 120) || "x";

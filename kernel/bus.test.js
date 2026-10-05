@@ -108,3 +108,24 @@ test("events: listeners that emit each other stop at the drain cap, say which ty
   ev.emit("x", "later.said", {});
   assert.equal(got.length, 1);
 });
+
+test("events: a home from before the bus moved into the kernel log keeps its thread history and activity: the old table is copied in once, in order, and not again", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, type TEXT NOT NULL, source TEXT NOT NULL, project TEXT, thread TEXT, payload TEXT NOT NULL)");
+  const put = db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)");
+  put.run(1000, "thread.started", "threads", "harlow", "t1", JSON.stringify({ cwd: "/w" }));
+  put.run(2000, "thread.text", "threads", "harlow", "t1", JSON.stringify({ text: "hello", done: true }));
+  put.run(3000, "watcher.fired", "watchers", null, null, JSON.stringify({ n: 1 }));
+  put.run(4000, "thread.text", "threads", null, "t2", "not json");
+  const ev = new Events();
+  assert.equal(ev.importLegacy(db), 3, "the row that is not JSON is skipped, the rest are carried");
+  assert.deepEqual(ev.since(0).map(e => e.type), ["thread.started", "thread.text", "watcher.fired"]);
+  assert.deepEqual(ev.since(0).map(e => e.at), [1000, 2000, 3000], "their own times");
+  assert.deepEqual(ev.ofThread("t1").map(e => e.payload), [{ cwd: "/w" }, { text: "hello", done: true }], "the thread's history is there");
+  assert.equal(ev.since(0, { project: "harlow" }).length, 2);
+  assert.equal(ev.importLegacy(db), 0, "once");
+  assert.equal(ev.since(0).length, 3);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 4, "the old table is left as it was");
+  assert.equal(new Events().importLegacy(new DatabaseSync(":memory:")), 0, "a home with no old table copies nothing");
+});
