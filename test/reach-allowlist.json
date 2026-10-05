@@ -542,6 +542,10 @@
    "module": "recall",
    "default": "callers admit a model"
   },
+  "recall.pointers": {
+   "module": "recall",
+   "default": "limited by callers in code"
+  },
   "recall.related": {
    "module": "recall",
    "default": "limited by callers in code"

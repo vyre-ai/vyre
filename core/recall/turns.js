@@ -8,12 +8,16 @@
 // cut. Links (core/transcripts/links.js) turn "what touched auth.ts" and "which turn made commit
 // a1b2c3d" into an index read.
 
+import fs from "node:fs";
 import { fullTurns, CLIP } from "../transcripts/index.js";
 import { scrubText } from "./sealed.js";
+import { withoutSeed as ownWords } from "../../lib/seed.js";
 
 /** Most turns one span returns, and most characters across them: a span is for reading, not for dumping a session. */
 export const SPAN_TURNS = 60;
 export const SPAN_CHARS = 60_000;
+/** A transcript bigger than this is not read whole to give one long turn its full text. */
+export const MAX_READ_BYTES = 256 * 1024 * 1024;
 
 /** A turn's pointer: the key anyone can cite and `recall.turn` reads back. @param {string} session @param {number} seq */
 export const pointer = (session, seq) => `${session}:${seq}`;
@@ -88,7 +92,10 @@ export function span(db, q) {
   }
   // A turn the index cut is read whole from the transcript, if it is still there and still says the same words.
   const longs = q.full === false ? [] : rows.filter(r => String(r.text).length >= CLIP - 200).map(r => Number(r.seq));
-  const whole_ = longs.length && row.file ? fullTurns(String(row.file), longs) : new Map();
+  // A runaway transcript (hundreds of megabytes) is not read whole for one turn: the index's text stands, cut.
+  let big = false;
+  try { big = Boolean(longs.length && row.file && fs.statSync(String(row.file)).size > MAX_READ_BYTES); } catch { /* no file */ }
+  const whole_ = longs.length && row.file && !big ? fullTurns(String(row.file), longs) : new Map();
   let note;
   /** @type {any[]} */ const turns = [];
   let chars = 0, truncated;
@@ -194,4 +201,80 @@ export function label(t, width = 80) {
   const when = t.ts ? new Date(t.ts).toISOString().slice(0, 16).replace("T", " ") : "";
   const text = String(t.text).replace(/\s+/g, " ").trim();
   return `${pointer(t.session, t.seq)} ${t.role === "user" ? "person" : "assistant"}${when ? " " + when : ""}: ${text.length > width ? text.slice(0, width - 1) + "…" : text}`;
+}
+
+/** A session id as a pointer carries it: its first 8 characters, which `resolve` takes as a prefix. @param {string} id */
+export const shortId = id => String(id).slice(0, 8);
+
+
+/**
+ * One session's pointer index for a rollover: the person's own requests before turn `upto` as labelled lines, and the files touched and the commits made before it.
+ * @param {import("node:sqlite").DatabaseSync} db @param {string} session
+ * @param {{ upto?: number, cap?: number }} [o] upto: turns from this seq on are not pointed at (the seed carries them)
+ * @returns {{ session: string, lines: string[], files: { ref: string, at: string[] }[], commits: { ref: string, at: string }[], tailFrom: number }}
+ */
+export function pointersOf(db, session, { upto = Infinity, cap = 30 } = {}) {
+  const rows = /** @type {any[]} */ (db.prepare("SELECT seq, role, ts, text FROM recall_turns WHERE session = ? AND seq < ? ORDER BY seq").all(session, Number.isFinite(upto) ? upto : 2_000_000_000));
+  const tailFrom = Number.isFinite(upto) ? upto : rows.length ? Number(rows[rows.length - 1].seq) + 1 : 0;
+  const id = shortId(session);
+  const asks = rows.filter(r => r.role === "user").map(r => ({ ...r, text: ownWords(String(r.text)) }))
+    .filter(r => r.text.replace(/\s+/g, " ").trim().length >= 15 && !r.text.trim().startsWith("<"));
+  const pick = asks.length <= cap ? asks : Array.from({ length: cap }, (_, k) => asks[Math.floor((k * asks.length) / cap)]);
+  const lines = pick.map(r => label({ session: id, seq: Number(r.seq), role: "user", ts: Number(r.ts) || 0, text: r.text }));
+  /** @type {Map<string, { kind: string, seqs: number[] }>} */ const files = new Map();
+  /** @type {Map<string, number>} */ const commits = new Map();
+  for (const l of /** @type {any[]} */ (db.prepare("SELECT seq, kind, ref FROM recall_links WHERE session = ? AND seq < ? ORDER BY seq").all(session, Number.isFinite(upto) ? upto : 2_000_000_000))) {
+    if (l.kind === "commit") commits.set(String(l.ref), Number(l.seq));
+    else if (l.kind === "file" || l.kind === "read") {
+      const f = files.get(String(l.ref)) || { kind: "read", seqs: [] };
+      if (l.kind === "file") f.kind = "file";
+      f.seqs.push(Number(l.seq));
+      files.set(String(l.ref), f);
+    }
+  }
+  const ranked = [...files].sort((a, b) => (a[1].kind === b[1].kind ? b[1].seqs.length - a[1].seqs.length : a[1].kind === "file" ? -1 : 1)).slice(0, 12);
+  return {
+    session, lines, tailFrom,
+    files: ranked.map(([ref, f]) => ({ ref, at: f.seqs.slice(-3).map(n => `${id}:${n}`) })),
+    commits: [...commits].slice(-8).map(([ref, n]) => ({ ref, at: `${id}:${n}` })),
+  };
+}
+
+/**
+ * The split a rollover makes of a session chain (the windows of one thread, oldest first): the last turns, newest window first, whose text adds up to `tailChars` go into
+ * the seed word for word; every turn before them is pointed at. One cut for both, so no turn is in neither and none in both.
+ *
+ * A turn the index holds only the first CLIP characters of is carried cut, with a pointer: memory_turn on it reads the whole.
+ * @param {import("node:sqlite").DatabaseSync} db @param {string[]} windows session ids, oldest first (re-ordered by when each began, where that is known)
+ * @param {{ tailChars?: number, turnChars?: number, cap?: number }} [o]
+ * @returns {{ tail: { who: string, text: string, pointer: string }[], sessions: { session: string, turns: number, lines: string[], files: { ref: string, at: string[] }[], commits: { ref: string, at: string }[], tailFrom: number }[] }}
+ */
+export function rolloverOf(db, windows, { tailChars = 48_000, turnChars = 6_000, cap = 30 } = {}) {
+  // Oldest first by when each began (a thread that ran on Claude, then another provider, then Claude again has windows out of the order they were named in).
+  const began = db.prepare("SELECT started FROM recall_sessions WHERE id = ?");
+  const chain = windows.map((id, i) => ({ id, i, at: Number(/** @type {any} */ (began.get(id))?.started) || 0 })).sort((a, b) => (a.at && b.at && a.at !== b.at ? a.at - b.at : a.i - b.i)).map(x => x.id);
+  /** @type {{ who: string, text: string, pointer: string }[]} */ const tail = [];
+  /** @type {Map<string, number>} */ const from = new Map();
+  let used = 0, full = false;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const id = chain[i];
+    const rows = /** @type {any[]} */ (db.prepare("SELECT seq, role, text FROM recall_turns WHERE session = ? ORDER BY seq DESC").all(id));
+    let tailFrom = rows.length ? Number(rows[0].seq) + 1 : 0;
+    for (const r of rows) {
+      if (full) break;
+      const raw = String(r.text);
+      const n = Math.min(raw.length, turnChars);
+      if (used + n > tailChars && tail.length) { full = true; break; }
+      used += n;
+      tailFrom = Number(r.seq);
+      const ptr = pointer(shortId(id), Number(r.seq));
+      tail.unshift({ who: r.role === "user" ? "person" : "assistant", text: raw.length >= CLIP - 200 ? `${raw}\n[cut here: memory_turn ${ptr} reads the whole turn]` : raw, pointer: ptr });
+    }
+    from.set(id, tailFrom);
+  }
+  const sessions = chain.map(id => {
+    const turns = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM recall_turns WHERE session = ?").get(id)).n) || 0;
+    return { ...pointersOf(db, id, { cap, upto: from.get(id) ?? turns }), turns };
+  });
+  return { tail, sessions };
 }
