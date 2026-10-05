@@ -1,5 +1,5 @@
 // @ts-check
-// VyreDrop over Wink: a file goes from one of a person's computers to another without Tailscale. The sender seals it to the receiving computer's own key (drop-seal.js) and hands it to the person's server
+// VyreDrop over Wink: a file goes from one of a person's computers to another without another VPN product. The sender seals it to the receiving computer's own key (drop-seal.js) and hands it to the person's server
 // (its home) over the connection it already holds; the server keeps the ciphertext (drop-store.js) until the receiver is connected and takes it, then deletes it. A receiver that is asleep gets it when it
 // wakes: the drop waits, bounded in size, in total and in time. Only the person's own paired computers can send or receive: the server admits only the owner's devices, and a drop names a device on that list.
 //

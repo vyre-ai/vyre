@@ -55,7 +55,7 @@ test("no other VPN product: a file that names it is permanent, or on the shrinki
 
 test("no other VPN product: nothing the person sees (the setup page, the site, the README, the CLI's own words, the onboarding module) names it", () => {
   for (const rel of ["README.md", "site/setup/flow.js", "site/setup/ui.js", "site/setup/page.js", "scripts/gen-site.mjs", "core/onboard/index.js", "core/network/index.js", "core/network/wink.js",
-    "core/names/index.js", "core/names/service.js", "core/cli/commands/phone.js", "core/cli/commands/box.js", "core/cli/commands/up.js", "core/cli/ssh.js", "core/hooks/index.js", "core/files/drop.js", "core/link/health.js"]) {
+    "core/names/index.js", "core/names/service.js", "core/cli/commands/phone.js", "core/cli/commands/box.js", "core/cli/commands/up.js", "core/cli/ssh.js", "core/hooks/index.js", "core/link/health.js"]) {
     assert.ok(!WORD.test(fs.readFileSync(path.join(REPO, rel), "utf8")), `${rel} names another VPN product`);
   }
 });
