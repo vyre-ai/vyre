@@ -57,7 +57,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
         call: async (tool, input) => {
           calls.push({ tool, input });
-          if (tool === "link.status") return { data: { linked: w.linked } };
+          if (tool === "wink.server.home") return { data: { linked: w.linked } };
           if (tool === "google.accounts") return { data: [] };
           // juno is the user's assistant; kit is an agent they made (w.agents: tests narrow it).
           if (tool === "agents.list") return { data: w.agents };

@@ -14,7 +14,7 @@ import * as config from "../../config/index.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 
-/** A fake Mac's vyred: not paired yet; link.pair hands out a code. */
+/** A fake device's vyred: not paired yet; wink.pair.server starts a pairing. */
 async function fakeVyred(t) {
   const root = tempHome(t);
   const socket = config.paths(root).socket;
@@ -28,9 +28,12 @@ async function fakeVyred(t) {
       const send = (status, obj) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
       const tool = decodeURIComponent(String(req.url).replace("/v1/tools/", ""));
       calls.push({ tool, body });
-      if (tool === "link.status") return send(200, { data: { role: "local", linked: false, pending: null } });
-      if (tool === "link.pair") return send(200, { data: { code: "4821-0937", expires: Date.now() + 10 * 60_000 } });
-      if (tool === "link.unpair") return send(200, { data: { unpaired: false } });
+      if (tool === "wink.server.home") return send(200, { data: { linked: false, servers: [] } });
+      if (tool === "network.wink.status") return send(200, { data: { spaces: [] } });
+      if (tool === "wink.pair.targets") return send(200, { data: { targets: [{ kind: "identity", id: "id_alex", label: "Personal" }] } });
+      if (tool === "wink.pair.server") return send(200, { data: { pairing: "pr_1", ack: "dusk-fern-lamp", target: body.target } });
+      if (tool === "wink.access") return send(200, { data: { devices: [{ id: "d1", name: "Alex's phone", kind: "phone" }] } });
+      if (tool === "wink.remove") return send(200, { data: { removed: body.device } });
       send(404, { error: { code: "no_such_tool", message: `no tool ${tool}` } });
     });
   });
@@ -55,29 +58,32 @@ test("link cli: vyre commands lists every verb run() handles", async t => {
   const r = await vyre(root, ["commands", "link", "--json"]);
   assert.equal(r.code, 0, r.all);
   const verbs = JSON.parse(r.out).commands[0].verbs;
-  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "approve", "deny", "unpair", "signin", "signout"]);
-  assert.deepEqual(verbs.find(v => v.verb === "pair").args, [{ name: "address", required: true }]);
-  assert.deepEqual(verbs.find(v => v.verb === "unpair").args, [{ name: "id", required: false }]);
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "devices", "unpair"]);
+  assert.deepEqual(verbs.find(v => v.verb === "pair").args, [{ name: "code", required: true }]);
+  assert.deepEqual(verbs.find(v => v.verb === "unpair").args, [{ name: "device", required: true }]);
   assert.equal(verbs.find(v => v.verb === "status").read, true);
 });
 
-test("link cli: status and link, --json and --view; pair shows its code as a card; unpair answers JSON", async t => {
+test("link cli: status, pair, devices and unpair go through the Wink tools", async t => {
   const { root, calls } = await fakeVyred(t);
   const bare = await vyre(root, ["link", "--json"]);
   assert.equal(bare.code, 0, bare.all);
-  assert.deepEqual(JSON.parse(bare.out), { role: "local", linked: false, pending: null });
+  assert.equal(JSON.parse(bare.out).linked, false);
   assert.equal((await vyre(root, ["link", "status", "--json"])).out, bare.out, "status is the default");
   const v = frames((await vyre(root, ["link", "--view"])).out);
-  assert.deepEqual([v[0].view.kind, v[0].view.title, v[0].view.fields[0]], ["card", "Link", { label: "Box", value: "not paired" }]);
-  const p = await vyre(root, ["link", "pair", "alex.vyre.run", "--view"]);
+  assert.deepEqual([v[0].view.kind, v[0].view.title, v[0].view.fields[0]], ["card", "Link", { label: "Server", value: "not paired" }]);
+  const p = await vyre(root, ["link", "pair", "WINK-1234-5678", "--view"]);
   assert.equal(p.code, 0, p.all);
   const f = frames(p.out);
-  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.fields[0]], ["link pair", "card", { label: "Code", value: "4821-0937" }]);
-  assert.equal(f[0].data.code, "4821-0937");
-  assert.deepEqual(calls.find(c => c.tool === "link.pair")?.body, { box: "alex.vyre.run" });
-  const u = await vyre(root, ["link", "unpair", "--json"]);
-  assert.deepEqual(JSON.parse(u.out), { unpaired: false });
+  assert.deepEqual([f[0].cmd, f[0].view.kind], ["link pair", "card"]);
+  assert.equal(f[0].data.pairing, "pr_1");
+  assert.deepEqual(calls.find(c => c.tool === "wink.pair.server")?.body, { code: "WINK-1234-5678", target: { kind: "identity", id: "id_alex" } });
+  const d = await vyre(root, ["link", "devices", "--json"]);
+  assert.deepEqual(JSON.parse(d.out).devices.map(x => x.id), ["d1"]);
+  const u = await vyre(root, ["link", "unpair", "d1", "--json"]);
+  assert.deepEqual(JSON.parse(u.out), { removed: "d1" });
+  assert.equal((await vyre(root, ["link", "unpair", "--json"])).code, 2);
   const odd = await vyre(root, ["link", "forget", "--json"]);
   assert.equal(odd.code, 2);
-  assert.match(JSON.parse(odd.out).error.next, /vyre link \[status\|pair <address>/);
+  assert.match(JSON.parse(odd.out).error.next, /vyre link \[status\|pair <code>/);
 });

@@ -31,6 +31,10 @@
       {
         "name": "link.companion.list",
         "reach": "person"
+      },
+      {
+        "name": "link.companion.peers",
+        "reach": "modules"
       }
     ]
   },

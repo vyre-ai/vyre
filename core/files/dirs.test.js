@@ -71,9 +71,9 @@ async function registry(t, { role, files, home, fakes = {}, link = undefined, va
   fake("projects", "projects.list", "return { projects: f().projects || [], problems: [] };");
   fake("recall", "recall.sessions", "f().recallInput = i; return f().sessions || [];");
   fake("threads", "threads.list", "f().threadsInput = i; return f().threads || [];");
-  fake("link", "link.remote", `if (!f().link) throw Object.assign(new Error("no link"), { code: "no_link" });
-        return { result: await f().link(i.tool, i.input) };`);
-  // The fakes stand in for Vyre's own projects, recall, threads and link, so they load as first
+  fake("wink", "wink.server.call", `if (!f().link) throw Object.assign(new Error("no link"), { code: "no_link" });
+        const r = await f().link(i.tool, i.input); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data !== undefined ? r.data : r;`);
+  // The fakes stand in for Vyre's own projects, recall, threads and wink, so they load as first
   // party (ADR 0047: an added module reaches only tools with a declared reach).
   found.push(...discover([mods], { firstPartyRoots: [mods] }));
   const db = open(p.db);

@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": ["link"],
   "does": { "tools": [{ "name": "sync.consent", "reach": "anyone" }, { "name": "sync.delete", "reach": "anyone" }, { "name": "sync.delete.import", "reach": "anyone" }, { "name": "sync.scan", "reach": "anyone" }, { "name": "sync.upload.plan", "reach": "anyone" }, { "name": "sync.upload.start", "reach": "anyone" }, { "name": "sync.upload.chunk", "reach": "anyone" }, { "name": "sync.upload.cancel", "reach": "anyone" }, { "name": "sync.upload.finish", "reach": "anyone" }, { "name": "sync.send", "reach": "modules" }] },
-  "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "on": ["link.unpaired"] },
+  "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "on": ["device.removed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["sync"] },
   "needs": {},
   "teaches": {

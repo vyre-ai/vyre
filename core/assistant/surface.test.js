@@ -80,7 +80,6 @@ test("capabilities: working things only, a broken connector becomes a say-this l
   const call = bare({
     "mcp.servers": () => [{ name: "gmail", state: "running", tools: 9 }, { name: "slack", state: "failed" }],
     "agents.list": () => [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }],
-    "link.macs": () => [{ node: "Alex's Mac", online: true }],
     "push.devices": () => [{ label: "phone" }],
   });
   const c = await capabilities(call);
@@ -90,7 +89,7 @@ test("capabilities: working things only, a broken connector becomes a say-this l
   assert.match(text, /Connected: gmail/);
   assert.doesNotMatch(text, /Connected:.*slack/);
   assert.match(text, /Not connected: slack is broken/);
-  assert.match(text, /Alex's Mac \(mac, online\)/);
+  assert.match(text, /phone \(phone\)/);
   await assert.rejects(capabilities(call, "nope"), /area must be/);
 });
 

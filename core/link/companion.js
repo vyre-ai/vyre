@@ -170,6 +170,14 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
     },
   });
 
+  // For core/sync: the companions' ids and names (a companion is a sync peer too), asked by a module, never by a person's surface or a model.
+  ctx.tool("link.companion.peers", {
+    internal: true, effect: "read",
+    description: "The companions' ids and names, for the sync module. Modules only.",
+    input: { type: "object", properties: {} },
+    run: async () => ({ peers: /** @type {any[]} */ (db.prepare("SELECT id, name FROM link_peers WHERE kind = 'companion' ORDER BY paired_at").all()).map(r => ({ id: r.id, name: r.name })) }),
+  });
+
   ctx.tool("link.companion.list", {
     effect: "read",
     description: "The companions and the waiting request: id, name, the app device it belongs to, whether it is valid now (its parent device is live), and its core's fingerprint.",

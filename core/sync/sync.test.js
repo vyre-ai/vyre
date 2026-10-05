@@ -14,20 +14,38 @@ import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, writeModule } from "../../test/helpers.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** A box-role registry with the link and sync modules running (sync requires link's peerOf).
+/** The paired devices a fake relay.device.info answers for (the real one is core/relay): id -> { name, kind, removed }. */
+const DEVICES = /** @type {Map<string, any>} */ (new Map());
+globalThis.__syncDevices = DEVICES;
+const FAKE_RELAY = `export default { async start(ctx) {
+  ctx.tool("relay.device.info", { internal: true, run: async ({ id }) => { const d = globalThis.__syncDevices.get(String(id)); return d ? { name: d.name, kind: d.kind, trusted: true, pairedAt: 1, presenceKey: null, removed: Boolean(d.removed) } : null; } });
+  ctx.tool("relay.devices.list", { internal: true, run: async () => ({ devices: [...globalThis.__syncDevices].map(([id, d]) => ({ id, name: d.name, kind: d.kind, removed: Boolean(d.removed) })) }) });
+  return { async stop() {} };
+} };`;
+
+/** A box-role registry with the link and sync modules running (sync requires link's companion check).
  * modules: extra core modules to load alongside them (projects, for Vyre Drive step 4's tests). */
 async function boxRegistry(t, { modules = [] } = {}) {
   const home = tempHome(t);
   const p = config.ensure(home);
   const want = ["link", "sync", ...modules];
   const found = discover([CORE]).filter(f => f.manifest && want.includes(f.manifest.name));
+  DEVICES.clear();
+  const fp = [];
+  if (!modules.includes("relay")) {
+    const mods = tempHome(t);
+    writeModule(mods, "relay", { roles: ["box"], does: { tools: ["relay.device.info", "relay.devices.list"] } }, FAKE_RELAY);
+    fp.push(mods);
+    found.push(...discover([mods], { firstPartyRoots: [mods] }));
+    want.push("relay");
+  }
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, ...(fp.length ? { firstPartyRoots: fp } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   const stop = async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); };
@@ -37,14 +55,10 @@ async function boxRegistry(t, { modules = [] } = {}) {
   return { reg, db, events, call, root: home };
 }
 
-/** Pair a peer (kind "mac" or "device"), approved from the box's own socket. Returns its link_peers id and name. */
-async function paired(call, { name = "alex-mac", stableId = "nPEER0001", kind } = {}) {
-  const peer = { stableId, node: `${name}.tail0000.ts.net` };
-  const req = await call("link.pair.request", { name, ...(kind ? { kind } : {}) }, "tailnet:owner", { peer });
-  assert.ok(!req.error, JSON.stringify(req.error));
-  const approved = await call("link.pair.approve", { code: req.data.code.replace("-", "") }, "cli");
-  assert.ok(!approved.error, JSON.stringify(approved.error));
-  return { peer: approved.data.peer, name };
+/** Pair a device: the fake relay now knows it. Returns its id (the peer id sync keys on) and name. */
+async function paired(_call, { name = "alex-mac", stableId = "nPEER0001", kind = "device" } = {}) {
+  DEVICES.set(stableId, { name, kind, removed: false });
+  return { peer: stableId, name };
 }
 
 const hash = s => crypto.createHash("sha256").update(s).digest("hex");
@@ -52,37 +66,37 @@ const hash = s => crypto.createHash("sha256").update(s).digest("hex");
 test("sync: a plan, an upload and a finish land the file in synced/<machine>/, once consent is on", async t => {
   const { call, events, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   const text = "line one\nline two\n";
   const h = hash(text);
 
   // Off by default: the box refuses before any byte moves.
-  const before = await call("sync.upload.start", { path: "proj/a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  assert.equal(before.error?.code, "sync_disabled");
+  const before = await call("sync.upload.start", { path: "proj/a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  assert.equal(before.error?.code, "sync_disabled", JSON.stringify(before.error));
 
   const on = await call("sync.consent", { machine: name, on: true }, "cli");
   assert.deepEqual(on.data, { machine: name, on: true });
 
-  const plan = await call("sync.upload.plan", { files: [{ path: "proj/a.jsonl", bytes: text.length, hash: h }] }, "tailnet:owner", { peer });
+  const plan = await call("sync.upload.plan", { files: [{ path: "proj/a.jsonl", bytes: text.length, hash: h }] }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(plan.data.new, ["proj/a.jsonl"]);
   assert.equal(plan.data.quota.used, 0);
 
-  const start = await call("sync.upload.start", { path: "proj/a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "proj/a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(start.data, { upload: start.data.upload, offset: 0 });
 
   const seen = [];
   events.on("sync.progress", e => seen.push(e.payload));
-  const chunk = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
+  const chunk = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(chunk.data, { offset: text.length });
 
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(finish.data, { ok: true, path: "proj/a.jsonl" });
   const landed = path.join(root, "synced", name, "proj", "a.jsonl");
   assert.equal(fs.readFileSync(landed, "utf8"), text);
   assert.deepEqual(seen.map(s => ({ path: s.path, done: s.done })), [{ path: "proj/a.jsonl", done: undefined }, { path: "proj/a.jsonl", done: true }]);
 
   // A second plan sees it as done, not new: dedupe.
-  const plan2 = await call("sync.upload.plan", { files: [{ path: "proj/a.jsonl", bytes: text.length, hash: h }] }, "tailnet:owner", { peer });
+  const plan2 = await call("sync.upload.plan", { files: [{ path: "proj/a.jsonl", bytes: text.length, hash: h }] }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(plan2.data.done, ["proj/a.jsonl"]);
   assert.equal(plan2.data.quota.used, text.length);
 });
@@ -90,19 +104,19 @@ test("sync: a plan, an upload and a finish land the file in synced/<machine>/, o
 test("sync: a resumed upload continues from what the box already holds, matched by path and hash", async t => {
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   const text = "0123456789";
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text.slice(0, 4)) }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text.slice(0, 4)) }, "device:aaaaaaaaaaaaaaaa", { peer });
   // The same path and hash again (as after a device restart): resumes from offset 4, not 0.
-  const again = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  const again = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(again.data, { upload: start.data.upload, offset: 4 });
-  const mid = await call("sync.upload.chunk", { upload: again.data.upload, offset: 0, data: Buffer.from("x") }, "tailnet:owner", { peer });
+  const mid = await call("sync.upload.chunk", { upload: again.data.upload, offset: 0, data: Buffer.from("x") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(mid.error?.code, "offset_mismatch");
-  await call("sync.upload.chunk", { upload: again.data.upload, offset: 4, data: Buffer.from(text.slice(4)) }, "tailnet:owner", { peer });
-  const finish = await call("sync.upload.finish", { upload: again.data.upload, hash: h }, "tailnet:owner", { peer });
+  await call("sync.upload.chunk", { upload: again.data.upload, offset: 4, data: Buffer.from(text.slice(4)) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const finish = await call("sync.upload.finish", { upload: again.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!finish.error, JSON.stringify(finish.error));
   assert.equal(fs.readFileSync(path.join(root, "synced", name, "a.jsonl"), "utf8"), text);
 });
@@ -114,24 +128,24 @@ test("sync: one peer can never resume or overwrite another's upload", async t =>
   await call("sync.consent", { machine: a.name, on: true }, "cli");
   await call("sync.consent", { machine: b.name, on: true }, "cli");
   const h = hash("hello");
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 5, hash: h }, "tailnet:owner", { peer: { stableId: "nAAA" } });
-  const stolen = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("hello") }, "tailnet:owner", { peer: { stableId: "nBBB" } });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 5, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } });
+  const stolen = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("hello") }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nBBB" } });
   assert.equal(stolen.error?.code, "denied");
-  const finishStolen = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer: { stableId: "nBBB" } });
+  const finishStolen = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nBBB" } });
   assert.equal(finishStolen.error?.code, "denied");
 });
 
 test("sync: a chunk over the cap, and an unpaired connection, are refused before anything is written", async t => {
   const { call } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 10, hash: hash("x") }, "tailnet:owner", { peer });
-  const big = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.alloc(4 * 1024 * 1024 + 1) }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 10, hash: hash("x") }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const big = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.alloc(4 * 1024 * 1024 + 1) }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(big.error?.code, "bad_input");
-  const stranger = await call("sync.upload.plan", { files: [] }, "tailnet:owner", { peer: { stableId: "nNeverPaired" } });
+  const stranger = await call("sync.upload.plan", { files: [] }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nNeverPaired" } });
   assert.equal(stranger.error?.code, "no_link");
-  const noPeer = await call("sync.upload.plan", { files: [] }, "tailnet:owner", {});
+  const noPeer = await call("sync.upload.plan", { files: [] }, "device:aaaaaaaaaaaaaaaa", {});
   assert.equal(noPeer.error?.code, "no_link");
 });
 
@@ -140,20 +154,20 @@ test("sync: over quota refuses before any byte moves, and a mac kind may sync to
   const { name, peer: id } = await paired(call, { kind: "mac" }); // "mac" kind is not import-only; it may still sync
   await call("sync.consent", { machine: name, on: true }, "cli"); // makes the sync_peers row
   db.prepare("UPDATE sync_peers SET quota_bytes = 5 WHERE peer = ?").run(id);
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 10, hash: hash("x") }, "tailnet:owner", { peer: { stableId: "nPEER0001" } });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 10, hash: hash("x") }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nPEER0001" } });
   assert.equal(start.error?.code, "quota_exceeded");
 });
 
 test("sync: turning consent off, or unpairing, keeps everything the device sent — only sync.delete removes it (the user's overrule)", async t => {
   const { call, events, root } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   const text = "hi";
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   const dir = path.join(root, "synced", name);
   assert.ok(fs.existsSync(dir));
 
@@ -164,10 +178,10 @@ test("sync: turning consent off, or unpairing, keeps everything the device sent 
   assert.ok(fs.existsSync(dir), "nothing already sent is touched by turning sync off");
   assert.deepEqual(revoked, [{ machine: name }], "sync.revoked still fires, informationally");
   // Off stops new uploads, but the file that's already there is untouched.
-  assert.equal((await call("sync.upload.plan", { files: [] }, "tailnet:owner", { peer })).error?.code, "sync_disabled");
+  assert.equal((await call("sync.upload.plan", { files: [] }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "sync_disabled");
 
   // Unpairing keeps the data too.
-  await call("link.unpair", { id }, "cli");
+  DEVICES.get(id).removed = true; events.emit("relay", "device.removed", { id });
   assert.ok(fs.existsSync(dir), "unpairing keeps what the device sent — it belongs to the person");
 
   // Only the explicit, person-only sync.delete removes it — and only with confirm: true; without
@@ -188,26 +202,26 @@ test("sync: turning consent off, or unpairing, keeps everything the device sent 
 test("sync: sync.delete is a person's own action, never a module's or an agent's", async t => {
   const { call } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   const h = hash("hi");
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 2, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("hi") }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 2, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("hi") }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   for (const caller of ["mcp", "module:test"]) assert.equal((await call("sync.delete", { machine: name }, caller)).error?.code, "denied", caller);
 });
 
 test("sync: an unsafe file (a secret pasted into a chat) is quarantined, never landed where Recall reads", async t => {
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   // Built at run time, not as a literal (test/hygiene.test.js scans shipped code for this shape).
   const text = "the user said: my key is sk-ant-api03-" + "a".repeat(44);
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(finish.data, { ok: true, quarantined: true, why: ["anthropic key"] });
   assert.ok(!fs.existsSync(path.join(root, "synced", name, "a.jsonl")));
   assert.ok(fs.existsSync(path.join(root, "synced", ".quarantine", name, "a.jsonl")));
@@ -216,22 +230,22 @@ test("sync: an unsafe file (a secret pasted into a chat) is quarantined, never l
 test("sync: a secret past the old 8 MB scrub bound is still caught (reviewer's MEDIUM: finish must scan the whole file, not just a prefix)", async t => {
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   // Filler well past the old 8 MB scrub prefix, then a key, then a little more filler.
   const filler = "not a secret, just filler for this transcript\n".repeat(200_000); // ~9.4 MB
   assert.ok(filler.length > 8_000_000, "filler must exceed the old scrub bound to test anything");
   const text = filler + "the user said: my key is sk-ant-api03-" + "a".repeat(44) + "\n" + filler.slice(0, 1000);
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "big.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "big.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   const buf = Buffer.from(text);
   const CH = 2 * 1024 * 1024;
   for (let off = 0; off < buf.length; off += CH) {
     const chunk = buf.subarray(off, Math.min(off + CH, buf.length));
-    const r = await call("sync.upload.chunk", { upload: start.data.upload, offset: off, data: chunk }, "tailnet:owner", { peer });
+    const r = await call("sync.upload.chunk", { upload: start.data.upload, offset: off, data: chunk }, "device:aaaaaaaaaaaaaaaa", { peer });
     assert.ok(!r.error, JSON.stringify(r.error));
   }
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(finish.data, { ok: true, quarantined: true, why: ["anthropic key"] });
   assert.ok(!fs.existsSync(path.join(root, "synced", name, "big.jsonl")));
   assert.ok(fs.existsSync(path.join(root, "synced", ".quarantine", name, "big.jsonl")));
@@ -241,45 +255,35 @@ test("sync: a machine name with path-breaking characters still gets a safe folde
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { name: "../../etc", stableId: "nWEIRD", kind: "device" });
   await call("sync.consent", { machine: name, on: true }, "cli");
-  const peer = { stableId: "nWEIRD" };
+  const peer = { kind: "device", stableId: "nWEIRD" };
   const text = "hi";
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!finish.error, JSON.stringify(finish.error));
   // Landed inside the box's own home, never escaping it through the weird name.
   assert.ok(fs.existsSync(path.join(root, "synced", ".._.._etc", "a.jsonl")));
   assert.ok(!fs.existsSync(path.join(root, "..", "..", "etc")));
 });
 
-test("sync: link.macs and link.macs.call never see a device-kind peer", async t => {
-  const { call } = await boxRegistry(t);
-  await paired(call, { name: "alex-mac", stableId: "nMAC0001", kind: "mac" });
-  await paired(call, { name: "win-pc", stableId: "nDEV0001", kind: "device" });
-  const macs = await call("link.macs", {}, "cli");
-  assert.deepEqual(macs.data.map(m => m.name), ["alex-mac"]);
-  const peers = await call("link.peers", {}, "cli");
-  assert.deepEqual(peers.data.map(p => [p.name, p.kind]).sort(), [["alex-mac", "mac"], ["win pc", "device"]]);
-});
-
 test("sync: a chunk can never grow an upload past what it declared, and finish books the real size (e2e review, quota bypass)", async t => {
   const { call, db } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   // Declares 1 byte, then tries to stream far more: refused before the disk grows unbounded.
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 1, hash: hash("x") }, "tailnet:owner", { peer });
-  const big = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.alloc(1024) }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 1, hash: hash("x") }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const big = await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.alloc(1024) }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(big.error?.code, "bad_input");
   assert.match(big.error?.message || "", /declared 1 bytes/);
 
   // A truthful declare, and finish books the real size on disk, not the declared number.
   const text = "0123456789";
   const h = hash(text);
-  const start2 = await call("sync.upload.start", { path: "b.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: start2.data.upload, hash: h }, "tailnet:owner", { peer });
+  const start2 = await call("sync.upload.start", { path: "b.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: start2.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   const row = /** @type {any} */ (db.prepare("SELECT used_bytes FROM sync_peers WHERE peer = ?").get(id));
   assert.equal(row.used_bytes, text.length);
 });
@@ -287,44 +291,44 @@ test("sync: a chunk can never grow an upload past what it declared, and finish b
 test("sync: in-flight declared bytes count against the quota, and at most a handful of uploads may be open at once (e2e review)", async t => {
   const { call } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
 
   // Two parallel starts, each within quota alone, together exceed it: the second is refused.
-  const a = await call("sync.upload.start", { path: "a.jsonl", bytes: 300, hash: hash("a") }, "tailnet:owner", { peer });
+  const a = await call("sync.upload.start", { path: "a.jsonl", bytes: 300, hash: hash("a") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!a.error);
-  const b = await call("sync.upload.start", { path: "b.jsonl", bytes: 300, hash: hash("b") }, "tailnet:owner", { peer });
+  const b = await call("sync.upload.start", { path: "b.jsonl", bytes: 300, hash: hash("b") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!b.error); // still well under the 500 MB default
   // Cap on open uploads, independent of quota: fill it, then one more is refused.
   for (let i = 0; i < 6; i++) {
-    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 10, hash: hash(`f${i}`) }, "tailnet:owner", { peer });
+    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 10, hash: hash(`f${i}`) }, "device:aaaaaaaaaaaaaaaa", { peer });
     assert.ok(!r.error, `upload ${i}: ${JSON.stringify(r.error)}`);
   }
-  const over = await call("sync.upload.start", { path: "one-too-many.jsonl", bytes: 10, hash: hash("last") }, "tailnet:owner", { peer });
+  const over = await call("sync.upload.start", { path: "one-too-many.jsonl", bytes: 10, hash: hash("last") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(over.error?.code, "too_many_open");
 });
 
 test("sync: resuming an already-open upload never counts against MAX_OPEN or the quota a second time (reviewer's LOW)", async t => {
   const { call, db } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   db.prepare("UPDATE sync_peers SET quota_bytes = 20 WHERE peer = ?").run(id);
 
   // Fill MAX_OPEN right up, one of them right at the quota's edge.
-  const first = await call("sync.upload.start", { path: "a.jsonl", bytes: 20, hash: hash("a") }, "tailnet:owner", { peer });
+  const first = await call("sync.upload.start", { path: "a.jsonl", bytes: 20, hash: hash("a") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!first.error, JSON.stringify(first.error));
   for (let i = 0; i < 7; i++) {
-    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 0, hash: hash(`f${i}`) }, "tailnet:owner", { peer });
+    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 0, hash: hash(`f${i}`) }, "device:aaaaaaaaaaaaaaaa", { peer });
     assert.ok(!r.error, `upload ${i}: ${JSON.stringify(r.error)}`);
   }
   // Genuinely full now: a new file is refused.
-  assert.equal((await call("sync.upload.start", { path: "new.jsonl", bytes: 1, hash: hash("new") }, "tailnet:owner", { peer })).error?.code, "too_many_open");
+  assert.equal((await call("sync.upload.start", { path: "new.jsonl", bytes: 1, hash: hash("new") }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "too_many_open");
 
   // But retrying the exact same path+hash as the first (a resume, same as after a device restart)
   // is neither refused by the open-uploads cap nor double-counted against the quota: it returns
   // the same upload id, not a new slot.
-  const resumed = await call("sync.upload.start", { path: "a.jsonl", bytes: 20, hash: hash("a") }, "tailnet:owner", { peer });
+  const resumed = await call("sync.upload.start", { path: "a.jsonl", bytes: 20, hash: hash("a") }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(resumed.data, { upload: first.data.upload, offset: 0 });
 });
 
@@ -339,20 +343,20 @@ test("sync: sync.consent is a person's own action, never a module's", async t =>
 test("sync: safeDest refuses a symlink at the final path segment (e2e review: the check must not swallow its own denial)", async t => {
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   // Land one real file, then make a symlink stand where the next upload's destination would be.
   const h1 = hash("hi");
-  const s1 = await call("sync.upload.start", { path: "a.jsonl", bytes: 2, hash: h1 }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: s1.data.upload, offset: 0, data: Buffer.from("hi") }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: s1.data.upload, hash: h1 }, "tailnet:owner", { peer });
+  const s1 = await call("sync.upload.start", { path: "a.jsonl", bytes: 2, hash: h1 }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: s1.data.upload, offset: 0, data: Buffer.from("hi") }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: s1.data.upload, hash: h1 }, "device:aaaaaaaaaaaaaaaa", { peer });
   const dir = path.join(root, "synced", name);
   fs.rmSync(path.join(dir, "a.jsonl"));
   fs.symlinkSync("/etc/hosts", path.join(dir, "a.jsonl"));
   // start() computes the same destination too (so a symlink planted there is caught as early as
   // possible, before a byte moves), so the refusal fires here rather than at finish.
   const h2 = hash("bye");
-  const s2 = await call("sync.upload.start", { path: "a.jsonl", bytes: 3, hash: h2 }, "tailnet:owner", { peer });
+  const s2 = await call("sync.upload.start", { path: "a.jsonl", bytes: 3, hash: h2 }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(s2.error?.code, "denied");
   assert.match(s2.error?.message || "", /symlink/);
 });
@@ -363,43 +367,43 @@ test("sync: cancel drops an open upload's slot and temp file, and is never anoth
   const b = await paired(call, { name: "device-b", stableId: "nBBB", kind: "device" });
   await call("sync.consent", { machine: a.name, on: true }, "cli");
   await call("sync.consent", { machine: b.name, on: true }, "cli");
-  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 5, hash: hash("hello") }, "tailnet:owner", { peer: { stableId: "nAAA" } });
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("he") }, "tailnet:owner", { peer: { stableId: "nAAA" } });
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 5, hash: hash("hello") }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("he") }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } });
 
   // Another device may not cancel it.
-  const stolen = await call("sync.upload.cancel", { upload: start.data.upload }, "tailnet:owner", { peer: { stableId: "nBBB" } });
+  const stolen = await call("sync.upload.cancel", { upload: start.data.upload }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nBBB" } });
   assert.equal(stolen.error?.code, "denied");
 
-  const cancelled = await call("sync.upload.cancel", { upload: start.data.upload }, "tailnet:owner", { peer: { stableId: "nAAA" } });
+  const cancelled = await call("sync.upload.cancel", { upload: start.data.upload }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } });
   assert.deepEqual(cancelled.data, { ok: true, cancelled: true });
   // Freed the slot: MAX_OPEN more starts now succeed where one would have been refused otherwise.
   for (let i = 0; i < 8; i++) {
-    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 10, hash: hash(`f${i}`) }, "tailnet:owner", { peer: { stableId: "nAAA" } });
+    const r = await call("sync.upload.start", { path: `f${i}.jsonl`, bytes: 10, hash: hash(`f${i}`) }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } });
     assert.ok(!r.error, `upload ${i}: ${JSON.stringify(r.error)}`);
   }
   // Cancelling an id that no longer exists (already cancelled, finished, or never real) is not an error.
-  assert.deepEqual((await call("sync.upload.cancel", { upload: start.data.upload }, "tailnet:owner", { peer: { stableId: "nAAA" } })).data, { ok: true, cancelled: false });
-  assert.deepEqual((await call("sync.upload.cancel", { upload: "never-existed" }, "tailnet:owner", { peer: { stableId: "nAAA" } })).data, { ok: true, cancelled: false });
+  assert.deepEqual((await call("sync.upload.cancel", { upload: start.data.upload }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } })).data, { ok: true, cancelled: false });
+  assert.deepEqual((await call("sync.upload.cancel", { upload: "never-existed" }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nAAA" } })).data, { ok: true, cancelled: false });
 });
 
 test("sync: a large upload's finish streams rather than holding the whole file at once, and lands byte-identical", async t => {
   const { call, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   await call("sync.consent", { machine: name, on: true }, "cli");
   // Bigger than the scrub's own bounded prefix, so finish must be reading the tail through the
   // stream rather than a first fs.readFileSync of the whole thing.
   const text = "line of a session transcript, nothing secret here\n".repeat(200_000); // ~10 MB
   const h = hash(text);
-  const start = await call("sync.upload.start", { path: "big.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "big.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   const buf = Buffer.from(text);
   const CH = 2 * 1024 * 1024;
   for (let off = 0; off < buf.length; off += CH) {
     const chunk = buf.subarray(off, Math.min(off + CH, buf.length));
-    const r = await call("sync.upload.chunk", { upload: start.data.upload, offset: off, data: chunk }, "tailnet:owner", { peer });
+    const r = await call("sync.upload.chunk", { upload: start.data.upload, offset: off, data: chunk }, "device:aaaaaaaaaaaaaaaa", { peer });
     assert.ok(!r.error, JSON.stringify(r.error));
   }
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(finish.data, { ok: true, path: "big.jsonl" });
   assert.equal(fs.readFileSync(path.join(root, "synced", name, "big.jsonl"), "utf8"), text);
 });
@@ -407,23 +411,23 @@ test("sync: a large upload's finish streams rather than holding the whole file a
 test("sync.delete.import: removes only the files one approved plan sent, leaving a later plan's files and preview-then-confirm intact", async t => {
   const { call, events, root } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
 
   // First import, approved as plan "planA".
   await call("sync.consent", { machine: name, on: true, planHash: "planA" }, "cli");
   const t1 = "from plan A";
   const h1 = hash(t1);
-  const s1 = await call("sync.upload.start", { path: "a.jsonl", bytes: t1.length, hash: h1 }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: s1.data.upload, offset: 0, data: Buffer.from(t1) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: s1.data.upload, hash: h1 }, "tailnet:owner", { peer });
+  const s1 = await call("sync.upload.start", { path: "a.jsonl", bytes: t1.length, hash: h1 }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: s1.data.upload, offset: 0, data: Buffer.from(t1) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: s1.data.upload, hash: h1 }, "device:aaaaaaaaaaaaaaaa", { peer });
 
   // A second, later import, approved as a different plan "planB".
   await call("sync.consent", { machine: name, on: true, planHash: "planB" }, "cli");
   const t2 = "from plan B";
   const h2 = hash(t2);
-  const s2 = await call("sync.upload.start", { path: "b.jsonl", bytes: t2.length, hash: h2 }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: s2.data.upload, offset: 0, data: Buffer.from(t2) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: s2.data.upload, hash: h2 }, "tailnet:owner", { peer });
+  const s2 = await call("sync.upload.start", { path: "b.jsonl", bytes: t2.length, hash: h2 }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: s2.data.upload, offset: 0, data: Buffer.from(t2) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: s2.data.upload, hash: h2 }, "device:aaaaaaaaaaaaaaaa", { peer });
 
   const dir = path.join(root, "synced", name);
   assert.ok(fs.existsSync(path.join(dir, "a.jsonl")));
@@ -454,7 +458,7 @@ test("sync.delete.import: removes only the files one approved plan sent, leaving
 test("sync: an approved plan's exclusions are enforced, not merely tagged — a file outside included is refused by both sync.upload.plan and sync.upload.start (reviewer's MEDIUM)", async t => {
   const { call } = await boxRegistry(t);
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   // Approved: only "kept-project" is included; "left-out" is not, whatever the device sends.
   await call("sync.consent", { machine: name, on: true, planHash: "planX", included: ["kept-project"] }, "cli");
 
@@ -462,39 +466,39 @@ test("sync: an approved plan's exclusions are enforced, not merely tagged — a 
   const outFile = { path: "projects/left-out/s1.jsonl", bytes: 5, hash: hash("world") };
 
   // sync.upload.plan reports the excluded file separately, not folded into new/changed/done.
-  const plan = await call("sync.upload.plan", { files: [inFile, outFile] }, "tailnet:owner", { peer });
+  const plan = await call("sync.upload.plan", { files: [inFile, outFile] }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(plan.data.new, [inFile.path]);
   assert.deepEqual(plan.data.excluded, [outFile.path]);
 
   // And sync.upload.start refuses it outright too, even called directly (a device could try
   // this without ever calling sync.upload.plan first, or ignore what it said).
-  const started = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "tailnet:owner", { peer });
+  const started = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal(started.error?.code, "excluded");
   assert.match(started.error?.message || "", /outside the approved plan/);
 
   // The included file is unaffected.
-  const ok = await call("sync.upload.start", { path: inFile.path, bytes: inFile.bytes, hash: inFile.hash }, "tailnet:owner", { peer });
+  const ok = await call("sync.upload.start", { path: inFile.path, bytes: inFile.bytes, hash: inFile.hash }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!ok.error, JSON.stringify(ok.error));
 
   // A later approval with no included list at all lifts the restriction (no picker used, or
   // everything approved) — same as clearing a stale planHash.
   await call("sync.consent", { machine: name, on: true, planHash: "planY" }, "cli");
-  const now = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "tailnet:owner", { peer });
+  const now = await call("sync.upload.start", { path: outFile.path, bytes: outFile.bytes, hash: outFile.hash }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!now.error, JSON.stringify(now.error));
 });
 
 test("sync: Vyre Drive step 4 — a synced folder's confirmed mapping attaches it to a project once its first file lands", async t => {
   const { call, root } = await boxRegistry(t, { modules: ["projects"] });
   const { name } = await paired(call, { kind: "device" });
-  const peer = { stableId: "nPEER0001" };
+  const peer = { kind: "device", stableId: "nPEER0001" };
   const text = "hello\n";
   const h = hash(text);
 
   await call("sync.consent", { machine: name, on: true, folders: [{ name: "harlow-site", project: "harlow-legal" }] }, "cli");
-  const start = await call("sync.upload.start", { path: "projects/harlow-site/s1.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
+  const start = await call("sync.upload.start", { path: "projects/harlow-site/s1.jsonl", bytes: text.length, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!start.error, JSON.stringify(start.error));
-  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from(text) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const finish = await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.deepEqual(finish.data, { ok: true, path: "projects/harlow-site/s1.jsonl" });
 
   const list = await call("projects.list", {}, "cli");
@@ -504,21 +508,21 @@ test("sync: Vyre Drive step 4 — a synced folder's confirmed mapping attaches i
 
   // A second file in the same folder finds the project already made: no error, no duplicate.
   const text2 = "again\n", h2 = hash(text2);
-  const start2 = await call("sync.upload.start", { path: "projects/harlow-site/s2.jsonl", bytes: text2.length, hash: h2 }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text2) }, "tailnet:owner", { peer });
-  const finish2 = await call("sync.upload.finish", { upload: start2.data.upload, hash: h2 }, "tailnet:owner", { peer });
+  const start2 = await call("sync.upload.start", { path: "projects/harlow-site/s2.jsonl", bytes: text2.length, hash: h2 }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text2) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  const finish2 = await call("sync.upload.finish", { upload: start2.data.upload, hash: h2 }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!finish2.error, JSON.stringify(finish2.error));
   assert.equal((await call("projects.list", {}, "cli")).data.projects.filter(x => x.slug === "harlow-legal").length, 1);
 
   // A folder with no confirmed mapping syncs but is attached to nothing.
   const text3 = "unmapped\n", h3 = hash(text3);
-  const start3 = await call("sync.upload.start", { path: "projects/other-folder/s1.jsonl", bytes: text3.length, hash: h3 }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start3.data.upload, offset: 0, data: Buffer.from(text3) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: start3.data.upload, hash: h3 }, "tailnet:owner", { peer });
+  const start3 = await call("sync.upload.start", { path: "projects/other-folder/s1.jsonl", bytes: text3.length, hash: h3 }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.chunk", { upload: start3.data.upload, offset: 0, data: Buffer.from(text3) }, "device:aaaaaaaaaaaaaaaa", { peer });
+  await call("sync.upload.finish", { upload: start3.data.upload, hash: h3 }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.equal((await call("projects.list", {}, "cli")).data.projects.length, 1, "no project made for the unmapped folder");
 });
 
-test("sync: link.unpair really turns sync off on its own, through the watch module.json declares (not only reachable via sync.consent)", async t => {
+test("sync: a removed device really turns sync off on its own, through the watch module.json declares (not only reachable via sync.consent)", async t => {
   const { call, db, events } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
   await call("sync.consent", { machine: name, on: true }, "cli");
@@ -526,13 +530,12 @@ test("sync: link.unpair really turns sync off on its own, through the watch modu
   assert.equal(syncOn(), 1);
   const revoked = [];
   events.on("sync.revoked", e => revoked.push(e.payload));
-  // Straight to link.unpair, never through sync.consent { on: false } first: this is sync's own
-  // "link.unpaired" listener (core/sync/index.js's `off`) doing its job on its own, the exact
+  // Straight to the device being removed, never through sync.consent { on: false } first: this is sync's own
+  // "device.removed" listener (core/sync/index.js's `off`) doing its job on its own, the exact
   // behavior module.json's watches declaration (fixed from the invalid "hears" key to the real
   // "on" one, this same commit) says this module does.
-  const unpaired = await call("link.unpair", { id }, "cli");
-  assert.ok(!unpaired.error, JSON.stringify(unpaired.error));
-  assert.equal(syncOn(), 0, "core/sync's own link.unpaired listener turned sync off");
+  DEVICES.get(id).removed = true; events.emit("relay", "device.removed", { id });
+  assert.equal(syncOn(), 0, "core/sync's own device.removed listener turned sync off");
   assert.deepEqual(revoked, [{ machine: name }]);
 });
 
@@ -544,13 +547,13 @@ test("sync: a companion core uploads only with a token its own key signed for th
   const core = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const id = crypto.randomUUID();
   db.prepare("INSERT INTO link_peers (id, name, key_hash, paired_at, kind, parent, core_pub) VALUES (?, 'alex pc core', ?, ?, 'companion', ?, ?)").run(id, crypto.randomBytes(16).toString("hex"), Date.now(), APP, core);
-  const info = (await call("link.companion.hello", { token: "c1.bad" }, "tailnet:owner", { peer: { stableId: "nPC", node: "pc.ts.net" } }));
+  const info = (await call("link.companion.hello", { token: "c1.bad" }, "device:aaaaaaaaaaaaaaaa", { peer: { kind: "device", stableId: "nPC", node: "pc.ts.net" } }));
   assert.equal(info.error?.code, "denied", "a malformed token is refused");
   const consent = await call("sync.consent", { machine: "alex pc core", on: true }, "cli");
   assert.ok(!consent.error, JSON.stringify(consent.error));
-  const peer = { stableId: "nPC", node: "pc.ts.net" };
+  const peer = { kind: "device", stableId: "nPC", node: "pc.ts.net" };
   const { tokenMessage, boxId } = await import("../link/companion.js");
-  const boxPubKey = (await import("../link/assert.js")).boxKey(root).publicKey;
+  const boxPubKey = (await import("../link/key.js")).boxKey(root).publicKey;
   const sign = (tool, input) => {
     const ts = Date.now(), nonce = crypto.randomBytes(12).toString("base64url");
     const sig = crypto.sign("sha256", tokenMessage({ box: boxId(boxPubKey), companion: id, ts, nonce, tool, input }), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
@@ -559,19 +562,19 @@ test("sync: a companion core uploads only with a token its own key signed for th
   const text = "0123456789", h = hash(text);
   const start = { path: "a.jsonl", bytes: text.length, hash: h };
   // no token and an unknown node: not a paired device
-  assert.equal((await call("sync.upload.start", start, "tailnet:owner", { peer })).error?.code, "no_link");
+  assert.equal((await call("sync.upload.start", start, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "no_link");
   // a token for a different input, or a different tool: refused, and never falls back to the node
-  assert.equal((await call("sync.upload.start", { ...start, bytes: 3, companion: sign("sync.upload.start", start) }, "tailnet:owner", { peer })).error?.code, "no_link");
-  assert.equal((await call("sync.upload.start", { ...start, companion: sign("sync.upload.plan", start) }, "tailnet:owner", { peer })).error?.code, "no_link");
-  const ok = await call("sync.upload.start", { ...start, companion: sign("sync.upload.start", start) }, "tailnet:owner", { peer });
+  assert.equal((await call("sync.upload.start", { ...start, bytes: 3, companion: sign("sync.upload.start", start) }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "no_link");
+  assert.equal((await call("sync.upload.start", { ...start, companion: sign("sync.upload.plan", start) }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "no_link");
+  const ok = await call("sync.upload.start", { ...start, companion: sign("sync.upload.start", start) }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(ok.data?.upload, JSON.stringify(ok.error));
   const chunk = { upload: ok.data.upload, offset: 0, data: Buffer.from(text) };
-  assert.equal((await call("sync.upload.chunk", { ...chunk, data: Buffer.from("0123456780"), companion: sign("sync.upload.chunk", chunk) }, "tailnet:owner", { peer })).error?.code, "denied", "a changed byte breaks the signature");
-  assert.ok(!(await call("sync.upload.chunk", { ...chunk, companion: sign("sync.upload.chunk", chunk) }, "tailnet:owner", { peer })).error);
+  assert.equal((await call("sync.upload.chunk", { ...chunk, data: Buffer.from("0123456780"), companion: sign("sync.upload.chunk", chunk) }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "denied", "a changed byte breaks the signature");
+  assert.ok(!(await call("sync.upload.chunk", { ...chunk, companion: sign("sync.upload.chunk", chunk) }, "device:aaaaaaaaaaaaaaaa", { peer })).error);
   const fin = { upload: ok.data.upload, hash: h };
-  const done = await call("sync.upload.finish", { ...fin, companion: sign("sync.upload.finish", fin) }, "tailnet:owner", { peer });
+  const done = await call("sync.upload.finish", { ...fin, companion: sign("sync.upload.finish", fin) }, "device:aaaaaaaaaaaaaaaa", { peer });
   assert.ok(!done.error, JSON.stringify(done.error));
   // the parent app device is removed: the next call is refused at once
   db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(Date.now(), APP);
-  assert.equal((await call("sync.upload.plan", { files: [], companion: sign("sync.upload.plan", { files: [] }) }, "tailnet:owner", { peer })).error?.code, "no_link");
+  assert.equal((await call("sync.upload.plan", { files: [], companion: sign("sync.upload.plan", { files: [] }) }, "device:aaaaaaaaaaaaaaaa", { peer })).error?.code, "no_link");
 });

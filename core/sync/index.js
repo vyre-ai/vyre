@@ -1,9 +1,7 @@
 // @ts-check
 // sync — a paired device sends its own Claude Code session files to the box (ADR 0008 5a,
-// session import). Not link's: link owns pairing and what capability a peer's kind carries
-// (link.macs and link.macs.call never see a "device" kind peer at all); this module owns the
-// upload protocol only, and asks link.peer-of (internal) to turn a connection's own tailnet node
-// into the peer it is, since a device's claimed name is never trusted.
+// session import). This module owns the upload protocol only, and asks relay.device.info (internal) to turn a connection's own
+// paired device into the peer it is, since a device's claimed name is never trusted.
 //
 // sync.upload.plan and sync.upload.start are ordinary tool calls (small JSON). The chunk bytes
 // ride a dedicated route (core/daemon/index.js POST /v1/sync/upload/<id>) as
@@ -178,11 +176,12 @@ export default {
     // below only stop new uploads (sync_on off, or the peer gone so peerOf finds nothing) and say
     // so (sync.revoked, informational); nothing here removes a file, a row or a derived fact.
     // Deleting is sync.delete, its own person-only action, elsewhere.
-    const off = ctx.events.on("link.unpaired", e => {
+    const off = ctx.events.on("device.removed", e => {
       const p = e.payload || {};
-      if (typeof p.name !== "string") return;
-      db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(String(p.peer || ""));
-      ctx.events.emit("sync.revoked", { machine: p.name });
+      const row = /** @type {any} */ (db.prepare("SELECT peer, name FROM sync_peers WHERE peer = ?").get(String(p.id || "")));
+      if (!row) return;
+      db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(row.peer);
+      ctx.events.emit("sync.revoked", { machine: row.name });
     });
 
     ctx.tool("sync.consent", {
@@ -197,7 +196,8 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, on, planHash, included, folders }) => {
         const listed = await ctx.call("relay.devices.list", {});
-        const row = ((listed.data && listed.data.devices) || []).find(p => !p.removed && (p.id === machine || p.name === machine));
+        const comp = await ctx.call("link.companion.peers", {});
+        const row = [...((listed.data && listed.data.devices) || []), ...((comp.data && comp.data.peers) || [])].find(p => !p.removed && (p.id === machine || p.name === machine));
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
