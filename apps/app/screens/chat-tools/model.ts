@@ -118,3 +118,6 @@ export function versionsOf(d: any): Version[] {
   const list = Array.isArray(d) ? d : Array.isArray(d?.versions) ? d.versions : [];
   return list.map((x: any) => ({ v: Number(x?.v ?? x?.version), at: typeof x?.at === "number" ? x.at : typeof x?.created_at === "number" ? x.created_at : null, by: String(x?.by ?? x?.author ?? "") })).filter((x: Version) => Number.isFinite(x.v));
 }
+
+/** threads.edit's input: the text a person changed a queued message to, with its mentions. */
+export const editInput = (thread: string, queued: number, text: string, mentions: unknown[] = [], pasted: unknown[] = []) => ({ thread, queued, text, ...(mentions.length ? { mentions } : {}), pasted });

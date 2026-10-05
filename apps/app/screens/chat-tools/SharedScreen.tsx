@@ -1,6 +1,7 @@
 // Shared: what the assistants made (artifacts), with its versions and a public link. A link is posting as the person: the box asks their yes.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, LoadingState, Row, SectionLabel, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { chatTools } from "./instance";
@@ -35,6 +36,7 @@ export function SharedScreen() {
 }
 
 function Detail({ id, onShared }: { id: string; onShared: () => void }) {
+  const router = useRouter();
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [link, setLink] = useState("");
   const [problem, setProblem] = useState("");
@@ -47,7 +49,7 @@ function Detail({ id, onShared }: { id: string; onShared: () => void }) {
       {!versions ? <LoadingState rows={1} /> : <Text tone="muted">{versions.length ? `${versions.length} ${versions.length === 1 ? "version" : "versions"}, latest v${Math.max(...versions.map((v) => v.v))}` : "One version"}</Text>}
       {problem ? <Banner tone="warn">{problem}</Banner> : null}
       {link ? <Text selectable>{link}</Text> : null}
-      <View className="self-start"><Button size="sm" label={link ? "Make another link" : "Create a link (7 days)"} disabled={busy} onPress={share} /></View>
+      <View className="flex-row gap-s2 self-start"><Button size="sm" label="Open" onPress={() => router.push(`/u/shared/${encodeURIComponent(id)}` as never)} /><Button size="sm" label={link ? "Make another link" : "Create a link (7 days)"} disabled={busy} onPress={share} /></View>
     </View>
   );
 }
