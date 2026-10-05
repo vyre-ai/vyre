@@ -5,9 +5,9 @@ export type Invite = { space: string; address: string; from: string; role: strin
 export type Connector = { id: string; label: string; sub: string };
 export type FirstKit = { id: string; label: string; sub: string };
 
-/** Setup running on another of the person's devices (sample: the phone began creating Northwind and the server is paired). `loadSetupElsewhere()` is the one read; a real source replaces it. */
+/** Setup running on another of the person's devices (sample: the phone began creating Juniper Studio and the server is paired). `loadSetupElsewhere()` is the one read; a real source replaces it. */
 export function loadSetupElsewhere(): { device: string; space: string; spaceName: string } | null {
-  return { device: "iPhone", space: "northwind", spaceName: "Northwind Bakery" };
+  return { device: "iPhone", space: "juniper-studio", spaceName: "Juniper Studio" };
 }
 
 export function loadInstall() {
@@ -24,5 +24,5 @@ export function loadInstall() {
     { id: "drive", label: "Google Drive", sub: "Files in Drive" }, { id: "stripe", label: "Stripe", sub: "Payments, for the client-pays Flow" },
   ];
   const kits: FirstKit[] = [{ id: "estate", label: "Estate planning matter", sub: "2 record types, 3 Flows, 4 views and 1 role" }];
-  return { looks, invite, connectors, kits, defaultSpaceName: "Northwind Bakery", installCommand: "curl -fsSL vyre.run/i | sh" };
+  return { looks, invite, connectors, kits, defaultSpaceName: "Juniper Studio", installCommand: "curl -fsSL vyre.run/i | sh" };
 }

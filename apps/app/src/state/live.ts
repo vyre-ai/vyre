@@ -150,6 +150,8 @@ export const answers = createAnswers({
 
 /** Paint from the cache, read the box, follow its events. Once per app. */
 export function startLive(): void {
+  // The sample world (EXPO_PUBLIC_VYRE_MOCK=1) has no box to read from: its screens draw from the sample store, and a read here would only log 404s.
+  if (MOCK) return;
   if (started) return;
   started = true;
   void viewCache.get(NEEDS_KEY).then((v) => {
