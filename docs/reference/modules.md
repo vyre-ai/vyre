@@ -21,6 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 6 | 0 | cli |
+| [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
@@ -64,8 +65,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 22 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 43 | 23 | capsule, cli, deck |
+| [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local`, `box` | 8 | 7 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -91,7 +93,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 61 | 34 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 63 | 34 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 19 | 0 | cli |
 
 ## about
@@ -139,6 +141,18 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
+
+## apps
+
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).
+
+- Folder: `local/apps`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [6](tools.md#apps)
+- Emits: [2 events](events.md#apps)
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## artifacts
 
@@ -625,6 +639,18 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## releases
+
+The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
+
+- Folder: `core/apps`, version 0.1.0
+- Runs on: `box`
+- Requires: `vault`
+- Tools: [2](tools.md#releases)
+- Emits: no events
+- Shows on: cli
+- Needs vault: `android-release-key`
+
 ## rules
 
 The app's way into a Space's standing rules: one tool per call on the kernel's rule store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.
@@ -644,7 +670,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`, `box`
 - Requires: none
-- Tools: [8](tools.md#runner)
+- Tools: [9](tools.md#runner)
 - Emits: [7 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
@@ -947,7 +973,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [61](tools.md#wink), 9 of them only for other modules
+- Tools: [63](tools.md#wink), 9 of them only for other modules
 - Emits: [34 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
