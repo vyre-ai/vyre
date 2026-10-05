@@ -38,10 +38,15 @@ to install are at the end, in [Other ways to install](#other-ways-to-install).
 
 Open the Vyre app on your phone, or the Lumen on your Mac. The Vyre phone apps for iPhone and
 Android are built from the repository today (see [On your phone](../using/mobile.md)). The first
-screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do
-you have your own server, or are you joining a team?* Choosing **I am joining a team** makes your
-name and connects this device with a code. Choosing **I have my own server** sets up My Cloud on
-it. The steps below follow **I have my own server**.
+screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do you have your own server, or are you joining a team?*
+
+- **I am joining a team** makes your name first ("Make your name, connect this device with a code,
+  and you are in"), then takes you to **Your spaces**, where you can create a space on your own
+  server or join one. The steps below follow this path, because it is the one that starts with a
+  name.
+- **I have my own server** goes straight to **Set up My Cloud**. That page shows the install line
+  and the long-code entry together, and it is where **Add your own server** leads for a home that
+  joined a team. A device with no name yet cannot pair from it: choose your name first.
 
 Then the app asks you to choose your Vyre name. It is how people find you. Vyre makes a key for
 the name on this device, and the key stays here. A name needs at least three letters, and the app
