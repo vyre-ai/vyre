@@ -123,5 +123,7 @@ test("sealed store: the cryptographic primitives are injectable (a phone or a br
   await s.store.define({ add_types: [REMINDER] });
   await s.store.create("reminder", ids[0], { text: "x", due_at: 1 });
   assert.equal((await s.store.get("reminder", ids[0])).data.text, "x");
+  const again = createSealedStore({ backend: new FileBackend(dir), identity: "alex", imk, allow: PERSONAL_TYPES, prims });   // reading it back opens every object
+  assert.equal((await again.store.get("reminder", ids[0])).data.text, "x");
   for (const k of Object.keys(calls)) assert.ok(calls[k] > 0, `${k} went through the injected primitives`);
 });
