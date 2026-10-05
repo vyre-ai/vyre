@@ -242,7 +242,7 @@ test("box add: sudo with a password adds the account to the docker group in the 
   const { code, text } = await capture(() => add(OLD, { yes: true }));
   assert.equal(code, 0, text);
   assert.match(text, new RegExp(`add ${user} to the docker group \\(root-equivalent on this server; lets Vyre manage the stack without your password\\)`));
-  assert.match(ssh(r), /sh \/\S+ --yes && sudo usermod -aG docker "\$\(id -un\)"/);
+  assert.match(ssh(r), /sh \/\S+ --yes --version \S+ && sudo usermod -aG docker "\$\(id -un\)"/);
   assert.match(r.read("usermod.log"), new RegExp(`^-aG docker ${user}$`, "m"));
   assert.equal(ssh(r).match(/ControlMaster=auto/g)?.length, 2, "the master is opened again so the group applies");
 });
