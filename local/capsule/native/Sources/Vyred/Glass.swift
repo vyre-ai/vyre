@@ -4,9 +4,9 @@
 // `/glass/box` for the box's files. The Capsule only opens that page in the default browser:
 // Tailscale identifies the user there, so there is no second trust path from here.
 //
-// Two rules keep it honest. The box's address comes from the link (`link.status`, the address
-// this Mac paired with) and nothing else; with no paired box there is no row at all, because a
-// guessed host would send the user somewhere they did not choose. And "Open Glass" shows only for
+// Two rules keep it honest. The box's address comes from the pairing (BoxLink.boxAddress, from
+// wink.server.home) and nothing else; with no paired box there is no row at all, because a
+// guessed host would send the user somewhere they did not choose. (Glass becomes Screen Share in 0.3.1.) And "Open Glass" shows only for
 // an agent that has a computer: an agent without one has no screen to watch.
 
 import AppKit
@@ -24,16 +24,6 @@ public struct GlassRow: Sendable, Equatable {
 public enum Glass {
     /// The box's own target: files only, it has no screen.
     public static let box = "box"
-
-    /// The box's address as the link knows it, or nil. Only an https origin counts: that is what
-    /// pairing accepts, and anything else is not a place to send a browser. `has` says whether this
-    /// vyred has link.status at all; without it nothing is asked.
-    public static func address(_ link: VyredLink, has: Bool = true) async -> String? {
-        guard has else { return nil }
-        let r = await link.call("link.status", [:])
-        guard let s = r.data as? [String: Any], VJ.truthy(s["linked"]), let b = s["box"] as? [String: Any] else { return nil }
-        return origin(VJ.str(b["address"]))
-    }
 
     /// An https origin (with its port, if any), or nil.
     public static func origin(_ value: String?) -> String? {

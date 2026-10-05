@@ -111,7 +111,7 @@ export function lowS(raw) {
  * Check what the card showed against its hash and build the proof body (everything but the signature). Refuses, with a code, when the fields do not hash to the card's
  * payload_hash: that is what makes what you see what you sign.
  * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string }} req
- * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" }} o
+ * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" | "tpm" }} o
  */
 export function proofBody(req, o) {
   if (!req.person) throw Object.assign(new Error("no person id for this proof"), { code: "ERR_NO_PERSON" });
@@ -119,6 +119,19 @@ export function proofBody(req, o) {
   const life = Math.min(o.lifeMs ?? 90_000, 120_000);
   return { signer: o.signer ?? "secure_enclave", key_id: o.keyId, payload_hash: req.payload_hash, decision: req.op, chain_hash: chainHash(req.person, req.space), issued_at: o.now, expires_at: o.now + life, nonce: o.nonce };
 }
+
+/**
+ * What a phone's attestation vouches for when it joins an identity (platform-3, lead 5 Oct): the entry's own Ed25519 key and the chip key together, no server nonce.
+ * iPhone: the App Attest key attests clientDataHash = SHA-256("vyre-enrol\n" + "entry:" + entryPub + "\n" + the chip key's SPKI as base64), the same bytes as `enrolClientData`.
+ * @param {string} entryPub the entry's Ed25519 public key as the entry carries it (base64url) @param {string} spkiB64
+ */
+export const entryClientData = (entryPub, spkiB64) => enrolClientData("entry:" + entryPub, spkiB64);
+
+/**
+ * Android: a Keystore key takes its attestation challenge when it is MADE, before its public point exists, so the challenge cannot hold the chip key. It is SHA-256("vyre-enrol\n" + "entry:" + entryPub);
+ * the leaf certificate carries the key's own public point, and the verifier checks that point is the entry's `enclave`. @param {string} entryPub
+ */
+export const entryAndroidChallenge = (entryPub) => sha256(enc.encode("vyre-enrol\nentry:" + entryPub + "\n"));
 
 /** The bytes the App Attest key vouches for at enrolment: "vyre-enrol\n" + token + "\n" + the SPKI as base64 text. @param {string} token @param {string} spkiB64 */
 export const enrolClientData = (token, spkiB64) => sha256(enc.encode(`vyre-enrol\n${token}\n${spkiB64}`));

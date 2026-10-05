@@ -25,7 +25,7 @@ test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
   assert.equal(WELCOME.start, "Get started");
   assert.equal(WELCOME.have, "I already have Vyre");
-  assert.equal(backOf("name", { welcome: true }), "welcome");
+  assert.equal(backOf("name", { welcome: true }), "question", "Get started goes to setup's one question first");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
   assert.equal(backOf("welcome"), null);
@@ -129,4 +129,20 @@ test("the install line is the release candidate's own only for a hyphenated vers
   assert.equal(installLine("0.3.0"), STABLE);
   for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /", "0.3.0-rc.1; ls", "-rc1"]) assert.equal(installLine(v), STABLE, String(v));
   assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
+});
+
+test("whose a server is: a browser reads it as the server said it, a phone as this Vyre", () => {
+  const s = "This server belongs to walkercc.vyre.run. Ask them to add you to a space, or reset the server to start over.";
+  assert.equal(pairSayFor(s, "web"), s);
+  assert.equal(pairSayFor(s, "mac"), s);
+  assert.equal(pairSayFor(s, "ios"), "This Vyre belongs to walkercc.vyre.run. Ask them to add you to a space, or reset it to start over.");
+});
+
+import { setupUnfinished, SETUP_BANNER } from "./first-run.js";
+test("the setup banner shows only when the box says setup is not finished", () => {
+  assert.equal(setupUnfinished({ finished: false }), true);
+  assert.equal(setupUnfinished({ finished: true }), false);
+  assert.equal(setupUnfinished(null), false);
+  assert.equal(setupUnfinished({}), false);
+  assert.equal(SETUP_BANNER.route, "/u/install/setup");
 });

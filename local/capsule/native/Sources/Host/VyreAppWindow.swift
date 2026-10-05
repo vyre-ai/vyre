@@ -24,6 +24,23 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     /// Set by the Capsule at launch (App.swift).
     var socket = ""
     var presence: CapsulePresence?
+    /// This Mac's identity key (MacIdentity.swift), set by the Capsule at launch; the page signs through it and never sees the seed.
+    var identity: MacIdentity?
+    /// The Secure Enclave key of this Mac's device entry (MacEnclave.swift).
+    var enclave: MacEnclave?
+    /// This Mac's agreement key (MacAgree.swift): ECDH for opening a wrapped chat key, no prompt per use.
+    var agreement: MacAgree?
+    /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
+    var makeServer: (() -> Void)?
+    /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
+    var confirmForget: () -> Bool = {
+        let a = NSAlert()
+        a.messageText = "Forget this Mac's key?"
+        a.informativeText = "This Mac will no longer be able to sign in to your name. You can get back in with your recovery code or another device."
+        a.addButton(withTitle: "Forget it")
+        a.addButton(withTitle: "Keep it")
+        return a.runModal() == .alertFirstButtonReturn
+    }
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -131,6 +148,38 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
             }
+        case "identity.public", "identity.sign", "identity.has", "identity.forget":
+            guard let id0 = identity else { return reply(id, ["error": "This Mac cannot keep your key."]) }
+            switch op {
+            case "identity.public":
+                guard let pub = id0.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep your key." : "There is no key on this Mac."]) }
+                reply(id, ["publicKey": MacIdentity.b64url(pub)])
+            case "identity.sign":
+                guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let sig = id0.sign(m) else { return reply(id, ["error": "There is no key on this Mac to sign with."]) }
+                reply(id, ["signature": MacIdentity.b64url(sig)])
+            case "identity.has": reply(id, ["has": id0.has])
+            default:
+                guard confirmForget() else { return reply(id, ["error": "Not forgotten. Your key is still on this Mac."]) }
+                id0.forget(); reply(id, ["ok": true])
+            }
+        case "agree.public":
+            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pt)])
+        case "agree.agree":
+            guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
+            reply(id, ["secret": MacIdentity.b64url(secret)])
+        case "setup.server":
+            makeServer?()
+            reply(id, ["ok": true])
+        case "enclave.public":
+            guard let pt = enclave?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no Secure Enclave key."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pt)])
+        case "enclave.sign":
+            guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let e = enclave else { return reply(id, ["error": "There is no Secure Enclave key on this Mac to sign with."]) }
+            // KP-3: the words on the Touch ID sheet are the shell's own, read from the bytes. The page's `prompt` is never shown, and bytes the shell cannot read are not signed.
+            guard let said = SignSummary.of(message: m, fields: args["fields"] as? [String: Any], space: args["space"] as? String) else { return reply(id, ["error": "Vyre cannot tell what this would sign, so it did not."]) }
+            guard let sig = await e.sign(m, reason: String(said.prefix(300))) else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
+            reply(id, ["signature": MacIdentity.b64url(sig)])
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
@@ -277,6 +326,17 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
+        identity: {
+          public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
+          has: function () { return call("identity.has").then(function (r) { return r.has; }); },
+          forget: function () { return call("identity.forget").then(function () {}); },
+          agreePublic: function (create) { return call("agree.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          agree: function (epk) { return call("agree.agree", { epk: epk }).then(function (r) { return r.secret; }); },
+          makeServer: function () { return call("setup.server").then(function () {}); },
+          enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          enclaveSign: function (message, prompt, card) { return call("enclave.sign", { message: message, prompt: prompt, fields: card && card.fields, space: card && card.space }).then(function (r) { return r.signature; }); }
+        },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },
         _command: function (name) { commands.forEach(function (f) { try { f(name); } catch (e) {} }); }

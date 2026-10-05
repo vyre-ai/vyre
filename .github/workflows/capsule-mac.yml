@@ -2,7 +2,7 @@
 name: capsule-mac
 on:
   push:
-    branches: ["main", "work/capsule*", "work/mac-*", "work/lumen*"]
+    branches: ["main", "work/**"]
     paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/capsule-mac.yml"]
   pull_request:
     paths: ["local/capsule/**", "!local/capsule/native-win/**"]

@@ -13,7 +13,7 @@
 //   not_hardware a phone could not give its Secure Enclave key (`requireEnclave`): nothing is signed or kept (NK-2)
 
 import * as C from "../../../../kernel/identity/chain.js";
-import { codeKey, codeLooksRight, codeSigner, newCode, STRETCH } from "./recovery.js";
+import { codeLooksRight, codeSigner, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
 import * as webStore from "./store.ts";
 import type { PairingSession } from "../api/pairing-session";
@@ -41,6 +41,10 @@ type Opts = {
   key?: Awaited<ReturnType<typeof generateDeviceKey>>;
   /** The phone's Secure Enclave public key (NK-2) for the new entry, when this device has one. */
   enclave?: string;
+  /** This device's agreement key (a P-256 point, base64url): the key a chat key is wrapped to (src/identity/agree.ts). */
+  agree?: string;
+  /** This device's key is one a script on the page can reach (a computer app with no hardware key to ask the person): the entry says so and cannot change who speaks for the identity. */
+  held?: boolean;
   /** On a phone: refuse (not_hardware) unless `enclave` is given, so a recovered phone never has a device entry whose seed alone can change the list (NK-2). */
   requireEnclave?: boolean;
 };
@@ -96,7 +100,7 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   if (!state.entries.some((e: any) => e.kind === "code" && e.eid === ck.eid)) throw fail("wrong_code", "That code (or password) is not the one for this name.");
   if (o.requireEnclave && !o.enclave) throw fail("not_hardware", "This phone could not give its Secure Enclave key.");
   const key = o.key ?? (await generateDeviceKey());
-  const entry = { eid: key.eid, kind: "device", pub: key.publicKey, ...(o.enclave ? { enclave: o.enclave } : {}) };
+  const entry = { eid: key.eid, kind: "device", pub: key.publicKey, ...(o.enclave ? { enclave: o.enclave } : {}), ...(o.agree ? { agree: o.agree } : {}), ...(o.held ? { held: "web" } : {}) };
   let op: any, next: any;
   try {
     op = await C.makeOp(state, { type: "add", entry }, { by: ck.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => ck.sign(m) });
@@ -113,37 +117,6 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
     if (!landed) { if (landed === false) await forgetIdentity().catch(() => {}); throw e; }
   }
   return { name, id: state.id };
-}
-
-/**
- * A new recovery code after recovering (the chain's `replace-code`), signed by this device. A device that joined under 24 hours ago is refused by the list (`newcomer`): the screen
- * says the offer opens a day after the recovery. The old code stops working only when the directory takes the op; a lost answer is checked by reading the chain again.
- * The code comes back once and is never kept.
- */
-export async function replaceRecoveryCode(o: { base?: string; password?: string; fetch?: typeof fetch; now?: () => number; params?: { memoryKiB: number; passes: number }; random?: (n: number) => Uint8Array }): Promise<{ recoveryCode: string }> {
-  const f = o.fetch ?? globalThis.fetch;
-  const base = (o.base ?? DIRECTORY).replace(/\/+$/, "");
-  const now = o.now ?? Date.now;
-  const mine = await loadIdentity().catch(() => null);
-  if (!mine) throw fail("no_identity", "This device holds no name.");
-  const code = newCode(o.random);
-  const ck = await codeKey(code, o.password ?? "", o.params ?? STRETCH);
-  let state: any;
-  try { state = await C.verifyChain(mine.ops as any[], { now: now() + C.SKEW_MS }); } catch { throw fail("unreachable", "This device's copy of the list did not check out."); }
-  let op: any;
-  try {
-    op = await C.makeOp(state, { type: "replace-code", entry: { eid: ck.eid, kind: "code", pub: ck.publicKey } }, { by: mine.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => mine.key.sign(m) });
-    await C.applyOp(state, op, { now: now() + C.SKEW_MS });
-  } catch (e) { throw fail(/new|young/i.test(String((e as { code?: string }).code ?? "")) ? "newcomer" : "unreachable", String((e as Error).message)); }
-  // Save first, then publish, and show the code only after both (RC-1): a failed save publishes nothing, so the old code still works; a refused or unknown publish puts the old list back.
-  const before = { name: mine.name, id: mine.id, eid: mine.eid, ops: mine.ops as any[], pin: mine.pin, key: mine.key };
-  await saveIdentity({ ...before, ops: [...before.ops, op], pin: C.pinOf(await C.applyOp(state, op, { now: now() + C.SKEW_MS })) });
-  try { await directory(f, base, "POST", "/v1/ids/append", { name: mine.name, ops: [op] }); }
-  catch (e) {
-    const landed = (e as { code?: string }).code === "unreachable" ? await listed(f, base, mine.name, ck.eid, now()) : false;
-    if (!landed) { await saveIdentity(before).catch(() => {}); throw e; }
-  }
-  return { recoveryCode: code };
 }
 
 /**

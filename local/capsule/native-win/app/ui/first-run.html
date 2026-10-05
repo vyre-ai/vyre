@@ -12,18 +12,18 @@
   input { width:100%; box-sizing:border-box; padding:10px 12px; font:inherit; color:var(--fg); background:transparent; border:1px solid var(--line); border-radius:8px; }
   button { margin-top:12px; padding:10px 16px; font:inherit; color:var(--bg); background:var(--acc); border:0; border-radius:8px; cursor:pointer; }
   .fine { font-size:13px; margin-top:24px; }
-  .words { columns:3; list-style:decimal-leading-zero; padding-left:2em; margin:12px 0; color:var(--fg); }
-  .qr { width:168px; margin:12px 0; } .qr svg { width:100%; height:auto; border-radius:6px; }
   #err { color:#b3402a; min-height:1.5em; margin-top:8px; }
 </style>
 <main>
   <h1>Vyre Lumen</h1>
-  <p>Connect this computer to your Vyre server.</p>
-  <p>Pair with your Vyre server from another device where you are signed in, or enter its address.</p>
-  <button id="pair">Pair from my other device</button>
-  <div id="seedbox"></div>
-  <p id="seed" class="fine"></p>
-  <p>Or enter your server's address, like alex.vyre.run.</p>
+  <p>Connect this computer to your Vyre.</p>
+  <section id="typed" hidden>
+    <p>On another device where you are signed in, open Devices, then Add a device, and type the code it shows here.</p>
+    <input id="code" placeholder="WINK-7K4Q-M2XD" autocomplete="off" spellcheck="false">
+    <button id="typed-go">Connect</button>
+    <p id="ack" class="fine" role="status"></p>
+  </section>
+  <p>Enter your Vyre's address, like alex.vyre.run. You pair this computer there, with the long code your other device shows and three words to confirm.</p>
   <input id="addr" placeholder="alex.vyre.run" autocomplete="off" autofocus>
   <button id="go">Connect</button>
   <div id="err" role="alert"></div>

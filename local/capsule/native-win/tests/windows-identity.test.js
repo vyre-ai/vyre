@@ -1,0 +1,103 @@
+import "../../../../scripts/mac-test-guard.mjs";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
+const FOUR = ["identity_public", "identity_sign", "enclave_public", "enclave_sign", "agree_public", "agree_secret"]; // the four identity commands and the two agreement ones
+
+test("the main panel is permitted exactly the identity and agreement commands, on https origins, and nothing else", () => {
+  const cap = JSON.parse(read("../app/capabilities/main-identity.json"));
+  assert.deepEqual(cap.windows, ["main"]);
+  assert.deepEqual(cap.permissions, FOUR.map((c) => "allow-" + c.replace(/_/g, "-")));
+  assert.deepEqual(cap.remote.urls, ["https://*"]);
+  assert.ok(!cap.permissions.some((p) => /core:|shell|fs|opener|notification|pair|drive|autostart|link/.test(p)), "no other permission");
+  // the other capabilities stay bundled pages only: none of them names the main window
+  for (const f of ["first-run", "link", "settings"]) assert.ok(!JSON.parse(read(`../app/capabilities/${f}.json`)).windows.includes("main"), f);
+});
+
+test("the four commands exist, are declared and registered, and each refuses a page that is not the pinned origin before touching a key", () => {
+  const rs = read("../app/src/main.rs");
+  const build = read("../app/build.rs");
+  const handler = /generate_handler!\[([^\]]*)\]/.exec(rs)[1];
+  for (const c of FOUR) {
+    assert.match(rs, new RegExp(`fn ${c}\\(`));
+    assert.ok(build.includes(`"${c}"`), `${c} declared in build.rs`);
+    assert.ok(handler.includes(c), `${c} registered`);
+    const body = rs.slice(rs.indexOf(`fn ${c}(`), rs.indexOf("\n}\n", rs.indexOf(`fn ${c}(`)));
+    assert.match(body, /from_pinned\(&app, &webview, &request\)\?;/, c);
+    assert.ok(body.indexOf("from_pinned") < body.search(/identity_seed|ncrypt::/), `${c} checks the origin first`);
+  }
+  assert.match(rs, /if webview\.label\(\) != "main"/);
+  // the frame that made the call, not only the top-level page: a cross-origin iframe inside the pinned page carries its own Origin and is refused
+  assert.match(rs, /request\.headers\(\)\.get\("origin"\)/);
+  assert.match(rs, /if !pin\.is_origin\(origin\) \{ return Err/);
+  assert.match(readFileSync(new URL("../src/shell.rs", import.meta.url), "utf8"), /fn only_the_pinned_origin_itself_is_the_caller_a_frame_inside_it_is_not/);
+  assert.match(rs, /pin\.allows\(url\.as_str\(\)\)/);
+});
+
+test("no command returns a seed: the identity commands give a public key or a signature, and the seed is read only inside Rust", () => {
+  const rs = read("../app/src/main.rs");
+  for (const c of FOUR) {
+    const body = rs.slice(rs.indexOf(`fn ${c}(`), rs.indexOf("\n}\n", rs.indexOf(`fn ${c}(`)));
+    assert.doesNotMatch(body, /Ok\(b64u\(&?seed|Ok\(b64u\(&?k\)|seed\)\)/, c);
+  }
+  assert.match(rs, /identity_public[\s\S]*vyre_capsule_win::identity::public_key/);
+  assert.match(rs, /identity_sign[\s\S]*vyre_capsule_win::identity::sign/);
+  // the seed is DPAPI-protected on disk
+  assert.match(rs, /fn identity_seed[\s\S]*protect\(&k, true\)/);
+});
+
+test("the page sees a frozen window.__vyreShell of kind windows with the same identity calls as the Mac's, and no presence or menu", () => {
+  const rs = read("../app/src/main.rs");
+  assert.match(rs, /kind: "windows", boxless: false, version: \{v\}, identity: identity/);
+  for (const call of ["identity_public", "identity_sign", "enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`inv\\("${call}"`));
+  assert.match(rs, /\.initialization_script\(shell_signal\(/);
+  assert.doesNotMatch(/function shell_signal[\s\S]*?\}\)\(\);/.exec(rs)?.[0] ?? "", /presence|onCommand|notify/);
+});
+
+test("the TPM key is a P-256 key in the Platform Crypto Provider behind a UI policy that forces Windows to ask the person, and a machine with no TPM refuses plainly", () => {
+  const nc = read("../app/src/ncrypt.rs");
+  assert.match(nc, /Microsoft Platform Crypto Provider/);
+  assert.match(nc, /ECDSA_P256/);
+  assert.match(nc, /NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG: u32 = 0x2/);
+  assert.match(nc, /UI Policy/);
+  assert.match(nc, /NOT PROVEN/, "the comment does not claim a Hello prompt that nobody has seen");
+  assert.match(nc, /This computer has no TPM that Vyre can use\./);
+  assert.match(nc, /point_from_ecc_blob/);
+});
+
+test("the Windows app is a client only in 0.2.9: it starts no vyred and offers no home, and its setup page says so (the user's ruling)", () => {
+  const rs = read("../app/src/main.rs");
+  assert.ok(!/vyred(\.exe)?"|Command::new\([^)]*vyred/i.test(rs), "the app never starts a vyred");
+  assert.ok(!/make_server|makeServer|setup\.server/.test(rs + read("../src/shell.rs")), "no make-this-PC-a-home command");
+  const bridge = /fn shell_signal[\s\S]*?\n}\n/.exec(rs)[0];
+  assert.ok(!/makeServer|boxless: true/.test(bridge), "the page is not offered a home on this PC");
+  const flow = readFileSync(new URL("../../../../apps/app/screens/install/first-run.js", import.meta.url), "utf8");
+  assert.match(flow, /A Vyre home can't run on Windows yet\. Use the Vyre app here, and run your home on a Mac, Linux or a server\./);
+  assert.match(readFileSync(new URL("../../../../apps/app/screens/install/InstallScreen.tsx", import.meta.url), "utf8"), /isWindowsShell\(\) \? <Banner tone="warn">\{MY_CLOUD\.windows\}/);
+});
+
+test("the TPM key signs only bytes the shell can summarise, behind the shell's own native confirmation, and never shows the page's caption (KP-3)", () => {
+  const rs = read("../app/src/main.rs");
+  const body = /fn enclave_sign\([\s\S]*?\n}\n/.exec(rs)[0];
+  assert.match(body, /chain_summary\(&m\)\.ok_or_else/, "no summary, no signature");
+  assert.match(body, /confirm_native\(&said\)/);
+  assert.ok(body.indexOf("confirm_native") < body.indexOf("ncrypt::sign"), "the person says yes before the key signs");
+  assert.ok(!/confirm_native\([^)]*prompt/.test(body), "the page's prompt is not what is shown");
+  assert.match(rs, /MessageBoxW/);
+  assert.match(read("../src/identity.rs"), /pub fn chain_summary/);
+});
+
+test("the typed code is hidden and refused in a release build, on Windows too: only VYRE_TYPED_CODE=1 at compile time turns it on (the user's ruling)", () => {
+  const rs = read("../app/src/main.rs");
+  assert.match(rs, /const TYPED_CODE: bool = matches!\(option_env!\("VYRE_TYPED_CODE"\), Some\("1"\)\);/, "off unless the build says 1");
+  const cmd = /async fn finish_typed_pair\([\s\S]*?\n}\n/.exec(rs)[0];
+  assert.ok(cmd.indexOf("if !TYPED_CODE") > -1 && cmd.indexOf("if !TYPED_CODE") < cmd.indexOf("pin_from_offer"), "the command refuses before it reads the pairing");
+  assert.match(rs, /StateOut \{ typed_code: TYPED_CODE,/, "the page is told");
+  const html = read("../app/ui/first-run.html");
+  assert.match(html, /<section id="typed" hidden>/, "the typed path is hidden by default");
+  assert.match(read("../app/ui/first-run.js"), /s\.typed_code\) document\.getElementById\("typed"\)\.hidden = false/, "shown only when the shell says so");
+  assert.ok(!/typed-go|WINK-7K4Q/.test(html.replace(/<section id="typed" hidden>[\s\S]*?<\/section>/, "")), "nothing about the typed code outside the hidden section");
+  assert.ok(!/VYRE_TYPED_CODE/.test(read("../../../../.github/workflows/capsule-win.yml")), "the release workflow never sets it");
+});

@@ -103,7 +103,7 @@ jobs:
           echo '{"private":true}' > package.json
           npm i --no-audit --no-fund --no-package-lock playwright@1
           npx playwright install --with-deps chromium
-      - name: Render check (the sample world: every main screen draws at phone and desktop width)
+      - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock
           node scripts/render-check.mjs --dist dist-mock --out "$RUNNER_TEMP/render"
@@ -121,7 +121,7 @@ jobs:
 
   # The web perf guard (ADR 0027, section 6): the exported web app at /app/ beside
   # apps/test/world.js, headless Chromium at 390x844 with the CPU 4x throttled. It fails on a
-  # tracked measure more than 20% worse than the last green run on main, or JS more than 10%
+  # tracked measure more than 20% worse than the last green run on the release line (work/v0.3, else stage, else main), or JS more than 10%
   # bigger; a measure with no samples is "not measured". The numbers of record come from real
   # phones; these only guard regressions. Playwright is installed outside the repo.
   perf:
@@ -154,9 +154,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --branch main --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
-          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then
-            echo "baseline: run $id"; else echo "no baseline yet"; fi
+          # The baseline is the 0.2.9 release line, not main: main still holds the pre-0.3 app (about 585 KiB gzipped), and the 0.3 additions (chat, Records and views, flows, settings, the
+          # planner, the sealed-chat crypto in @noble, the table and drag-and-drop libraries) roughly doubled the entry bundle on purpose. work/v0.3 first, then the stage line, then main.
+          id=""
+          for b in work/v0.3 work/stage-0.2 main; do
+            id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --branch "$b" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+            if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then echo "baseline: run $id on $b"; break; fi
+            id=""
+          done
+          [ -n "$id" ] || echo "no baseline yet"
       - name: Perf run
         run: node .github/scripts/app-perf.mjs --dist apps/app/dist --out perf.json --baseline "$RUNNER_TEMP/base/perf.json" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Bundle size against the last green run
@@ -168,6 +174,9 @@ jobs:
           echo "{\"js_gzip_kib\": $kib}" > size.json
           base=$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).js_gzip_kib) } catch { console.log("") }' "$RUNNER_TEMP/base/size.json")
           echo "web JS gzipped: ${kib} KiB${base:+ (last green ${base} KiB)}" | tee -a "$GITHUB_STEP_SUMMARY"
+          # A hard ceiling beside the relative rule, so the bundle cannot drift up 10% at a time: 1200 KiB gzipped for all the app's JS (work/ui measured 1151). The 0.3.0 backlog line is
+          # route-level code splitting (chat, settings, flows, the records table and the planner loaded on demand), target under 700 KiB for the entry.
+          if [ "$kib" -gt 1200 ]; then echo "JS is over the 1200 KiB ceiling"; exit 1; fi
           if [ -n "$base" ] && [ $((kib * 100)) -gt $((base * 110)) ]; then echo "JS grew more than 10%"; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: success() || failure()

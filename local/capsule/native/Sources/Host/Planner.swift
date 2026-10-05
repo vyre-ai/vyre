@@ -1,7 +1,7 @@
 // Planner: the box's alarms, timers and reminders ringing on this Mac (ADR 0025, planner team).
 //
 // The box emits planner.fired when something falls due and planner.acked when someone deals with
-// it anywhere; the Mac's vyred passes the box's events on at /v1/link/events. The Capsule keeps
+// it anywhere; the Mac's vyred passes the box's events on at /v1/wink/server-events. The Capsule keeps
 // that one stream open, hidden or not (it is why a timer rings at all), and shows one banner per
 // firing, top right, with Done and Snooze. A later ring of the same firing replaces its banner; an
 // ack from another device takes it away. Nothing polls: the stream is pushed, and when it drops the
@@ -117,7 +117,7 @@ final class PlannerBanners: NSObject, UNUserNotificationCenterDelegate {
 
     private func open(since: String) {
         guard !stopped else { return }
-        let c = SSEConnection(socket: vyred.socket, path: "/v1/link/events?type=planner.*&since=\(since)",
+        let c = SSEConnection(socket: vyred.socket, path: "/v1/wink/server-events?type=planner.*&since=\(since)",
             onOpen: { [weak self] in Task { @MainActor in self?.opened() } },
             onEvent: { [weak self] json in
                 guard let e = VyredEvent(json: json) else { return }
@@ -226,10 +226,10 @@ final class PlannerBanners: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// A planner tool: through local vyred, which forwards to the box when paired; through
-    /// link.call when this vyred does not carry the planner itself.
+    /// wink.server.call when this vyred does not carry the planner itself.
     func call(_ tool: String, _ input: [String: Any]) async -> VyredResult {
         if vyred.has(tool) { return await vyred.call(tool, input, presence: false) }
-        let r = await vyred.call("link.call", ["tool": tool, "input": input], presence: false)
+        let r = await vyred.call(WinkServer.callTool(vyred.has), WinkServer.callInput(tool, input), presence: false)
         if let d = r.data as? [String: Any], d["result"] == nil { return .success(d) }
         return r
     }

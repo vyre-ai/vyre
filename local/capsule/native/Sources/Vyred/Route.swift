@@ -70,7 +70,7 @@ public struct VyreCatalog: Sendable, Equatable {
     public var agents: [VyreAgent]?
     public var projects: [VyreProject]
     public var threads: [VyreThread]
-    /// The box's https origin from link.status, or nil. Never a guess.
+    /// The box's https origin from the pairing (wink.server.home), or nil. Never a guess.
     public var box: String?
     public init(agents: [VyreAgent]? = nil, projects: [VyreProject] = [], threads: [VyreThread] = [], box: String? = nil) {
         self.agents = agents; self.projects = projects; self.threads = threads; self.box = box
