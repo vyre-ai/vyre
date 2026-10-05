@@ -26,11 +26,11 @@ function SampleSeeingScreen() {
 function SamplePrivacyScreen() {
   const router = useRouter();
   const { priv, setPriv } = useSettings();
-  const types = useTypes((s) => s.types).filter((t) => t.spaces.includes("harlow"));
+  const types = useTypes((s) => s.types).filter((t) => t.spaces.includes("juniper"));
   const sealed = types.flatMap((t) => t.fields.filter((f) => f.sealed).map((f) => ({ t, f })));
   const on = (k: string) => (priv as Record<string, any>)[k] as boolean;
   return (
-    <Page title="Privacy and sealing" sub="Harlow Legal · admins only" back="/u/settings">
+    <Page title="Privacy and sealing" sub="Juniper Studio · admins only" back="/u/settings">
       <Card flush>
         {PRIVACY_ROWS.map(([k, t, sub], i) => <View key={k}>{i ? <Divider /> : null}<Row title={t} sub={sub} end={<Switch label={t} on={on(k)} onChange={(v) => setPriv({ [k]: v })} />} /></View>)}
       </Card>

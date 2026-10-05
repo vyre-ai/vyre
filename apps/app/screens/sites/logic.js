@@ -61,6 +61,6 @@ export function publishNew(sites, kind, name) {
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "new";
   if (sites.some((s) => s.id === id)) return sites;
   /** @type {Site} */
-  const s = { id, name, type: kind === "drive" ? "Site" : "App", sp: "harlow", src: [SOURCES[kind], name, "just now"], dom: { name: `${id}.harlowlegal.vyre.run`, ok: true }, sec: {}, dep: [{ v: "v1", st: "preview", by: "alex", when: "Just now", msg: "First version", pipe: ["cur", "", "", "", ""] }], logs: { build: ["Build started."], run: ["Not live yet."] } };
+  const s = { id, name, type: kind === "drive" ? "Site" : "App", sp: "juniper", src: [SOURCES[kind], name, "just now"], dom: { name: `${id}.juniperstudio.vyre.run`, ok: true }, sec: {}, dep: [{ v: "v1", st: "preview", by: "alex", when: "Just now", msg: "First version", pipe: ["cur", "", "", "", ""] }], logs: { build: ["Build started."], run: ["Not live yet."] } };
   return [s, ...sites];
 }

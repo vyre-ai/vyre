@@ -38,7 +38,7 @@ void _stageDone;
 /** @type {import("./contracts.js").Space[]} */
 const SPACES = [
   { id: SPACE.mine, name: "Mine", kind: "mine", accent: "violet" },
-  { id: SPACE.harlow, name: "Juniper Studio", kind: "team", accent: "amber", density: "compact" },
+  { id: SPACE.juniper, name: "Juniper Studio", kind: "team", accent: "amber", density: "compact" },
 ];
 
 /** @type {Who[]} */
@@ -49,9 +49,9 @@ const ACTORS = [
   { id: WHO.kit, family: "assistant", name: "kit", role: "Assistant", seed: "kit", owner: WHO.alex },
   { id: WHO.iris, family: "assistant", name: "iris", role: "Assistant", seed: "iris", owner: WHO.chris },
   { id: WHO.rev, family: "assistant", name: "rev", role: "Assistant", seed: "rev", owner: WHO.alex },
-  { id: WHO.research, family: "teammate", name: "Research", role: "Teammate, Juniper Studio", seed: "research-harlow", owner: WHO.alex },
-  { id: WHO.intake, family: "teammate", name: "Intake", role: "Teammate, Juniper Studio", seed: "intake-harlow", owner: WHO.alex },
-  { id: WHO.drafting, family: "teammate", name: "Drafting", role: "Teammate, Juniper Studio", seed: "drafting-harlow", owner: WHO.alex },
+  { id: WHO.research, family: "teammate", name: "Research", role: "Teammate, Juniper Studio", seed: "research-juniper", owner: WHO.alex },
+  { id: WHO.intake, family: "teammate", name: "Intake", role: "Teammate, Juniper Studio", seed: "intake-juniper", owner: WHO.alex },
+  { id: WHO.drafting, family: "teammate", name: "Drafting", role: "Teammate, Juniper Studio", seed: "drafting-juniper", owner: WHO.alex },
   { id: WHO.vyre, family: "service", name: "Vyre", role: "The Kit and its Flows", seed: "vyre" },
 ];
 
@@ -59,7 +59,7 @@ const ACTORS = [
 const kindOf = f => (f === "person" ? "person" : f === "service" ? "service" : "agent");
 
 /** Which space each type is listed under (the Deck merges Mine and the team's spaces on the device). */
-const TYPE_SPACE = /** @type {Record<string, string>} */ ({ contact: SPACE.harlow, matter: SPACE.harlow, project: SPACE.mine, trip: SPACE.mine, template: SPACE.harlow });
+const TYPE_SPACE = /** @type {Record<string, string>} */ ({ contact: SPACE.juniper, matter: SPACE.juniper, project: SPACE.mine, trip: SPACE.mine, template: SPACE.juniper });
 
 /** What the made-up world's types hold beyond the sample definitions, because the scenario writes them. */
 const EXTRAS = /** @type {Record<string, FieldDefinition[]>} */ ({
@@ -129,7 +129,7 @@ export function createMockStore(opts = {}) {
 
   /** One event, in the kernel's envelope. `what` and `why` are the Deck's sentence (data.what, data.why); a record event carries what changed, never a value. @param {{ type: string, subject: string, actor: string, what: string, why?: string, record?: string, task?: string, at?: number, data?: Record<string, any> }} e */
   function log(e) {
-    const t = e.at ?? clock(), seq = events.length + 1, space = spaceOfUrn(e.subject) || SPACE.harlow, a = actor(e.actor, space);
+    const t = e.at ?? clock(), seq = events.length + 1, space = spaceOfUrn(e.subject) || SPACE.juniper, a = actor(e.actor, space);
     const body = { what: e.what, ...(e.why ? { why: e.why } : {}), ...(e.record ? { record: e.record } : {}), ...(e.task ? { task: e.task } : {}), ...(e.data || {}) };
     const commit = digest(JSON.stringify(body)), hash = digest(`${prevHash}|${seq}|${e.type}|${commit}`);
     /** @type {EventEnvelope} */
@@ -232,7 +232,7 @@ export function createMockStore(opts = {}) {
       const sf = stageFieldOf(t), stages = sf ? stageNames(t, sf) : [];
       const body = { ...data };
       if (sf && !body[sf.name]) body[sf.name] = stages[0];
-      const space = o.space || TYPE_SPACE[type] || SPACE.harlow;
+      const space = o.space || TYPE_SPACE[type] || SPACE.juniper;
       const urn = put(type, space, body);
       log({ type: "record.created", subject: urn, actor: by, what: `created ${titleOf(urn)}${t.stages?.some(s => s.tasks?.length) ? ` from the Kit ${ESTATE_KIT.name}` : ""}`, why: o.why, data: { changed: Object.keys(body) } });
       if (t.stages?.some(s => s.tasks?.length)) { enterStage(urn, by); settle(urn, by); }
@@ -452,7 +452,7 @@ export function createMockStore(opts = {}) {
   function seed() {
     const day = new Date(clock()); day.setHours(0, 0, 0, 0);
     const today = (/** @type {number} */ h, /** @type {number} */ m) => day.getTime() + (h * 60 + m) * 60_000;
-    const H = SPACE.harlow, M = SPACE.mine;
+    const H = SPACE.juniper, M = SPACE.mine;
     const urn = aliasUrn;
     const own = (/** @type {string} */ id, /** @type {string} */ space) => actorValue(actor(id, space));
     const contactDef = /** @type {TypeDefinition} */ (typeOf("contact"));

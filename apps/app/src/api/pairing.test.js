@@ -12,18 +12,18 @@ const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./pairing.ts");
 
 const b64 = (/** @type {object} */ o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-const OFFER = "https://vyre.run/pair#" + b64({ v: 1, r: "wss://relay.example.net", i: "abcdefghijklmnopqrstuvwxyz", s: "one-time-secret", k: Buffer.alloc(32, 7).toString("base64url"), n: "Harlow Legal" });
+const OFFER = "https://vyre.run/pair#" + b64({ v: 1, r: "wss://relay.example.net", i: "abcdefghijklmnopqrstuvwxyz", s: "one-time-secret", k: Buffer.alloc(32, 7).toString("base64url"), n: "Juniper Studio" });
 
 test("pairing: the offer comes out of vyre://pair?offer= encoded once", { skip: !strip }, async () => {
   const { offerFrom } = await load();
   const got = offerFrom(`vyre://pair?offer=${encodeURIComponent(OFFER)}`);
   assert.equal(got, OFFER);
-  assert.equal(parsePairUrl(/** @type {string} */ (got))?.name, "Harlow Legal", "relay/client reads what we hand it");
+  assert.equal(parsePairUrl(/** @type {string} */ (got))?.name, "Juniper Studio", "relay/client reads what we hand it");
 });
 
 test("pairing: the web route, a bare value, extra params and an unencoded # all give the same offer", { skip: !strip }, async () => {
   const { offerFrom } = await load();
-  assert.equal(offerFrom(`https://harlow.example.ts.net/app/pair?offer=${encodeURIComponent(OFFER)}`), OFFER);
+  assert.equal(offerFrom(`https://juniper.example.ts.net/app/pair?offer=${encodeURIComponent(OFFER)}`), OFFER);
   assert.equal(offerFrom(`vyre://pair?from=cli&offer=${encodeURIComponent(OFFER)}&x=1`), OFFER);
   assert.equal(offerFrom(encodeURIComponent(OFFER)), OFFER, "the router's param, still encoded");
   assert.equal(offerFrom(OFFER), OFFER, "the router's param, already decoded");
@@ -41,7 +41,7 @@ test("pairing: anything that is not an offer is null", { skip: !strip }, async (
 
 test("pairing: a stored pairing is checked on load, and the relay base carries the route", { skip: !strip }, async () => {
   const { readPairing, relayBase } = await load();
-  const p = { relay: "wss://relay.example.net", route: "abcdefghijklmnopqrstuvwxyz", box: "Bw", name: "Harlow Legal", device: "dev1", presence: null };
+  const p = { relay: "wss://relay.example.net", route: "abcdefghijklmnopqrstuvwxyz", box: "Bw", name: "Juniper Studio", device: "dev1", presence: null };
   assert.deepEqual(readPairing(JSON.stringify(p)), p);
   assert.equal(readPairing("{"), null);
   assert.equal(readPairing(JSON.stringify({ ...p, relay: "https://relay.example.net" })), null);

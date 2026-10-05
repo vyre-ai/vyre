@@ -65,7 +65,7 @@ and spaces share one set of names, so a space cannot take its owner's name), and
 **A team**, **A client** or **Just me**. A team and a client then get a step to invite people; **Just
 me** skips it.
 
-![Create a space: the name Juniper Studio, the address juniper-studio.vyre.run, and "A team" chosen](shots/first-run-space.png "Create a space")
+![Create a space: the name Northwind Bakery, the address northwind-bakery.vyre.run, and "A team" chosen](shots/first-run-space.png "Create a space")
 
 On a Mac the app first asks **Where should Vyre run?**: **On this Mac** (only while the Mac stays
 on) or **On a server** (it shows the one line to run there). A computer app asks **Where will it
@@ -158,8 +158,6 @@ or press **Not the same** in the app:
     3) <three words>
   Which one? (1, 2 or 3, Enter to refuse)
 ```
-
-![Pair your server, second step: the terminal says the words are maple copper island, and the phone shows three choices](shots/first-run-pair-words.png "Pair your server")
 
 A wrong pick prints `Those were not the words the app shows, so nothing was paired.` and offers to
 try again. If five minutes pass before a device asks, it prints `The code ran out before a device

@@ -32,9 +32,9 @@ test("the mock store implements the whole Store interface", async () => {
   assert.equal(doe?.data.stage, "Engagement");
   assert.equal(doe?.urn, aliasUrn("m1"));
   assert.equal(doe?.version, 1);
-  assert.equal((await s.list("contact", { space: SPACE.harlow })).some(c => c.data.name === "Jane Doe"), true);
+  assert.equal((await s.list("contact", { space: SPACE.juniper })).some(c => c.data.name === "Jane Doe"), true);
   assert.equal((await s.list("matter", { filter: { field: "stage", op: "eq", value: "Signing" } })).length, 1);
-  assert.equal(await s.get("vyre://spc_harlowaaaaaa/matter/nope"), null);
+  assert.equal(await s.get("vyre://spc_juniperaaaaaa/matter/nope"), null);
   assert.equal(await s.task("nope"), null);
 });
 
@@ -188,7 +188,7 @@ test("request puts a task on a record, waiting on what it depends on", async () 
   assert.equal(aidOf(t.doer), WHO.alex);
   const free = await s.request({ title: "Ring Chris", record: m1, doer: WHO.juno, output: { kind: "note" } });
   assert.equal(free.state, "working", "an assistant's ready task starts by itself");
-  await assert.rejects(() => s.request({ title: "x", record: "vyre://spc_harlowaaaaaa/matter/zz", doer: WHO.alex, output: { kind: "file" } }), /does not exist/);
+  await assert.rejects(() => s.request({ title: "x", record: "vyre://spc_juniperaaaaaa/matter/zz", doer: WHO.alex, output: { kind: "file" } }), /does not exist/);
 });
 
 test("getStore is the one switch, and setStore replaces it", async () => {

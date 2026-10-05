@@ -182,3 +182,5 @@ Open: sealed field values carry by ruling (platform's export built, windows wiri
 Chats row copy rule (reviewer-5, memory-cw2 be91231c4): a chat started on the server makes its own key in the server process, wrapped to each participant's device, in memory only, never on disk. "Owners and admins can't read chats they're not in, even with access to the server's disk" stays true. Never write that the server never sees a chat's key.
 
 Held (app-wire, 6 Oct): the Create your assistant card on Now is mounted on work/app-wire 1507212d4 (owner or admin, no assistant yet; button opens /u/settings/assistants/new). Restore that line in install.md step 5 and the Now description only once that head is on stage.
+
+Held picture (web, 6 Oct): first-run-pair-words.png still shows the old three-word picker (web-shots base predates app-wire's PairServer step c3d684bc3). It is out of install.md step 4 until web reshoots after app-wire's PairServer merges; then restore the figure with the alt text for the words screen and the Not the same button.

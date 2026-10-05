@@ -13,7 +13,7 @@ import { backoff } from "../../../../core/resilience/backoff.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./client.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 
 /** @param {number} status @param {unknown} body */
 const reply = (status, body) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });

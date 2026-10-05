@@ -2,10 +2,10 @@
 // is still switched in Vault. The shell's space switcher can write here later; until then each place shows the same bar.
 import { create } from "zustand";
 
-export type SpaceId = "mine" | "harlow";
+export type SpaceId = "mine" | "juniper";
 export type Scope = "all" | SpaceId;
 
-export const SPACES: Record<SpaceId, { name: string }> = { mine: { name: "Mine" }, harlow: { name: "Juniper Studio" } };
+export const SPACES: Record<SpaceId, { name: string }> = { mine: { name: "Mine" }, juniper: { name: "Juniper Studio" } };
 
 export const useScope = create<{ scope: Scope; setScope: (s: Scope) => void }>((set) => ({ scope: "all", setScope: (scope) => set({ scope }) }));
 
