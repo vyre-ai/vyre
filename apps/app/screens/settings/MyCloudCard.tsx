@@ -24,7 +24,7 @@ export function MyCloudCard() {
   const [problem, setProblem] = useState("");
   const load = () => {
     tool<any[]>("spaces.list").then((d) => setRows(Array.isArray(d) ? d : [])).catch(() => setRows(null));
-    tool("relay.devices.list").then((d) => setServers(serversOf(d))).catch(() => setServers([]));
+    tool("spaces.servers").then((d) => setServers(serversOf(d))).catch(() => setServers([]));
   };
   useEffect(load, []);
   const state = cloudState(rows ?? []);

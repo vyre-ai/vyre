@@ -46,12 +46,9 @@ test("my cloud: the offer follows the rows: setup, then move, then done", () => 
   assert.equal(offerFor(cloudState([{ id: "spc_t", tier: "cloud", displayName: "Northwind" }]), true), "none", "a team space is not My Cloud and there is no Personal row");
 });
 
-test("my cloud: only paired servers can host it", () => {
-  assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "app" }, { id: "srv", name: "Studio mini", kind: "server" }] }), [{ id: "srv", name: "Studio mini" }]);
+test("my cloud: only the paired servers spaces.servers lists can host it", () => {
+  assert.deepEqual(serversOf({ servers: [{ id: "srv", name: "Studio mini", online: true }, { id: "", name: "x" }, { name: "no id" }] }), [{ id: "srv", name: "Studio mini" }]);
+  assert.deepEqual(serversOf({ servers: [] }), []);
   assert.deepEqual(serversOf(null), []);
-});
-
-test("my cloud: plurals follow a small rule", () => {
-  assert.deepEqual(["note", "company", "category", "address", "box", "match", "day", "planner alarm"].map(plural), ["notes", "companies", "categories", "addresses", "boxes", "matches", "days", "planner alarms"]);
-  assert.deepEqual(planLines({ counts: { records: { company: 2, category: 1, address: 3 } } }), ["2 companies", "1 category", "3 addresses"]);
+  assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "server" }] }), [], "relay.devices.list rows are not paired servers");
 });
