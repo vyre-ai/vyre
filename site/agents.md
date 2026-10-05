@@ -15,7 +15,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
-- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Tailscale is required (free plan).
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on.
 - Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: a web app on the Home Screen.
 - Current release: 0.2.2.
 

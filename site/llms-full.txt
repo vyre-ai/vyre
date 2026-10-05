@@ -2,7 +2,7 @@
 
 Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
 
-Release 0.2.2. Updated 2026-10-02. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.2.2. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - One session runs Claude, Codex, Grok or OpenRouter. Each reply shows which model wrote it. You can switch model mid-session (the new model gets a summary of the conversation) or address one model for a single message with an @, such as @codex.
@@ -20,12 +20,12 @@ Release 0.2.2. Updated 2026-10-02. Source: https://github.com/vyre-ai/vyre. Lice
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by `vyre capsule install`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Deck installed to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
-- Network: Tailscale is required (free plan is enough). Your address (you.vyre.run, or your own domain) opens only from devices on your tailnet.
+- Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
 1. Open https://vyre.run/setup/ and choose a Linux server or a Mac that stays on.
 2. On the server, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh`
-3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, connect Tailscale, add your phone.
+3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
 4. Mac: `npm i -g https://vyre.run/box/vyre.tgz`, then `vyre up`, then `vyre capsule install`.
 5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
 
@@ -64,13 +64,13 @@ Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays 
 Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.
 
 ### Does it work on my phone?
-Yes, on iPhone and Android. Open Vyre at your own address, add it to your Home Screen, and pair it by scanning a code. The phone needs Tailscale signed in, because your address only opens from your own devices.
+Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.
 
 ### Where does my data live?
 Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.
 
-### What is Tailscale for?
-Tailscale joins your server, your computers and your phone into one private network. Your address only opens from devices on it, and it is required. The free plan is enough.
+### Do I need a VPN or another network app?
+No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.
 
 ### Does it replace Claude Code, Codex or Grok?
 No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.

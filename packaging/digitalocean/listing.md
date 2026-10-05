@@ -25,9 +25,9 @@ What you get:
 - Agents that keep working when your laptop is closed, and answer when you press Option-Space on your Mac or open Vyre on your phone.
 - An encrypted vault on the Droplet for your API keys. Anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 - Your sessions, memory and projects stay on this Droplet.
-- A private address on your own Tailscale network. The Droplet opens no port to the internet except SSH.
+- A private address on Vyre's own built-in network. The Droplet opens no port to the internet except SSH.
 
-What you need besides the Droplet: a Claude subscription or an Anthropic API key, a free Tailscale account, and a Mac or an iPhone or Android phone.
+What you need besides the Droplet: a Claude subscription or an Anthropic API key, and a Mac or an iPhone or Android phone.
 
 Vyre is open source (Apache 2.0): https://github.com/vyre-ai/vyre
 
@@ -50,7 +50,7 @@ Ubuntu 24.04 LTS (x64)
 1. Create the Droplet. Add your SSH key.
 2. Log in with SSH. A banner says whether Vyre has finished installing (about a minute after first boot).
 3. Run `sudo vyre setup`. It connects this server to your setup page.
-4. Finish in your browser at https://vyre.run/setup: connect your Claude account, add Tailscale, pair your Mac and phone.
+4. Finish in your browser at https://vyre.run/setup: connect your Claude account, pair your Mac and phone.
 
 To update Vyre later: `vyre update`. It checks the same signature before it changes anything.
 
