@@ -56,3 +56,32 @@ test("an upload path is checked before the box is asked, bytes become base64, an
   assert.match(m.spaceDriveRefusal("presence_required", ""), /Approve on this device/);
   assert.match(m.versionLine({ ver: 3, size: 10, at: 0 }, 3), /^Version 3, current, 10 B$/);
 });
+
+test("shared links: the words, the order, the address, and the three calls to the box", { skip: !strip }, async () => {
+  const m = await import("./space-model.ts");
+  const { spaceDriveSource } = await import("./space-source.ts");
+  const NOW = 1_800_000_000_000, DAY = 86_400_000;
+  const row = (/** @type {any} */ o) => ({ code: "c".repeat(22), url: "/v1/files/s?c=" + "c".repeat(22), name: "retainer.pdf", path: "Clients/A/retainer.pdf", version: null, size: 8, made_at: NOW - DAY, expires: NOW + 2 * DAY, opens: 0, active: true, ...o });
+  assert.equal(m.linkLine(row({}), NOW), "Works for 2 more days, not opened yet");
+  assert.equal(m.linkLine(row({ opens: 1, expires: NOW + 100 }), NOW), "Works for 1 more day, opened 1 time");
+  assert.equal(m.linkLine(row({ opens: 3 }), NOW), "Works for 2 more days, opened 3 times");
+  assert.match(m.linkLine(row({ active: false, expires: NOW - DAY }), NOW), /^Expired /);
+  assert.equal(m.linkLine(row({ active: false }), NOW), "Stopped");
+  const sorted = m.linksSorted([row({ code: "a", active: false, made_at: NOW }), row({ code: "b", made_at: NOW - 5 }), row({ code: "c", made_at: NOW - 1 })]);
+  assert.deepEqual(sorted.map((l) => l.code), ["c", "b", "a"]);
+  assert.equal(m.linkAddress("https://box.example/", row({})), "https://box.example/v1/files/s?c=" + "c".repeat(22));
+  const ask = m.linkAsk("retainer.pdf");
+  assert.equal(ask.title, "Share retainer.pdf with a link?");
+  assert.match(ask.why, /7 days.*copy.*not sealed/s);
+  assert.match(m.linkRefusal("too_large", ""), /8 MB/);
+  assert.match(m.linkRefusal("no_such_tool", ""), /Update your Vyre/);
+  /** @type {any[]} */ const seen = [];
+  const src = spaceDriveSource(async (tool, input) => { seen.push({ tool, input }); return { data: tool === "files.drive.link.list" ? { links: [row({})] } : tool === "files.drive.link.revoke" ? { revoked: true } : row({}) }; });
+  await src.linkCreate(undefined, "Clients/A/retainer.pdf");
+  await src.linkCreate("spc_x", "a/b", 2, 3);
+  assert.equal((await src.linkList()).length, 1);
+  await src.linkRevoke("c".repeat(22));
+  assert.deepEqual(seen.map((x) => x.tool), ["files.drive.link.create", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke"]);
+  assert.deepEqual(seen[0].input, { path: "Clients/A/retainer.pdf" });
+  assert.deepEqual(seen[1].input, { space: "spc_x", path: "a/b", version: 2, days: 3 });
+});
