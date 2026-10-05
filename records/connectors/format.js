@@ -169,7 +169,7 @@ export const patternOf = path => path.replace(/\{[^}]*\}/g, "*");
  * @param {Declaration} d @param {{ as?: "service-account", subject?: string, client?: string | { item: string, field?: string }, item?: string, field?: string }} [o]
  */
 export function toCredentialConfig(d, o = {}) {
-  const a = d.auth, host = new URL(d.base_url).hostname;
+  const a = d.auth;
   /** @type {any} */ let auth;
   if (o.as === "service-account" && !(a.type === "service-account" || (Array.isArray(a.also) && a.also.includes("service-account")))) throw Object.assign(new Error(`${d.id} does not sign in as a service account`), { code: "bad_input" });
   if (a.type === "service-account" || o.as === "service-account") {
@@ -181,12 +181,20 @@ export function toCredentialConfig(d, o = {}) {
   } else {
     auth = { type: a.type, ...(o.item ? { item: o.item, ...(o.field ? { field: o.field } : {}) } : {}), ...(a.header ? { header: a.header } : {}), ...(a.format ? { format: a.format } : {}) };
   }
+  return { auth, ...declarationParts(d) };
+}
+
+/**
+ * Everything of the credential that does not depend on how the person signs in: the host, the endpoint classes, the rate and the `service` block. A sign-in flow that makes its own
+ * credential (the OAuth one) adds these to the auth it made.
+ * @param {Declaration} d
+ */
+export function declarationParts(d) {
   // The vault's classes are read, send, spend and delete; a change in the service is held like a send, and a draft is the one non-read thing that is not held.
   const cls = (/** @type {Op} */ op) => (op.kind === "read" || op.kind === "draft" ? "read" : op.kind === "change" ? "send" : op.kind);
-  const ops = Object.values(d.ops);
   return {
-    auth, hosts: [host],
-    endpoints: ops.map(op => ({ method: op.method, path: patternOf(op.path), kind: cls(op) })),
+    hosts: [new URL(d.base_url).hostname],
+    endpoints: Object.values(d.ops).map(op => ({ method: op.method, path: patternOf(op.path), kind: cls(op) })),
     ...(d.rate ? { rate: { per_minute: d.rate.per_minute } } : {}),
     service: serviceOf(d),
   };

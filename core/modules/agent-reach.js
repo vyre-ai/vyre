@@ -94,6 +94,7 @@ export const PERSON_ONLY = new Map([
   ["computers.resume", "controls the person's own machine"],
   ["computers.tailnet.set", "controls the person's own machine: its network and hand-back"],
   ["connectors.scope", "widens what a connector may reach"],
+  ["connectors.declare", "makes a vault credential: the person's own act, with their own key"],
   ["gate.said.add", "would let an assistant widen its own authority: records the person's own words as approval"],
   ["github.connect", "needs the person's Face ID or presence: signs an account in or out"],
   ["github.connect.cancel", "needs the person's Face ID or presence: signs an account in or out"],

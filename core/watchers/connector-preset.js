@@ -14,6 +14,12 @@ import { parseWhen } from "./when.js";
 
 export const OVERLAP_MS = 10 * 60_000;
 
+const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+/** The watcher's folder name: the connector and what it watches (the mailbox, the calendar, or the label). @param {{ id: string }} d @param {{ poll: string, vars?: Record<string, string>, label?: string }} o */
+export function connectorWatcherName(d, o) {
+  return `${slug(d.id)}-${slug(o.label || Object.values(o.vars || {})[0] || o.poll)}`.slice(0, 60).replace(/-+$/, "");
+}
+
 /** The generic loop. `PLAN` is prepended as JSON, `M` is the mapper. */
 const LOOP = `
 const OVERLAP = ${OVERLAP_MS};
@@ -105,8 +111,7 @@ export function connectorPreset(o) {
     ...(poll.expand && expandOp ? { expand: { path: expandOp.path, args: poll.expand.args, query: poll.expand.query || {} } } : {}),
   };
   const code = `// Polls ${d.label} (${o.poll}) and files each new item. Generated from the connector's declaration; read-only.\nimport { readFileSync } from "node:fs";\nconst PLAN = ${JSON.stringify(plan)};\nconst M = ${MAPPER_SOURCE};\n${LOOP}`;
-  const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const name = `${slug(d.id)}-${slug(o.label || Object.values(vars)[0] || o.poll)}`.slice(0, 60).replace(/-+$/, "");
+  const name = connectorWatcherName(d, o);
   return { name, code, json: {
     name, project: o.project, schedule: t.schedule, emits: `${slug(d.id)}.found`, timeout: 120, memory: false, params: { connector: d.id, poll: o.poll, ...vars },
     net: { [plan.host]: { credential: o.credential } },

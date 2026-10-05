@@ -15,6 +15,10 @@
 import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { DECLARATIONS, declared } from "../../records/connectors/index.js";
+import { toCredentialConfig, isOutward } from "../../records/connectors/format.js";
+import { connectorWatcherName } from "../watchers/connector-preset.js";
+import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -117,6 +121,79 @@ export default {
         const who = String(meta && meta.caller || "");
         if (!PEOPLE.includes(who)) throw fail("only you change who may use a connection, from your own screen", "denied");
         return conn.setScope(input, { as: who });
+      },
+    });
+
+    // A connector as a declaration (records/connectors): what this build ships, in plain words, and making one into a vault credential. The declaration says where the service lives,
+    // what can be asked of it and which asks are outward; the credential carries that to the vault, which is where a Flow, a watcher and an assistant meet it.
+    ctx.tool("connectors.declared", {
+      effect: "read",
+      description: "The connectors this build ships as declarations (Stripe, Gmail, Google Calendar ...), each: id, label, how it signs in, its operations (name, label, kind, outward) and the polls a watcher can run on it, plus whether a credential of that name is already in the vault. Holds no value.",
+      input: obj({ id: str }),
+      run: async ({ id } = {}) => {
+        const list = id ? [declared(String(id))].filter(Boolean) : Object.values(DECLARATIONS);
+        if (id && !list.length) throw fail(`no connector ${String(id).slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
+        const have = new Set(((await ctx.call("vault.list", {})).data?.items || []).map(/** @param {any} x */ x => String(x.name)));
+        return { connectors: list.map(d => ({
+          id: d.id, label: d.label, host: new URL(d.base_url).hostname, auth: { type: d.auth.type, ...(d.auth.also ? { also: d.auth.also } : {}), ...(d.auth.scopes ? { scopes: d.auth.scopes } : {}) },
+          installed: have.has(d.id),
+          ops: Object.entries(d.ops).map(([name, op]) => ({ name, label: op.label || name, kind: op.kind, outward: isOutward(op), ...(op.idempotent === false ? { idempotent: false } : {}) })),
+          polls: Object.entries(d.poll || {}).map(([name, p]) => ({ name, label: p.label || name, every_minutes: p.every_minutes ?? 15 })),
+        })) };
+      },
+    });
+
+    // The default "Log communications" recipe for one mailbox or calendar: the watcher to write (watchers.preset, asked) and the Flow that files what it finds (flows.define, then a person approves).
+    // Nothing is written here: the person or their assistant makes each part under their own chain, and the vault credential, the watcher card and the Flow card are each theirs to say yes to.
+    ctx.tool("connectors.logging", {
+      effect: "read",
+      description: "The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, credential? (default: the connector's id), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.",
+      input: obj({ connector: str, address: str, project: str, credential: str, createUnknown: { type: "boolean" }, skipInternal: str }, ["connector", "address", "project"]),
+      run: async input => {
+        const d = declared(String(input.connector));
+        const poll = d && d.poll && Object.keys(d.poll).find(n => ["mail.recent", "events.changed"].includes(n));
+        if (!d || !poll) throw fail(`logging is for ${["gmail", "google-calendar"].join(" or ")}`, "bad_input");
+        const address = String(input.address || "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) && d.id === "gmail") throw fail("address is the mailbox's email address", "bad_input");
+        if (!address || address.length > 200) throw fail("address is the mailbox or calendar to log", "bad_input");
+        const needs = poll === "mail.recent" ? "mailbox" : "calendar";
+        const credential = input.credential ? String(input.credential) : d.id;
+        const watcher = { kind: "connector", connector: d.id, poll, project: String(input.project), credential, vars: { [needs]: address } };
+        const name = connectorWatcherName(d, { poll, vars: watcher.vars });
+        const flow = logCommunicationsFlow({ watcher: name, createUnknown: input.createUnknown === true, ...(input.skipInternal ? { skipInternal: String(input.skipInternal) } : {}) });
+        return { watcher, flow, name, steps: [
+          `connectors.declare { id: "${d.id}", ... } if the vault has no credential named ${credential} (or connect it with the ${d.id}-api app)`,
+          "watchers.preset with `watcher` (a draft with its card), then watchers.test, then the person grants the credential to it and turns it on with watchers.create",
+          "flows.define with `flow`, then a person approves it with flows.approve (the card shows it reads and writes records and never sends)",
+        ] };
+      },
+    });
+
+    ctx.tool("connectors.declare", {
+      effect: "write",
+      description: "Make a vault credential from a shipped declaration, so Flows, watchers and assistants can reach that service through the vault: { id, secret? (a key or token, for bearer and api-key connectors), as: \"service-account\" with subject (the address it acts as) and item (the vault item holding the service-account key), or client (the vault item holding an OAuth app's client id and secret), name? (default: the connector id), scope? }. A model never calls this. For an OAuth connector this makes the credential; the sign-in is then made with connectors.connect for the matching app.",
+      input: obj({ id: str, name: str, secret: str, as: { type: "string", enum: ["service-account"] }, subject: str, item: str, field: str, client: str, scope: { type: "object" } }, ["id"]),
+      callers: PEOPLE,
+      run: async (input, meta) => {
+        const who = String(meta && meta.caller || "");
+        if (!PEOPLE.includes(who)) throw fail("only you make a connector's credential, from your own screen", "denied");
+        const d = declared(String(input.id));
+        if (!d) throw fail(`no connector ${String(input.id).slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
+        const name = input.name ? String(input.name) : d.id;
+        const secretAuth = d.auth.type === "bearer" || d.auth.type === "api-key";
+        if (!secretAuth && input.secret) throw fail(`${d.label} does not take a pasted secret; it signs in as a service account (as, subject, item) or with an OAuth app (client)`, "bad_input");
+        let config;
+        try { config = toCredentialConfig(d, { ...(input.as ? { as: input.as } : {}), ...(input.subject ? { subject: String(input.subject) } : {}), ...(input.item ? { item: String(input.item), ...(input.field ? { field: String(input.field) } : {}) } : {}), ...(input.client ? { client: String(input.client) } : {}) }); }
+        catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
+        if (input.scope) config = { ...config, scope: input.scope };
+        if (secretAuth && !input.secret && !input.item) throw fail(`${d.label} signs in with a key: pass it as secret, or name the vault item that holds it (item)`, "bad_input");
+        const old = (await ctx.call("vault.list", { filter: name })).data?.items?.find(/** @param {any} x */ x => x.name === name);
+        // making it again replaces the person's own connector credential (a new key, a new scope); an item of any other kind is never overwritten
+        if (old && old.kind !== "api-credential") throw fail(`the vault already has an item named ${name} that is not an api credential; pass name or rename it first`, "exists");
+        const r = await ctx.call("vault.put", { name, kind: "api-credential", description: `${d.label} connector (made by Vyre)`, fields: { config: JSON.stringify(config), ...(input.secret ? { secret: String(input.secret) } : {}) } }, { as: who });
+        if (r.error) throw fail(`could not save the credential in the vault: ${r.error.message}`, r.error.code || "vault");
+        return { name, connector: d.id, host: new URL(d.base_url).hostname, ops: Object.keys(d.ops).length, outward: Object.entries(d.ops).filter(([, op]) => isOutward(op)).map(([n]) => n),
+          next: d.auth.type === "oauth" && !input.as ? "sign in with connectors.connect so the vault holds tokens" : "ready: Flows reach it as the connector " + name };
       },
     });
 

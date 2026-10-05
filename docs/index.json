@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1216,"event":461,"config":255,"env":248,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1219,"event":461,"config":255,"env":248,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -284,9 +284,12 @@
     {"kind":"tool","name":"connectors.connect.cancel","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsconnectcancel","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.connect.finish","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsconnectfinish","module":"connectors","mentions":[]},
     {"kind":"event","name":"connectors.connected","definedIn":"core/connectors/module.json","page":"reference/events.md#connectors","module":"connectors","mentions":[]},
+    {"kind":"tool","name":"connectors.declare","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsdeclare","module":"connectors","mentions":[]},
+    {"kind":"tool","name":"connectors.declared","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsdeclared","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.disconnect","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsdisconnect","module":"connectors","mentions":[]},
     {"kind":"event","name":"connectors.disconnected","definedIn":"core/connectors/module.json","page":"reference/events.md#connectors","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.list","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorslist","module":"connectors","mentions":[]},
+    {"kind":"tool","name":"connectors.logging","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorslogging","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.mention.resolve","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsmentionresolve","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.mention.search","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsmentionsearch","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.persist","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorspersist","module":"connectors","mentions":[]},
