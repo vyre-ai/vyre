@@ -84,6 +84,8 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   assert.match(fp, /^[0-9a-f]{16}$/);
   assert.equal((await ask("memory.identity.grant", { proof: {} }, "deck")).error?.code, "denied");
   assert.equal((await ask("memory.identity.grant", { proof: { signed: true } }, "deck")).error?.code, "denied", "a yes nobody was shown this for");
+  // the person-only rule is pinned here, not only by the manifest: an agent's session may not grant, nor hand in an answer, even with a proof the phone would accept
+  for (const tool of ["memory.identity.grant", "memory.identity.unlock.finish"]) assert.equal((await ask(tool, tool.endsWith("grant") ? { proof: { signed: true } } : { request: "x", answer: {} }, "mcp:agent:juno")).error?.code, "denied", `an agent's ${tool} is refused`);
   const early = await ask("memory.identity.unlock.begin", {}, "mcp:agent:juno");
   assert.equal(early.error, undefined);
   await assert.rejects(() => phone.answer(early.data.ask), { code: "needs_yes" }, "the phone does not answer a server it was not granted");
