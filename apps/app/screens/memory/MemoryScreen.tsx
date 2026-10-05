@@ -6,12 +6,13 @@ import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
 import { editReal, forgetReal, loadReal } from "./real";
-import { uncorrectReal } from "./extras";
+import { statsReal, uncorrectReal } from "./extras";
+import { pickStats, statsLine, type Stats } from "./extras-model";
 import { RealAsk, RealExtras } from "./RealExtras";
 import RealLessons from "./RealLessons";
 import RealChromeSites from "./RealChromeSites";
 import WhySheet from "./WhySheet";
-import { answer, edit, forget, group, restore, visible } from "./logic.js";
+import { answer, edit, forget, group, learnedToday, newestSeen, restore, visible } from "./logic.js";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
 /** A citation: the number in brackets, 12 mono, in the accent, set small beside the 17 answer. */
@@ -48,8 +49,13 @@ export default function MemoryScreen() {
   const [why, setWhy] = useState<Fact | null>(null);
   const [tab, setTab] = useState<"facts" | "lessons" | "sites">("facts");
   const [proposed, setProposed] = useState(0);
+  const [today, setToday] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
+  useEffect(() => { if (real) statsReal().then((d) => setStats(pickStats(d))).catch(() => setStats(null)); }, [real, facts.length]);
 
-  const shown = useMemo(() => visible(facts, scope), [facts, scope]);
+  const inScope = useMemo(() => visible(facts, scope), [facts, scope]);
+  const learned = useMemo(() => learnedToday(inScope, Date.now()), [inScope]);
+  const shown = real && today ? learned : inScope;
   const sections = useMemo(() => group(shown, mode), [shown, mode]);
   const ans = useMemo(() => (asked ? answer(facts, subjects, asked, scope) : null), [facts, asked, scope]);
   const sealed = (real ? [] : memoryRepo.sealed()).filter((s) => scope === "all" || s.space === scope);
@@ -127,6 +133,10 @@ export default function MemoryScreen() {
         </Banner>
       ) : null}
 
+      {real && stats ? <Text size="secondary" tone="muted">{statsLine(stats, learned.length)}</Text> : null}
+      {real ? <View className="flex-row pt-s2"><Chip selected={today} onPress={() => setToday((v) => !v)}>Learned today</Chip></View> : null}
+      {real && today && !learned.length && inScope.length ? <Card><EmptyState title="Nothing learned today" body={`The newest fact is from ${new Date(newestSeen(inScope)).toLocaleDateString()}.`} action={{ label: "Show all facts", onPress: () => setToday(false) }} /></Card> : null}
+
       <View className="pt-s4"><Segmented label="Facts by" value={mode} onChange={setMode} options={[["person", "People"], ["project", "Projects"], ["space", "Spaces"]]} /></View>
 
       {sections.length ? sections.map((s) => (
@@ -138,7 +148,7 @@ export default function MemoryScreen() {
         </View>
       )) : load.state === "loading" ? <LoadingState rows={3} />
         : load.state === "error" ? <ErrorState title="Memory did not load" reason={load.say ?? "Try again in a moment."} />
-        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
+        : real && today && inScope.length ? null : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {real ? <RealExtras /> : null}
 

@@ -58,3 +58,12 @@ export function answer(facts, subjects, q, scope) {
   if (!shown.length) return { kind: /** @type {const} */ ("boundary"), name: subjects[subject] };
   return { kind: /** @type {const} */ ("ok"), subject, name: subjects[subject], items: shown.map((fact, i) => ({ n: i + 1, fact })) };
 }
+
+/** The start of the day `now` falls in, in ms. @param {number} now */
+export const startOfDay = (now) => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); };
+
+/** The facts seen today (a fact with no time is not today), newest first. @template {{ seen?: number }} T @param {T[]} facts @param {number} now */
+export const learnedToday = (facts, now) => facts.filter((f) => (f.seen || 0) >= startOfDay(now)).sort((a, b) => (b.seen || 0) - (a.seen || 0));
+
+/** The newest time any fact was seen, or 0. @param {{ seen?: number }[]} facts */
+export const newestSeen = (facts) => facts.reduce((m, f) => Math.max(m, f.seen || 0), 0);

@@ -79,3 +79,34 @@ test("a box error keeps its code", { skip: !strip }, async () => {
   const m = memoryExtras(async () => ({ error: { code: "not_available", message: "memory is off" } }));
   await assert.rejects(m.graphReal(), (/** @type {any} */ e) => e.code === "not_available" && /memory is off/.test(e.message));
 });
+
+test("Learned today: facts seen since the start of the day, newest first; a fact with no time is not today; stats say how much is remembered", { skip: !strip }, async () => {
+  const { learnedToday, newestSeen, startOfDay } = await import("./logic.js");
+  const { pickStats, statsLine } = await import("./extras-model.ts");
+  const noon = new Date("2026-10-05T12:00:00").getTime();
+  const day = startOfDay(noon);
+  assert.equal(new Date(day).getHours(), 0);
+  const facts = [{ id: "a", seen: noon - 3600_000 }, { id: "b", seen: day - 1 }, { id: "c", seen: noon }, { id: "d" }, { id: "e", seen: day }];
+  assert.deepEqual(learnedToday(facts, noon).map((f) => f.id), ["c", "a", "e"]);
+  assert.deepEqual(learnedToday([], noon), []);
+  assert.equal(newestSeen(facts), noon);
+  assert.equal(newestSeen([]), 0);
+  const s = pickStats({ facts: 12, sessions: 3, nodes: 40, lastRun: { at: 1, age: "2 hours ago" } });
+  assert.deepEqual(s, { facts: 12, sessions: 3, nodes: 40, lastAge: "2 hours ago" });
+  assert.equal(statsLine(s, null), "12 facts from 3 sessions. Last read 2 hours ago.");
+  assert.equal(statsLine(s, 4), "12 facts from 3 sessions, 4 learned today. Last read 2 hours ago.");
+  assert.equal(statsLine({ facts: 1, sessions: 1, nodes: 1, lastAge: "" }, 1), "1 fact from 1 session, 1 learned today.");
+  assert.equal(pickStats(null), null);
+  assert.equal(pickStats({ nodes: 1 }), null);
+});
+
+test("memory.stats is asked with no input, and a real fact carries when it was seen", { skip: !strip }, async () => {
+  const { memoryExtras } = await import("./extras-source.ts");
+  const { toFact } = await import("./real-model.ts");
+  const seen = [];
+  await memoryExtras(async (tool, input) => { seen.push([tool, input]); return { data: { facts: 1 } }; }).statsReal();
+  assert.deepEqual(seen, [["memory.stats", {}]]);
+  const f = toFact({ id: "f1", text: "x", subject: { id: "s", label: "S", kind: "person" }, object: { id: "o", label: "O", kind: "org" }, confidence: 1, age: "today", source: null, ref: null, evidence: 1, seen: 1_800_000_000_000 });
+  assert.equal(f.seen, 1_800_000_000_000);
+  assert.equal(toFact({ id: "f2", text: "x", subject: { id: "s", label: "S", kind: "person" }, object: { id: "o", label: "O", kind: "org" }, confidence: 1, age: null, source: null, ref: null, evidence: 0, since: 5 }).seen, 5);
+});

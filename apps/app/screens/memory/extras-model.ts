@@ -36,3 +36,17 @@ export function asked(a: Asked): { kind: "answer"; text: string; sources: { name
   if (a.abstained || !a.answer) return { kind: "none", text: a.known?.[0] || "Nothing remembered about that yet." };
   return { kind: "answer", text: a.answer, sources: (a.sources ?? []).map((s) => ({ name: s.name || "a past session", quote: s.quote ?? "" })).filter((s) => s.name || s.quote) };
 }
+
+/** memory.stats (core/memory/graph.js stats()): how much Memory holds and the last curator run. */
+export type Stats = { facts: number; sessions: number; nodes: number; lastAge: string };
+export function pickStats(d: unknown): Stats | null {
+  const o = d as { facts?: unknown; sessions?: unknown; nodes?: unknown; lastRun?: { age?: unknown } | null } | null;
+  if (!o || typeof o !== "object" || typeof o.facts !== "number") return null;
+  return { facts: o.facts, sessions: Number(o.sessions) || 0, nodes: Number(o.nodes) || 0, lastAge: typeof o.lastRun?.age === "string" ? o.lastRun.age : "" };
+}
+/** The line under Ask: how much is remembered, and today's share when the filter is on. */
+export function statsLine(s: Stats, today: number | null): string {
+  const n = (x: number, one: string, many: string) => `${x} ${x === 1 ? one : many}`;
+  const base = `${n(s.facts, "fact", "facts")} from ${n(s.sessions, "session", "sessions")}`;
+  return `${base}${today === null ? "" : `, ${today} learned today`}${s.lastAge ? `. Last read ${s.lastAge}.` : "."}`;
+}

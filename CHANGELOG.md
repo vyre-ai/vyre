@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Memory's Facts tab on a real box has a "Learned today" filter (facts seen since the start of the day, newest first, with the newest fact's date when there are none) and a line under Ask from `memory.stats`: how many facts from how many sessions, how many learned today, and when Memory last read.
 - docs(work): docs/work/web2.md, the web-2 stream's notes: what is done, the open items and the next step.
 - feat(app): Find also lists file names from the Space Drive and from the chats the person is in (`files.drive.space.search`): a chat's file opens its chat, any other opens the Drive. Names and paths only, and what the person may not read is not there; the box asks the kernel per folder as the caller (work/web2-privacy). A box without the tool just shows no Drive section.
 - chore(app): Glass, renamed Screen Share, moves to 0.3.1 (user ruling), so for 0.2.9 nothing reaches it: `RC.glass` is false, /u/glass/<agent> goes back to Now, the Glass mini card opens the step's thread again, and `export:web` no longer copies the noVNC page (scripts/glass-assets.mjs stays). screens/glass, src/glass, apps/app/vendor/glass and the `glass.release` `noted` answer stay for 0.3.1.

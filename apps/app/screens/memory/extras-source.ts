@@ -16,6 +16,8 @@ export function memoryExtras(call: Call) {
     askReal: (question: string) => ask<Asked>("memory.ask", { question }),
     /** The turns and modules behind one fact (memory.why). */
     whyReal: (fact: string, limit = 10) => ask<Why>("memory.why", { fact, limit }),
+    /** How much Memory holds (memory.stats). */
+    statsReal: () => ask<unknown>("memory.stats", {}),
     graphReal: (limit = 150) => ask<GraphOut>("memory.graph", { limit }),
     /** Pin or mute a node everywhere; off undoes it. */
     async steerReal(mode: "pin" | "mute", node: string, off: boolean): Promise<void> {

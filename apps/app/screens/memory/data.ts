@@ -2,7 +2,7 @@
 import type { SpaceId } from "../places/scope";
 
 export type FactSource = { kind: "record" | "file" | "chat" | "email" | "flow"; label: string; target?: string };
-export type Fact = { id: string; sp: SpaceId; subj: string; kind: "person" | "project" | "space"; text: string; src: FactSource; by: string; when: string; used: number };
+export type Fact = { id: string; sp: SpaceId; subj: string; kind: "person" | "project" | "space"; text: string; src: FactSource; by: string; when: string; used: number; /** When the fact was last seen, in ms (a real box only). */ seen?: number };
 
 export const SUBJECTS: Record<string, string> = { jane: "Jane Doe", marcus: "Marcus Doe", estate: "Doe estate plan", harlow: "Harlow Legal", sam: "Sam", site: "Vyre site", alex: "Alex" };
 
