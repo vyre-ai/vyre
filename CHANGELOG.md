@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(names): the old 72-hour recovery rebind is removed (0.2.9, gap A10); instant recovery (the identity's own chain) is the only path. The directory Worker drops `POST /v1/names/recover` and `/recover/cancel`, the pending rebind and its landing, the recover rate limits and `mine`'s `pending`; `core/names` drops `names.recover` and `names.recover.code`, the `name.recovered`, `name.recovery-pending` and `name.recovery-cancelled` events, the `recovering` config key and the hourly cancel; the relay's setup channel no longer takes a recovery code. A pending rebind a record still carries from before is cleared on release or admin rebind, never landed. Support's admin rebind stays. The recovery code a claim returns and `/v1/names/code` stay for now (BACKLOG: retire recovery codes).
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
