@@ -132,9 +132,55 @@ await check("no: the stand-in phone refuses and the app says so", async () => {
   assert("ended" in out && out.ended === "refused", `expected refused: ${JSON.stringify(out)}`);
   return endLine(out.ended);
 });
-await check("records.define from the paired device (reported as it answers)", async () => {
-  const r = await dev("records.define", { diff: { add_types: [{ name: "walk_note", label: "Walk note", fields: [{ name: "title", label: "Title", kind: "text" }] }] } });
-  return r.error ? `refused: ${r.error.code}: ${String(r.error.message).slice(0, 140)}` : "accepted without a prompt";
+await check("records.define from the paired device (a relabel of one of the person's own types, then back)", async () => {
+  const ty = await dev("records.types", {});
+  if (ty.error) return `records.types refused: ${ty.error.code}: ${String(ty.error.message).slice(0, 120)}`;
+  const own = (ty.data?.types ?? []).find((t) => !/^(def-|flow-|goal$)/.test(String(t.name)) && !t.internal);
+  if (!own) return "the box has no type of the person's own to change";
+  const r = await dev("records.define", { diff: { change_types: [{ ...own, label: `${own.label} (walk)` }] } });
+  if (r.error) return `refused: ${r.error.code}: ${String(r.error.message).slice(0, 160)}`;
+  const back = await dev("records.define", { diff: { change_types: [own] } });
+  return `accepted without a prompt${back.error ? `; put back: ${back.error.code}` : "; put back"}`;
+});
+await check("define a type with a link, a stage and a sealed field, then add a record (from the paired device)", async () => {
+  const contacts = await dev("records.list", { type: "contact" });
+  const row = contacts.data?.rows?.[0];
+  const me = await dev("records.me", {});
+  const contact = row ? (row.urn ?? `vyre://${me.data?.space}/contact/${row.id}`) : null;
+  assert(contact, `no contact to link to: ${JSON.stringify(contacts).slice(0, 200)}`);
+  const type = { name: "walk_matter", label: "Walk matter", fields: [
+    { name: "title", kind: "text", label: "Title", required: true },
+    { name: "client", kind: "link", label: "Client", to: "contact" },
+    { name: "status", kind: "stage", label: "Status", options: ["New", "Open", "Done"] },
+    { name: "ssn", kind: "sealed", label: "Client SSN", seal: { level: "ai", class: "free" } },
+  ], stages: [{ name: "New" }, { name: "Open" }, { name: "Done" }] };
+  const def = await dev("records.define", { diff: { add_types: [type] } });
+  assert(!def.error || /exists|already/i.test(`${def.error.code} ${def.error.message}`), `define refused: ${def.error ? JSON.stringify(def.error).slice(0, 240) : ""}`);
+  const rec = await dev("records.create", { type: "walk_matter", data: { title: `Walk matter ${Date.now().toString(36).slice(-4)}`, client: { urn: contact }, status: "Open" } });
+  assert(!rec.error, `create refused: ${rec.error ? JSON.stringify(rec.error).slice(0, 240) : ""}`);
+  return `type ${def.error ? "already there" : "defined"}; record ${JSON.stringify(rec.data).slice(0, 100)}`;
+});
+await check("define a case type with a choice (practice area), a link and a sealed field, and add two records (from the paired device)", async () => {
+  const contacts = await dev("records.list", { type: "contact" });
+  const me = await dev("records.me", {});
+  const urnOf = (r) => r.urn ?? `vyre://${me.data?.space}/contact/${r.id}`;
+  const rows = contacts.data?.rows ?? [];
+  assert(rows.length >= 2, `need two contacts to link: ${rows.length}`);
+  const type = { name: "walk_case", label: "Walk case", fields: [
+    { name: "title", kind: "text", label: "Title", required: true },
+    { name: "practice_area", kind: "choice", label: "Practice area", options: ["Estate planning", "Probate", "Family law"] },
+    { name: "client", kind: "link", label: "Client", to: "contact" },
+    { name: "ssn", kind: "sealed", label: "Client SSN", seal: { level: "ai", class: "free" } },
+  ] };
+  const def = await dev("records.define", { diff: { add_types: [type] } });
+  assert(!def.error || /exists|already/i.test(`${def.error.code} ${def.error.message}`), `define refused: ${def.error ? JSON.stringify(def.error).slice(0, 240) : ""}`);
+  const made = [];
+  for (const [i, area] of ["Estate planning", "Probate"].entries()) {
+    const rec = await dev("records.create", { type: "walk_case", data: { title: `Walk case ${i + 1}`, practice_area: area, client: { urn: urnOf(rows[i]) } } });
+    assert(!rec.error, `create refused: ${rec.error ? JSON.stringify(rec.error).slice(0, 240) : ""}`);
+    made.push(rec.data?.record?.id);
+  }
+  return `type ${def.error ? "already there" : "defined"}; records ${made.join(", ").slice(0, 80)}`;
 });
 try { conn?.close(); } catch {}
 const failed = results.filter((r) => !r.ok);

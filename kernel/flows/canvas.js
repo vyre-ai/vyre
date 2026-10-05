@@ -9,7 +9,7 @@ import { describeTrigger, kindOf, whyRan } from "./triggers.js";
 export { describeTrigger };
 import { canonical, flowHash, walkSteps, BLOCK_KINDS } from "./schema.js";
 
-const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", service: "globe", fn: "code" };
+const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", extract: "tag", service: "globe", fn: "code" };
 
 /** @param {import('./compile.js').Catalog} cat @param {string} type */
 const typeLabel = (cat, type) => ((cat.types[type] && cat.types[type].label) || type).toLowerCase();
@@ -48,6 +48,7 @@ export function describeStep(s, cat) {
     case "call": return act.charAt(0).toUpperCase() + act.slice(1);
     case "stage": return `Move the ${typeLabel(cat, s.type)} to ${s.to}`;
     case "classify": return "Sort the text into a label";
+    case "extract": return "Read named fields out of the text";
     case "service": return `Call ${s.connector}${s.method === "GET" || s.method === "HEAD" ? "" : " (needs a yes)"}`;
     case "fn": return "Run a small piece of code";
     default: return s.kind;

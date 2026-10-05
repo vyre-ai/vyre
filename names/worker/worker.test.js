@@ -1,6 +1,6 @@
 // @ts-check
 // The name directory against a fake Workers runtime (relay/worker/fake-cf.js) and a fake Cloudflare
-// DNS API (fake-dns.js): claim, point, ACME, recover, tombstones, limits, and the request checks.
+// DNS API (fake-dns.js): claim, point, ACME, tombstones, limits, and the request checks.
 
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
@@ -239,7 +239,7 @@ test("request checks: a foreign Origin, cross-site, content type, size, methods,
   assert.equal((await claim({ origin: "https://names.vyre.run.evil.example" })).status, 403);
   assert.equal((await claim({ "sec-fetch-site": "cross-site" })).status, 403);
   assert.equal((await a.del("/v1/names/acme", { own: true }, { headers: { origin: "https://evil.example" } })).status, 403);
-  assert.equal((await a.post("/v1/names/recover", { name: "x" }, { headers: { origin: "https://evil.example" } })).status, 403);
+  assert.equal((await a.post("/v1/names/code", { name: "x" }, { headers: { origin: "https://evil.example" } })).status, 403);
   assert.equal((await claim({ "content-type": "text/plain" })).status, 415);
   assert.equal((await claim({ "content-type": "application/x-www-form-urlencoded" })).status, 415);
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.size, 0, "nothing was written by any refused request");
@@ -338,111 +338,12 @@ async function claimed(w, name = "alex") {
   return { a, code: c };
 }
 
-test("recover: 72 hours pending, then the name moves to the new route", async t => {
-  const w = world(t), { a, code: c } = await claimed(w);
-  const n = boxOf(w), next = "the next code";
-  const r = data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", next) }));
-  assert.equal(r.pendingUntil, w.clock.t + 72 * HOUR);
-  // the owner sees a notice, and is still the owner
-  const mine = data(await a.get("/v1/names/mine"));
-  assert.equal(mine.pending.eta, r.pendingUntil);
-  assert.ok(mine.notices.some(x => x.kind === "recovery-pending" && x.by === n.route.slice(0, 8)));
-  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "taken");
-  assert.equal(code(await n.post("/v1/names/point", { name: "alex", ip: "100.101.9.9" })), "not_yours");
-  w.clock.t += 71 * HOUR;
-  assert.equal(data(await a.get("/v1/names/mine")).name, "alex");
-  w.clock.t += 2 * HOUR;
-  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "mine");
-  assert.equal(data(await a.get("/v1/names/mine")).name, null, "the old route no longer holds it");
-  assert.equal(w.dns.records.length, 0, "the old address is unpublished");
-  const m = data(await n.get("/v1/names/mine"));
-  assert.deepEqual([m.name, m.state, m.pointed], ["alex", "live", true]);
-  assert.ok(m.notices.some(x => x.kind === "recovered"));
-  data(await n.post("/v1/names/point", { name: "alex", ip: "100.101.9.9" }));
-  // the code was replaced by the one the new box chose: the old one no longer works
-  const third = boxOf(w);
-  assert.equal(code(await third.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "x") })), "refused");
-  assert.equal((await third.post("/v1/names/recover", { name: "alex", code: next, next: await nextHash("alex", "y") })).status, 200);
-});
-
-test("recover: the old route cancels a pending rebind with no click, and the code stays valid", async t => {
+test("code: the owner replaces the recovery code", async t => {
   const w = world(t), { a, code: c } = await claimed(w);
   const n = boxOf(w);
-  data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "z") }));
-  assert.equal(code(await n.post("/v1/names/recover/cancel", { name: "alex" })), "not_yours", "only the current owner");
-  assert.deepEqual(data(await a.post("/v1/names/recover/cancel", { name: "alex" })), { name: "alex", cancelled: true });
-  assert.deepEqual(data(await a.post("/v1/names/recover/cancel", { name: "alex" })), { name: "alex", cancelled: false });
-  assert.ok(data(await a.get("/v1/names/mine")).notices.some(x => x.kind === "recovery-cancelled"));
-  w.clock.t += 100 * HOUR;
-  assert.equal(data(await a.get("/v1/names/mine")).name, "alex", "it never moved");
-  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "taken");
-});
-
-test("recover: wrong code, unknown name, rate limits, one pending, one name per route", async t => {
-  const w = world(t), { a, code: c } = await claimed(w);
-  const n = boxOf(w), h = await nextHash("alex", "q");
-  const wrong = await n.post("/v1/names/recover", { name: "alex", code: "aaaa-bbbb-cccc-dddd-eeee-ff", next: h });
-  const none = await n.post("/v1/names/recover", { name: "nobody", code: c, next: h });
-  assert.equal(wrong.status, 403);
-  assert.deepEqual(wrong.json, none.json, "an unknown name answers as a wrong code does");
-  assert.equal(code(await n.post("/v1/names/recover", { name: "alex", code: c, next: "nothex" })), "refused");
-  assert.equal(code(await a.post("/v1/names/recover", { name: "alex", code: c, next: h })), "already_yours");
-  const log = w.rt.object("v1", "DIRECTORY").ctx.storage.map.get("n/alex").log;
-  assert.ok(log.some(x => x.ok === false) && log.some(x => x.ok === true), "attempts are logged");
-  // a route that already holds a name cannot take another
-  const holder = boxOf(w);
-  data(await holder.post("/v1/names/claim", { name: "bobby" }));
-  assert.equal(code(await holder.post("/v1/names/recover", { name: "alex", code: c, next: h })), "one_per_route");
-  w.clock.t += DAY;
-  data(await n.post("/v1/names/recover", { name: "alex", code: c, next: h }));
-  assert.equal(data(await n.post("/v1/names/recover", { name: "alex", code: c, next: h })).pendingUntil > 0, true, "the same route asking again is fine");
-  const rival = boxOf(w);
-  assert.equal(code(await rival.post("/v1/names/recover", { name: "alex", code: c, next: h })), "pending");
-  // 5 attempts a name a day, right or wrong
-  const w2 = world(t), { code: c2 } = await claimed(w2);
-  const guesser = boxOf(w2);
-  for (let i = 0; i < 5; i++) assert.equal((await guesser.post("/v1/names/recover", { name: "alex", code: "aaaa-bbbb-cccc-dddd-eeee-ff", next: h }, { ip: `192.0.2.${i + 10}` })).status, 403);
-  const stopped = await guesser.post("/v1/names/recover", { name: "alex", code: c2, next: h }, { ip: "192.0.2.99" });
-  assert.equal(stopped.status, 429, "even the right code waits for tomorrow");
-  w2.clock.t += DAY;
-  assert.equal((await guesser.post("/v1/names/recover", { name: "alex", code: c2, next: h }, { ip: "192.0.2.99" })).status, 200);
-  // and 20 attempts an address across names
-  const w3 = world(t), g = boxOf(w3);
-  for (let i = 0; i < 20; i++) await g.post("/v1/names/recover", { name: `guess-${String.fromCharCode(97 + (i % 26))}x`, code: "x", next: h }, { ip: "192.0.2.50" });
-  assert.equal((await g.post("/v1/names/recover", { name: "guess-zx", code: "x", next: h }, { ip: "192.0.2.50" })).status, 429);
-});
-
-test("recover works on a tombstone (nobody to cancel), and on a name whose owner is gone", async t => {
-  const w = world(t), { a, code: c } = await claimed(w);
-  data(await a.post("/v1/names/release", { name: "alex" }));
-  const n = boxOf(w);
-  data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "t") }));
-  w.clock.t += 73 * HOUR;
-  const m = data(await n.get("/v1/names/mine"));
-  assert.deepEqual([m.name, m.state], ["alex", "live"]);
-});
-
-test("code: the owner replaces the recovery code, which also cancels a pending recovery", async t => {
-  const w = world(t), { a, code: c } = await claimed(w);
-  const n = boxOf(w);
-  data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "a") }));
   assert.equal(code(await n.post("/v1/names/code", { name: "alex", next: await nextHash("alex", "b") })), "not_yours");
   assert.equal(code(await a.post("/v1/names/code", { name: "alex", next: "bad" })), "bad_code");
   data(await a.post("/v1/names/code", { name: "alex", next: await nextHash("alex", "newcod") }));
-  assert.equal(data(await a.get("/v1/names/mine")).pending, null);
-  assert.equal(code(await boxOf(w).post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "c") })), "refused");
-  assert.equal(code(await boxOf(w).post("/v1/names/recover", { name: "alex", code: "newcoe", next: await nextHash("alex", "c") })), "refused");
-  assert.equal((await boxOf(w).post("/v1/names/recover", { name: "alex", code: "NEW-cod", next: await nextHash("alex", "c") })).status, 200, "case and dashes do not matter");
-});
-
-test("a recovery whose new route took another name meanwhile does not land", async t => {
-  const w = world(t), { a, code: c } = await claimed(w);
-  const n = boxOf(w);
-  data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "a") }));
-  data(await n.post("/v1/names/claim", { name: "bobby" }));
-  w.clock.t += 73 * HOUR;
-  assert.equal(data(await a.get("/v1/names/mine")).name, "alex");
-  assert.ok(data(await a.get("/v1/names/mine")).notices.some(x => x.kind === "recovery-void"));
 });
 
 test("a DNS failure while wiping is retried by the sweep", async t => {
@@ -476,8 +377,6 @@ test("admin rebind: a name moves at once, is logged, tells the old route, and ke
   assert.equal(old.name, null);
   assert.equal(old.moved.name, "alex", "the old route is told where its name went");
   data(await n.post("/v1/names/point", { name: "alex", ip: "100.101.9.9" }));
-  const third = boxOf(w);
-  assert.equal((await third.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "y") })).status, 200, "the recovery code still works");
 });
 
 test("admin rebind: refused with no secret configured, no header, a wrong header, an unknown name, a malformed route, a taken route", async t => {
