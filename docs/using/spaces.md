@@ -14,9 +14,9 @@ A space is where a set of people and their work live: chats, projects, records, 
 |---|---|---|
 | **Personal** | On your devices | Your own space. It keeps your chats and projects on your devices. |
 | **My Cloud** | On your own server | Your own space on a computer or a server that stays on. Your phones and browsers connect to it. It adds Records, flows and the Planner, reachable from anywhere. |
-| **Cloud** | On a team's server | A team space. It runs on a server and is tagged **Cloud**, with the team's own name beside it (for example "Harlow Legal"). |
+| **Cloud** | On a team's server | A team space. It runs on a server and is tagged **Cloud**, with the team's own name beside it (for example "Juniper Studio"). |
 
-Your space list reads "Personal, Harlow Legal" before you have your own server, and "My Cloud, Harlow Legal" after.
+Your space list reads "Personal, Juniper Studio" before you have your own server, and "My Cloud, Juniper Studio" after.
 
 ## Personal
 
