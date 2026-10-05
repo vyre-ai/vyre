@@ -44,7 +44,7 @@ test("a 0.2.x home upgrades: its access rows are kept, nothing is granted, one N
   assert.equal((await d.kernel.gateway.ask.needsYou(owner)).filter((/** @type {any} */ x) => /Restore who could see/.test(x.title)).length, 1);
   // 4. ONE yes: the owner approves the item, and the Work service carries out exactly that act, once, as them
   const row = await d.kernel.gateway.ask.get(owner, item.id);
-  assert.equal(row.state, "needs-check", "the item waits on the owner's check");
+  assert.equal(row.state, "needs_check", "the item waits on the owner's check");
   await d.kernel.gateway.ask.decide(owner, item.id, { outcome: "approved", proof: { method: "stand-in" } });
   await until(async () => (await call("projects.access.check", { project: "northwind", agent: "kit" })).data.granted === true, "the grant");
   assert.equal((await call("projects.access.check", { project: "northwind", agent: "other" })).data.granted, false, "what was revoked stays revoked");
