@@ -343,6 +343,7 @@ export class TwentyStore {
     { const all = new Map([...this.plans].map(([n, q]) => [n, q.def])); for (const t of [...(diff.add_types ?? []), ...(diff.change_types ?? [])]) all.set(t.name, t);
       for (const list of inversesOf([...all.values()]).values()) for (const i of list) inverseLabels.set(`${i.from_type}.${i.from_field}`, i.label); }
     /** @type {{ p: import("./plan.js").TypePlan, f: import("./plan.js").FieldPlan }[]} */ const pending = [];
+    /** @type {(() => Promise<void>)[]} */ const shows = [];
     /** A relation field: many-to-one from `objectId` to the target, and its inverse on the target (named by `inverseLabel`). */
     const createRelation = async (/** @type {string} */ objectId, /** @type {string} */ name, /** @type {string} */ label, /** @type {string} */ targetId, /** @type {string} */ inverseLabel) => {
       await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: objectId, type: "RELATION", name, label, isNullable: true, relationCreationPayload: { targetObjectMetadataId: targetId, targetFieldLabel: inverseLabel, targetFieldIcon: "IconLink", type: "MANY_TO_ONE" } } } });
@@ -425,8 +426,8 @@ export class TwentyStore {
       }
       // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
       for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
-      // The Records' own copy of how the type is shown (stores/twenty/views.js): the field order of its table, and its stored views (new, changed or gone).
-      {
+      // The Records' own copy of how the type is shown (stores/twenty/views.js): the field order of its table, and its stored views (new, changed or gone). Run after the relations exist: a view may name a link.
+      shows.push(async () => {
         const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
         const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
         if (o) {
@@ -434,7 +435,7 @@ export class TwentyStore {
           await syncFieldOrder(this.client, target, p);
           if ((def.views && def.views.length) || (known && known.def.views && known.def.views.length)) for (const c of await syncViews(this.client, target, p, this.space, known ? known.def : undefined)) changes.push(c);
         }
-      }
+      });
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
       this.plans.set(def.name, p);
@@ -443,6 +444,7 @@ export class TwentyStore {
       for (const t of diff.add_types ?? []) await apply(t, false);
       for (const t of diff.change_types ?? []) await apply(t, true);
       await relate();
+      for (const show of shows) await show();
       for (const name of diff.remove_types ?? []) {
         const p = this.plans.get(name); if (!p) continue;
         const live = await this.query(name, { page: { limit: 1 }, include_deleted: false });

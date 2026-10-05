@@ -11,7 +11,7 @@ import path from "node:path";
 import { createTwentyStore } from "../../stores/twenty/store.js";
 import { TwentyClient } from "../../stores/twenty/client.js";
 import { PLANNER_TYPES } from "./types.js";
-import { TASK } from "../../records/core-types.js";
+import { TASK, PROJECT } from "../../records/core-types.js";
 import { world, newKernel, prepareKernel, FACTS, T0, HOUR, DAY, MIN, iso } from "./testing.js";
 
 const URL_ = process.env.VYRE_TWENTY_LIVE_URL, KEY_FILE = process.env.VYRE_TWENTY_LIVE_KEY_FILE;
@@ -27,7 +27,7 @@ if (!URL_ || !KEY_FILE) {
     const k = await newKernel(store, more);
     await prepareKernel(k);
     // The Twenty outlives a run: what an earlier one left is cleared, so this one reads only its own (the types are defined first so the store can be asked).
-    await store.define({ add_types: [...PLANNER_TYPES, TASK] });
+    await store.define({ add_types: [...PLANNER_TYPES, PROJECT, TASK] });
     for (const type of ["reminder", "note", "planner_firing", "planner_state", "event", "task"]) {
       for (;;) {
         const page = await store.query(type, { page: { limit: 100 } }).catch(() => ({ rows: [] }));

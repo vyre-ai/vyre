@@ -177,7 +177,7 @@ export const TASK = {
     f("rich_text", "note", "Note"),
     f("datetime", "due", "Due"),
     choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
-    { name: "stage", kind: "stage", label: "Stage", owned_by: "kernel" },
+    { name: "stage", kind: "text", label: "Stage", owned_by: "kernel" },
     f("link", "parent", "Part of", { to: "task" }),
     f("link", "project", "Project", { to: "project" }),
     f("link", "record", "About", { owned_by: "kernel" }),
