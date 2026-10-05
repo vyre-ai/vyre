@@ -65,6 +65,38 @@ export function createSealing(cfg) {
       return shown;
     },
 
+    /**
+     * Moving sealed values to a Space on another server (the Personal to My Cloud upgrade; ADR 0047 addendum). The sealing processes do the work and the plaintext stays inside them: `wrapKey` and `import`
+     * run at the TARGET (a remote kernel client reaches them over the wire), `exportApprove` and `export` at the source, on the person's own device.
+     */
+    async wrapKey(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.put", i.record);
+      return run(() => sealer.api.wrapKey({ chain }));
+    },
+    /** The person's one approval for a whole move: the proof is over the upgrade, the target's key and every sealed reference it will carry. */
+    async exportApprove(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.export", i.record);
+      const out = await run(() => sealer.api.exportApprove({ chain, upgrade_id: i.upgrade_id, target_key: i.target_key, refs: i.refs, proof: i.proof }));
+      try { cfg.log.append(chain, { type: "field.export_approved", sv: 1, subject: i.record, data: { upgrade_id: i.upgrade_id, count: out.approved }, vis: "owner", red: "internal" }); } catch { throw new KernelError("unavailable", "this approval could not be logged, so nothing was approved"); }
+      return out;
+    },
+    /** One sealed value, wrapped to the target's key: under a recorded move approval (`upgrade_id`, a ref on its list, once) or the person's own proof. Always in the log (which field, never the value). */
+    async export(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.export", i.record);
+      const out = await run(() => sealer.api.export({ chain, ref: i.ref, target_key: i.target_key, record: i.record, to_record: i.to_record, field: i.field, proof: i.proof, upgrade_id: i.upgrade_id }));
+      try { cfg.log.append(chain, { type: "field.exported", sv: 1, subject: i.record, data: { ref: i.ref, field: i.field, ...(i.upgrade_id ? { upgrade_id: i.upgrade_id } : {}) }, vis: "owner", red: "internal" }); } catch { throw new KernelError("unavailable", "this export could not be logged, so nothing was moved"); }
+      return { blob: out.blob };
+    },
+    /** The target stores a wrapped value as a new sealed value of the record, answering the reference the record then holds. */
+    async import(chain, i) {
+      mustChain(chain); mustRecord(i.record);
+      await gate(chain, "seal.put", i.record);
+      return run(() => sealer.api.import({ chain, blob: i.blob, record: i.record, field: i.field }));
+    },
+
     /** Merge a sealed value into a template for a verified destination. The call names only the approval; everything else is looked up. */
     async use(chain, i) {
       mustChain(chain); mustRecord(i.record);

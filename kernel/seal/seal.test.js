@@ -623,3 +623,26 @@ test("export and import: a sealed value moves to a Space on another server wrapp
   const proof = b.alex.proof(to, "seal.reveal", { ref: moved.ref.ref, purpose: "check" });
   assert.equal((await b.s.api.reveal({ chain: to, ref: moved.ref.ref, purpose: "check", proof })).value, "123-45-6789", "the target reads it for the person");
 });
+
+test("export under one approval: the person's proof once over the move's list, then each listed ref once, to that key only, no proof of its own", async t => {
+  const a = await setup(t), b = await setup(t);
+  const one = await put(a.s, "123-45-6789"), two = await put(a.s, "987-65-4321", { record: `${REC}2` });
+  const SPACE2 = "spc_testspace0002", REC2 = `vyre://${SPACE2}/contact/c_jane`;
+  const from = person(), to = person("per_alex", "deck", SPACE2);
+  const key = (await b.s.api.wrapKey({ chain: to })).key, other = (await b.s.api.wrapKey({ chain: person("per_alex", "deck", "spc_testspace0003") })).key;
+  const call = (ref, over = {}) => a.s.api.export({ chain: from, ref, record: REC, to_record: REC2, field: "ssn", target_key: key, upgrade_id: "up1", ...over });
+  assert.equal(await code(call(one.ref.ref)), "needs_presence", "no approval yet: no export");
+  const refs = [one.ref.ref, two.ref.ref].sort(), fields = { upgrade_id: "up1", target_key: key, refs };
+  assert.equal(await code(a.s.api.exportApprove({ chain: from, ...fields })), "needs_presence", "the approval is the person's own proof");
+  assert.equal(await code(a.s.api.exportApprove({ chain: withAgent(), ...fields, proof: a.alex.proof(withAgent(), "seal.export_approve", fields) })), "human_only");
+  assert.equal((await a.s.api.exportApprove({ chain: from, ...fields, proof: a.alex.proof(from, "seal.export_approve", fields) })).approved, 2);
+  assert.equal(await code(call(one.ref.ref, { target_key: other })), "needs_presence", "only the approved key");
+  assert.equal(await code(call("seal_notonthelist")), "needs_presence", "only a ref on the list");
+  assert.equal(await code(call(one.ref.ref, { upgrade_id: "up2" })), "needs_presence", "only that move");
+  assert.equal(await code(a.s.api.export({ chain: withAgent(), ref: one.ref.ref, record: REC, to_record: REC2, field: "ssn", target_key: key, upgrade_id: "up1" })), "human_only");
+  const { blob } = await call(one.ref.ref);
+  assert.equal(await code(call(one.ref.ref)), "needs_presence", "each ref once");
+  assert.ok((await b.s.api.import({ chain: to, blob, record: REC2, field: "ssn" })).ref.ref);
+  assert.ok((await call(two.ref.ref)).blob, "the other listed ref still goes");
+  assert.equal(diskHolds(b.dir, "123-45-6789"), null);
+});

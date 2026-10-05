@@ -43,7 +43,9 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       reseal: i => withCtx("reseal", i, { to_ctx: chainCtx(i.to_chain), ref: i.ref, to_record: i.to_record, field: i.field }),
       /** Across servers: `wrapKey` answers this Space's public wrapping key; `export` (source process, the person's own proof) answers a blob wrapped to a target's key; `import` (target process) stores it. */
       wrapKey: i => withCtx("wrap.pub", i),
-      export: i => withCtx("export", i, { ref: i.ref, target_key: i.target_key, record: i.record, to_record: i.to_record, field: i.field, proof: i.proof }),
+      /** One approval for a whole move: the person's proof once over `{ upgrade_id, target_key, refs }`; then `export` with the same `upgrade_id` takes each listed ref once, with no proof of its own. */
+      exportApprove: i => withCtx("export.approve", i, { upgrade_id: i.upgrade_id, target_key: i.target_key, refs: i.refs, proof: i.proof }),
+      export: i => withCtx("export", i, { ref: i.ref, target_key: i.target_key, record: i.record, to_record: i.to_record, field: i.field, proof: i.proof, upgrade_id: i.upgrade_id }),
       import: i => withCtx("import", i, { blob: i.blob, record: i.record, field: i.field }),
       reveal: i => withCtx("reveal", i, { ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
     },

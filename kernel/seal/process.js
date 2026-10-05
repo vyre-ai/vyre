@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, reseal, wrap.pub, export, import, spacekey.pub, spacekey.sign, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, match, drop, presence.enrol, presence.revoke, presence.check, reseal, wrap.pub, export.approve, export, import, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -99,12 +99,36 @@ export class Sealer {
     const priv = crypto.createPrivateKey(/** @type {any} */ (rec).plaintext);
     return { priv, pub: crypto.createPublicKey(priv).export({ type: "spki", format: "der" }).toString("base64") };
   }
+  /**
+   * One approval for a whole move (the Personal to My Cloud upgrade): the person's own proof, once, over the upgrade, the target's key and the exact list of sealed references it will carry. The sealing
+   * process keeps that grant in memory only (a restart loses it, and the upgrade is asked again), for a day, and each reference on the list may then be exported once, to that key only.
+   */
+  exportApprove(r) {
+    const ctx = this.ctxOf(r.ctx);
+    need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
+    need(typeof r.upgrade_id === "string" && r.upgrade_id.length > 0 && r.upgrade_id.length <= 100 && typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && Array.isArray(r.refs) && r.refs.length > 0 && r.refs.length <= 5000 && r.refs.every(x => typeof x === "string" && x.length <= 100), "bad_input");
+    const refs = [...new Set(r.refs)].sort();
+    const why = this.presence.refuse(r.proof, { op: "seal.export_approve", space: ctx.space, fields: { upgrade_id: r.upgrade_id, target_key: r.target_key, refs }, ctx });
+    if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+    this.exports ??= new Map();
+    const t = this.now();
+    for (const [k, g] of this.exports) if (g.expires <= t) this.exports.delete(k);
+    this.exports.set(`${ctx.space}\0${r.upgrade_id}`, { person: ctx.person, target_key: r.target_key, refs: new Set(refs), used: new Set(), expires: t + 24 * 3600_000 });
+    return { approved: refs.length, expires_at: t + 24 * 3600_000 };
+  }
   export(r) {
     const ctx = this.ctxOf(r.ctx);
     need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
     need(typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && typeof r.record === "string" && typeof r.field === "string" && typeof r.ref === "string", "bad_input");
-    const why = this.presence.refuse(r.proof, { op: "seal.export", space: ctx.space, fields: { ref: r.ref, record: r.record, ...(typeof r.to_record === "string" ? { to_record: r.to_record } : {}), field: r.field, target_key: r.target_key }, ctx });
-    if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+    if (typeof r.upgrade_id === "string") {
+      // Under an approved move: only a reference on its list, once, to its key, for the person who approved it, within its day.
+      const g = this.exports && this.exports.get(`${ctx.space}\0${r.upgrade_id}`);
+      need(g && g.expires > this.now() && g.person === ctx.person && g.target_key === r.target_key && g.refs.has(r.ref) && !g.used.has(r.ref), "needs_presence");
+      g.used.add(r.ref);
+    } else {
+      const why = this.presence.refuse(r.proof, { op: "seal.export", space: ctx.space, fields: { ref: r.ref, record: r.record, ...(typeof r.to_record === "string" ? { to_record: r.to_record } : {}), field: r.field, target_key: r.target_key }, ctx });
+      if (why) throw err(why === "no_proof" ? "needs_presence" : why);
+    }
     const v = this.open(ctx, r.ref);
     let pub; try { pub = crypto.createPublicKey({ key: Buffer.from(r.target_key, "base64"), type: "spki", format: "der" }); } catch { throw err("bad_input"); }
     need(pub.asymmetricKeyType === "x25519", "bad_input");
@@ -269,7 +293,7 @@ export class Sealer {
   async handle(req) {
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
-      case "reseal": return this.reseal(req); case "wrap.pub": return { key: this.wrapKey(this.ctxOf(req.ctx)).pub }; case "export": return this.export(req); case "import": return this.import(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
+      case "reseal": return this.reseal(req); case "wrap.pub": return { key: this.wrapKey(this.ctxOf(req.ctx)).pub }; case "export": return this.export(req); case "export.approve": return this.exportApprove(req); case "import": return this.import(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
       case "lookup": return this.lookup(req); case "match": return this.match(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
