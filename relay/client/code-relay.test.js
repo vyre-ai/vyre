@@ -66,7 +66,8 @@ test("typed code end to end: ten sessions from many addresses close the code and
     await fetch(`${w.base}/v1/wink/code`, { method: "POST", headers: { "content-type": "application/json", "x-test-ip": `192.0.2.${i + 1}` },
       body: JSON.stringify({ rv: w.shown.rv, s: "AAAAAAAAAAAAAAAAAAAAAA".slice(0, 21) + "ABCDEFGHIJ"[i], n: 1, m: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE" }) });
   }
-  await new Promise(r => setTimeout(r, 100));
+  // Under load the close and the fresh code take longer than a fixed wait: look for them for up to 5 s.
+  for (let i = 0; i < 100 && !(w.events.find(e => e[0] === "wink.code.closed") && w.wink.status().code !== first); i++) await new Promise(r => setTimeout(r, 50));
   assert.equal(/** @type {any} */ (w.events.find(e => e[0] === "wink.code.closed"))[1].reason, "too_many");
   const now = w.wink.status();
   assert.ok(now && now.code !== first, "a fresh code with no tap");

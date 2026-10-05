@@ -3,7 +3,6 @@
  "files": [
   ".github/workflows/box-image.yml",
   "apps/CONTRACT.md",
-  "apps/RELEASE.md",
   "apps/android/app/src/main/java/sh/vyre/app/api/ApiError.kt",
   "apps/android/app/src/main/java/sh/vyre/app/ui/FirstRun.kt",
   "apps/android/app/src/test/java/sh/vyre/app/FormatTest.kt",
