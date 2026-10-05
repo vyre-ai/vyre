@@ -44,6 +44,7 @@ try {
   const t1 = Date.now();
   const report = await runUpgrade({ plan, local, remote });
   lap(`upgrade ran in ${((Date.now() - t1) / 1000).toFixed(1)}s: ${JSON.stringify(report.moved.records)} notMoved ${report.notMoved.length}`);
+  for (const x of report.notMoved.slice(0, 4)) console.log("NOT MOVED", x.what, "->", x.why);
   let ok = 0;
   for (let i = 0; i < N; i++) {
     const l = await remote.records.get(remote.chain, "lead", leads[i]);
