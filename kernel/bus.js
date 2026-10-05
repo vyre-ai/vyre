@@ -212,4 +212,18 @@ export class Events {
     }
     return Number.isFinite(limit) ? (tail ? out.slice(-limit) : out.slice(0, limit)) : out;
   }
+
+  /**
+   * Delete a thread's events for good (a person deleted the thread): every entry of the log filed under it is erased, so its history is gone from the log and from every read. With `source`, only what that
+   * module emitted (a module erases its own). Returns how many.
+   * @param {string} thread @param {string} [source]
+   */
+  eraseThread(thread, source) {
+    let n = 0;
+    for (const e of [...this.k.log.iterate({ subject_prefix: this.#subject("x", thread) })]) {
+      const ev = Events.#fromLog(e);
+      if (ev && ev.thread === thread && (source === undefined || ev.source === source)) { this.k.log.erase(e.seq); n++; }
+    }
+    return n;
+  }
 }

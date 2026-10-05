@@ -1108,6 +1108,8 @@ export class Registry {
         since: (id, opts) => events.since(id, opts),
         // One thread's own events, oldest first (an indexed read of the log).
         ofThread: (thread, opts) => events.ofThread(thread, opts),
+        // Delete every event of a thread (what the person asked for when they deleted it, whichever module said it): the threads module's alone.
+        eraseThread: (thread) => { if (m.name !== "threads") throw new Error("only the threads module deletes a thread's events"); return events.eraseThread(thread); },
         // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
         // follows the stream from this id, has no gap.
         latestId: () => events.latestId(),

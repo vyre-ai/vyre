@@ -129,3 +129,14 @@ test("events: a home from before the bus moved into the kernel log keeps its thr
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 4, "the old table is left as it was");
   assert.equal(new Events().importLegacy(new DatabaseSync(":memory:")), 0, "a home with no old table copies nothing");
 });
+
+test("events: eraseThread removes every event of a deleted thread, from every read, and leaves the others", () => {
+  const ev = new Events();
+  ev.emit("threads", "thread.started", {}, { thread: "t1" });
+  ev.emit("memory", "memory.noted", { n: 1 }, { thread: "t1" });
+  ev.emit("threads", "thread.started", {}, { thread: "t2" });
+  assert.equal(ev.eraseThread("t1"), 2);
+  assert.deepEqual(ev.ofThread("t1"), []);
+  assert.deepEqual(ev.since(0).map(e => e.thread), ["t2"]);
+  assert.equal(ev.eraseThread("t1"), 0);
+});
