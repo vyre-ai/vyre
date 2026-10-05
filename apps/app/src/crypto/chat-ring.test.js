@@ -3,7 +3,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { jwkOfAgree, holdersFor, newChatRing, lendChatKey } from "./chat-ring.js";
-import { b64, ecdhFrom, fingerprint, pointOf } from "../../../../lib/keywrap.js";
+import { b64, fingerprint, pointOf } from "../../../../lib/keywrap.js";
 import { openBundle, openRing } from "../../../../lib/chat-keys.js";
 
 const subtle = globalThis.crypto.subtle;
@@ -11,7 +11,7 @@ async function device() {
   const pair = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const jwk = await subtle.exportKey("jwk", pair.publicKey);
   const pub = { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
-  return { pub, point: b64(pointOf(pub)), holder: await fingerprint(pub), ecdh: ecdhFrom(pair.privateKey), priv: pair.privateKey };
+  return { pub, point: b64(pointOf(pub)), holder: await fingerprint(pub), ecdh: async (epk) => new Uint8Array(await subtle.deriveBits({ name: "ECDH", public: await subtle.importKey("raw", epk, { name: "ECDH", namedCurve: "P-256" }, false, []) }, pair.privateKey, 256)), priv: pair.privateKey };
 }
 
 test("an identity entry's agree point reads back as the device's public JWK; anything else is refused", async () => {
