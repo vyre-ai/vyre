@@ -766,7 +766,7 @@ page({
 // ---------- privacy ----------
 // Every claim here is checked against the code before it ships (platform reads it, then the stores see it). Where a claim depends on a
 // build (store push, a cache that moves to disk) the sentence says so. With CONTACT_EMAIL null the page points at GitHub only.
-const CONTACT_EMAIL = 'privacy@vyre.run'; // PLACEHOLDER: the lead does not know the real address. The user must confirm a monitored mailbox exists, or set this to null, before the stores see the page.
+const CONTACT_EMAIL = 'privacy@vyre.run'; // Forwarded to the maintainer by a Cloudflare Email Routing rule on the vyre.run zone ("privacy@ to the maintainer", set 5 Oct 2026, user's decision).
 const ul = (items) => `<ul class="plain" style="margin:0 0 4px;padding-left:1.1em">${items.map((x) => `<li style="margin:.45em 0">${x}</li>`).join('')}</ul>`;
 const PRIV = `
 <section class="phead">

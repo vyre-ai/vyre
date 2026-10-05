@@ -21,6 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 6 | 0 | cli |
+| [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
@@ -64,6 +65,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 20 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 39 | 23 | capsule, cli, deck |
+| [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -139,6 +141,18 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
+
+## apps
+
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).
+
+- Folder: `local/apps`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [6](tools.md#apps)
+- Emits: [2 events](events.md#apps)
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## artifacts
 
@@ -621,6 +635,18 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## releases
+
+The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
+
+- Folder: `core/apps`, version 0.1.0
+- Runs on: `box`
+- Requires: `vault`
+- Tools: [2](tools.md#releases)
+- Emits: no events
+- Shows on: cli
+- Needs vault: `android-release-key`
 
 ## rules
 
