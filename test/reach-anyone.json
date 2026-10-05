@@ -393,6 +393,10 @@
    "module": "files",
    "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
   },
+  "flows.budget": {
+   "module": "flows",
+   "reason": "read: anyone in the Space reads the AI allowance; setting it (tokens_per_day, context_tokens) is refused in the tool unless the caller is an owner or an admin of the Space"
+  },
   "flows.card": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
@@ -724,6 +728,10 @@
   "harness.brief": {
    "module": "harness",
    "reason": "own-session check (own(), core/harness): a verified hook names only its own session; an unverified SessionStart brief only informs (it warns a terminal resuming a live headless thread), so it may name any session; it reads and says, never drains"
+  },
+  "harness.end": {
+   "module": "harness",
+   "reason": "a mutating verb, guarded as every Harness hook: HOOK_CALLERS and own() refuse a caller that is not the session's own hook; it only says thread.stopped once for that session"
   },
   "harness.enrich": {
    "module": "harness",
@@ -1465,6 +1473,10 @@
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
+  "threads.rename": {
+   "module": "threads",
+   "reason": "guarded: guard() refuses callers that may not rename sessions and mayReach() refuses a thread outside the caller's reach, as for threads.archive"
+  },
   "threads.rewind": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
@@ -1912,6 +1924,22 @@
   "work.know.suggestions": {
    "module": "work",
    "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.project.create": {
+   "module": "work",
+   "reason": "a mutating verb, guarded: the record is made under the CALLER's own chain (records.create), and the Drive folder marker under the caller's own chain too (drive.write), so a caller without either cannot make a project"
+  },
+  "work.project.rename": {
+   "module": "work",
+   "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
+  },
+  "work.session.move": {
+   "module": "work",
+   "reason": "guarded: the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
+  },
+  "work.session.rename": {
+   "module": "work",
+   "reason": "guarded: the record update runs under the CALLER's own chain (records.update); the thread side is threads.rename, which refuses a caller who may not reach that thread"
   },
   "work.situation": {
    "module": "work",
