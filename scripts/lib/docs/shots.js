@@ -18,7 +18,7 @@
 // Each entry of SHOTS:
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
-//   world    which sample world renders it: deck (the Deck, from deck/test/world.js), onboard
+//   world    which sample world renders it: app (the app's web export, sample world), deck (the Deck, from deck/test/world.js), onboard
 //            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass)
@@ -61,8 +61,31 @@ const SEARCH = `const s = document.querySelector("header input[type=search], hea
   s.spellcheck = false; s.focus(); s.value = "harlow intake"; s.dispatchEvent(new Event("input", { bubbles: true }));
   await wait(1500);`;
 
+// The app's first run, shot from the app's own web export built with the sample world (EXPO_PUBLIC_VYRE_MOCK=1:
+// alex, Juniper Studio, juno, kit). A script taps by the words on the buttons, the way a person does.
+const APP_TAP = `const tap = async (t, ms = 6000) => { const t0 = Date.now(); for (;;) {
+    const el = [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === t).pop();
+    if (el) { el.click(); await wait(900); return; }
+    if (Date.now() - t0 > ms) throw new Error("no " + t + " on the screen"); await wait(150); } };`;
+const INSTALL = ["apps/app/screens/install/InstallScreen.tsx", "apps/app/screens/install/data.ts", "apps/app/screens/install/flow.js"];
+const PAIRING = ["apps/app/screens/devices/PairParts.tsx", "apps/app/src/api/pairing-session.ts"];
+const PAIR_SCRIPT = `${APP_TAP}
+  await tap("Continue"); await tap("On a server you have"); await tap("I ran it");`;
+
 /** @type {any[]} */
 export const SHOTS = [
+  { name: "first-run-claim", dir: "get-started", world: "app", url: "/u/install", width: 390, height: 780, phone: true, themes: BOTH,
+    script: `${APP_TAP}\n  await tap("Get started");\n  const f = document.querySelector("input"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; f.focus(); set.call(f, "alex-rivera"); f.dispatchEvent(new Event("input", { bubbles: true })); await wait(900);`, shows: [...INSTALL] },
+  { name: "first-run-space", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
+    script: `await wait(600);`, shows: [...INSTALL] },
+  { name: "first-run-pair-code", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
+    script: PAIR_SCRIPT, shows: [...INSTALL, ...PAIRING] },
+  { name: "first-run-pair-words", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
+    script: `${PAIR_SCRIPT}\n  await tap("Use the sample code");`, shows: [...INSTALL, ...PAIRING] },
+  { name: "first-run-chat", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
+    script: `await wait(800);`, shows: ["apps/app/app/chat-demo.tsx", "apps/app/src/chat/ChatScreen.tsx", "apps/app/src/chat/mock-stream.ts"] },
+  { name: "first-run-now", dir: "get-started", world: "app", url: "/u/now", width: 390, height: 844, phone: true, themes: BOTH,
+    script: `await wait(800);`, shows: ["apps/app/screens/now/NowScreen.tsx", "apps/app/screens/shell/data.ts"] },
 ];
 
 /** CLI output is shown as text, not pictures: these are the commands docs-shots --cli prints from the sample world. */
