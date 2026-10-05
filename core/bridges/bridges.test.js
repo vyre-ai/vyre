@@ -377,7 +377,7 @@ test("bridges BR-1: the person is the verified caller's, never the input's: a gu
   // the person's own deck as kit: allowed (nothing is held back by the identity check)
   assert.ok(!(await h.call("bridges.view.read", input["bridges.view.read"], "deck")).error, "kit reading as kit through his own surface");
   // anonymous, a plain mcp session, a hook, a guest and a module: each naming kit gets a refusal, and no data
-  for (const caller of ["mcp", "harness", "hook", "tailnet-guest:mallory@example.com", "module:other"]) {
+  for (const caller of ["mcp", "harness", "hook", "guest:mallory@example.com", "module:other"]) {
     for (const tool of reads) {
       const r = await h.call(tool, input[tool], caller);
       assert.ok(r.error, `${tool} as ${caller} must be refused`);

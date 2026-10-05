@@ -22,8 +22,11 @@ const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEVICES = /** @type {Map<string, any>} */ (new Map());
 globalThis.__syncDevices = DEVICES;
 const FAKE_RELAY = `export default { async start(ctx) {
-  ctx.tool("relay.device.info", { internal: true, run: async ({ id }) => { const d = globalThis.__syncDevices.get(String(id)); return d ? { name: d.name, kind: d.kind, trusted: true, pairedAt: 1, presenceKey: null, removed: Boolean(d.removed) } : null; } });
-  ctx.tool("relay.devices.list", { internal: true, run: async () => ({ devices: [...globalThis.__syncDevices].map(([id, d]) => ({ id, name: d.name, kind: d.kind, removed: Boolean(d.removed) })) }) });
+  ctx.tool("relay.device.info", { internal: true, run: async ({ id, name }) => {
+    const hit = id !== undefined ? [id, globalThis.__syncDevices.get(String(id))] : [...globalThis.__syncDevices].find(([, d]) => d.name === name && !d.removed) || [];
+    const d = hit[1];
+    return d ? { id: String(hit[0]), name: d.name, kind: d.kind, trusted: true, pairedAt: 1, presenceKey: null, removed: Boolean(d.removed) } : null;
+  } });
   return { async stop() {} };
 } };`;
 
@@ -38,7 +41,7 @@ async function boxRegistry(t, { modules = [] } = {}) {
   const fp = [];
   if (!modules.includes("relay")) {
     const mods = tempHome(t);
-    writeModule(mods, "relay", { roles: ["box"], does: { tools: ["relay.device.info", "relay.devices.list"] } }, FAKE_RELAY);
+    writeModule(mods, "relay", { roles: ["box"], does: { tools: ["relay.device.info"] } }, FAKE_RELAY);
     fp.push(mods);
     found.push(...discover([mods], { firstPartyRoots: [mods] }));
     want.push("relay");

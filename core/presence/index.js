@@ -204,7 +204,7 @@ export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 const vaultSessionCaller = caller => {
   const c = String(caller || "");
   if (/(?:^|[\s:])agent:/.test(c)) return false;
-  return c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
+  return /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
 };
 
 /** How long one proof covers a login's windowed calls: as long as a session. */

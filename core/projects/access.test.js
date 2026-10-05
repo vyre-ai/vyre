@@ -250,7 +250,7 @@ test("projects.reach: the true owner is unrestricted; an unnamed, unrecognised c
   for (const caller of ["cli", "local", "deck", "capsule", "module:memory", "mcp", "mcp:thread:t1"]) {
     assert.deepEqual(await w.call("projects.reach", { caller }), { all: true, agent: null }, caller);
   }
-  for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
+  for (const caller of ["unknown", "guest:eve@example.com", "hook"]) {
     const r = await w.call("projects.reach", { caller }).catch(e => e);
     assert.equal(r.code, "denied", `${caller}: ${r.message}`);
   }
@@ -258,7 +258,7 @@ test("projects.reach: the true owner is unrestricted; an unnamed, unrecognised c
 
 test("projects.reach: with the kernel's `person` answer the label decides nothing: a person is the owner whatever the label, a non-person with an owner-looking label is refused", async t => {
   const w = await started(t);
-  assert.deepEqual(await w.call("projects.reach", { caller: "tailnet-guest:x", person: true }), { all: true, agent: null });
+  assert.deepEqual(await w.call("projects.reach", { caller: "guest:x", person: true }), { all: true, agent: null });
   for (const caller of ["cli", "deck", "capsule", "mcp", "unknown"]) {
     const r = await w.call("projects.reach", { caller, person: false }).catch(e => e);
     assert.equal(r.code, "denied", `${caller}: ${r.message}`);

@@ -14,12 +14,10 @@ import { writeModule } from "../helpers.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-/** Mirrors core/modules/index.js's ownerDevice (an owner-signed-in tailnet node, or a paired
- * relay device) without importing it: this logic is also written out to its own module file on
+/** Mirrors core/modules/index.js's ownerDevice (a paired device) without importing it: this logic is also written out to its own module file on
  * disk, so it stays self-contained rather than depending on a relative path back into core/. */
 const isOwner = c => OWNER.has(String(c)) || String(c || "").startsWith("module:")
   || /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""))
-  || /^tailnet:(?!agent:)./.test(String(c || ""))
   || /^device:[a-z2-7]{16}$/.test(String(c || ""));
 const agentNamed = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
 const denied = message => Object.assign(new Error(message), { code: "denied" });

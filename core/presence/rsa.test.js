@@ -14,7 +14,7 @@ import { open } from "../store/index.js";
 import { tempHome } from "../../test/helpers.js";
 
 const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
-const WHO = "tailnet:alex@example.com";
+const WHO = "device:nw3b43olz4rzbzfe";
 const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
 const rsaPair = (modulusLength = 2048, publicExponent = 65537) => crypto.generateKeyPairSync("rsa", { modulusLength, publicExponent });
 

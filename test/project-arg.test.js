@@ -23,7 +23,7 @@ const EXEMPT = {
   "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",
   "work.team.doing": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
 };
-const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "tailnet", "device", "space", "agent", "link", "mobile"]);
+const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "device", "space", "agent", "link", "mobile"]);
 
 test("project grants: every agent-reachable tool with a project, projects or cwd input declares projectArg or cwdArg", () => {
   const h = harvest({});

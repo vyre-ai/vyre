@@ -412,18 +412,18 @@ test("relay: a device reports its path; the box measures the relay round trip an
 
   // The same phone over the tailnet: its node, from whois, is linked by the code, once.
   const node = { stableId: "nABC123", node: "alex-iphone", login: "alex@example.com", tags: [], caps: {} };
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", rtt: 18 }, "tailnet:alex@example.com", { peer: node })).error.code, "bad_input", "an unlinked node is nobody");
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: "wrong" }, "tailnet:alex@example.com", { peer: node })).error.code, "denied");
-  const linked = await d.registry.call("relay.devices.path", { path: "direct", rtt: 18, id, code: r.data.link }, "tailnet:alex@example.com", { peer: node });
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", rtt: 18 }, "device:nw3b43olz4rzbzfe", { peer: node })).error.code, "bad_input", "an unlinked node is nobody");
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: "wrong" }, "device:nw3b43olz4rzbzfe", { peer: node })).error.code, "denied");
+  const linked = await d.registry.call("relay.devices.path", { path: "direct", rtt: 18, id, code: r.data.link }, "device:nw3b43olz4rzbzfe", { peer: node });
   assert.deepEqual(linked.data, { path: "direct", device: id });
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: r.data.link }, "tailnet:alex@example.com", { peer: node })).error.code, "denied", "the code works once");
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: r.data.link }, "device:nw3b43olz4rzbzfe", { peer: node })).error.code, "denied", "the code works once");
 
   p.ws.close();
   await new Promise(res => setTimeout(res, 50));
   me = (await d.registry.call("relay.devices.list", {}, "cli")).data.devices[0];
   assert.deepEqual([me.path, me.rtt, me.node, me.online], ["direct", 18, "alex-iphone", true]);
   assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "device:nw3b43olz4rzbzfe", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
 });
 
 test("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
@@ -544,7 +544,7 @@ test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, b
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: url, i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
   const bad = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
   assert.equal(bad.error.code, "bad_input");
-  for (const caller of ["tailnet-guest:sam@example.com", "mcp:agent:kit", "anonymous"]) {
+  for (const caller of ["guest:sam@example.com", "mcp:agent:kit", "anonymous"]) {
     const r = await d.registry.call("relay.join", { url: bogus }, caller, PROOF);
     assert.equal(r.error.code, "denied", caller);
   }
@@ -920,7 +920,7 @@ test("relay: /v1/pair is rate-limited per IP", async t => {
 
 test("relay.status and the device list are the owner's: a bare model session, the harness, a Vyre session and a thread claim are refused; the person's surfaces are not", async t => {
   const { d } = await world(t);
-  for (const caller of ["mcp", "harness", "session:s1", "mcp:thread:t1", "cli:thread:t1", "mcp:agent:kit", "anonymous", "hook", "tailnet-guest:sam@harlow.example"]) {
+  for (const caller of ["mcp", "harness", "session:s1", "mcp:thread:t1", "cli:thread:t1", "mcp:agent:kit", "anonymous", "hook", "guest:sam@harlow.example"]) {
     const r = await d.registry.call("relay.status", {}, caller);
     assert.ok(r.error, `${caller} is refused relay.status`);
   }

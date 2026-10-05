@@ -173,7 +173,7 @@ test("mail: surfaces come from the vault's list for the verified caller, and a s
   assert.deepEqual(await ids("capsule"), ["cn_imap_alex", "cn_google_work"]);
   assert.deepEqual(await ids("mcp:agent:kit"), ["cn_google_work"], "agents only where granted");
   assert.deepEqual(await ids("mcp", { agent: "juno", thread: "t-5" }), ["cn_google_work"]);
-  assert.deepEqual(await ids("tailnet-guest:someone"), [], "an unknown caller sees nothing");
+  assert.deepEqual(await ids("guest:someone"), [], "an unknown caller sees nothing");
 
   // Two accounts and none named: a question, listing both.
   const amb = await w.as("capsule")("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi" });

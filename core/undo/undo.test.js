@@ -173,9 +173,9 @@ test("a failing inverse marks the row failed, says so, and can be tried again", 
 
 test("labels: who counts as the person, and the same actor across transports", () => {
   // A phone arrives as its paired device label (with a person session), never the bare label `mobile`; the one list of person surfaces is lib/caller.js's.
-  for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex-mbp", "device:abcdefghijklmnop"]) assert.ok(isPerson(c), c);
+  for (const c of ["cli", "local", "deck", "capsule", "device:gpzhvr7irq45zdmx", "device:abcdefghijklmnop"]) assert.ok(isPerson(c), c);
   assert.ok(!isPerson("mobile"), "a bare `mobile` label is no one");
-  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "module:watchers", "hook", "tailnet:agent:kit", "tailnet-guest:x"]) assert.ok(!isPerson(c), c);
+  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "module:watchers", "hook", "agent:kit", "guest:x"]) assert.ok(!isPerson(c), c);
   assert.ok(sameActor("mcp:agent:kit", "harness:agent:kit"));
   assert.ok(!sameActor("mcp:agent:kit", "mcp:agent:juno"));
   assert.ok(sameActor("module:watchers", "module:watchers"));

@@ -33,12 +33,10 @@
 // stopped thread when it next runs) and model.switched moves the chip.
 //
 // Tools are learnt through core/caps.js: the first "no such tool" from an older box (or its
-// threads.tasks answering so, for the tools that shipped with it) switches a control off, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
-// {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
+// threads.tasks answering so, for the tools that shipped with it) switches a control off, with "Needs the sessions update" as its title; the words stay in the box.
 //
 // A session busy in the user's terminal takes the message into the inbox queue instead: threads.send
-// answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id), and
-// opts.onQueue hears how many wait and for whom (the Mac's lease line).
+// answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id).
 
 import { h, put, link } from "../js/dom.js";
 import { kbd } from "../js/platform.js";
@@ -115,17 +113,17 @@ const COMMANDS_RETRY_MS = 15_000;
 
 /**
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
- *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
+ *   onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
  *   project?: () => string|null, onRewind?: () => void, onUndo?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
  *   onRecall?: (hit: { session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
- * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
+ * here, on send).
  * project: this thread's project slug, for "@role" (team.default.get/team.add both require one) - null with no project.
  * onFind: "/find [words]" (a local command, nothing sent) - words is "" when none were typed.
  * onRecall: a "From your past sessions" row was tapped (recall.related's own hit shape) - opening
  * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
- * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
+ * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setBusy: (on: boolean) => void,
  *   setText: (text: string, note?: string) => void, tag: (v: { kind: string, id: string, name: string }) => string, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, keyUp: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
  */
@@ -133,8 +131,6 @@ export function mountComposer(opts) {
   const { thread } = opts;
   const S = opts.session || null;
   const patch = opts.patch || (() => {});
-  /** The paired Mac this session lives on, or null for the box's own. */
-  let machine = opts.machine || null;
   let leaseTimer = null;
   let sending = false;
   let busy = false;
@@ -191,18 +187,14 @@ export function mountComposer(opts) {
     onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
   const attachBtn = h("button", { class: "ibtn composer-attach", type: "button", "aria-label": "Attach images", title: "Attach images (PNG, JPEG, GIF, WebP)",
     onclick: () => picker.click() }, icon("plus", 16));
-  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", disabled: !!machine, "aria-label": "Talk", title: "Tap to talk, hold to push-to-talk (Ctrl+M)",
+  const micBtn = h("button", { class: "ibtn composer-mic", type: "button", "aria-label": "Talk", title: "Tap to talk, hold to push-to-talk (Ctrl+M)",
     onpointerdown: /** @type {any} */ (e => { if (e.button !== undefined && e.button !== 0) return; try { micBtn.setPointerCapture(e.pointerId); } catch {} voicePressBegin(); }),
     onpointerup: () => voicePressEnd(), onpointercancel: () => voicePressEnd() }, icon("mic", 16));
   const voicePill = h("div", { class: "composer-voice-pill", hidden: true, role: "status" });
-  const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => { if (!machine) e.preventDefault(); },
-    ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length || machine) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
+  const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => e.preventDefault(),
+    ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
     h("div", { class: "composer-row" }, attachBtn, micBtn, picker, ta, stopBtn, send),
   );
-  /** Messages waiting in the inbox queue of a session busy in the terminal (the Mac's), by the id thread.queued gives. */
-  const waiting = new Map();
-  let busyName = "";
-  function drawQueued() { opts.onQueue?.(waiting.size, busyName); }
   const note = h("div", { class: "composer-note", role: "status" });
   // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
   const tipSlot = h("div", { class: "composer-tip", hidden: true });
@@ -236,13 +228,13 @@ export function mountComposer(opts) {
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
-    if (leaseTimer || machine) return; // a Mac's lease is not forwarded
+    if (leaseTimer) return;
     leaseTimer = setTimeout(() => { leaseTimer = null; }, 4000); leaseTimer.unref?.();
     attempt("threads.lease", { thread }).catch(() => {});
   }
 
   /** Can the chips act? A Switchboard session on this box with its state at hand. */
-  const rich = () => !!S && !machine;
+  const rich = () => !!S;
   /** A tool's control is off once the box said it has no such tool. @param {string} tool */
   const off = tool => CAPS.has(tool) === false;
 
@@ -270,15 +262,14 @@ export function mountComposer(opts) {
       return;
     }
     const kind = draftKind(ta.value);
-    ta.placeholder = machine ? "Message this session"
-      : busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
+    ta.placeholder = busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
     root.setAttribute("data-mode", kind);
     if (!rich()) { chips.hidden = true; chips.replaceChildren(); chipSig = ""; return; }
     chips.hidden = false;
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
     const vts = tagUI.chips();
-    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, s.effort ?? null, machine ? null : runsOn(ta.value, answers, providerName), answers.map(a => [a.provider, a.account, a.now]),
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, s.effort ?? null, runsOn(ta.value, answers, providerName), answers.map(a => [a.provider, a.account, a.now]),
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
@@ -294,7 +285,7 @@ export function mountComposer(opts) {
     const fallback = !answers.length; // an older box without providers.list: the model menu it always had
     const gate = fallback ? "threads.model" : "threads.switch";
     put(chips,
-      !machine && (s.provider || s.model) ? h("button", { class: "btn btn-ghost btn-sm composer-chip composer-answer", type: "button", disabled: fallback ? off(gate) : (!choosable || off(gate)),
+      (s.provider || s.model) ? h("button", { class: "btn btn-ghost btn-sm composer-chip composer-answer", type: "button", disabled: fallback ? off(gate) : (!choosable || off(gate)),
         title: choosable || fallback ? "Choose who answers, its model and effort" : "The account that answers", "aria-label": `Answered by ${line}`, "aria-haspopup": choosable || fallback ? "menu" : null,
         onclick: () => (fallback ? openModels() : openAnswerWith()) },
         s.provider ? providerMark(s.provider, 18) : null, h("span", { class: "composer-answer-name" }, line || "Model"), choosable || fallback ? icon("chevron", 16) : null) : null,
@@ -302,7 +293,7 @@ export function mountComposer(opts) {
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
       tagUI.chipsEl(),
       // "@codex ...": this one turn runs on that account, and says which when the provider has more than one.
-      (() => { const on = machine ? null : runsOn(ta.value, answers, providerName); return on ? h("span", { class: "composer-kind composer-runs-on", role: "status" }, "This turn runs on " + on) : null; })(),
+      (() => { const on = runsOn(ta.value, answers, providerName); return on ? h("span", { class: "composer-kind composer-runs-on", role: "status" }, "This turn runs on " + on) : null; })(),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -437,7 +428,6 @@ export function mountComposer(opts) {
 
   async function loadCommands() {
     if (commands && (!commandsAt || Date.now() - commandsAt < COMMANDS_RETRY_MS)) return commands;
-    if (machine) { commands = normalizeCommands(null); commandsAt = 0; return commands; }
     // {thread, commands: [{name, description, argumentHint}]}; empty while the thread is not
     // running (the list comes with the session), so the static one stands in and is asked again.
     const r = await CAPS.use("threads.commands", () => attempt("threads.commands", { thread }));
@@ -453,9 +443,9 @@ export function mountComposer(opts) {
     const cmd = findCommand(text, at);
     if (cmd) { showCommands(cmd); return; }
     const men = findMention(text, at);
-    if (men && !machine) { showFiles(men); return; }
+    if (men) { showFiles(men); return; }
     const vm = findVaultMention(text, at);
-    if (vm && !machine && !draftKind(text).startsWith("shell")) { tagUI.show(vm); return; }
+    if (vm && !draftKind(text).startsWith("shell")) { tagUI.show(vm); return; }
     if (menu.kind === "command" || menu.kind === "mention" || menu.kind === "vault") menu.close();
   }
 
@@ -501,7 +491,7 @@ export function mountComposer(opts) {
       ? "\nMilestones:\n" + goal.milestones.map((m, i) => (i + 1) + ". " + m).join("\n") : "");
     goal = null;
     // A running turn: this joins the queue like any other command sent mid-turn, not a steer.
-    sendMessage(text, busy && !machine ? "queue" : null);
+    sendMessage(text, busy ? "queue" : null);
   }
   function cancelGoal() { goal = null; setValue(""); }
 
@@ -603,7 +593,7 @@ export function mountComposer(opts) {
   }
 
   async function openVoice() {
-    if (voiceSession || voiceOpening || machine) return;
+    if (voiceSession || voiceOpening) return;
     voiceOpening = true; voiceWantStopOnOpen = false; voiceWantCancelOnOpen = false;
     if (voiceKnown === null) { const s = await voiceStatus(); voiceKnown = s ? s.ready : null; }
     if (voiceKnown !== true) {
@@ -681,7 +671,6 @@ export function mountComposer(opts) {
 
   /** The mic button, or Ctrl+M: tap starts and stays open; held past VOICE_HOLD_MS, release stops. */
   function voicePressBegin() {
-    if (machine) return;
     voicePressWasOpen = voiceListening || voiceOpening;
     if (voicePressWasOpen) return; // already open: wait for the release to stop it (tap-to-stop)
     voiceHeld = false;
@@ -717,7 +706,7 @@ export function mountComposer(opts) {
   }
   /** Whether the box is in a state worth asking recall.related about at all. */
   function wantHint() {
-    return !!opts.onRecall && !machine && draftKind(ta.value) === "message" && ta.value.trim().length >= HINT_MIN_CHARS && !hintDismissed;
+    return !!opts.onRecall && draftKind(ta.value) === "message" && ta.value.trim().length >= HINT_MIN_CHARS && !hintDismissed;
   }
   async function runHint() {
     if (!wantHint()) { hideHints(); return; }
@@ -832,7 +821,7 @@ export function mountComposer(opts) {
   function onPaste(/** @type {ClipboardEvent} */ e) {
     // The next input event's new text is pasted (its inputType says so too, where the browser gives one).
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
-    if (!items.length || machine) { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); return; }
+    if (!items.length) { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); return; }
     e.preventDefault();
     takeFiles(items.map(it => it.getAsFile()));
   }
@@ -890,16 +879,16 @@ export function mountComposer(opts) {
     // The Send button (or its hold) while a goal is being built: keyboard Cmd+Enter finishes
     // (handled in onKey, below, where the modifier is at hand); a click just adds the line.
     if (goal) { advanceGoal(); return; }
-    const a = enterAction({ text: ta.value, running: busy && !machine, queueToggle, images: images.length, touch: touch(), ...how });
+    const a = enterAction({ text: ta.value, running: busy, queueToggle, images: images.length, touch: touch(), ...how });
     if (a.do === "refuse") { say(IMAGES_NO_QUEUE); return; }
     if (a.do !== "send" || sending) return;
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
     // "@codex ...": this turn runs on that account (threads.send's account mention); the session stays where it is. Not a teammate.
-    if (a.kind === "teammate" && !machine && accountAtStart(ta.value, answers, providerName)) { sendMessage(ta.value.trim(), a.mode); return; }
-    if (a.kind === "teammate" && !machine) { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
-    if (a.kind === "command" && !machine) {
+    if (a.kind === "teammate" && accountAtStart(ta.value, answers, providerName)) { sendMessage(ta.value.trim(), a.mode); return; }
+    if (a.kind === "teammate") { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
+    if (a.kind === "command") {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
       const local = (commands || normalizeCommands(null)).find(c => c.local && (c.name === name || c.aliases?.includes(name)));
       if (local && local.local) {
@@ -931,7 +920,7 @@ export function mountComposer(opts) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
     const mentions = tagUI.take();
-    const acct = machine ? null : accountAtStart(text, answers, providerName);
+    const acct = accountAtStart(text, answers, providerName);
     if (acct) mentions.push(acct.mention);
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
     sentMeta.set(text, { pasted, mentions });
@@ -946,13 +935,12 @@ export function mountComposer(opts) {
     queueToggle = false;
     // Drawn at once (a steer, a queued row, or a plain send's words), except a / command, which the
     // transcript shows its own way.
-    const drawn = !machine && !!S && (!!mode || !text.startsWith("/"));
+    const drawn = !!S && (!!mode || !text.startsWith("/"));
     // The pictures themselves, not just a count: this device drew them once already (the thumbs
     // under the composer), so the sent row can show the same pictures inline (cohesion item 18).
     if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
-    const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
+    const input = { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
     // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
     // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
     let waited = false;
@@ -971,23 +959,8 @@ export function mountComposer(opts) {
       if (!images.length && imgs.length) { images = imgs; drawImages(); }
     };
     // One note, replaced each time, and the words go back in the box so nothing typed is lost.
-    if (r.error && r.error.code === "mac_offline") {
-      back();
-      const who = machine || "your Mac";
-      say([h("span", null, `${who} is offline; your message was not sent`), " ", retry()]);
-      opts.onOffline?.(who);
-      return;
-    }
-    // The Mac did not answer in time: the message may have gone through, so say so before a resend.
-    if (r.error && r.error.code === "timeout") {
-      back();
-      say([h("span", null, r.error.message || "The Mac did not answer in time; your message may not have been sent"), " ",
-        h("span", { class: "faint" }, "It may have been sent. Check before sending again."), " ", retry()]);
-      return;
-    }
     if (r.error) { say("Could not send: " + r.error.message, false); back(); return; }
     const d = /** @type {any} */ (r.data) || {};
-    if (machine) opts.onOffline?.(null);
     if (d.queued != null && d.queued !== false) {
       // Queued: asked for (mode "queue"), or a session busy in a terminal, which queues every
       // message. The answer names the row (queued_id, and the box's uuid; an older box only says
@@ -998,12 +971,7 @@ export function mountComposer(opts) {
       if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back on the server to send after this turn."); }
       if (drawn && mode !== "queue") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
-      if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
-      if (id != null && !machine) return;
-      busyName = d.name || busyName;
-      if (![...waiting.values()].includes(text)) waiting.set("pending:" + text, text);
-      drawQueued();
-      if (machine && d.note) say(`On ${machine} · ${d.note}`);
+      if (S && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       return;
     }
     // A steer: the box's uuid names the words drawn under ours (thread.steered will use it).
@@ -1014,7 +982,7 @@ export function mountComposer(opts) {
       return;
     }
     // Images only go to a box that said it takes them (attach() asked); one that changed its mind sends none.
-    if (imgs.length && !machine && CAPS.has(SEND_IMAGES) !== true) say("Sent without the images: " + NEEDS_UPDATE.toLowerCase() + ".");
+    if (imgs.length && CAPS.has(SEND_IMAGES) !== true) say("Sent without the images: " + NEEDS_UPDATE.toLowerCase() + ".");
   }
 
   async function runShell(/** @type {string} */ command) {
@@ -1070,7 +1038,7 @@ export function mountComposer(opts) {
   function scheduleNear() {
     clearTimeout(nearTimer);
     const role = draftKind(ta.value) === "teammate" && !/\s/.test(ta.value) ? teammateRole(ta.value) : null;
-    if (!role || !opts.project?.() || machine) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
+    if (!role || !opts.project?.()) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
     const seq = ++nearSeq;
     nearTimer = setTimeout(async () => {
       const roles = await knownRoles();
@@ -1205,10 +1173,10 @@ export function mountComposer(opts) {
     if (opts.onOverlayEscape?.()) return true;
     // A past-sessions hint dismisses easily: Esc while it shows closes it, not the box's own escape.
     if (hints.length) { dismissHints(); return true; }
-    const act = escape(esc, { now: Date.now(), running: busy && !machine && !!opts.onStop, text: ta.value, pickerOpen: menu.isOpen(), recalled: recalling(hist) || !!editing });
+    const act = escape(esc, { now: Date.now(), running: busy && !!opts.onStop, text: ta.value, pickerOpen: menu.isOpen(), recalled: recalling(hist) || !!editing });
     if (act === "close") { menu.close(); return true; }
     if (act === "interrupt") { opts.onStop?.(); return true; }
-    if (act === "rewind") { if (opts.onRewind && !machine) { opts.onRewind(); return true; } return false; }
+    if (act === "rewind") { if (opts.onRewind) { opts.onRewind(); return true; } return false; }
     if (act === "clear") { stopRecall(hist); editing = null; setValue(""); put(note); return true; }
     if (act === "leave-mode") { setValue(draftKind(ta.value) === "teammate" ? draftBody(ta.value) : ta.value.slice(1)); return true; }
     return false;
@@ -1226,7 +1194,7 @@ export function mountComposer(opts) {
     if (id === "thinking" && rich()) { toggleThinking(); return true; }
     if (id === "thinking-view" && opts.onThinkingView) { opts.onThinkingView(); return true; }
     if (id === "tasks" && opts.onTasks) { opts.onTasks(); return true; }
-    if (id === "voice" && !/** @type {any} */ (e).repeat && !machine) { voiceKeyDown = true; voicePressBegin(); return true; }
+    if (id === "voice" && !/** @type {any} */ (e).repeat) { voiceKeyDown = true; voicePressBegin(); return true; }
     return false;
   }
   /** Ctrl+M's own release: the whole session view, not only the textarea (session.js wires this
@@ -1257,7 +1225,7 @@ export function mountComposer(opts) {
     if (id === "thinking" || id === "thinking-view" || id === "tasks" || id === "voice") { if (key(e)) e.preventDefault(); return; }
     if (e.key === "ArrowUp" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
       const firstLine = !ta.value.slice(0, caret()).includes("\n");
-      const act = upAction({ text: ta.value, firstLine, recalling: recalling(hist), queued: machine ? 0 : (S?.queued.length || 0) });
+      const act = upAction({ text: ta.value, firstLine, recalling: recalling(hist), queued: S?.queued.length || 0 });
       if (act === "edit-queued" && S) { e.preventDefault(); editQueued(S.queued[S.queued.length - 1]); return; }
       if (act === "recall") { const v = recall(hist, "up", ta.value); if (v !== null) { e.preventDefault(); setValue(v); } }
       return;
@@ -1274,32 +1242,13 @@ export function mountComposer(opts) {
       return;
     }
     if (e.key === "Enter") {
-      const a = enterAction({ text: ta.value, running: busy && !machine, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey,
+      const a = enterAction({ text: ta.value, running: busy, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey,
         queueToggle, composing: e.isComposing, touch: touch(), pickerOpen: false, images: images.length });
       if (a.do === "send") { e.preventDefault(); submit({ alt: e.altKey }); }
     }
   }
 
   const offs = [
-    on("thread.queued", e => {
-      if (e.thread !== thread || !e.payload?.queued) return;
-      waiting.delete("pending:" + e.payload.text);
-      waiting.set(String(e.payload.queued), String(e.payload.text || ""));
-      drawQueued();
-    }),
-    on("thread.unqueued", e => {
-      if (e.thread !== thread || e.payload?.queued == null) return;
-      waiting.delete(String(e.payload.queued));
-      drawQueued();
-    }),
-    // Handed over (or typed in directly): a queued one leaves the list, and the note goes with the last.
-    on("thread.sent", e => {
-      if (e.thread !== thread) return;
-      const id = e.payload?.queued;
-      if (id != null) { waiting.delete(String(id)); waiting.delete("pending:" + e.payload.text); }
-      drawQueued();
-      if (machine && id != null && !waiting.size) { put(note); note.classList.remove("soft"); }
-    }),
     CAPS.on(() => drawChips()),
   ];
   // The mic is never left open: the window losing focus (another app or tab) stops it, keeping
@@ -1315,7 +1264,6 @@ export function mountComposer(opts) {
   return {
     el: root, key, keyUp, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
-    setMachine: m => { machine = m || null; drawChips(); },
     setBusy: v => {
       const was = busy;
       busy = !!v && !!opts.onStop;

@@ -72,7 +72,7 @@ test("reportContext: a server without context is asked once", async () => {
 test("reportContext: the device settings.snapshot echoed goes with the report", async () => {
   const sent = /** @type {any[]} */ ([]);
   const W = world();
-  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "phone", path: () => "/now", device: () => "tailnet:alex-phone", win: W.win, doc: W.doc });
+  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "phone", path: () => "/now", device: () => "device:2uwffior5lehgnfh", win: W.win, doc: W.doc });
   await tick();
-  assert.deepEqual(sent, [{ surface: "phone", project: null, thread: null, device: "tailnet:alex-phone" }]);
+  assert.deepEqual(sent, [{ surface: "phone", project: null, thread: null, device: "device:2uwffior5lehgnfh" }]);
 });

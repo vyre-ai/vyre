@@ -59,7 +59,6 @@ test("rename: Esc leaves the name alone; an empty or 65-character name is refuse
 test("rename: the tool and input for each kind of device", async () => {
   const { renameCall } = await load();
   assert.deepEqual(renameCall("relay", "d1", "Phone"), { tool: "relay.devices.rename", input: { id: "d1", name: "Phone" } });
-  assert.deepEqual(renameCall("mac", "m1", "Studio"), { tool: "link.rename", input: { id: "m1", name: "Studio" } });
   assert.deepEqual(renameCall("server", "server", "Home"), { tool: "system.rename", input: { name: "Home" } });
   assert.deepEqual(renameCall("computer", "c1", "Build"), { tool: "computers.rename", input: { computer: "c1", name: "Build" } });
 });

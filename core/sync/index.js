@@ -195,9 +195,11 @@ export default {
       // itself is not a secret action either, so this stays plain person-only, not presence-gated.
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, on, planHash, included, folders }) => {
-        const listed = await ctx.call("relay.devices.list", {});
+        const byId = await ctx.call("relay.device.info", { id: String(machine) });
+        const byName = byId.data ? null : await ctx.call("relay.device.info", { name: String(machine) });
         const comp = await ctx.call("link.companion.peers", {});
-        const row = [...((listed.data && listed.data.devices) || []), ...((comp.data && comp.data.peers) || [])].find(p => !p.removed && (p.id === machine || p.name === machine));
+        const dev = [byId.data, byName && byName.data].find(d => d && !d.removed);
+        const row = dev || ((comp.data && comp.data.peers) || []).find(p => !p.removed && (p.id === machine || p.name === machine));
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
@@ -265,7 +267,7 @@ export default {
       effect: "write",
       description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { companion: { type: "string" },  files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ files, companion }, meta) => {
         const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
@@ -290,7 +292,7 @@ export default {
       effect: "write",
       description: "Start (or resume) sending one file: offset is 0 for new, or how many bytes the box already holds for a retry of the exact same path and hash.",
       input: { type: "object", required: ["path", "bytes", "hash"], properties: { companion: { type: "string" },  path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
         const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
@@ -331,7 +333,7 @@ export default {
       effect: "write",
       description: "One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own route calls this after reading the request body.",
       input: { type: "object", required: ["upload", "offset", "data"], properties: { companion: { type: "string" },  upload: { type: "string" }, offset: { type: "number" }, data: {} } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, offset, data, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -359,7 +361,7 @@ export default {
       effect: "write",
       description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
       input: { type: "object", required: ["upload"], properties: { companion: { type: "string" },  upload: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
@@ -375,7 +377,7 @@ export default {
       effect: "write",
       description: "Verify and land a finished upload: checks its hash, scrubs it for secrets, and renames it into synced/<machine>/ (or quarantines it).",
       input: { type: "object", required: ["upload", "hash"], properties: { companion: { type: "string" },  upload: { type: "string" }, hash: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, hash, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });

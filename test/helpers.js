@@ -3,6 +3,7 @@
 // the real ~/.vyre. A past prototype test read live state and printed a real key into a failure
 // message, which is why this is the only way tests get a home.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -185,4 +186,13 @@ async function upFixture(home, fixture, env = process.env) {
     if (child.exitCode !== null) break;
   }
   return { code: 1 };
+}
+
+/** A stable, valid `device:<16 base32>` caller label for a name: the label a paired device arrives under. @param {string} name */
+export function deviceFor(name) {
+  const bits = crypto.createHash("sha256").update(String(name)).digest();
+  const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+  let out = "";
+  for (let i = 0; i < 16; i++) out += alphabet[bits[i] % 32];
+  return `device:${out}`;
 }

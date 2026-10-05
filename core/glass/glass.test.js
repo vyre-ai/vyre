@@ -170,19 +170,19 @@ test("glass: a paired viewer on a relay gets link facts and a slow ticket; a dir
 test("glass: open never fails for network.wink.status, whether it errors or is slow to answer", async t => {
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
   const broken = await boot(t, { link: "throw" });
-  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(a.error, undefined);
   assert.equal(a.data.link, undefined);
   assert.ok(a.data.screen.ticket);
   const hung = await boot(t, { link: "hang" });
   const at = Date.now();
-  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(b.error, undefined);
   assert.ok(Date.now() - at < 5000, "the open waited only briefly");
   assert.ok(b.data.screen.ticket);
   // No link module at all.
   const none = await boot(t);
-  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(c.error, undefined);
   assert.equal(c.data.link, undefined);
 });

@@ -26,15 +26,15 @@ test("connections: each caller is one surface", () => {
   const cases = [
     ["cli", "person"], ["local", "person"], ["deck", "person"],
     ["capsule", "capsule"], ["mobile", "phone"], ["mcp", "chat"], ["mcp:thread:t-1", "chat"],
-    ["mcp:agent:kit", "agents"], ["tailnet:agent:juno", "agents"], ["harness:agent:kit", "agents"],
-    ["module:mail", "module"], ["tailnet-guest:dana@northwind.test", null], ["anonymous", null], ["", null],
+    ["mcp:agent:kit", "agents"], ["agent:juno", "agents"], ["harness:agent:kit", "agents"],
+    ["module:mail", "module"], ["guest:dana@northwind.test", null], ["anonymous", null], ["", null],
   ];
   for (const [c, want] of cases) assert.equal(surfaceOf(c).surface, want, c);
   assert.equal(surfaceOf("mcp:thread:t-9").thread, "t-9");
   // The owner's tailnet device is the person only with a person session (ADR 0032), the same bar
   // settings.isPerson holds it to; without one it is a device on the tailnet, no surface at all.
-  assert.equal(surfaceOf("tailnet:alex@harlowlegal.test").surface, null, "no session, no surface");
-  assert.equal(surfaceOf("tailnet:alex@harlowlegal.test", true).surface, "person");
+  assert.equal(surfaceOf("device:f5rnsu6l7abj3wvt").surface, null, "no session, no surface");
+  assert.equal(surfaceOf("device:f5rnsu6l7abj3wvt", true).surface, "person");
 });
 
 test("connections: a thread's origin picks its surface, looked up once", async () => {
@@ -280,12 +280,12 @@ test("connections: several email accounts, one list, granted per surface", async
   // allowed: by id or by source and ref; people always; a module is not a surface.
   const ask = async input => ok(await other("vault.connections.allowed", input));
   assert.deepEqual(await ask({ id: m2.id, caller: "mcp:agent:kit" }), { allowed: true, surface: "agents" });
-  assert.deepEqual(await ask({ source: "mcp", ref: "gmail-juno", caller: "tailnet:agent:kit" }), { allowed: true, surface: "agents" });
+  assert.deepEqual(await ask({ source: "mcp", ref: "gmail-juno", caller: "agent:kit" }), { allowed: true, surface: "agents" });
   assert.equal((await ask({ id: g.id, caller: "mcp:agent:kit" })).allowed, false);
   assert.match((await ask({ id: g.id, caller: "mcp:agent:kit" })).reason, /not granted to agents/);
   assert.deepEqual(await ask({ id: g.id, caller: "cli" }), { allowed: true, surface: "person" });
   assert.equal((await ask({ id: g.id, caller: "module:planner" })).allowed, false);
-  assert.equal((await ask({ id: g.id, caller: "tailnet-guest:dana@northwind.test" })).allowed, false);
+  assert.equal((await ask({ id: g.id, caller: "guest:dana@northwind.test" })).allowed, false);
   assert.equal((await ask({ id: "cn_nothere", caller: "capsule" })).reason, "no such connection");
   assert.equal((await ask({ id: g.id, caller: "capsule" })).allowed, true);
   assert.ok(["denied", "no_such_tool"].includes((await cli("vault.connections.allowed", { id: g.id, caller: "capsule" })).error.code), "allowed is for modules");

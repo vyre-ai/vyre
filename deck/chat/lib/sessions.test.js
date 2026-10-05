@@ -44,11 +44,3 @@ test("sessions: either source alone still lists", () => {
   assert.equal(mergeSessions(catalog, []).length, 4);
   assert.deepEqual(mergeSessions(null, undefined), []);
 });
-
-test("sessions: a row from the paired Mac keeps its machine, from either source", () => {
-  const mac = { source: "mac", machine: "alex-mac" };
-  const rows = mergeSessions([{ id: "m-cat", title: "Northwind menu", last: 400, human: true, projects: [], ...mac }, { id: "b-cat", title: "Box work", last: 300, human: true, projects: [], source: "box", machine: "box" }],
-    [{ id: "m-cat", name: "Northwind menu", status: "idle", last: 450, ...mac }, { id: "m-th", name: "Invoices", status: "working", last: 600, ...mac }]);
-  assert.deepEqual(rows.map(r => [r.id, r.source, r.machine]), [["m-th", "mac", "alex-mac"], ["m-cat", "mac", "alex-mac"], ["b-cat", "box", "box"]]);
-  assert.deepEqual(mergeSessions(catalog, threads).map(r => r.source), [null, null, null, null, null], "unlabelled rows stay unlabelled");
-});

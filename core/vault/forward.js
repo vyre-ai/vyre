@@ -19,7 +19,7 @@ const FORWARD = {
 };
 /** A plain value: the Capsule's, never a terminal's or a module's here. */
 const CAPSULE_ONLY = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
-const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device", "module"];
 
 const fail = (message, code) => Object.assign(new Error(message), { code });
 

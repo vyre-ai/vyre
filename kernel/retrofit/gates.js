@@ -15,7 +15,7 @@ import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
-const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
+const GATES = ["declared", "outward", "visible", "callers", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
 const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space: SPACE });
 
@@ -30,7 +30,6 @@ export function parseCaller(caller, person, thread) {
   if (c === "hook") return { kind: "service", id: "hooks", ...base };
   const claim = agentClaim(c);
   if (claim !== null) return { kind: "agent", id: claim, ...base };
-  if (c.startsWith("tailnet-guest:")) return { kind: "person", id: "guest:" + c.slice(14), ...base };
   if (ownerDevice(c)) return { kind: "person", id: "owner", device: c, ...base };
   const k = callerKind(c);
   if (["cli", "local", "deck", "capsule", "mobile"].includes(k) && k === c) return { kind: "person", id: "owner", ...base };
@@ -68,7 +67,6 @@ export function createLegacyGates(cfg) {
       case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
       case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
-      case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
       case "session": {
         allowed = true;
         // The owner's device acts as the person only with the person's session, for a person-only or proof-needing tool.
@@ -110,7 +108,6 @@ export function createLegacyGates(cfg) {
       if ((await ask("outward", chain, tool, cls)).effect !== "allow") return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       if ((await ask("visible", chain, tool, cls)).effect !== "allow") return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if ((await ask("callers", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-      if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
       const s = await ask("session", chain, tool, cls);
       if (s.effect !== "allow") return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       return null;

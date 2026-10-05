@@ -1,5 +1,5 @@
 // @ts-check
-// The box has no passkey at all: nothing the Deck asks a person for (Send, Allow, approving a Mac)
+// The box has no passkey at all: nothing the Deck asks a person for (Send, Allow)
 // can be proved yet, so Finish setup on Now offers one button, "Make a passkey". It asks the server for a
 // one-time code (presence.code) and runs the browser's own passkey prompt with it. Where the server will
 // not hand this device a code (the first one is meant for its own terminal or the loopback onboarding,
@@ -9,11 +9,20 @@ import { h, put } from "./dom.js";
 import { attempt, on, canProve } from "./api.js";
 import { enrollPasskey } from "./phone-setup.js";
 
+let styled = false;
+/** The card's styles live in css/pair.css, loaded once when the card first draws. */
+function style() {
+  if (styled) return;
+  styled = true;
+  document.head.append(h("link", { rel: "stylesheet", href: "/css/pair.css" }));
+}
+
 /**
  * @param {{ onChange?: (open: boolean) => void }} [o] onChange: whether the row is showing, for the card around it
  * @returns {{ el: HTMLElement, stop: () => void }} empty (and taking no room) while a passkey exists
  */
 export function firstPasskeyCard({ onChange } = {}) {
+  style();
   const el = h("div", { class: "fs-row first-passkey", hidden: true });
   /** @type {string | null} */ let held = null;
   async function check() {

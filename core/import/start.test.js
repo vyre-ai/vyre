@@ -55,7 +55,7 @@ test("import.start: consent through core/sync, then the plan's sessions in batch
   const p = (await call("import.plan", { include: ["/home/alex/Work"] })).data;
   assert.equal(p.sessions, 30);
   // Only the person: never a model or an agent, and never a device nobody signed in on.
-  for (const [c, meta] of [["mcp", {}], ["deck agent:kit", {}], ["tailnet:alex@example.com", {}]]) assert.equal((await call("import.start", { plan: p.plan, mode: "once", pace: "gentle" }, c, meta)).code, "denied", c);
+  for (const [c, meta] of [["mcp", {}], ["deck agent:kit", {}], ["device:nw3b43olz4rzbzfe", {}]]) assert.equal((await call("import.start", { plan: p.plan, mode: "once", pace: "gentle" }, c, meta)).code, "denied", c);
   const r = await call("import.start", { plan: p.plan, mode: "once", pace: "fast" });
   assert.ok(r.data?.run, JSON.stringify(r));
   assert.deepEqual([r.data.sessions, r.data.mode, r.data.pace], [30, "once", "fast"]);

@@ -26,7 +26,7 @@ export const ownerDeviceOf = call => async caller => {
   const r = await call("wink.device.record", { id: m[1] }).catch(() => null);
   return Boolean(r && r.data && r.data.id === m[1] && r.data.confirmed === true && r.data.owner);
 };
-const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
+const RELAY_DEVICE_CALLERS = Object.freeze(["relay", "device"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -40,7 +40,7 @@ export default {
         const presence = new Presence({ db: ctx.store.db, ownerDevice, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
 
     ctx.tool("presence.keys", {
-      effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
+      effect: "read", callers: ["cli", "local", "deck", "capsule", "device", "module"], // key names and ids are the person's, not a model's
       description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
       // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
@@ -51,7 +51,7 @@ export default {
       effect: "write",
       // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
       // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
-      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
+      callers: ["cli", "local", "deck", "capsule", "device", "space", "agent", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
@@ -88,7 +88,7 @@ export default {
       effect: "write",
       // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
       // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
-      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
+      callers: ["cli", "local", "deck", "capsule", "device", "space", "agent", "module"],
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),

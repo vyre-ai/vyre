@@ -98,7 +98,7 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   assert.equal(nothing.error && nothing.error.code, "not_found");
   const restored = await call("files.drive.restore", { path: "Clients/A/retainer.txt", version: 1 }, { root, caller: "cli" });
   assert.ok(restored.error ? ["needs_presence", "presence_required", "denied"].includes(restored.error.code) : restored.data.from === 1, `restore: ${JSON.stringify(restored)}`);
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "guest:x", "anonymous"]) {
     for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
   assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");

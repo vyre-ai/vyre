@@ -34,10 +34,10 @@ async function load() {
 
 test("rail: the places in the spec's order and words, the bottom group last, keys 1 to 8", async () => {
   const { PLACES } = await load();
-  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Drive", "Settings"]);
-  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7", "8"]);
+  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Settings"]);
+  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7"]);
   assert.deepEqual(PLACES.filter(p => p.end).map(p => p.label), ["Settings"]);
-  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/projects", "/agents", "/memory", "/vault", "/files", "/settings"]);
+  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/projects", "/agents", "/memory", "/vault", "/settings"]);
   for (const p of PLACES) assert.doesNotMatch(p.label, /^(Home|Inbox|Dashboard|Sessions|Threads)$|^[A-Z]{2,}$/);
 });
 
@@ -49,11 +49,11 @@ test("rail: nav named Vyre, the home mark to Now, links named by their labels, t
   assert.equal(r.home.getAttribute("href"), "/now");
   assert.equal(r.home.getAttribute("aria-label"), "Vyre home");
   const places = $$(r.el, ".rail-place");
-  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Drive", "Search", "Settings"]);
+  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Search", "Settings"]);
   // The top group, then the bottom group with the avatar last.
   const groups = $$(r.el, ".rail-set");
   assert.equal(groups.length, 2);
-  assert.equal($$(groups[0], "a.rail-place").length, 7);
+  assert.equal($$(groups[0], "a.rail-place").length, 6);
   assert.ok(groups[1].className.includes("rail-end"));
   assert.equal(r.search.getAttribute("aria-label"), "Search");
   assert.equal(groups[1].childNodes.at(-1), r.avatar);
@@ -123,7 +123,7 @@ test("rail keys: Cmd+1 to Cmd+9 on a Mac, Ctrl off it, in rail order; never whil
   assert.equal(placeForKey(k("1", { metaKey: true }), true), "/now");
   assert.equal(placeForKey(k("2", { metaKey: true }), true), "/chat");
   assert.equal(placeForKey(k("3", { metaKey: true }), true), "/projects");
-  assert.equal(placeForKey(k("8", { metaKey: true }), true), "/settings");
+  assert.equal(placeForKey(k("7", { metaKey: true }), true), "/settings");
   assert.equal(placeForKey(k("9", { metaKey: true }), true), null);
   assert.equal(placeForKey(k("4", { ctrlKey: true }), false), "/agents");
   assert.equal(placeForKey(k("6", { ctrlKey: true }), false), "/vault");

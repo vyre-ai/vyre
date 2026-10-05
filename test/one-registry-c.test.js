@@ -70,7 +70,7 @@ test("server side of a server-homed space: host-here and retire-here with no pro
   const noProof = await as("cli", "spaces.host-here", { name: "nothere" });
   assert.equal(noProof.error?.code, "presence_required", JSON.stringify(noProof));
   assert.equal(d.kernel.spaces.list().length, before, "nothing was hosted without a proof");
-  const stranger = await as("tailnet-guest:mallory@example.com", "spaces.host-here", { name: "nothere" });
+  const stranger = await as("guest:mallory@example.com", "spaces.host-here", { name: "nothere" });
   assert.ok(stranger.error, "a caller that is not the owner is refused");
   assert.equal(d.kernel.spaces.list().length, before);
   // taking one back asks for the proof too, and a space that was never made there is not touched

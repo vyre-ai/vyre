@@ -152,7 +152,7 @@ test("wink: a wrong code typed back closes the code at once and a fresh one is s
 
 test("wink: the code is the owner's: an agent, a guest and a hook are refused", async t => {
   const w = await world(t);
-  for (const caller of ["tailnet:agent:juno", "tailnet-guest:kit", "hook", "anonymous"]) {
+  for (const caller of ["agent:juno", "guest:kit", "hook", "anonymous"]) {
     const r = await w.call("wink.code.open", { flow: "W2" }, caller);
     assert.ok(r.error, `${caller} is refused`);
   }
@@ -467,7 +467,7 @@ test("wink.relay.apply: the owner's app signs the instruction, the box checks it
     ["another key", make({ sig: sign({ box, action: "relay.enable", url: w.url, ts: 1, nonce: "x" }, crypto.generateKeyPairSync("ed25519").privateKey) }), /signature/],
   ]) assert.match((await apply(i)).error?.message || "", re, why);
   // an agent never applies one, even with a good signature
-  assert.equal((await w.call("wink.relay.apply", make(), "tailnet:agent:juno", {})).error?.code, "denied");
+  assert.equal((await w.call("wink.relay.apply", make(), "agent:juno", {})).error?.code, "denied");
 });
 
 test("peerDoor: allow answers from the wink module's registry and accept is the host's own relay door, ready for the relay bridge", () => {
@@ -515,7 +515,7 @@ test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code wi
 
 test("H-1, real daemon: wink.server.handover answers no module but wink, no device and no empty caller (reviewer-3 probe: module:evil got home, authKey and peerSecret)", async t => {
   const w = await world(t);
-  for (const caller of ["module:evil", "module:platform", "module:relay", "device:abcdefghijklmnop", "cli", "deck", "tailnet:owner", "anonymous"]) {
+  for (const caller of ["module:evil", "module:platform", "module:relay", "device:abcdefghijklmnop", "cli", "deck", "device:jqics2l64nmhcxj2", "anonymous"]) {
     const r = await w.d.registry.call("wink.server.handover", {}, caller, PROOF);
     assert.ok(r.error, `refused for ${caller}`);
     assert.equal(r.data?.handover, undefined, "no secret in the answer");
@@ -1015,7 +1015,7 @@ test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.serve
   assert.equal((await w.call("wink.access")).data.devices.some(d => d.id === "self"), false);
   // the question is the server console's: a model client, a hook, a paired device and the scanner itself cannot see or answer it
   const right = await pairWords(r.paired.box, r.paired.device, { ticket: Buffer.from(scan.seed).toString("base64url"), nonceA: na, nonceB: first.body.data.nb });
-  for (const caller of ["mcp", "harness", "hook", "module:evil", "session:s1", "agent:kit", "tailnet:owner", `device:${r.paired.device}`, "anonymous"]) {
+  for (const caller of ["mcp", "harness", "hook", "module:evil", "session:s1", "agent:kit", "device:jqics2l64nmhcxj2", `device:${r.paired.device}`, "anonymous"]) {
     assert.ok((await w.call("wink.server.pairing", {}, caller, PROOF)).error, `${caller} cannot see the question`);
     assert.ok((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, caller, PROOF)).error, `${caller} cannot answer it`);
   }

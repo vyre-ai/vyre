@@ -29,7 +29,7 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
-import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
+import { ownerDevice } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { isPerson } from "../../lib/caller.js";
@@ -43,7 +43,6 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -548,7 +547,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, confined_by: this.confinedBy.get(id) || null, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -812,8 +811,6 @@ export class Switchboard {
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
       if (o.surface) kept.origin = String(o.surface).slice(0, 80);
-      // A session carried on here from a paired Mac (threads.continue-here): which machine and thread it came from.
-      if (o.continuedFrom) kept.continued_from = { machine: String(o.continuedFrom.machine).slice(0, 80), thread: String(o.continuedFrom.thread).slice(0, 80) };
       // What the provider could do when the thread started, kept for drawing its old items: never edited
       // (a live control reads providers.list). A flag a provider does not say is false to a reader.
       const drv = provider === "claude" ? null : this.deps.providers && this.deps.providers.get(provider);
@@ -1785,10 +1782,6 @@ export class Switchboard {
   }
 
   /**
-   * Does this machine have the thread: running here, recorded here, or a transcript here that
-   * send could adopt? What threads.send on the box checks before it asks a Mac.
-   * @param {string} id
-   */
   /** Whether a message uuid was already handed to a session (a retried send is the same message). @param {string} uuid */
   sentBefore(uuid) { return Boolean(this.db.prepare("SELECT 1 FROM threads_sent WHERE uuid = ?").get(uuid) || this.db.prepare("SELECT 1 FROM threads_inbox WHERE uuid = ?").get(uuid)); }
 
@@ -1843,8 +1836,6 @@ export class Switchboard {
    * process has it open, since one transcript takes one writer. One that is open elsewhere (a
    * terminal) is not typed into: a person's words are queued instead, and the Harness hands them
    * over when that session's turn ends (queue). `queue` false (a model's call) keeps the refusal.
-   * `wait` (the person at the box, through the link) never takes the keyboard: while another
-   * surface holds it, the words are queued as for a terminal.
    */
   /**
    * A person's own turn, before any provider sees it: the said row (turn.said) and what it tags
@@ -1897,7 +1888,7 @@ export class Switchboard {
     return run;
   }
 
-  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
+  async sendOne(id, text, surface, { queue = true, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
     // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
     const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); };
     given();
@@ -1930,8 +1921,6 @@ export class Switchboard {
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
-    const held = wait && this.leases.holder(id);
-    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, { ...(uuid ? { uuid } : {}), note, author });
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -2049,105 +2038,6 @@ export class Switchboard {
   }
 
   /**
-   * Carry a paired Mac's session on in a new box thread (threads.continue-here, #32): its conversation comes over the link while the Mac is awake, or from the last
-   * synced copy on the box when it is not, and a box session on the same provider starts with that history in front of the person's first words. The Mac's own
-   * session is untouched, and none of the Mac's files come over (the notice says so). Person-only; logged as thread.continued.
-   * @param {{ thread: string, machine?: string|null, surface?: string, claudeReady?: boolean }} o claudeReady: this box has Claude credentials (a signed-in account, a stored token or key, or its own login chosen)
-   */
-  async continueHere({ thread, machine = null, surface = "deck", claudeReady = true }) {
-    const fail = (msg, code) => Object.assign(new Error(msg), { code });
-    // Words from another machine go into a block Vyre writes and a notice it says: no control characters or brackets, at most 80.
-    const tidy = v => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f\u2028\u2029\[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
-    const src = String(thread || "");
-    if (!src || src.length > 80) throw fail("name the Mac session to continue (thread)", "bad_input");
-    if (this.record(src)) throw fail("that session is already on this box: open it here", "bad_input");
-    // The Mac first (what it says is the freshest), then the last synced copy on the box.
-    /** @type {any[]} */ let turns = []; let session = null, source = null, from = machine ? String(machine) : null;
-    const pages = async (read) => {
-      const out = [];
-      for (let at = 0; at < 10_000; at += 2000) {
-        const r = await read(at);
-        if (!r || !Array.isArray(r.turns)) return null;
-        session = session || r.session || null;
-        out.push(...r.turns);
-        if (r.turns.length < 2000) break;
-      }
-      return out;
-    };
-    const asked = await this.deps.call("link.macs.call", { tool: "recall.thread", input: { session: src, limit: 2000 }, ...(machine ? { mac: String(machine) } : {}) }).catch(() => null);
-    const answers = asked && !asked.error && Array.isArray(asked.data) ? asked.data : [];
-    const hit = answers.find(a => a.ok && a.data && Array.isArray(a.data.turns));
-    if (hit) {
-      from = hit.name || from;
-      const got = await pages(at => at === 0 ? Promise.resolve(hit.data) : this.deps.call("link.macs.call", { tool: "recall.thread", mac: hit.mac, input: { session: src, from: at, limit: 2000 } })
-        .then(x => (x && !x.error && Array.isArray(x.data) && x.data.find(a => a.ok) ? x.data.find(a => a.ok).data : null)).catch(() => null));
-      if (got) { turns = got; source = "mac"; }
-    }
-    if (!source) {
-      const got = await pages(at => this.deps.call("recall.thread", { session: src, from: at, limit: 2000, machines: "local" }).then(x => (x && !x.error ? x.data : null)).catch(() => null));
-      if (got) { turns = got; source = "synced"; }
-    }
-    if (!source) {
-      const why = answers.filter(a => a.error).map(a => `${a.name}: ${a.error.code}`).join(", ");
-      throw fail(`no paired Mac has session ${src.slice(0, 8)} and there is no synced copy of it on this box${why ? ` (${why})` : ""}`, "not_found");
-    }
-    const spoken = turns.filter(t => t && (t.role === "user" || t.role === "assistant") && String(t.text || "").trim()).map(t => ({ who: t.role === "user" ? "person" : "assistant", text: String(t.text).trim() }));
-    if (!spoken.length) throw fail("that session has nothing said in it yet", "no_history");
-    from = tidy(from) || "a paired Mac";
-    // What the Mac said about the thread (its provider, project and name) when it is awake; the session row when it is not.
-    let row = null;
-    try {
-      const l = await this.deps.call("link.macs.call", { tool: "threads.list", input: { all: true }, ...(machine ? { mac: String(machine) } : {}) });
-      for (const a of l && !l.error && Array.isArray(l.data) ? l.data : []) { const f = a.ok && Array.isArray(a.data) ? a.data.find(x => x && x.id === src) : null; if (f) { row = f; break; } }
-    } catch { /* an asleep Mac has no row: the synced session's own fields stand in */ }
-    // Only a provider this box has; anything else (a Mac's own word for it) is Claude.
-    const wanted = tidy(row && row.provider).toLowerCase();
-    const provider = wanted && wanted !== "claude" && this.deps.providers && this.deps.providers.get(wanted) ? wanted : "claude";
-    const name = tidy((row && row.name) || (session && (session.name || session.title)) || src.slice(0, 8)) || src.slice(0, 8);
-    const launchOpts = { provider, name: `${name} (continued)`, surface, purpose: "chat", continuedFrom: { machine: from, thread: src } };
-    const needsAccount = e => { const err = /** @type {any} */ (e); return err && err.code === "account_required" ? Object.assign(new Error(`There is no ${providerName(provider)} account on this server yet. Add one in Settings > Your AI, then carry this session on again.`), { code: "account_required" }) : e; };
-    // The provider runs only on this server's own credentials (a Mac's accounts are not here).
-    {
-      let acct = null;
-      try { acct = await this.accountFor({ provider }); } catch (e) { throw needsAccount(e); }
-      // Claude may also run on a stored token or key, or the box's own login when that is how it is set up.
-      if (!acct && !(provider === "claude" && claudeReady)) throw needsAccount({ code: "account_required" });
-    }
-    // The box's own project of that name, else a plain folder of its own: the Mac's folders are not here.
-    let made;
-    // The project, only when it is a project this box has (its slug): the Mac's word for it is not a choice of folder.
-    let slug = null;
-    try {
-      const want = tidy(row && row.project);
-      if (want) { const pl = await this.deps.call("projects.list", {}); slug = ((pl.data && pl.data.projects) || []).some(x => x && x.slug === want) ? want : null; }
-    } catch { slug = null; }
-    try { if (slug) made = await this.launch({ ...launchOpts, project: slug }); } catch (e) { if (/^no project /.test(/** @type {Error} */ (e).message)) made = null; else throw needsAccount(e); }
-    if (!made) {
-      const base = process.env.VYRE_WORK || "/work";
-      let dir = base;
-      try { if (!fs.statSync(base).isDirectory()) throw new Error("no"); } catch { dir = path.join(this.deps.root || os.tmpdir(), "continued"); fs.mkdirSync(dir, { recursive: true }); }
-      try { made = await this.launch({ ...launchOpts, cwd: dir }); } catch (e) { throw needsAccount(e); }
-    }
-    const id = made.id;
-    const rec = this.must(id);
-    const brief = briefOfTurns(spoken, `[Vyre continuation: this conversation was started on ${from} and carries on here, on the box. The files there are not here.`);
-    this.carry.set(id, brief);
-    // The account it runs on, in plain words: the box's account for that provider and who it is signed in as, when it says.
-    let who = "";
-    try {
-      const l = await this.deps.call("sessions.accounts.list", { provider: rec.provider || provider });
-      const row = l && !l.error && Array.isArray(l.data) ? l.data.find(x => x && x.id === rec.account) : null;
-      const ident = row && ((row.identity && row.identity.email) || row.label);
-      if (ident && !row.synthetic) who = ` (${String(ident).slice(0, 80)})`;
-    } catch { /* the account list is a nicety: the notice stands without it */ }
-    const notice = `Continuing on your server with your ${providerName(rec.provider || provider)} account${who}. Your Mac's files stay on your Mac.${source === "synced" ? ` ${from} was not reachable, so this is its last synced copy.` : ""}`;
-    this.emit("thread.text", { message: "vyre", text: notice, done: true, notice: true }, id, rec.project);
-    this.emit("thread.continued", { thread: id, from_machine: from, from_thread: src, source, turns: spoken.length, provider }, id, rec.project);
-    this.deps.log(`threads: ${id.slice(0, 8)} continues ${src.slice(0, 8)} from ${from} (${source}, ${spoken.length} turns)`);
-    return { thread: id, name: rec.name, project: rec.project, provider: rec.provider || provider, account: rec.account || null, from: { machine: from, thread: src }, source, turns: spoken.length, notice };
-  }
-
-  /**
    * What a provider's account offers (its models, its plan), learned the way a session's own start learns it (init, then
    * sessions.providers.learn) but with no turn: a hidden job thread is started with no prompt, waited for until its agent has
    * said what it is, and removed. Never throws: a provider that cannot start just leaves the list as it was.
@@ -2201,8 +2091,7 @@ export class Switchboard {
   /**
    * Keep words for a session another process has open. Nothing is typed into it: the Harness's
    * Stop hook in that session hands them to Claude when its current turn ends (deliver), or its
-   * next prompt does when it is idle. Emits thread.queued. `busy` in the answer is "terminal", or
-   * the surface holding the keyboard when that is why (a send with `wait`).
+   * next prompt does when it is idle. Emits thread.queued. `busy` in the answer is "terminal".
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
   /** @param {string} person */
@@ -3127,12 +3016,6 @@ function imagesOf(list) {
   });
 }
 
-/**
- * The person at the box, through the link: the Mac runs a WRITE only with `as: "person"`, as
- * "link:box" (core/link/mac.js). A caller kind of its own, named here rather than left to fall
- * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
- * @param {string} [caller]
- */
 /** The one person hop of a kernel chain (a person's own call, no agent or service behind it), or null. @param {any} kc */
 export function personHop(kc) {
   return kc && Array.isArray(kc.hops) && kc.hops.length === 1 && kc.hops[0].actor && kc.hops[0].actor.kind === "person" ? kc.hops[0] : null;
@@ -3140,13 +3023,12 @@ export function personHop(kc) {
 
 /**
  * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
- *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
- *    what they name among deck, phone, capsule, glass, lumen, mac, web (anchored). The login is compared with the recorded owner, not matched by prefix;
+ *  - the owner (a Wink-paired device:<id>) is the person's own surface: "deck" or
+ *    what they name among deck, phone, capsule, glass, lumen, mac, web (anchored);
  *  - a person's own socket callers (cli, deck, capsule, local) say which of their surfaces they are in `surface`;
- *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an agent's node, another login, an anonymous label) is its own label and
- *    can never name a surface of its own choosing (one of the person's, a terminal's cli:<pid>, the link's box:x, another agent's): a different name is
+ *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an anonymous label) is its own label and
+ *    can never name a surface of its own choosing (one of the person's, a terminal's cli:<pid>, another agent's): a different name is
  *    replaced by "via:<label>", which contests like any other holder.
- * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
  * @param {any} [kc] the call's kernel chain (`ctx.kernel.chain(meta)`), or null when the kernel refused it; undefined only when this build has no kernel
  * @param {string} [kernelOwner] the kernel's owner person, to compare a chain's person with
@@ -3162,23 +3044,20 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
     else if (h && h.via && h.via.surface) ownSocket = true;
   } else {
     // SHIM(legacy labels): only a build with no kernel reads the label, and it goes with the cut-over that makes the kernel mandatory.
-    const o = String(owner || "").trim().toLowerCase();
-    verifiedOwner = Boolean(ownerOverTailnet(c) && o && c.slice("tailnet:".length).trim().toLowerCase() === o) || (ownerDevice(c) && !ownerOverTailnet(c));
-    device = verifiedOwner && !ownerOverTailnet(c);
+    verifiedOwner = ownerDevice(c);
+    device = verifiedOwner;
     ownSocket = !verifiedOwner && isPerson(c) && !ownerDevice(c);
   }
   let s;
   if (verifiedOwner) s = ownSurface(asked) ? asked : (device ? "phone" : "deck");
   else if (ownSocket) s = asked || c || "vyre";
-  // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
-  else if (fromLink(c) && asked.startsWith("box:")) s = asked;
   // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
   // and refuses an agent's call), so the screen it names stands. Any other module still gets its own label.
   else if (c === "module:computers" && ownSurface(asked)) s = asked;
   // Not the owner and not a person's own socket: its own label, or via:<label> when it names anything else. Never the asked name, which could be a live
-  // terminal's (cli:<pid>), the link's (box:x) or another agent's, and re-taking "your own" lease is not a conflict.
+  // terminal's (cli:<pid>) or another agent's, and re-taking "your own" lease is not a conflict.
   else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
-  return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+  return s;
 }
 
 /** The sandbox runs an absolute program path: a bare `claude` is looked up on PATH the way a shell would, and left as it is when it is not found (the check then says so). @param {string} cmd */
@@ -3189,14 +3068,11 @@ function absoluteBin(cmd) {
   return c;
 }
 
-export const fromLink = caller => /^link:/.test(String(caller || ""));
-
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /**
  * Whose words are queued for a session busy in a terminal: a person's. That is every surface of
- * the person's, the owner's Deck or phone over the tailnet ("tailnet:<login>", the only login the
- * tailnet listener admits, ADR 0002) among them. A model's words are refused instead: an MCP call,
- * the Harness, or anything speaking as an agent, an agent's own tailnet node included.
+ * the person's, the owner's Deck or phone as a paired device among them. A model's words are refused
+ * instead: an MCP call, the Harness, or anything speaking as an agent.
  * @param {string} [caller]
  */
 /**
@@ -3228,8 +3104,7 @@ export const authorOf = (/** @type {any} */ peer) => { const raw = peer && (peer
 
 export const queuesFor = caller => {
   const c = String(caller || "");
-  if (fromLink(c)) return true;
-  return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])(agent|thread):/i.test(c) && c !== "tailnet:";
+  return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])(agent|thread):/i.test(c);
 };
 
 export default {
@@ -3362,7 +3237,6 @@ export default {
     // and meta.agentKind (the stored row), not by the label or by whether it already has a thread record.
     const calls = new AsyncLocalStorage();
     const guard = (caller, what) => {
-      if (fromLink(caller)) return;
       // Decided on what vyred verified (meta.agent, meta.agentKind), never on the label: on an agent's own thread socket the label is the client's to choose.
       const v = /** @type {any} */ (calls.getStore());
       const agent = (v && v.agent) || agentOf(caller);
@@ -3388,7 +3262,7 @@ export default {
       const caller = String(m.caller || "");
       // A model call is known by what vyred verified (an agent, a thread), or by the label of a plain session; a label alone is only a claim, so it never LOWERS the checks below.
       const modelish = Boolean(m.agent) || (typeof m.thread === "string" && m.thread !== "") || /^(?:mcp|harness)(?::|$)/.test(caller);
-      if (!modelish || fromLink(caller)) return true;
+      if (!modelish) return true;
       if (m.agent && m.agentKind === "assistant") return true; // the assistant, from its verified meta.agent: guard() and mayReach decide
       // any other named agent is held like a session: its own thread and the threads it started (below)
       if (typeof m.thread !== "string" || !m.thread) {
@@ -3416,7 +3290,7 @@ export default {
       const me = sb.record(m.thread);
       return Boolean(me && me.project && t.project === me.project);
     };
-    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
+    const SESSION_MUTATING = new Set(["threads.start", "threads.delete", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
       "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
     const SESSION_READS = new Set(["threads.fork", "threads.branch", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
@@ -3427,7 +3301,8 @@ export default {
       : run;
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
-    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
+    const offs = [];
+    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
     const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
@@ -3481,11 +3356,6 @@ export default {
         return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
-    /**
-     * On the box, the person's words for a thread the box does not have go to the paired Mac that
-     * has it (docs/adr/0021-box-reads-the-mac.md, "Sending to a Mac session"): the Mac's answer,
-     * labelled { source: "mac", machine }, or null when no Mac has it, so the box answers as usual.
-     */
     /** The chat and asker a turn carries, honoured only from the stream module (first party): never from a model's or a surface's input. @param {any} i @param {any} caller @param {boolean} firstParty */
     const kernelTurnOf = (i, caller, firstParty) => {
       if (!(firstParty && String(caller || "") === "module:stream" && typeof i.chat === "string" && i.chat)) return null;
@@ -3494,105 +3364,8 @@ export default {
       if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
       return { chat: i.chat, asker: sb.canon(i.asker) };
     };
-    const sendToMac = async (i, caller) => {
-      const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
-        input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
-      if (r.error || !Array.isArray(r.data)) return null;
-      const done = r.data.find(a => a.ok);
-      if (done) {
-        const d = done.data || {};
-        // The note names the Mac, so the person knows where the session is busy.
-        const note = d.queued ? (d.busy && d.busy !== "terminal"
-          ? `${d.name} is in use in ${d.busy} on ${done.name}. I'll hand it your message when this turn ends.`
-          : `${d.name} is busy in your terminal on ${done.name}. I'll hand it your message when this turn ends.`) : d.note;
-        return { ...d, ...(note !== undefined ? { note } : {}), source: "mac", machine: done.name };
-      }
-      // A Mac that answered with its own error has the thread (or failed on it): say that one. A
-      // Mac without the thread says "no thread"; an offline Mac may have it, so nothing was sent.
-      const failed = r.data.find(a => a.error && !["mac_offline", "timeout"].includes(a.error.code) && !/^no thread\b/.test(a.error.message));
-      if (failed) throw Object.assign(new Error(failed.error.message), { code: failed.error.code });
-      const away = r.data.find(a => a.error && a.error.code === "mac_offline");
-      if (away) throw Object.assign(new Error(`${away.name} is offline; your message was not sent`), { code: "mac_offline" });
-      const slow = r.data.find(a => a.error && a.error.code === "timeout");
-      if (slow) throw Object.assign(new Error(`${slow.name} did not answer in time; your message may not have been sent`), { code: "timeout" });
-      return null;
-    };
-
-    /**
-     * On the box, the person's answer to an ask the box does not have goes to the paired Mac it is
-     * on (docs/adr/0021-box-reads-the-mac.md, "v2"): the link signs it for that Mac, and the Mac
-     * checks the signature before it answers. The Mac's answer, labelled { source: "mac", machine },
-     * or null when no Mac has the ask, so the box answers as usual ("no ask"). Never retried: a Mac
-     * that says the ask is gone or cancelled has the last word, and a retry would carry a new nonce.
-     */
-    // The paired Macs' open asks, as their ask.raised reached this box (core/link relays them with
-    // source "mac"): ask id -> gated. Read synchronously by threads.answer's presence rule. Box only.
-    /** @type {Map<string, { gated: boolean }>} */
-    const macAsks = new Map();
-    /** Record a Mac's ask as gated or not, keeping at most 500. @param {string} ask @param {boolean} gated */
-    const rememberMacAsk = (ask, gated) => {
-      macAsks.delete(ask);
-      while (macAsks.size >= 500) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
-      macAsks.set(ask, { gated });
-    };
-    const offs = [];
-    if (ctx.config && ctx.config.role === "box") {
-      offs.push(ctx.events.on("ask.raised", e => {
-        const p = e.payload || {};
-        if (p.source !== "mac" || typeof p.ask !== "string") return;
-        rememberMacAsk(p.ask, gatedAsk(p));
-      }));
-      offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
-    }
-    // Whether any Mac has ever paired here (core/link/box.js's own table, read across modules:
-    // "reads may join any table", core/modules/index.js). A box that has never paired one can
-    // never have a Mac-gated ask to fail closed on; querying it here, not link's own tool, keeps
-    // this synchronous, the way a presence `when` must be. Missing (link never started) reads as
-    // no Macs, not an error.
-    const hasPairedMacs = () => { try { return Boolean(ctx.store.db.prepare("SELECT 1 FROM link_peers WHERE kind = 'mac' LIMIT 1").get()); } catch { return false; } };
-    /**
-     * Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw (the
-     * box restarted, or it raced ask.raised) counts as gated too, not only one named by `machine`,
-     * on a box that has ever paired a Mac: macAsks is memory-only, so "unknown, and a Mac could
-     * have it" must fail toward asking for a fresh proof, not toward skipping it (e2e, review of
-     * 0f2a8752, LOW 1). A box with no paired Mac, ever, has nothing to fail closed on (regression,
-     * cohesion 2026-09-28: a plain single-box install asked for presence on every unknown ask,
-     * `threads.answer` typo'd or already-closed alike, though ADR 0021 section 3a only fails
-     * closed for one a Mac could actually own); the person sees a proof prompt they didn't
-     * strictly need only when a Mac is actually in the picture.
-     */
-    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
-    /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
-    const onOwnerDevice = caller => {
-      const kc = kchainNow();
-      if (kc === undefined) return ownerDevice(caller); // SHIM(legacy labels): a build with no kernel
-      const h = personHop(kc);
-      return Boolean(h && h.via && (h.via.device || h.via.node));
-    };
-
-    const answerOnMac = async (i, caller, peer, meta = {}) => {
-      // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
-      // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
-      if (onOwnerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
-      // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
-      if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
-      const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
-        ...(i.message !== undefined ? { message: i.message } : {}), ...(i.answers !== undefined ? { answers: i.answers } : {}), ...(i.scope !== undefined ? { scope: i.scope } : {}) };
-      const by = { caller: String(caller || ""), ...(peer && peer.stableId ? { device: String(peer.stableId) } : {}),
-        ...(meta.person && meta.person.id ? { person: String(meta.person.id) } : {}), ...(meta.presence && meta.presence.method ? { presence: String(meta.presence.method) } : {}) };
-      const r = await ctx.call("link.macs.call", { tool: "threads.answer", as: "person", by, input, ...(i.machine ? { mac: i.machine } : {}) });
-      if (r.error || !Array.isArray(r.data) || !r.data.length) return null;
-      const done = r.data.find(a => a.ok);
-      if (done) return { ...(done.data || {}), source: "mac", machine: done.name };
-      const a = r.data[0];
-      const e = a.error || { code: "failed", message: "the Mac could not answer" };
-      if (e.code === "mac_offline") throw Object.assign(new Error(`${a.name} is offline; your answer was not sent`), { code: "mac_offline" });
-      if (e.code === "timeout") throw Object.assign(new Error(`${a.name} did not answer in time; your answer may not have reached it`), { code: "timeout" });
-      throw Object.assign(new Error(e.message), { code: e.code });
-    };
-
-    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
+    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
@@ -3606,11 +3379,6 @@ export default {
       async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
-        // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
-        if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
-          const mac = await sendToMac(i, caller);
-          if (mac) return mac;
-        }
         if ((i.model || i.effort) && !queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model or effort"), { code: "denied" });
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
@@ -3629,29 +3397,17 @@ export default {
         const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
         const files = heard.length ? await sb.mediaFor(i.thread, heard) : [];
         const note = [heard.length ? tagNote(heard) : "", ...files].filter(Boolean).join("\n");
-        const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
+        const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
       });
 
-    tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
-      { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
-      async (i, { caller }) => {
-        if (!personTurn(caller) || fromLink(caller)) throw Object.assign(new Error("only a person's own surface carries a Mac's session on here"), { code: "denied" });
-        if (!ctx.config || ctx.config.role !== "box") throw Object.assign(new Error("continue-here runs on a box: this machine is not one"), { code: "bad_input" });
-        return sb.continueHere({ thread: i.thread, machine: i.machine ? String(i.machine) : null, surface: surfaceOf(i, caller), claudeReady: chosen || cfg.auth === "login" });
-      });
-
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
-      { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
+      { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." } } },
       async (i, meta) => {
         const { caller } = meta;
         guard(caller, "list sessions");
-        const { machines: _, ...q } = i;
-        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
-        // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
-        const answers = await askMacs(ctx, "threads.list", q);
-        return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
+        const rows = sb.list(i); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]);
       });
 
     // Every ask says what answering it takes: `presence: {required, covered, since}`. Answering is the
@@ -3676,34 +3432,23 @@ export default {
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
-      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
+      ["cli", "local", "deck", "capsule", "mobile", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); },
-      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
+      ["cli", "local", "deck", "capsule", "mobile", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
 
-    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
-      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now.",
+      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
       async (i, meta = {}) => { const { caller, peer } = meta;
         guard(caller, "read questions");
-        const { machines: _, ...q } = i;
-        const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
-        if (!(await wantsMacs(ctx, i, caller, meta))) return own;
-        // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
-        // so a surface that reconnects has one list to reconcile from. What answering one takes is
-        // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
-        // box learns which are gated from this list as it does from the relayed ask.raised.
-        const answers = await askMacs(ctx, "threads.asks", q);
-        const covered = own.length ? own[0].presence : await withPresence([{}], peer).then(r => r[0].presence);
-        for (const a of answers) if (a.ok && Array.isArray(a.data)) for (const r of a.data) if (r && typeof r.id === "string") rememberMacAsk(r.id, gatedAsk(r));
-        return mergeRows(ctx, own, answers.map(a => a.ok && Array.isArray(a.data)
-          ? { ...a, data: a.data.map(r => ({ ...r, presence: { ...covered, required: gatedAsk(r) } })) } : a),
-        { compare: (x, y) => (Number(x.at) || 0) - (Number(y.at) || 0) });
+        const own = await withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer);
+        return own;
       });
 
     tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's. On a box, the person's answer to a paired Mac's ask goes to that Mac (machine: its name, when the box has not seen the ask).",
-      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str, machine: str,
+      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
       async (i, meta) => {
@@ -3711,14 +3456,9 @@ export default {
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
-        // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
-        if (!a && !thread && (await wantsMacs(ctx, {}, caller, meta))) {
-          const mac = await answerOnMac(i, caller, peer, meta);
-          if (mac) return mac;
-        }
-        // device: which of the person's devices answered, when the call says (a paired device over
-        // the relay, the owner's tailnet node), not only the surface it claims.
-        const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
+        // device: which of the person's devices answered, when the call says (a paired device),
+        // not only the surface it claims.
+        const device = /^device:./.test(String(caller || "")) ? String(caller) : null;
         return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device);
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
@@ -3727,12 +3467,7 @@ export default {
       // No presence proof: answering is the owner's own action on their own screen, and Vyre does
       // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
-      // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
-      // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
-      ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "link:box"],
-      // On a box, an answer that goes to a Mac and approves a floor tool there needs a fresh proof
-      // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
-      ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
+      ["cli", "local", "module", "deck", "capsule", "device"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },

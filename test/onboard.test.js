@@ -221,7 +221,7 @@ test("onboard: join is the owner's alone — an agent with a valid presence proo
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
   // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, the same
   // way relay.pair.start already does, whatever proof rides along (reviewer's HOLD on af604cf8).
-  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "guest:sam@example.com", "hook", "anonymous"]) {
     const relay = await call("onboard.join", { action: "relay" }, { root, caller });
     assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
   }

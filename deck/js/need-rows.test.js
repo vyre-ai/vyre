@@ -110,7 +110,7 @@ test("need-rows: changes and push targets", () => {
 });
 
 test("need-rows: a committed swipe, by kind and side (the no-nag rule)", () => {
-  const ask = { kind: "ask", at: 0 }, draft = { kind: "draft", at: 0, gate: { kind: "send" } }, q = { kind: "question", at: 0 }, pair = { kind: "pair", at: 0 };
+  const ask = { kind: "ask", at: 0 }, draft = { kind: "draft", at: 0, gate: { kind: "send" } }, q = { kind: "question", at: 0 };
   assert.equal(swipeCommit(ask, "right"), "approve");
   assert.equal(swipeCommit(ask, "left"), "deny");
   // A draft goes out as the person: the right swipe shows the final words first.
@@ -118,8 +118,6 @@ test("need-rows: a committed swipe, by kind and side (the no-nag rule)", () => {
   assert.equal(swipeCommit(draft, "left"), "discard");
   assert.equal(swipeCommit(q, "right"), "sheet");
   assert.equal(swipeCommit(q, "left"), "later");
-  assert.equal(swipeCommit(pair, "right"), "sheet");
-  assert.equal(swipeCommit(pair, "left"), "deny");
   assert.equal(SWIPE_HINT, "Swipe right to approve, left to deny.");
   assert.deepEqual(swipeActions({ kind: "draft", at: 0, gate: { kind: "spend" } }), ["Approve", "Discard"]);
   assert.deepEqual(swipeActions(ask), ["Approve", "Deny"]);
@@ -131,7 +129,6 @@ test("need-rows: the sheet's primary words", () => {
   assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", true), "Send edited");
   assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "spend" } }, "fingerprint"), "Approve with fingerprint");
   assert.equal(sheetPrimary({ kind: "question", at: 0 }, "Face ID"), "Answer");
-  assert.equal(sheetPrimary({ kind: "pair", at: 0 }, "Touch ID"), "Pair with Touch ID");
   // A presence session covers it: no Face ID is asked, so none is named.
   assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", false, true), "Send");
   assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", true, true), "Send edited");
@@ -221,41 +218,6 @@ test("need-rows: Later hides a question on this device for an hour", () => {
   broken.snooze("q1");
   assert.equal(broken.has("q1"), false);
   assert.equal(snoozes(null).has("x"), false);
-});
-
-test("need-rows: a Mac session's ask swipes and approves like any other, and says which Mac", async () => {
-  const { elsewhere, resetMacAnswers } = await import("./need-rows.js");
-  resetMacAnswers();
-  const mac = { kind: "ask", at: NOW, agent: "kit", tool: "Bash", command: "npm test", source: "mac", machine: "alex-mac" };
-  assert.equal(elsewhere(mac), null);
-  assert.deepEqual(swipeActions(mac), ["Approve", "Deny"]);
-  assert.equal(swipeCommit(mac, "right"), "approve");
-  assert.equal(swipeCommit(mac, "left"), "deny");
-  assert.match(ariaLabel(mac, NOW), /Actions: Approve, Deny, Open\.$/);
-  assert.equal(thirdLine(mac), "kit · on alex-mac");
-  assert.equal(thirdLine({ ...mac, machine: null }), "kit · on your Mac");
-  assert.equal(thirdLine({ ...mac, source: null }), "kit", "a server session says nothing of a Mac");
-});
-
-test("need-rows: on a server that cannot forward answers (pre-v2), a Mac's ask only opens and says where", async () => {
-  const { elsewhere, holdMacAnswers, resetMacAnswers, macAnswers } = await import("./need-rows.js");
-  const mac = { kind: "ask", at: NOW, agent: "kit", tool: "Bash", command: "npm test", source: "mac", machine: "alex-mac" };
-  holdMacAnswers();
-  try {
-    assert.equal(macAnswers(), false);
-    assert.equal(elsewhere(mac), "alex-mac");
-    assert.equal(elsewhere({ ...mac, machine: null }), "your Mac");
-    assert.equal(elsewhere({ ...mac, kind: "question" }), "alex-mac");
-    assert.equal(elsewhere({ ...mac, source: null }), null, "a server session is answered here");
-    assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is your server's");
-    assert.deepEqual(swipeActions(mac), []);
-    assert.deepEqual(swipeActions({ ...mac, source: null }), ["Approve", "Deny"]);
-    assert.equal(swipeCommit(mac, "right"), "sheet");
-    assert.equal(swipeCommit(mac, "left"), "sheet");
-    assert.match(ariaLabel(mac, NOW), /Answer it on alex-mac\. Actions: Open\.$/);
-    assert.doesNotMatch(ariaLabel(mac, NOW), /Approve/);
-  } finally { resetMacAnswers(); }
-  assert.equal(elsewhere(mac), null);
 });
 
 test("need-rows: a held request is said in words, never as a raw HTTP request", () => {

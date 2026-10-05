@@ -143,10 +143,10 @@ test("status-mark: the right mark for each status, most urgent first, named by i
   assert.deepEqual([elapsed(12_000), elapsed(4 * 60_000), elapsed(72 * 60_000)], ["12s", "4m", "1h 12m"]);
 });
 
-test("status-mark: the badge caps at 99+, says who waits, and hides at 0; path marks for direct, relayed and none", async () => {
+test("status-mark: the badge caps at 99+, says who waits, and hides at 0", async () => {
   const { install } = await import("./fake-dom.js");
   install();
-  const { badge, count, pathMark } = await import("../js/status-mark.js");
+  const { badge, count } = await import("../js/status-mark.js");
   const b = badge(3);
   assert.equal(b.textContent, "3");
   assert.equal(b.getAttribute("aria-label"), "3 need you");
@@ -156,16 +156,12 @@ test("status-mark: the badge caps at 99+, says who waits, and hides at 0; path m
   badge(0, b);
   assert.equal(b.hidden, true);
   assert.equal(count(214).className, "sm-count");
-  assert.equal(pathMark("direct").className, "sm sm-path-direct");
-  assert.equal(pathMark("relay").className, "sm sm-path-relayed");
-  assert.equal(pathMark("peer-relay").className, "sm sm-path-relayed");
-  assert.equal(pathMark("unknown").className, "sm sm-path-none");
 });
 
-test("status-mark: failed and relayed never take the attention colour or amber; marks never animate", () => {
+test("status-mark: failed never takes the attention colour or amber; marks never animate", () => {
   const css = read("css/marks.css");
   const bad = /--beacon|--recall|--signal\b|#EBC76B|violet|amber|gold/i;
-  for (const sel of [".sm-failed", ".sm-path-relayed", ".dot.health-relayed", ".sm-path-none", ".sm-count"]) {
+  for (const sel of [".sm-failed", ".sm-count"]) {
     const found = rules(css, sel);
     assert.ok(found.length, `${sel} is drawn`);
     for (const r of found) assert.doesNotMatch(r, bad, `${sel}: ${r}`);
@@ -177,10 +173,7 @@ test("status-mark: failed and relayed never take the attention colour or amber; 
   decl(css, ".sm-needs", /width: 8px; height: 8px; background: var\(--beacon-dot\)/);
   decl(css, ".sm-badge", /height: 18px; min-width: 18px; padding: 0 5px/);
   assert.doesNotMatch(noComments(css), /animation|transition/);
-  // The old dots are aliases, and deck.css no longer paints a path amber.
   decl(css, ".dot.beacon", /background: var\(--beacon-dot\)/);
-  decl(css, ".dot.health-relayed", /background: var\(--label\)/);
-  assert.doesNotMatch(noComments(read("css/deck.css")), /\.dot\.health-/);
   assert.match(read("index.html"), /href="\/css\/buttons.css">\n\s*<link rel="stylesheet" href="\/css\/marks.css">/);
   assert.match(read("sw.js"), /"\/css\/marks.css", "\/js\/status-mark.js"/);
 });

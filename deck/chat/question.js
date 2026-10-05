@@ -17,20 +17,18 @@
 // move, space toggles (multi-select) or picks, Enter picks and moves on (on the last step it
 // submits), Esc steps back. Submit calls threads.answer { ask, decision: "allow", answers,
 // surface: "deck" } (no passkey, ADR 0024); Decline sends "deny". Answered here or elsewhere
-// (ask.answered), the card folds to what was answered. A Mac session's ask (ask.machine) is answered
-// the same way with `machine` added, and says "on <machine>"; its refusals are presence.js macProblem's.
+// (ask.answered), the card folds to what was answered.
 
 import { h, put, add } from "../js/dom.js";
 import { queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { renderMarkdown } from "./lib/markdown.js";
-import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
+import { problemLine } from "./presence.js";
 import { fromLine, cardHead, keyHint, busyLabel, widthOf } from "./ask-item.js";
 import { emptyPick, choose, answerText, answered, answerInput } from "./lib/answers.js";
 
 /**
- * @param {{ id: string, questions?: any[], agent?: string|null, machine?: string|null, node?: string|null, elsewhere?: string|null }} ask
- * machine: the paired Mac the answer goes to; elsewhere: set once the box has shown it cannot forward it (no buttons here)
+ * @param {{ id: string, questions?: any[], agent?: string|null }} ask
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
  *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
@@ -44,7 +42,7 @@ export function questionCard(ask) {
   let picks = questions.map(() => emptyPick());
   let cursor = questions.map(() => 0);
   const state = { step: 0, busy: /** @type {"submit"|"decline"|null} */ (null), width: 0, error: /** @type {any} */ (null), decided: /** @type {string|null} */ (null), shown: /** @type {Record<string, string>|null} */ (null),
-    from: /** @type {{ where: string, at?: number|null }|null} */ (null), again: /** @type {(o: { presence?: boolean }) => void} */ (() => {}) };
+    from: /** @type {{ where: string, at?: number|null }|null} */ (null) };
   const who = ask.agent || "Vyre";
   const many = () => questions.length > 1;
   const reviewStep = () => questions.length; // only reached when there are several
@@ -76,53 +74,40 @@ export function questionCard(ask) {
   }
   function back() { if (state.step > 0) { state.step--; draw(); el.focus?.(); } }
 
-  const onMac = () => (ask.machine ? { machine: ask.machine } : {});
-  // A Mac's refusal asks for a passkey on the card (macProblem), so the outbox never proves on its own.
-  const presence = (/** @type {{ presence?: boolean }} */ o) => ({ presence: o.presence ? true : ask.machine ? false : undefined });
-  /** @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
-  async function submit(opts = {}) {
+  async function submit() {
     if (state.busy || state.decided) return;
     let input;
-    try { input = { ...answerInput(ask.id, questions, picks), ...onMac() }; } catch (e) { state.error = e; draw(); return; }
+    try { input = answerInput(ask.id, questions, picks); } catch (e) { state.error = e; draw(); return; }
     state.width = widthOf(el, "submit");
     state.busy = "submit"; state.error = null; draw();
-    const r = await queued("threads.answer", input, presence(opts));
+    const r = await queued("threads.answer", input);
     state.busy = null;
     if (!r.error) { state.decided = "allow"; state.shown = input.answers; }
-    else failed(r.error, o => submit({ ...opts, ...o }));
+    else state.error = r.error;
     draw();
   }
-  /** @param {{ presence?: boolean }} [opts] */
-  async function decline(opts = {}) {
+  async function decline() {
     if (state.busy || state.decided) return;
     state.width = widthOf(el, "decline");
     state.busy = "decline"; state.error = null; draw();
-    const r = await queued("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, presence(opts));
+    const r = await queued("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
     state.busy = null;
     if (!r.error) state.decided = "deny";
-    else failed(r.error, o => decline({ ...opts, ...o }));
+    else state.error = r.error;
     draw();
   }
-  function failed(err, again) { if (!macHeld(ask, err)) { state.error = err; state.again = again; } }
-  const problem = () => state.error ? (ask.machine ? macProblem(state.error, ask.machine, ask, state.again) : problemLine(state.error)) : null;
+  const problem = () => state.error ? problemLine(state.error) : null;
 
   function draw() {
     // The choices' scroll survives a redraw (a pick, an arrow key), then the focused row is kept in sight.
     const scrolled = SCROLLERS.map(sel => /** @type {any} */ (el.querySelector?.(sel))?.scrollTop || 0);
     const q0 = questions[state.step];
     const title = cardHead({ kind: "Question", who, at: ask.at ?? ask.created_at, open: !state.decided,
-      mac: ask.machine && !ask.elsewhere ? macLabel(ask.machine) : null,
       extra: [many() && !state.decided ? h("span", { class: "cv-q-step" }, onReview() ? "Review" : `${state.step + 1} of ${questions.length}`) : null,
-        q0 && q0.header && !onReview() && !ask.elsewhere ? h("span", { class: "cv-q-chip" }, q0.header) : null] });
+        q0 && q0.header && !onReview() ? h("span", { class: "cv-q-chip" }, q0.header) : null] });
     otherInput = null; nextBtn = null;
     if (state.decided) { put(el, title, folded()); el.classList.add("answered"); return; }
     if (!questions.length) { put(el, title, h("div", { class: "cv-note" }, "Reading the question…")); return; }
-    // A session on the paired Mac, and a box that cannot forward the answer: the questions show and say where to answer.
-    if (ask.elsewhere) {
-      put(el, title, h("dl", { class: "cv-q-review" }, questions.map(q => [h("dt", null, q.header || q.question), h("dd", null, q.options.map(o => o.label).join(" / "))])),
-        h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
-      return;
-    }
     put(el, title, onReview() ? review() : stepView(state.step), actions(), problem());
     keepInSight(scrolled);
   }
@@ -250,9 +235,9 @@ export function questionCard(ask) {
     else if (!state.shown && state.decided === "allow") { try { state.shown = answerInput(ask.id, questions, picks).answers; } catch { state.shown = null; } }
     draw();
   };
-  el.isOpen = () => !state.decided && !ask.elsewhere;
+  el.isOpen = () => !state.decided;
   el.onKey = e => {
-    if (state.decided || state.busy || !questions.length || ask.elsewhere) return false;
+    if (state.decided || state.busy || !questions.length) return false;
     if (e.key === "Escape") { back(); return true; }
     if (onReview()) { if (e.key === "Enter") { submit(); return true; } return false; }
     const i = state.step, q = questions[i];

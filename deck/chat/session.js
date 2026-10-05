@@ -43,8 +43,7 @@
 // A allows once, D denies, Enter, Esc, arrows, space and 1-9 as the cards define. Keys are heard
 // only while this page is on screen.
 //
-// Kept from before: Mac sessions (source "mac": sends and answers carry the machine, an offline
-// chip, cards say "on <machine>", or "Answer it on <machine>" on a box that cannot forward), gate items, memory facts after their turn, notices, day rules,
+// Kept from before: gate items, memory facts after their turn, notices, day rules,
 // the Raw toggle (the same items printed the way the terminal prints them), "Load earlier", the
 // Jump to latest pill, deep links from Needs (?at, ?ask, ?tool). An older box without
 // recall.transcript gets the earlier view (recall.thread turns and thread.* events), unchanged.
@@ -60,7 +59,6 @@ import { openHref } from "./newsession.js";
 import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
-import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
 import { mountTip } from "./tip-line.js";
 import { planCard } from "./plan-card.js";
@@ -72,7 +70,6 @@ import { welcomeRow, loadWelcome } from "./cards/land.js";
 import { charterChanged, agentMade } from "./cards/charter-changed.js";
 import { vaultUsed } from "./cards/vault-used.js";
 import { spendCapped } from "./cards/spend-capped.js";
-import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
@@ -80,7 +77,6 @@ import { threadAvatar, readTeammates, readProjects, isTeammate } from "../js/ava
 import { threadHref } from "./lib/routes.js";
 import { providerName } from "../js/provider-mark.js";
 import { stopWords } from "./core/stop-words.js";
-import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
@@ -94,7 +90,6 @@ import { createGrouper } from "./core/grouping.js";
 import { createWindowView, createStick } from "./window-view.js";
 
 const PAGE = 400;
-const MAC_PAGE = 80;
 const RAW_KEY = "vyre.chat.raw";
 const readRaw = () => { try { return localStorage.getItem(RAW_KEY) === "1"; } catch { return false; } };
 const saveRaw = on => { try { localStorage.setItem(RAW_KEY, on ? "1" : "0"); } catch {} };
@@ -130,11 +125,10 @@ export const unknownItemText = kind => `This update (${String(kind || "unknown")
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, projects?: any[], recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
+ * @param {{ thread: string, project: string|null, projects?: any[], recorded?: boolean, known?: boolean, turns?: number,
  *   at?: number|null, ask?: string|null, tool?: string|null, shown?: () => boolean, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
  * known: the list had a row for it. turns: its turn count, so an older box's read opens at its end.
- * source, machine: the list's label for it; "mac" is a paired Mac's session.
  * projects: projects.list's rows (name lookup only), so the header can show which project this
  * thread is in - the one visible sign for an agent's own thread, whose project the composer never
  * chose (cohesion's one-product-audit finding 6).
@@ -203,15 +197,7 @@ export function mountSession(container, opts) {
   const rawBox = h("div", { class: "cv-raw-box", hidden: !raw });
   const earlier = h("div", { class: "cv-earlier", hidden: true });
   const waitNote = h("div", { class: "empty th-wait" }, "Nothing was said in this session yet.");
-  const health = healthDot();
-  /** Where it lives when that is the paired Mac. */
-  const where = { source: opts.source || null, machine: opts.machine || null };
-  const macName = () => where.machine || "your Mac";
-  /** A Mac session: what waits in its queue (from the composer), and whether the last send found the Mac offline. */
-  const mac = { queued: 0, name: "", offline: /** @type {string|null} */ (null) };
-  const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat", machine: isMac(where) ? macName() : null,
-    onQueue: (n, name) => { mac.queued = n; mac.name = name; if (isMac(where)) drawHead(); },
-    onOffline: m => { mac.offline = m; drawHead(); },
+  const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat",
     onStop: () => stopTurn(),
     // A message drawn on send (its row key u:<uuid>) brings the reader down to it, as thread.sent does.
     session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
@@ -291,17 +277,16 @@ export function mountSession(container, opts) {
     if (opts.shown && !opts.shown()) return false;
     return !container.closest?.(".away");
   };
-  /** A Switchboard session (not a terminal's transcript, not the Mac's): it has a state, Stop and a queue. */
-  const switchboard = () => !isMac(where) && !recorded.on && (!!record.current || S.meta.lastId > -Infinity);
+  /** A Switchboard session (not a terminal's transcript): it has a state, Stop and a queue. */
+  const switchboard = () => !recorded.on && (!!record.current || S.meta.lastId > -Infinity);
   const busy = () => switchboard() && BUSY.has(S.state);
 
   // ---- open -----------------------------------------------------------------------
 
   async function boot() {
-    // Everything at once: one round trip from a phone, not three. A paired Mac's session is only
-    // ever a transcript the box asks the Mac for (recall.transcript, source "mac").
+    // Everything at once: one round trip from a phone, not three.
     const [r, t, nm] = await Promise.all([
-      opts.recorded || isMac(where) ? { error: { message: "not a live session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
+      opts.recorded ? { error: { message: "not a live session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
       readNames(attempt),
       readTeammates(attempt),
@@ -322,7 +307,7 @@ export function mountSession(container, opts) {
     // transcript not found yet (code not_found) is a live thread that still reads as blocks.
     if (t.error && !r.error && !t.error.missing && t.error.code !== "not_found") noRecall = true;
     if (t.error && t.error.missing && t.error.code !== "not_found") return legacyBoot(r);
-    // Neither the Switchboard nor this box's transcripts have it: recall.thread asks the paired Mac.
+    // Neither the Switchboard nor this box's transcripts have it: recall.thread reads it.
     if (t.error && r.error) return legacyBoot(r);
     recorded.on = !!r.error;
     if (t.data?.session) recorded.session = t.data.session;
@@ -370,15 +355,12 @@ export function mountSession(container, opts) {
     fetchMemory();
   }
 
-  /** Pages from a paired Mac are smaller: each is one link reply, under its 5 MB body cap. */
-  const page = () => isMac(where) ? MAC_PAGE : PAGE;
-  /** One read of the session as blocks, from the Mac when it lives there. @param {Record<string, any>} q */
+  /** One read of the session as blocks. @param {Record<string, any>} q */
   const transcript = async q => {
-    // A thread of this server's own that recall cannot read (recall.* answers for a paired Mac's sessions, and fails for a server thread when none is
-    // paired, #56): asked once, then its history is threads.get's events and nothing asks again.
-    if (noRecall && !opts.recorded && !recorded.on && !isMac(where)) return { data: { blocks: [], next: 0, first: null } };
-    const t = await attempt("recall.transcript", { session: thread, ...q, limit: page(), ...(isMac(where) ? { source: "mac" } : {}) });
-    if (t.error && !t.error.missing && t.error.code !== "not_found" && !opts.recorded && !isMac(where) && record.current) noRecall = true;
+    // A thread of this server's own that recall cannot read (recall.* fails for a server thread, #56): asked once, then its history is threads.get's events and nothing asks again.
+    if (noRecall && !opts.recorded && !recorded.on) return { data: { blocks: [], next: 0, first: null } };
+    const t = await attempt("recall.transcript", { session: thread, ...q, limit: PAGE });
+    if (t.error && !t.error.missing && t.error.code !== "not_found" && !opts.recorded && record.current) noRecall = true;
     return t;
   };
   let noRecall = false;
@@ -390,14 +372,14 @@ export function mountSession(container, opts) {
     let data = t.data;
     next = data.next ?? 0;
     first = typeof data.first === "number" ? data.first : typeof data.before === "number" ? data.before : null;
-    if (first == null && data.blocks.length >= page()) {
+    if (first == null && data.blocks.length >= PAGE) {
       let all = data.blocks;
       for (let i = 0; i < 20; i++) {
         const more = await transcript({ from: next });
         if (more.error || !more.data.blocks.length) break;
         all = all.concat(more.data.blocks).slice(-1200);
         next = more.data.next ?? next;
-        if (more.data.blocks.length < page()) break;
+        if (more.data.blocks.length < PAGE) break;
       }
       data = { ...data, blocks: all };
       first = all.length ? all[0].seq : null;
@@ -459,8 +441,6 @@ export function mountSession(container, opts) {
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
       proj ? h("span", { class: "tag cv-project", title: `In ${proj}` }, proj) : null,
-      machineChip(where),
-      mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       chip ? h("span", { class: "tag cv-chip" }, chip) : null,
       ctx ? h("span", { class: "tag cv-context" + (ctx.share >= 0.8 ? " high" : ""), title: ctx.title }, ctx.text) : null,
       sb ? h("span", { class: "cv-state cv-state-" + S.state, title: "This session is " + S.state }, S.state + (S.turn && BUSY.has(S.state) ? ` · turn ${S.turn}` : "")) : null,
@@ -468,18 +448,9 @@ export function mountSession(container, opts) {
         title: "Show or hide the thinking (Ctrl+O)", onclick: () => setHideThinking(!hideThinking) }, hideThinking ? "Show thinking" : "Hide thinking") : null,
       mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-raw-toggle", type: "button", "aria-pressed": String(raw), title: "Show it the way the terminal prints it",
         onclick: () => setRaw(!raw) }, raw ? "Rich" : "Raw") : null,
-      health.el,
     );
     composer.setBusy(busy());
     tip?.sync();
-    // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
-    if (isMac(where)) {
-      put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, mac.offline ? `${macName()} is asleep or offline. Your message waits for it, or you can carry on here.` : `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : "")),
-        // The Mac is away: the same conversation continues on this server, from what the Mac had (threads.continue-here); the Mac's own copy is left alone.
-        mac.offline && CAPS.has("threads.continue-here") !== false ? h("button", { class: "btn btn-sm cv-continue-here", type: "button", "data-act": "continue-here", disabled: continuing, onclick: () => continueHere() }, continuing ? "Continuing…" : "Continue on the server") : null,
-        continueError ? h("span", { class: "err cv-stop-err" }, continueError) : null);
-      return;
-    }
     // "paused" (lib/thread-status.js) already means exactly an idle timeout/restart/rewind - a
     // closed-but-resumable session, not an error; session-state.js's own guess (thread.stopped,
     // before any real thread.status arrives) already speaks this word too.
@@ -505,23 +476,9 @@ export function mountSession(container, opts) {
         dead.action === "sign-in" ? [" ", link("/settings#accounts", { class: "btn btn-sm" }, "Sign in")] : null) : null,
     );
   }
-  let continuing = false, continueError = /** @type {string|null} */ (null);
-  /** Is this link event about the Mac this session lives on? @param {any} p */
-  const sameMac = p => !!p && String(p.name || "").toLowerCase() === macName().toLowerCase();
-  async function continueHere() {
-    if (continuing) return;
-    continuing = true; continueError = null; drawHead();
-    const r = await CAPS.use("threads.continue-here", () => attempt("threads.continue-here", { thread, machine: where.machine || undefined }));
-    continuing = false;
-    if (r.error) { continueError = r.missing ? NEEDS_UPDATE : `Could not continue here: ${r.error.message || r.error.code}`; drawHead(); return; }
-    const d = /** @type {any} */ (r.data) || {};
-    const id = typeof d.thread === "string" ? d.thread : d.thread?.id;
-    if (!id) { continueError = "It started, but the server did not say which conversation it is."; drawHead(); return; }
-    go(threadHref({ id }, record.current?.project || opts.project || null));
-  }
   /** A session with no name is titled from what was said first, never from its id (#53). */
   const firstWords = () => { const u = /** @type {any} */ (S.items.find(it => it.kind === "user" && /** @type {any} */ (it).text)); return u ? String(u.text).replace(/\s+/g, " ").trim().split(" ").slice(0, 8).join(" ").slice(0, 60) : ""; };
-  async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+  async function take() { await attempt("threads.lease", { thread }); }
 
   /**
    * A running step's screen: this thread's own agent, only if sight.targets (the registry, never a
@@ -569,8 +526,6 @@ export function mountSession(container, opts) {
     sightEl.hidden = !sight.pic;
     if (sight.pic) put(sightEl, pictureThumb(sight.pic, `${record.current?.agent}'s screen`, { w: 160, h: 120 }));
   }
-  /** Found to be the Mac's from recall.thread's answer: sends from now on carry the machine. */
-  function onMac() { composer.setMachine(macName()); }
 
   /**
    * "Queued for after <text>" rows above the composer, from the session's queue: Edit takes the
@@ -920,14 +875,7 @@ export function mountSession(container, opts) {
   function askData(id, it) {
     const info = askInfo.get(id) || {};
     return { id, tool: it?.tool ?? info.tool ?? null, summary: it?.summary ?? info.summary ?? null, kind: info.kind || it?.askKind || "permission",
-      ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
-  }
-  /** A Mac session's ask: answered from here with its machine (the relayed event's, else the row's),
-   * unless this box has shown it cannot forward answers (presence.js macAnswersHeld). */
-  function macOf(info) {
-    if (info.source !== "mac" && !isMac(where)) return {};
-    const machine = info.machine || macName();
-    return { machine, ...(macAnswersHeld() ? { elsewhere: machine } : {}) };
+      ...info, agent: agentName(), cwd: sessionCwd() };
   }
   function askEl(it) {
     const full = askData(it.ask, it);
@@ -1223,7 +1171,7 @@ export function mountSession(container, opts) {
         patch(applyBlocks(S, r.data.blocks));
         if (r.data.blocks.length) grew();
         next = r.data.next ?? next;
-        if (r.data.blocks.length >= page()) reading.again = true;
+        if (r.data.blocks.length >= PAGE) reading.again = true;
       } while (reading.again);
     } finally { reading.busy = false; }
   }
@@ -1239,14 +1187,14 @@ export function mountSession(container, opts) {
     // only the queue above the composer follows them.
     const queueFlow = e.type === "thread.queued" || p.queued != null || p.via === "stop" || p.via === "prompt" || p.via === "terminal"
       || (typeof p.message === "string" && p.message.startsWith("inbox-"));
-    if (recorded.on && queueFlow && !isMac(where) && mode === "blocks") {
+    if (recorded.on && queueFlow && mode === "blocks") {
       if (QUEUE_ONLY.has(e.type)) patch(applyStateEvent(S, e));
       else if (e.type === "thread.sent" && p.queued != null) { S.queued = S.queued.filter(q => q.queued !== p.queued); drawQueued(); }
       return;
     }
-    if (recorded.on && queueFlow && !isMac(where)) return;
+    if (recorded.on && queueFlow) return;
     // The first live event for a recorded session: a send adopted it, so the Switchboard has it now.
-    if (live && recorded.on && !isMac(where) && /^(thread|lease)\./.test(e.type)) {
+    if (live && recorded.on && /^(thread|lease)\./.test(e.type)) {
       recorded.on = false;
       attempt("threads.get", { thread, since: 0, limit: 1 }).then(r => { if (r.data) { record.current = r.data.thread; drawHead(); } });
     }
@@ -1296,17 +1244,13 @@ export function mountSession(container, opts) {
   async function legacyBoot(r) {
     mode = "legacy";
     if (opts.recorded || r.error) {
-      const onMacNow = isMac(where);
-      const src = onMacNow ? { source: "mac" } : {};
-      let from = (opts.recorded || onMacNow) && (opts.turns || 0) > WINDOW ? /** @type {number} */ (opts.turns) - WINDOW : 0;
-      let t = await attempt("recall.thread", { session: thread, from, limit: 400, ...src });
+      let from = opts.recorded && (opts.turns || 0) > WINDOW ? /** @type {number} */ (opts.turns) - WINDOW : 0;
+      let t = await attempt("recall.thread", { session: thread, from, limit: 400 });
       // The list's count and the transcript's numbering disagree: read it from the start.
-      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...src }); from = 0; }
+      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400 }); from = 0; }
       if (t.error) { booted = true; timeline.replaceChildren(empty("Could not open this session.", t.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;
-      // A session the list did not know may turn out to be the Mac's from the answer itself.
-      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; onMac(); }
       drawHead();
       timeline.replaceChildren();
       if (from > 0) timeline.append(earlierTurns(from));
@@ -1373,7 +1317,7 @@ export function mountSession(container, opts) {
     btn.addEventListener("click", async () => {
       btn.setAttribute("disabled", "");
       const start = Math.max(0, upto - WINDOW * 2);
-      const t = await attempt("recall.thread", { session: thread, from: start, limit: upto - start, ...(isMac(where) ? { source: "mac" } : {}) });
+      const t = await attempt("recall.thread", { session: thread, from: start, limit: upto - start });
       if (t.error) { btn.removeAttribute("disabled"); return; }
       const holder = h("div", { class: "cv-earlier-turns" });
       const keep = timeline.scrollHeight - timeline.scrollTop;
@@ -1396,21 +1340,16 @@ export function mountSession(container, opts) {
       into.append(headFor(t.ts), blockRow({ kind: "text", text: t.text, ts: t.ts }));
     }
   }
-  /** Live rows drawn for a Mac session, replaced by the turns the next re-read brings. */
-  const macLive = /** @type {Element[]} */ ([]);
-  function liveAppend(/** @type {any[]} */ ...els) { timeline.append(...els); if (isMac(where)) macLive.push(...els); }
   async function readMoreLegacy() {
-    if (!recorded.on && !isMac(where)) return;
+    if (!recorded.on) return;
     if (recorded.busy) { recorded.again = true; return; }
     recorded.busy = true;
     try {
       do {
         recorded.again = false;
-        const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400, ...(isMac(where) ? { source: "mac" } : {}) });
-        if ((!recorded.on && !isMac(where)) || r.error) break;
+        const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400 });
+        if (!recorded.on || r.error) break;
         if (r.data.turns.length) timeline.querySelector(".th-wait")?.remove();
-        // The Mac's turns stand in for what was drawn live, so nothing shows twice.
-        if (r.data.turns.length && macLive.length) { for (const el of macLive.splice(0)) { el.remove(); for (const [k, v] of legacyRows) if (v === el) legacyRows.delete(k); } lastMessageEl = null; lastMessageId = null; }
         if (r.data.session) { recorded.session = r.data.session; drawHead(); }
         appendTurns(r.data.turns);
         if (r.data.turns.length) grew();
@@ -1421,20 +1360,18 @@ export function mountSession(container, opts) {
     const p = e.payload || {};
     if (e.type === "thread.sent") {
       legacyDayRule(e.at);
-      liveAppend(userRow(labelFor({ role: "user", surface: p.surface }, names), p.text, e.at, me));
+      timeline.append(userRow(labelFor({ role: "user", surface: p.surface }, names), p.text, e.at, me));
       lastMessageEl = null; lastMessageId = null;
-      // A queued message handed over on the Mac: its turn is in the transcript now.
-      if (isMac(where) && (p.queued != null || p.via)) readMoreLegacy();
       return;
     }
     if (e.type === "thread.text") {
       legacyDayRule(e.at);
-      if (p.notice) { liveAppend(noticeMsg(p.text, e.at)); return; }
+      if (p.notice) { timeline.append(noticeMsg(p.text, e.at)); return; }
       if (p.message !== lastMessageId) {
         lastMessageId = p.message;
-        liveAppend(headFor(e.at));
+        timeline.append(headFor(e.at));
         lastMessageEl = liveTextRow(e.at);
-        liveAppend(lastMessageEl);
+        timeline.append(lastMessageEl);
       }
       if (p.delta) lastMessageEl.push(p.delta);
       if (p.done && p.text) { lastMessageEl.set(p.text); lastMessageEl.done(); }
@@ -1446,7 +1383,7 @@ export function mountSession(container, opts) {
         if (legacyRows.has(key)) return;
         const b = { kind: "tool", id: p.id, tool: p.tool, summary: p.summary, destination: p.destination, ts: e.at, output: null };
         const el = /** @type {any} */ (toolCard(b)); el._block = b;
-        legacyRows.set(key, el); liveAppend(el);
+        legacyRows.set(key, el); timeline.append(el);
         toolKeys.push(key);
         while (toolKeys.length > 6) { const old = toolKeys.shift(); legacyRows.get(old)?.remove(); legacyRows.delete(old); }
       } else {
@@ -1457,19 +1394,15 @@ export function mountSession(container, opts) {
     }
     if (e.type === "thread.finished") {
       if (lastMessageEl) lastMessageEl.done();
-      if (!p.ok || p.error) liveAppend(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
-      liveAppend(turnRow({ ts: e.at, duration_ms: p.duration_ms, tokens: p.tokens, cost_usd: p.cost_usd }));
+      if (!p.ok || p.error) timeline.append(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
+      timeline.append(turnRow({ ts: e.at, duration_ms: p.duration_ms, tokens: p.tokens, cost_usd: p.cost_usd }));
       turnSeq++;
       turnMarkers.set(turnSeq, timeline.lastElementChild);
-      if (isMac(where)) readMoreLegacy();
       return;
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
     if (e.type === "ask.raised") {
-      // A relayed Mac ask carries source "mac", machine and node (the Mac's stableId); threads.asks on the box does not list it.
-      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions,
-        ...(p.source === "mac" ? { source: "mac", machine: p.machine || macName(), node: p.node ?? null,
-          ...Object.fromEntries(["detail", "always", "always_project"].filter(k => p[k] !== undefined).map(k => [k, p[k]])) } : {}) });
+      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions });
       fetchAsks();
       return;
     }
@@ -1486,7 +1419,7 @@ export function mountSession(container, opts) {
   /** The earlier view's cards: appended, then filled in. */
   function legacyAsk(a) {
     const info = askInfo.get(a.id) || {};
-    const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
+    const full = { ...info, agent: agentName(), cwd: sessionCwd() };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
     el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full)));
@@ -1687,10 +1620,10 @@ export function mountSession(container, opts) {
   async function reread() {
     if (mode !== "blocks") {
       fetchAsks();
-      if (recorded.on || isMac(where)) await readMoreLegacy();
+      if (recorded.on) await readMoreLegacy();
       return;
     }
-    if (switchboard() && !recorded.on && !isMac(where)) {
+    if (switchboard() && !recorded.on) {
       const since = resuming.reset != null ? resuming.reset : Number.isFinite(S.meta.lastId) ? S.meta.lastId : 0;
       const r = await attempt("threads.get", { thread, since, limit: 500 });
       if (!r.error && r.data) {
@@ -1724,9 +1657,6 @@ export function mountSession(container, opts) {
     on("ask.raised", onLive),
     on("ask.answered", onLive),
     on("ask.cancelled", onLive),
-    // A paired Mac going to sleep or coming back (tailnet's link events): this session's composer and "Continue on the server" follow it.
-    on("link.mac-offline", e => { if (isMac(where) && sameMac(e.payload)) { mac.offline = macName(); drawHead(); } }),
-    on("link.mac-online", e => { if (isMac(where) && sameMac(e.payload)) { mac.offline = null; drawHead(); } }),
     on("gate.held", onLive),
     on("gate.revised", onLive),
     on("gate.released", onLive),
@@ -1773,7 +1703,7 @@ export function mountSession(container, opts) {
   window.addEventListener("deck:kb", onKb);
   offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => {
-    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
+    for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
     document.removeEventListener("keydown", onKey);
     document.removeEventListener("keyup", onKeyUp);
     document.removeEventListener("visibilitychange", onVisible);

@@ -191,7 +191,7 @@ test("redteam V-M10: a model cannot hold a card of its own words through the vau
 
 test("redteam G-P17: a model, agent, watcher, tool result or guest cannot record its own 'said' intent", async t => {
   const { reg } = await world(t);
-  for (const who of ["mcp", "mcp:agent:kit", "mcp:thread:t-1", "tailnet-guest:x@y.test", "tailnet:agent:juno", "module:watchers", "module:mcp", "module:gate", "module:vault", "cli", "local", "deck", "capsule", "hook", "unknown"]) {
+  for (const who of ["mcp", "mcp:agent:kit", "mcp:thread:t-1", "guest:x@y.test", "agent:juno", "module:watchers", "module:mcp", "module:gate", "module:vault", "cli", "local", "deck", "capsule", "hook", "unknown"]) {
     const r = await reg("vault.said.record", { thread: "t-1", said: "s", kind: "send", to: ["dana@harlowlegal.com"], what: "x" }, who);
     assert.ok(r.error, `${who} cannot record`);
   }
@@ -301,7 +301,7 @@ test("redteam A-asked: the vault's asked check covers exactly the target the per
   assert.equal((await ask("github.project.pr.merge:alex/app#40")).data.matched, false, "PR 40 is not PR 12");
   assert.equal((await ask("github.project.pr.review:alex/app#12")).data.matched, false, "another action on the same PR");
   assert.equal((await ask("github.project.pr.merge:alex/app#12", { thread: "t-2" })).data.matched, false, "another thread");
-  for (const who of ["mcp", "mcp:agent:kit", "cli", "tailnet-guest:x@y.test"]) assert.ok((await reg("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#12"], thread: "t-1" }, who)).error, `${who} cannot ask the vault`);
+  for (const who of ["mcp", "mcp:agent:kit", "cli", "guest:x@y.test"]) assert.ok((await reg("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#12"], thread: "t-1" }, who)).error, `${who} cannot ask the vault`);
   assert.equal((await ask("github.project.pr.merge:alex/app#12", { consume: true })).data.matched, true);
   assert.equal((await ask("github.project.pr.merge:alex/app#12")).data.matched, false, "one ask, one act");
 });

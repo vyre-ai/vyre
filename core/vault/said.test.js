@@ -108,7 +108,7 @@ test("said: only sessions and the assistant record; every other caller kind is r
 
   const refused = [
     ["mcp", "mcp", {}], ["an agent", "mcp:agent:juno", { thread: "t-1", agent: "juno" }], ["a session's thread", "mcp:thread:t-1", { thread: "t-1" }],
-    ["a tailnet guest", "tailnet-guest:someone@else.test", {}], ["an agent's node", "tailnet:agent:juno", {}], ["the owner over the tailnet", "tailnet:alex@harlowlegal.com", {}],
+    ["a tailnet guest", "guest:someone@else.test", {}], ["an agent's node", "agent:juno", {}], ["the owner over the tailnet", "device:e5kgyxcd3oyjftos", {}],
     ["cli", "cli", {}], ["local", "local", {}], ["deck", "deck", {}], ["capsule", "capsule", {}], ["a webhook", "hook", {}], ["a stranger", "unknown", {}],
     ["the watcher runtime", "module:watchers", { watcher: "w1" }], ["the mcp hub", "module:mcp", {}], ["the gate", "module:gate", {}], ["the vault", "module:vault", {}],
     ["a lookalike", "module:sessions-evil", {}], ["a lookalike prefix", "module:assistants", {}],
@@ -151,10 +151,10 @@ test("said: match runs through the tool for modules only, and the person's list 
   assert.deepEqual((await ask({ to: ["sam@harlowlegal.com"] })).data, { matched: false });
   assert.deepEqual((await ask({ thread: "t-2" })).data, { matched: false }, "another thread");
   assert.deepEqual((await ask({ lineage: ["t-0", "t-1"], thread: "t-3" })).data, { matched: true, id }, "a lineage the module names");
-  for (const caller of ["mcp", "cli", "tailnet-guest:x@y.test", "mcp:agent:juno"]) assert.ok((await ask({}, caller)).error, `${caller} cannot even ask`);
+  for (const caller of ["mcp", "cli", "guest:x@y.test", "mcp:agent:juno"]) assert.ok((await ask({}, caller)).error, `${caller} cannot even ask`);
 
   // gate.said.*: a person's tools. No model, guest or agent node reaches them.
-  for (const caller of ["mcp", "mcp:agent:juno", "tailnet-guest:x@y.test", "tailnet:agent:juno", "hook", "module:sessions", "module:mcp"]) {
+  for (const caller of ["mcp", "mcp:agent:juno", "guest:x@y.test", "agent:juno", "hook", "module:sessions", "module:mcp"]) {
     assert.ok((await reg("gate.said.list", {}, caller, caller === "mcp:agent:juno" ? { thread: "t-1", agent: "juno" } : {})).error, `${caller} cannot list`);
     assert.ok((await reg("gate.said.revoke", { id }, caller, caller === "mcp:agent:juno" ? { thread: "t-1", agent: "juno" } : {})).error, `${caller} cannot revoke`);
   }

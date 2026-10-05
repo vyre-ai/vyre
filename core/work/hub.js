@@ -80,7 +80,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
 
   /** Where a session's transcript file is on this machine, from the index of sessions Recall keeps. @param {string} thread */
   async function transcriptFile(thread) {
-    const r = await tool("recall.sessions", { ids: [thread], limit: 1, machines: "local" });
+    const r = await tool("recall.sessions", { ids: [thread], limit: 1 });
     const row = Array.isArray(r) ? r[0] : null;
     return row && typeof row.file === "string" ? row.file : null;
   }
@@ -203,7 +203,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     try {
       const rec = await find(SUMMARY, "thread", thread);
       if (!rec) return null;
-      const r = await tool("recall.sessions", { ids: [thread], limit: 1, machines: "local" });
+      const r = await tool("recall.sessions", { ids: [thread], limit: 1 });
       const row = Array.isArray(r) ? r[0] : null;
       const name = row && typeof row.name === "string" ? row.name.trim() : "";
       if (!name) return null;

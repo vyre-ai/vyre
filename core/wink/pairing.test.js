@@ -764,7 +764,7 @@ test("Q-1: no answer in the window pairs nothing; a no pairs nothing; only a per
   assert.equal(w.p.meta.get("owner"), null);
   // the question and the answer are for a screen at the server only
   await adoptAs(w, "device:app1");
-  for (const caller of ["device:app1", "device:other", "tailnet", "tailnet:owner", "relay", "module:evil", "cli:agent:kit", "anonymous", ""]) {
+  for (const caller of ["device:app1", "device:other", "tailnet", "device:jqics2l64nmhcxj2", "relay", "module:evil", "cli:agent:kit", "anonymous", ""]) {
     for (const tool of ["wink.server.pairing", "wink.server.pair.answer"]) {
       await assert.rejects(() => w.tools.get(tool).run({ yes: true }, caller ? { caller } : {}), e => e.code === "denied", `${tool} refused for ${JSON.stringify(caller)}`);
     }
@@ -773,7 +773,7 @@ test("Q-1: no answer in the window pairs nothing; a no pairs nothing; only a per
 });
 
 test("Q-2: the server's pairing question is seen and answered only on an allow list of person surfaces (cli, local, deck, capsule); every other caller class is refused", async () => {
-  for (const caller of ["mcp", "harness", "hook", "module", "module:evil", "module:wink", "module:relay", "session", "session:s1", "agent", "agent:kit", "cli:agent:kit", "tailnet", "tailnet:owner", "tailnet:agent:kit", "device:app1", "device:other", "relay", "anonymous", "space:x", "org:x", "unlisted", "CLI", "cli ", "deck:x", ""]) {
+  for (const caller of ["mcp", "harness", "hook", "module", "module:evil", "module:wink", "module:relay", "session", "session:s1", "agent", "agent:kit", "cli:agent:kit", "tailnet", "device:jqics2l64nmhcxj2", "agent:kit", "device:app1", "device:other", "relay", "anonymous", "space:x", "org:x", "unlisted", "CLI", "cli ", "deck:x", ""]) {
     const w = world({ confirm: true });
     await adoptAs(w, "device:app1");
     for (const tool of ["wink.server.pairing", "wink.server.pair.answer"]) {

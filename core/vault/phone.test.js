@@ -26,7 +26,7 @@ test("the phone adds a login and reads the state; a model, a guest and an agent 
   assert.ok(put.data, JSON.stringify(put));
   assert.equal((await reg("vault.state", {}, "mobile")).data.items, 1);
   assert.ok(!JSON.stringify((await reg("vault.state", {}, "mobile")).data).includes("sample-secret-value"), "no value in the state");
-  for (const [caller, meta] of /** @type {[string, any][]} */ ([["mcp", {}], ["mcp:agent:juno", { agent: "juno" }], ["tailnet-guest:x@y.test", {}], ["hook", {}]])) {
+  for (const [caller, meta] of /** @type {[string, any][]} */ ([["mcp", {}], ["mcp:agent:juno", { agent: "juno" }], ["guest:x@y.test", {}], ["hook", {}]])) {
     assert.ok((await reg("vault.put", { name: "x", value: "y" }, caller, meta)).error, `${caller} is refused`);
     assert.ok((await reg("vault.state", {}, caller, meta)).error, `${caller} gets no state`);
   }
@@ -51,7 +51,7 @@ test("the personal vault from the phone: password plus presence unlocks it; a wr
   const wrong = await reg("vault.account.unlock-phone", { password: "not the password at all" }, "mobile");
   assert.equal(wrong.error && wrong.error.code, "wrong_password", "a wrong password is refused with its own code");
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "and nothing opened");
-  for (const [who, caller, meta] of /** @type {[string, string, any][]} */ ([["a model", "mcp", {}], ["a named agent", "mcp:agent:juno", { agent: "juno" }], ["a module", "module:probe", {}], ["a guest", "tailnet-guest:x@y.test", {}], ["a hook", "hook", {}]])) {
+  for (const [who, caller, meta] of /** @type {[string, string, any][]} */ ([["a model", "mcp", {}], ["a named agent", "mcp:agent:juno", { agent: "juno" }], ["a module", "module:probe", {}], ["a guest", "guest:x@y.test", {}], ["a hook", "hook", {}]])) {
     assert.ok((await reg("vault.account.unlock-phone", { password: pw }, caller, meta)).error, `${who} is refused`);
   }
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "no refused caller opened it");

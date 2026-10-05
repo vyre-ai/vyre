@@ -122,7 +122,7 @@ test("recall: a named agent that came from a mismatched caller is refused, and a
 
 test("recall: a guest, an unknown tailnet peer or a hook names no agent, and none is defaulted to the whole corpus (reviewer's MEDIUM)", async t => {
   const { d } = await world(t);
-  for (const caller of ["tailnet-guest:bob", "onboard", "tailnet:agent:kit"]) {
+  for (const caller of ["guest:bob", "onboard", "agent:kit"]) {
     const r = await d.registry.call("recall.search", { q: "invoice" }, caller);
     assert.match(r.error?.message || "", /not available|recall is for the user's own surfaces/, caller);
   }
@@ -130,12 +130,12 @@ test("recall: a guest, an unknown tailnet peer or a hook names no agent, and non
   // hook tool, so this is refused earlier still, as "no such tool" (never "denied" with a hint
   // that recall exists to poke at).
   assert.equal((await d.registry.call("recall.search", { q: "invoice" }, "hook")).error?.code, "no_such_tool");
-  assert.match((await d.registry.call("recall.thread", { session: NORTHWIND_SESSION }, "tailnet-guest:bob")).error?.message || "", /not available/);
-  assert.match((await d.registry.call("recall.sessions", {}, "tailnet-guest:bob")).error?.message || "", /not available/);
+  assert.match((await d.registry.call("recall.thread", { session: NORTHWIND_SESSION }, "guest:bob")).error?.message || "", /not available/);
+  assert.match((await d.registry.call("recall.sessions", {}, "guest:bob")).error?.message || "", /not available/);
   // The owner's own device, verified over the tailnet (never a guest, never an agent's own node),
   // reads as any other of the user's surfaces does — this is the case the MEDIUM's fix must not
   // break: "no guest, no unknown peer", not "no tailnet at all".
-  const owner = await d.registry.call("recall.search", { q: "invoice" }, "tailnet:someone");
+  const owner = await d.registry.call("recall.search", { q: "invoice" }, "device:fjm5lhrybh4cpttq");
   assert.ok(owner.data.length > 0);
   // A relay-paired device (ADR 0026, "device:<id>") is the owner's device too, over the relay
   // rather than the tailnet — reviewer's LOW: reach() only checked ownerOverTailnet, so a

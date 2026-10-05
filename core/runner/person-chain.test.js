@@ -26,7 +26,7 @@ async function boot(t, chainFor, kernelExtra = {}) {
 
 test("kernel on: a web, setup or unknown device or tailnet label gets no chain and is refused for every tool", async t => {
   const call = await boot(t, () => null);
-  for (const caller of ["web", "setup", "device:unknown", "tailnet:somebody", "cli", "deck", ""]) for (const [tool] of TOOLS)
+  for (const caller of ["web", "setup", "device:unknown", "device:okox2y4m54nuo3e2", "cli", "deck", ""]) for (const [tool] of TOOLS)
     await assert.rejects(call(tool, { caller }), e => e.code === "denied", `${tool} refused for label "${caller}"`);
 });
 
@@ -49,7 +49,7 @@ test("kernel on: the person's own chain passes the person check whatever the lab
 
 test("kernel off (legacy labels): the old refusal of agents, modules and guests still holds", async t => {
   const call = await boot(t, null);
-  for (const caller of ["cli:agent:kit", "module:rogue", "tailnet:guest-1"]) await assert.rejects(call("runner.lock", { caller }), e => e.code === "denied");
+  for (const caller of ["cli:agent:kit", "module:rogue", "device:2oivbsc3tddw4erj"]) await assert.rejects(call("runner.lock", { caller }), e => e.code === "denied");
 });
 
 test("RN-2: another member's person chain is not this computer's person: refused for every tool, the owner's passes", async t => {

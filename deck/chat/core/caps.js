@@ -30,8 +30,6 @@ export const SESSION_TOOLS = Object.freeze([
   // so it stays off until then even on a box that has it. Worth a LINKED entry, once native-core
   // or sessions says which release ships it alongside, the way REWIND_CODE rides on threads.commands.
   "threads.fork",
-  // A Mac session whose Mac is asleep: continue the same conversation on the server (#32).
-  "threads.continue-here",
 ]);
 
 /** Images sent with threads.send: a feature, not a tool, so it has a name of its own here. */

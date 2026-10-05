@@ -240,7 +240,6 @@
  "core/memory/write.test.js": 10,
  "core/mentions/mentions.test.js": 6,
  "core/modulelist/modulelist.test.js": 2,
- "core/modules/federate.test.js": 3,
  "core/modules/idempotency.test.js": 5,
  "core/modules/modules.test.js": 63,
  "core/names/acme.test.js": 10,

@@ -143,7 +143,7 @@ export default {
 
     ctx.tool("releases.cert", {
       description: "The SHA-256 of the owner's Android release certificate, made on first use. `vyre phone add` pins it.",
-      callers: ["cli", "local", "deck", "tailnet", "device", "space", "agent"],
+      callers: ["cli", "local", "deck", "device", "space", "agent"],
       input: { type: "object", properties: {} },
       run: async () => ({ cert_sha256: (await ownerKey()).cert_sha256, subject: `CN=Vyre ${box}` }),
     });

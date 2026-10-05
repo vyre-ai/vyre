@@ -89,7 +89,7 @@ export function openChecked(d) {
  * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
  * the owner; access.js's reach() now also refuses that internally, but this is the registry's
  * own backstop, the same list core/memory's tools are read by. */
-const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "tailnet", "device", "space", "agent"];
+const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "device", "space", "agent"];
 
 /** Only the fields a search result is meant to carry, whatever a remote sent. */
 const tidy = (r, source) => ({ source, path: String(r.path), name: String(r.name), kind: String(r.kind),

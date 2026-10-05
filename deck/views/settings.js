@@ -5,7 +5,7 @@
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
-// agents.update (switchboard), link.health (link), files.drive.status, files.drive.audit and files.drive.access (files), hooks.list and hooks.status (hooks),
+// agents.update (switchboard), files.drive.status (files), hooks.list and hooks.status (hooks),
 // network.guests.list (network), computers.tailnet.status, computers.egress.status and computers.handback.status/set (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 // Connections is drawn by views/connections.js (the connectors workstream, ADR 0016). The registry's
@@ -19,10 +19,9 @@ import { icon, mark, wordmark } from "../js/icons.js";
 import { personAvatar, readSystem } from "../js/avatars.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
-import { pathMark, statusMark } from "../js/status-mark.js";
+import { statusMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
-import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
-import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
+import { shareAccess, accessWord } from "../js/drive-rows.js";
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
@@ -294,7 +293,6 @@ async function drawNetwork(el, ctx) {
   const r = await attempt("onboard.tailscale", { action: "detect" });
   const t = r.data || {};
   const on = !r.error && t.state === "connected" && t.node;
-  const conn = h("div");
   const lockRow = h("div");
   // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
   const extra = ["shares", "hooks", "guests", "agents", "egress", "handback", "hosted"].map(() => h("div"));
@@ -303,13 +301,11 @@ async function drawNetwork(el, ctx) {
       r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
       on ? row("Tailnet IP", mono(t.node.ip || "")) : null,
-      conn,
       on ? lockRow : null,
       extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
-  if (on) drawLink(conn, ctx);
   const [shares, hooks, guests, agents, egress, handback, hosted] = extra;
-  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback), drawHosted(hosted)]);
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback), drawHosted(hosted)]);
 }
 
 /**
@@ -325,19 +321,6 @@ async function drawHosted(el) {
     origins.length ? faint(`The app at ${hosts.join(", ")} can reach your server from your browser after you sign in.`)
       : faint("No hosted app can reach your server. The Deck at your server's own address still works."),
     faint("Set in your server's config:"), mono("network.origins")));
-}
-
-/** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
-function drawLink(el, ctx) {
-  ctx.cleanup(watchHealth(x => {
-    if (!ctx.alive()) return;
-    // No link module on this vyred: the row is left out rather than shown empty.
-    if (!x) { put(el); return; }
-    const shook = handshakeLine(x);
-    put(el, row("This device", h("span", { class: "set-inline" }, pathMark(linkDot(x)),
-      h("span", x.path === "unknown" ? { class: "muted" } : null, linkLine(x))),
-      shook ? h("div", { class: "small faint" }, shook) : null));
-  }));
 }
 
 /** A command the person runs themselves, with a copy button. */
@@ -364,77 +347,20 @@ async function optional(el, label, tool, draw) {
 
 const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
 
-/**
- * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, its own access, and who the
- * tailnet policy lets reach them. The check runs on demand, and a drive.exposed event (after any
- * share) shows its findings here too, with any shared folder that holds secrets. Sharing stays
- * with the owner's terminal and Lumen; switching a share between read only and read and
- * write is the owner's own act (files.drive.access, no proof), offered only where the box has it.
- */
-function drawShares(el, ctx) {
-  const found = h("div");
-  const st = status();
-  const showAudit = (/** @type {any} */ a) => {
-    const f = Array.isArray(a?.findings) ? a.findings : [];
-    const bad = unsafeLines(a);
-    put(found,
-      bad.map(x => h("div", { class: "small set-warn" }, x.text)),
-      f.length
-        ? [h("div", { class: "small set-warn" }, `${plural(f.length, "device")} outside your paired Macs can reach these shares:`),
-          plainList(f, x => [mono(x.node || "a device"), x.login ? h("span", { class: "small faint" }, ` ${x.login}`) : null]),
-          faint("Only the tailnet policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.")]
-        : a && !bad.length ? faint(`Only your paired Macs can reach them. ${a.checked != null ? `Checked ${plural(a.checked, "online device")}.` : ""}`.trim()) : null);
-  };
-  ctx.on("drive.exposed", (/** @type {any} */ e) => { if (ctx.alive()) showAudit(e.payload); });
-  const check = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
-    check.disabled = true; put(st, "Checking…");
-    const a = await attempt("files.drive.audit");
-    check.disabled = false; put(st);
-    if (a.error) put(st, errText(a.error)); else showAudit(a.data);
-  } }, "Check who can reach them");
-  // Whether this box has files.drive.access: its status rows carry their own access, and a
-  // no_such_tool answer turns the switches off for good.
-  let canSwitch = true;
+/** VyreDrive (Taildrive underneath): each folder the box offers, shared or not, and its access. Sharing stays with the owner's terminal and Lumen. */
+function drawShares(el) {
   const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your server's folders in Finder on your Mac.");
   return optional(el, "VyreDrive", "files.drive.status", d => {
     const shares = listOf(d.shares, "name");
     if (!d.enabled) return row("VyreDrive", onOff(false),
       intro(), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
-    const own = perShare(shares);
-    const remount = h("div");
-    const line = (/** @type {any} */ x) => {
-      const li = h("div");
-      let acc = shareAccess(x, d);
-      const draw = () => put(li, mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
-        h("span", { class: "small faint" }, `, ${accessWord(acc).toLowerCase()}`),
-        x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null,
-        own && canSwitch ? [" ", sw] : null);
-      const sw = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
-        sw.disabled = true;
-        const r = await attempt("files.drive.access", { name: x.name, mode: flip(acc) });
-        sw.disabled = false;
-        if (r.error) {
-          // An old box: no switch, and nothing said.
-          if (r.error.missing) { canSwitch = false; for (const b of el.querySelectorAll("[data-drive-switch]")) b.remove(); return; }
-          put(st, errText(r.error)); return;
-        }
-        put(st);
-        acc = r.data?.access === "rw" ? "rw" : r.data?.access === "ro" ? "ro" : flip(acc);
-        put(sw, acc === "rw" ? "Make read only" : "Make read and write");
-        draw();
-        const m = mountHint(r.data);
-        put(remount, m ? [m.step ? cmd(m.step) : null, h("div", { class: "small set-warn" }, m.line)] : null);
-      } }, acc === "rw" ? "Make read only" : "Make read and write");
-      sw.setAttribute("data-drive-switch", "");
-      draw();
-      return li;
-    };
+    const line = (/** @type {any} */ x) => h("div", null, mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
+      h("span", { class: "small faint" }, `, ${accessWord(shareAccess(x, d)).toLowerCase()}`),
+      x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null);
     return row("VyreDrive", h("span", null, "On"), intro(),
       shares.length ? plainList(shares, line) : faint("Your server offers no folders (files.drive.shares)."),
-      remount,
       d.error ? faint(d.error) : null,
-      shares.some(x => !x.shared) ? [faint("Share one from your server's terminal:"), cmd(`vyre call --tty files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
-      foot(check), st, found);
+      shares.some(x => !x.shared) ? [faint("Share one from your server's terminal:"), cmd(`vyre call --tty files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null);
   });
 }
 
@@ -617,19 +543,19 @@ function addPcCard(status, ctx) {
   return buildAddPcCard({ attempt, cleanup: ctx.cleanup, alive: ctx.alive });
 }
 
-/** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
+/** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the relay devices. */
 async function drawDevices(el, ctx) {
   // A browser asking for full access (tailnet's device.trust-asked): its key first, its name as its own claim.
   const asks = h("div");
   ctx.cleanup?.(watchTrustAsks(card => put(asks, card)));
-  const [st, macs, relayR, macsR, sysR] = await Promise.all([attempt("onboard.status"), attempt("link.peers"),
-    attempt("relay.devices.list", {}, { ifPresent: true }), attempt("link.macs", {}, { ifPresent: true }), attempt("system.info")]);
+  const [st, relayR, sysR] = await Promise.all([attempt("onboard.status"),
+    attempt("relay.devices.list", {}, { ifPresent: true }), attempt("system.info")]);
   if (!ctx.alive()) return;
   // #65: every device has a name the person can change here; a rename anywhere (device.renamed) changes it on screen.
   /** @type {Map<string, any>} */ const fields = new Map();
   // Never a control that errors: a name is editable only when this server has the tool that saves it.
-  const canRename = { relay: await hasTool("relay.devices.rename"), mac: await hasTool("link.rename"), server: await hasTool("system.rename"), computer: false };
-  const nameField = (/** @type {"relay"|"mac"|"server"|"computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ allowEmpty = false) => {
+  const canRename = { relay: await hasTool("relay.devices.rename"), server: await hasTool("system.rename"), computer: false };
+  const nameField = (/** @type {"relay"|"server"|"computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ allowEmpty = false) => {
     if (!canRename[kind]) return h("span", { class: "rn-name" }, name);
     const f = renameField({ name, allowEmpty, label: "Rename", save: async n => { const c = renameCall(kind, id, n); return attempt(c.tool, c.input); } });
     fields.set(kind + ":" + id, f);
@@ -640,24 +566,14 @@ async function drawDevices(el, ctx) {
   const wink = winkCard(st.data, ctx);
   const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
-  const pairedMacs = Array.isArray(macsR.data) ? macsR.data : [];
-  const paired = pairedMacs.length ? pairedMacs : Array.isArray(macs.data) ? macs.data : [];
-  const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
-  const pairedHere = p => paired.some(m => same(m, p));
   const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
   const rows = [...peers].sort((a, b) => order(a) - order(b)).map(p => {
     const { kind, handheld } = deviceKind(p.os, p.name);
     return row(kind,
       h("span", { class: "set-inline" }, mono(p.name), stateLbl(p.online ? "Online" : "Offline", p.online ? "" : "faint")),
-      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with your server") : null,
       handheld && !p.online ? h("div", { class: "set-off small" }, icon("phone", 14),
         h("span", null, `Your ${kind} is offline in Tailscale. Open the Tailscale app and turn it on.`)) : null);
   });
-  // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
-  for (const m of paired) {
-    if (peers.some(p => same(m, p))) continue;
-    rows.push(row("Mac", h("span", { class: "set-inline" }, m.mac ? nameField("mac", String(m.mac), String(m.name || m.node || "A Mac")) : mono(m.name || m.node || "A Mac"), stateLbl(m.online === false ? "Offline" : "Paired", "faint"))));
-  }
   // Phones, PCs and browsers paired through the relay (relay.devices.list), and this server's own name.
   for (const d of (Array.isArray(relayR.data?.devices) ? relayR.data.devices : [])) {
     if (!d?.id) continue;

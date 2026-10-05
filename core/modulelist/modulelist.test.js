@@ -38,7 +38,7 @@ test("on a real daemon: only the owner's own surfaces reach it, with no proof it
   const noProof = await call("modules.list.reset", {}, { root, caller: "cli" });
   assert.ok(noProof.error && noProof.error.code !== "no_such_tool", `the tool exists and refuses: ${JSON.stringify(noProof)}`);
   assert.equal(noProof.error.code, "unavailable", "a dev build has no signed list to reset, and says so");
-  for (const caller of ["mcp", "mcp:agent:kit", "anonymous", "tailnet-guest:x"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "anonymous", "guest:x"]) {
     const r = await d.registry.call("modules.list.reset", {}, caller, {});
     assert.ok(r.error && ["denied", "no_such_tool", "held_unavailable", "not_declared"].includes(r.error.code), `${caller}: ${JSON.stringify(r)}`);
   }

@@ -8,10 +8,8 @@
 /**
  * @typedef {{ id: string, name: string, projects: string[], project: string|null, agent: string|null,
  *   status: string|null, last: number, turns: number, asks: number, holder: string|null, human: boolean,
- *   cwd: string|null, live: boolean, source: string|null, machine: string|null }} Row
+ *   cwd: string|null, live: boolean }} Row
  * live: the Switchboard has a record of it, so threads.get works and thread.* events flow.
- * source, machine: on the box, "mac" and the Mac's name for a row from the paired Mac, which the
- * Deck reads but never acts on (js/machine.js); "box" or null otherwise.
  */
 
 /**
@@ -26,8 +24,7 @@ export function mergeSessions(sessions, threads) {
     if (!s || !s.id) continue;
     const projects = Array.isArray(s.projects) ? s.projects.filter(Boolean) : [];
     rows.set(s.id, { id: s.id, name: s.label || s.name || s.title || "", projects, project: projects[0] || null, agent: null,
-      status: null, last: s.last || s.started || 0, turns: s.turns || 0, asks: 0, holder: null, human: !!s.human, cwd: s.cwd || null, live: false,
-      source: s.source || null, machine: s.machine || null });
+      status: null, last: s.last || s.started || 0, turns: s.turns || 0, asks: 0, holder: null, human: !!s.human, cwd: s.cwd || null, live: false });
   }
   for (const t of threads || []) {
     if (!t || !t.id) continue;
@@ -36,8 +33,7 @@ export function mergeSessions(sessions, threads) {
     if (t.project && !projects.includes(t.project)) projects.unshift(t.project);
     rows.set(t.id, { id: t.id, name: t.name || had?.name || "", projects, project: t.project || projects[0] || null, agent: t.agent || null,
       status: t.status || null, last: Math.max(t.last || t.started || 0, had?.last || 0), turns: Math.max(t.turns || 0, had?.turns || 0),
-      asks: t.asks || 0, holder: t.holder || null, human: had ? had.human : !t.agent, cwd: t.cwd || had?.cwd || null, live: true,
-      source: t.source || had?.source || null, machine: t.machine || had?.machine || null });
+      asks: t.asks || 0, holder: t.holder || null, human: had ? had.human : !t.agent, cwd: t.cwd || had?.cwd || null, live: true });
   }
   return [...rows.values()].sort((a, b) => b.last - a.last);
 }

@@ -31,7 +31,7 @@ import { within } from "../../lib/within.js";
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
 
-/** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
+/** Tools a paired device reaches without a person session: signing in, and the first passkey. */
 // wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
@@ -58,8 +58,7 @@ export const firstParty = dir => {
 };
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
- * are never here: a module that could call as one would act as the person. The link on a Mac types
- * into a session for the person at the box as "link:box" (docs/adr/0021-box-reads-the-mac.md).
+ * are never here: a module that could call as one would act as the person.
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
@@ -72,7 +71,7 @@ export function checkAgentsRelay(tool, as) {
   if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send and threads.release only`);
 }
 /** @type {Record<string, any>} */
-const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
@@ -197,7 +196,7 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
-  thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
+  thread: ["threads", "harness", "projects", "sessions", "artifacts"],
 };
 
 export function validate(m, { firstParty = false } = {}) {
@@ -442,10 +441,10 @@ export const SURFACE_LABELS = PERSON_SURFACES;
 const LEGACY_PHONE = "mobile";
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
-export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
-const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "tailnet", "device", "space", "agent"]);
+const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "device", "space", "agent"]);
 /** The caller classes that stand for the person on a module hop: their own surfaces and devices, and nothing else: no pre-owner exception (a server with no owner takes only pairing). */
 const ORIGIN_PERSON = Object.freeze([...PERSON_CALLERS]);
 
@@ -530,41 +529,29 @@ export const classReach = (caller, tool, setupExtra) => {
 };
 
 /**
- * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
- * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
- * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
- * node ("tailnet:agent:<name>") is not. A "tailnet" entry opens a tool to the owner's devices only,
- * such as the phone (ADR 0018). The bare word is never a caller itself: a socket client could send
- * it as a label.
+ * May this caller use a tool with this callers list? The owner's own device (`device:<id>`) is the
+ * owner's own Deck or phone, so a tool open to "deck" is open to it. The bare class words ("device",
+ * "space", "agent") are never a caller themselves: a socket client could send one as a label.
  * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(caller, tool, setupExtra) ?? (!callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
-  || (callers.includes("tailnet") && ownerDevice(caller))
   || (callers.includes("device") && deviceLabel(caller)));
 
 /**
  * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
- * paired devices (`device:<id>`, deviceLabel), the same devices a "tailnet" or "deck" entry already admits through ownerDevice. "space" (a visiting person, `space:<person>@<space>`) and
- * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
+ * paired devices (`device:<id>`, deviceLabel), the same devices a "deck" entry already admits through ownerDevice. "space" (a visiting person, `space:<person>@<space>`) and
+ * "agent" (`agent:<id>`) are declared here but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
  * to decide, not this list's.
  */
-const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
+const CLASS_ONLY = new Set(["device", "space", "agent"]);
 
 /**
- * The box's owner on their own device at the box's address: the tailnet listener names only the
- * verified owner `tailnet:<login>` (core/names/service.js); a guest is `tailnet-guest:` and an
- * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
+ * The owner on one of their own devices: a device paired through Wink (`device:<id>`), which only
+ * the Wink listener names. A person who may ask; presence still decides every human-only call. An
+ * agent and a socket label are never one.
  */
-export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
-
-/**
- * The owner on one of their own devices, however it reached the box: over the tailnet
- * (`tailnet:<owner>`), or a device paired through the relay (`device:<id>`, ADR 0026), which only
- * the relay module's listener names. A person who may ask; presence still decides every
- * human-only call. A guest, an agent's node and a socket label are never one.
- */
-export const ownerDevice = caller => ownerOverTailnet(caller) || deviceLabel(caller);
+export const ownerDevice = caller => deviceLabel(caller);
 
 /** A device paired through Wink or the relay, exactly `device:<id>` (the id is 16 base32 characters). Case, spacing, a prefix or a suffix is never one. */
 export const deviceLabel = caller => /^device:[a-z2-7]{16}$/.test(String(caller));
@@ -1281,14 +1268,7 @@ export class Registry {
       if (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others.
       if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
-      // A guest from another tailnet is never a person proving they are here, whatever proof it
-      // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
-      // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
-      if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
-        return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
-      }
-      // Over the tailnet a node signed in as the owner, and over the relay a paired device
-      // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
+      // A paired device (`device:<id>`) is the owner's device, and so is any script on it (ADR 0032). The person's
       // own actions there need the person's session too (core/presence/person.js): every tool that declares `reach: person` is one (an owner's app device that has not signed in gets
       // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one

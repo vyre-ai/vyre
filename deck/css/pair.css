@@ -1,28 +1,6 @@
-/* A Mac asking to pair (js/pair.js): Beacon, because it waits on the person. */
-.pair-list:empty { display: none; }
-.pair-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px);
-  border: 1px solid var(--rule); }
-.pair-card.paired { background: var(--signal-wash); border-color: var(--rule-strong); }
-.pair-card.denied { background: var(--panel); border-color: var(--rule); }
-.pair-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.pair-top .lbl { display: inline-flex; align-items: center; gap: 6px; }
-.pair-title { display: flex; align-items: center; gap: 8px; font-size: 17px; line-height: 24px; }
-.pair-title b { font-weight: 600; }
-.pair-form { display: grid; grid-template-columns: auto 160px auto; align-items: center; gap: 12px; margin-top: 6px; }
-.pair-code { font-family: var(--mono); font-size: 18px; letter-spacing: 0.12em; text-align: center; height: 44px; }
-.pair-actions { display: flex; gap: 8px; }
-.pair-actions .btn { height: 44px; }
-.pair-note:empty { display: none; }
-.pair-note { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--text-2); }
 .pair-err { color: var(--beacon-ink); }
-@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
-  .pair-form { grid-template-columns: 1fr; gap: 8px; }
-  .pair-code { font-size: 20px; }
-  .pair-actions .btn { flex: 1 1 0; }
-}
 
-/* No passkey on the box yet (js/first-passkey.js). Loaded with the pairing styles, since Now uses both. */
+/* No passkey on the box yet (js/first-passkey.js, which loads this file). */
 .first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--radius-card, 12px);
   border: 1px solid var(--rule); }
 .first-passkey .lbl { display: inline-flex; align-items: center; gap: 6px; }

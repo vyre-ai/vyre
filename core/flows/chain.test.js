@@ -18,7 +18,7 @@ test("Flows tools take the caller's chain from the kernel only: labels get nothi
   const call = (tool, input, caller, meta) => d.registry.call(tool, input, caller, meta);
   const flow = { format: 1, name: "chain_probe", authorship: "human", trigger: { on: "manual" }, steps: [] };
   // every label: no token, no proven facts: refused, and nothing was stored
-  for (const caller of ["mcp", "harness", "mcp:agent:juno", "harness:thread:abc", "device:abc", "tailnet:laptop", "cli", "local", "deck", "capsule", "mobile"]) {
+  for (const caller of ["mcp", "harness", "mcp:agent:juno", "harness:thread:abc", "device:abc", "device:l3wa3razvkbtpp3s", "cli", "local", "deck", "capsule", "mobile"]) {
     for (const tool of ["flows.define", "flows.list", "flows.start"]) {
       const r = await call(tool, tool === "flows.start" ? { id: "x" } : { flow }, caller);
       assert.ok(r.error, `${caller} ${tool} must be refused: ${JSON.stringify(r)}`);

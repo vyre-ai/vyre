@@ -12,7 +12,6 @@ export const ALL = Object.freeze([
   { href: "/planner", label: "Planner", icon: "planner", views: [], rail: false },
   { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], rail: true, key: "5" },
   { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], rail: true, key: "6" },
-  { href: "/files", label: "Drive", icon: "drive", views: ["files"], rail: true, key: "7" },
   { href: "/settings#devices", label: "Devices", icon: "devices", views: [], rail: false },
-  { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], rail: true, key: "8", end: true },
+  { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], rail: true, key: "7", end: true },
 ]);

@@ -310,7 +310,7 @@ test("planner: anyone adds alarms, reminders, todos and notes; an agent changes 
   await w.ok("planner.update", { item: alarm.id, title: "Harlow Legal call" });
   await w.ok("planner.snooze", { item: mine.id, minutes: 10 }, "deck");
   await w.ok("planner.done", { item: todo.id }, "capsule");
-  await w.ok("planner.delete", { item: timer.id }, "tailnet:alex");
+  await w.ok("planner.delete", { item: timer.id }, "device:ie22vhobxbbkmu66");
   assert.equal((await w.call("planner.settings", {}, kit)).error.code, "denied");
   assert.ok((await w.ok("planner.list", {}, kit)).length >= 1, "agents read");
   assert.ok((await w.ok("planner.agenda", {}, kit)).entries.length >= 0);
@@ -353,11 +353,11 @@ test("planner: a paired Mac forwards to the box and keeps its timer idle; an unp
 
   // On the box, as from the owner's link applies the agent's rules.
   const onBox = await world(t);
-  const item = await onBox.ok("planner.add", { kind: "note", title: "kit's", as: { source: "agent:kit", name: "kit" } }, "tailnet:alex");
+  const item = await onBox.ok("planner.add", { kind: "note", title: "kit's", as: { source: "agent:kit", name: "kit" } }, "device:ie22vhobxbbkmu66");
   assert.deepEqual([item.source, item.added_by], ["agent:kit", "kit"]);
   const own = await onBox.ok("planner.add", { kind: "note", title: "alex's" });
-  assert.equal((await onBox.call("planner.delete", { item: own.id, as: { source: "agent:kit", name: "kit" } }, "tailnet:alex")).error.code, "denied");
-  await onBox.ok("planner.delete", { item: item.id, as: { source: "agent:kit", name: "kit" } }, "tailnet:alex");
+  assert.equal((await onBox.call("planner.delete", { item: own.id, as: { source: "agent:kit", name: "kit" } }, "device:ie22vhobxbbkmu66")).error.code, "denied");
+  await onBox.ok("planner.delete", { item: item.id, as: { source: "agent:kit", name: "kit" } }, "device:ie22vhobxbbkmu66");
   // An agent's own as is ignored: it stays itself.
   const forged = await onBox.ok("planner.add", { kind: "note", title: "x", as: { source: "cli" } }, "mcp:agent:kit");
   assert.equal(forged.source, "agent:kit");

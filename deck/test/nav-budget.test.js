@@ -48,7 +48,7 @@ async function open(view) {
   return { rounds: rounds(), tools: calls.map(c => c.tool) };
 }
 
-for (const view of ["now", "chat", "projects", "vault", "files", "planner"]) {
+for (const view of ["now", "chat", "projects", "vault", "planner"]) {
   test(`${view}: everything it needs is asked for in at most two rounds`, async () => {
     const r = await open(view);
     assert.ok(r.tools.length > 0, "it asked your server for something");

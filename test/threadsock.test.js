@@ -372,16 +372,16 @@ test("the phone's chain: a device connection (relay device:<id>, a tailnet owner
   // a confirmed device with no person session is the owner's device but carries no presence session
   assert.equal(callerFacts(`device:${dev}`, dpol, {}, k, false, row({})).session, undefined, "no person session, no session fact");
   assert.equal(callerFacts(`device:${dev}`, dpol, { person: { id: "ps1" } }, k, false, row({})).session, "ps1", "a person session is carried");
-  assert.deepEqual(hops(callerFacts("tailnet:phone", { caller: "tailnet:phone", peer: { node: "n1" } }, {}, k)), [["person", owner]], "a phone on the tailnet");
-  assert.equal(callerFacts("tailnet:agent:x", { caller: "tailnet:agent:x" }, {}, k), null, "an agent node");
-  assert.equal(callerFacts("tailnet-guest:g", { caller: "tailnet-guest:g" }, {}, k), null, "a guest");
-  assert.equal(callerFacts("mobile", { caller: "tailnet:phone" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
+  assert.deepEqual(hops(callerFacts("device:ivlj3jl7jn57i4wx", { caller: "device:ivlj3jl7jn57i4wx", peer: { node: "n1" } }, {}, k)), [["person", owner]], "a phone on the tailnet");
+  assert.equal(callerFacts("agent:x", { caller: "agent:x" }, {}, k), null, "an agent node");
+  assert.equal(callerFacts("guest:g", { caller: "guest:g" }, {}, k), null, "a guest");
+  assert.equal(callerFacts("mobile", { caller: "device:ivlj3jl7jn57i4wx" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
   assert.equal(callerFacts("mobile", {}, {}, null), null, "no kernel, no facts");
   // the Capsule: its chain only with the pinned-binary proof; the label alone builds nothing
   assert.equal(callerFacts("capsule", {}, {}, k), null, "a capsule label with no proof");
   assert.equal(callerFacts("capsule", {}, {}, k, false), null);
   assert.deepEqual(hops(callerFacts("capsule", {}, {}, k, true)), [["person", owner]], "the pinned Capsule is the owner");
-  assert.equal(callerFacts("capsule", { caller: "tailnet:agent:x" }, {}, k, true), null, "a listener's identity is never a Capsule");
+  assert.equal(callerFacts("capsule", { caller: "agent:x" }, {}, k, true), null, "a listener's identity is never a Capsule");
 });
 
 test("PH-1 end to end: the daemon's own relay row decides what a device is (relay.device.info for a paired, a web, a setup and a removed device and one never paired)", async t => {

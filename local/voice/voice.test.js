@@ -196,7 +196,7 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
   });
 
   await t.test("the stream is refused to anyone but this Mac's own callers", async () => {
-    for (const caller of ["tailnet:juno", "mcp", "module:notes", "", "cli agent:kit", "local agent:kit", "deck agent:kit", "cli:thread:x", "LOCAL:Thread:x"]) {
+    for (const caller of ["device:uuasrvm7javimfyt", "mcp", "module:notes", "", "cli agent:kit", "local agent:kit", "deck agent:kit", "cli:thread:x", "LOCAL:Thread:x"]) {
       const s = await listen(root, caller);
       assert.equal(s.refused, 403, caller);
       assert.equal(JSON.parse(String(s.body)).error.code, "denied");

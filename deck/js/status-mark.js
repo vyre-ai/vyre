@@ -81,12 +81,3 @@ export function badge(n, el) {
 
 /** A neutral count (group sizes, totals): same shape as the badge, no attention colour. @param {number} n */
 export const count = n => h("span", { class: "sm-count" }, n > 99 ? "99+" : String(n));
-
-/**
- * How a device is reached (not a status): "direct", "relayed" (relay or peer relay) or "none".
- * @param {string | null | undefined} path @param {string} [label] its accessible name
- */
-export function pathMark(path, label) {
-  const p = path === "direct" ? "direct" : path === "relayed" || path === "relay" || path === "peer-relay" ? "relayed" : "none";
-  return h("span", { class: `sm sm-path-${p}`, "data-path": p, ...(label ? { role: "img", "aria-label": label } : { "aria-hidden": "true" }) });
-}

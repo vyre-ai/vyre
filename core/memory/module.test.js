@@ -161,13 +161,13 @@ test("memory module: the person corrects from their phone only with a person ses
   await call("memory.curate", {}, { root });
   await call("memory.remember", { text: "my wife is Jordan" }, { root });
   const a = (await call("memory.ask", { question: "what is my wife's name?" }, { root })).data;
-  const phone = "tailnet:alex@example.com", signed = { person: { id: "s1", kind: "cookie" } };
+  const phone = "device:nw3b43olz4rzbzfe", signed = { person: { id: "s1", kind: "cookie" } };
 
   const bare = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, {});
   assert.equal(bare.error?.code, "person_session_required", JSON.stringify(bare));
   const graphBare = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, {});
   assert.equal(graphBare.error?.code, "person_session_required", "graph corrections follow the same rule");
-  for (const agent of ["tailnet:agent:kit", "device:abcdefghijklmnop agent:kit"]) {
+  for (const agent of ["agent:kit", "device:abcdefghijklmnop agent:kit"]) {
     const r = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, agent, signed);
     assert.ok(r.error, `${agent} corrected`);
   }

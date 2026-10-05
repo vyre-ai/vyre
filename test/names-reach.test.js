@@ -30,7 +30,7 @@ const refused = r => r.error && ["denied", "no_such_tool", "presence_required"].
 
 test("names: claim and release refuse a model session, an agent, a hook, a guest and any other module", async t => {
   const d = await box(t);
-  const callers = ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "cli:agent:kit", "module:sneaky", "module:vault", "hook", "anonymous", "tailnet-guest:sam@example.com", "tailnet:agent:kit"];
+  const callers = ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "cli:agent:kit", "module:sneaky", "module:vault", "hook", "anonymous", "guest:sam@example.com", "agent:kit"];
   const calls = [["names.claim", { name: "alex" }], ["names.release", {}],
     ["names.domain.serve", { domain: "example.com" }]];
   for (const c of callers) for (const [tool, input] of calls) {

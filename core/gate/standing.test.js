@@ -101,7 +101,7 @@ test("gate: an http or module sender cannot name its destinations, so nothing co
 
 test("gate: the person adds, lists and revokes standing permissions; no model or module adds one", async t => {
   const { gmail, cli, reg, agent } = await world(t);
-  for (const caller of ["mcp", "mcp:agent:juno", "module:assistant", "module:sessions", "tailnet-guest:x@y.test", "hook"]) {
+  for (const caller of ["mcp", "mcp:agent:juno", "module:assistant", "module:sessions", "guest:x@y.test", "hook"]) {
     assert.ok((await reg("gate.said.add", { kind: "post", to: ["#deploys"] }, caller)).error, `${caller} cannot add`);
   }
   for (const caller of ["mcp", "module:sessions", "module:assistant", "cli", "local", "deck", "capsule"]) {

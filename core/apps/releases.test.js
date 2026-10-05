@@ -17,7 +17,7 @@ import { storedZip, verifyApk } from "./testing.js";
 import { checkManifest } from "./index.js";
 
 const FILE = "vyre-0.4.0-abc1234.apk";
-const OWNER = "tailnet:alex", DEVICE = "device:abcdefghijklmnop", GUEST = "tailnet-guest:juno", AGENT = "tailnet:agent:kit";
+const OWNER = "device:ie22vhobxbbkmu66", DEVICE = "device:abcdefghijklmnop", GUEST = "guest:juno", AGENT = "agent:kit";
 const sha = b => crypto.createHash("sha256").update(b).digest("hex");
 
 /** A vyred with the releases module on, a release in its folder, and an HTTP door that names the caller the way a listener would. */

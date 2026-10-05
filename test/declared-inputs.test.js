@@ -39,5 +39,4 @@ test("every input a wink, relay, link or network tool reads is declared in its s
 });
 
 /** Names that match the pattern but are not the tool's input: filled in only after a reading of the tool says so. */
-// link.macs.call reads `input.ask` and `input.thread` of the tool it forwards (its own `input` property is declared), not of itself.
-const IGNORED = new Set(["link.macs.call.ask", "link.macs.call.thread"]);
+const IGNORED = new Set();

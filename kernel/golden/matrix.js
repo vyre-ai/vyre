@@ -13,9 +13,6 @@ export const CALLERS = Object.freeze([
   { id: "mcp:agent:kit", caller: () => "mcp:agent:kit" },
   { id: "cli:agent:kit", caller: () => "cli:agent:kit" },
   { id: "mcp:agent:", caller: () => "mcp:agent:" },
-  { id: "tailnet:owner", caller: () => "tailnet:owner@example.com" },
-  { id: "tailnet:agent:kit", caller: () => "tailnet:agent:kit" },
-  { id: "tailnet-guest", caller: () => "tailnet-guest:guest@example.com" },
   { id: "device", caller: () => "device:abcdefghijklmnop" },
   { id: "module:first-party", caller: reg => "module:" + firstPartyName(reg) },
   { id: "module:added", caller: () => "module:zz-added" },
@@ -49,7 +46,6 @@ export const GENERATED_CALLERS = Object.freeze((() => {
   const out = new Set();
   for (const b of base) for (const v of [b, b.toUpperCase(), ` ${b}`, `${b} `, `${b}:`, `${b}:agent:kit`, `${b}:agent:`, `${b}:agent: kit`, `${b}\n`, `${b}\u0000`, `${b}\u212a`, `${b}:x`, `${b}@x`]) out.add(v);
   for (const m of ["module:", "module:x", "module: x", "module:X", "module:a:b", "module:\u00e9", "module:zz-added", "Module:x", "module:../x"]) out.add(m);
-  for (const t of ["tailnet-guest:", "tailnet-guest:a", "tailnet-guest:a@b", "Tailnet-Guest:a", "tailnet-guest: a", "tailnet:", "tailnet:a", "tailnet:agent:", "tailnet:agent:kit", "tailnet:agent:kit:x", "tailnet:owner@example.com"]) out.add(t);
   for (const d of ["device:", "device:abcdefghijklmnop", "device:ABCDEFGHIJKLMNOP", "device:abc", "device:abcdefghijklmnopq", "device: abcdefghijklmnop", "device:abcdefghijklmnop:x", "Device:abcdefghijklmnop"]) out.add(d);
   for (const a of ["cli:agent:Kit", "mcp:agent:k\u00efit", "harness:agent:a b", "agent:kit", ":agent:kit", "cli:agent:kit:more", "cli:AGENT:kit"]) out.add(a);
   for (const sp of ["space:alex@harlow", "space:", "space:alex", "space:@harlow", "space:alex@", "Space:alex@harlow", "space :alex@harlow", "space:alex@harlow:agent:kit", "space:al\u200bex@harlow"]) out.add(sp);

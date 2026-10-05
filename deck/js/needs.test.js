@@ -83,89 +83,12 @@ test("needs: threads.answer input, without a project on offer and for a declined
   assert.deepEqual(needs.answerInput({ id: "q", kind: "question" }, { decision: "deny" }), { ask: "q", decision: "deny", surface: "deck" });
 });
 
-test("needs: a Mac session's ask is answered with its machine; mac_offline keeps it; an unsupported box falls back", async () => {
-  const rows = await import("./need-rows.js");
-  const saved = { asks: answers["threads.asks"], list: answers["threads.list"], answer: answers["threads.answer"], dispatch: globalThis.dispatchEvent };
-  const heard = [];
-  globalThis.dispatchEvent = (/** @type {any} */ e) => { heard.push(e.type); return true; };
-  answers["threads.asks"] = [
-    { id: "m1", kind: "permission", thread: "tm", tool: "Bash", summary: "npm test", at: T + 5, agent: "kit", node: "nodeA" },
-    { id: "m2", kind: "question", thread: "tb", tool: "AskUserQuestion", summary: "Which?", at: T + 6, agent: "juno", source: "mac", machine: "alex-mac",
-      questions: [{ question: "Which?", options: [{ label: "Harlow Legal" }] }] },
-    { id: "l1", kind: "permission", thread: "tb", tool: "Bash", summary: "ls", at: T + 7, agent: "juno" },
-  ];
-  answers["threads.list"] = [{ id: "tm", name: "tests", agent: "kit", source: "mac", machine: "alex-mac" }, { id: "tb", name: "box", agent: "juno" }];
-  try {
-    rows.resetMacAnswers();
-    const { items } = await needs.load();
-    const m1 = items.find(n => n.id === "m1"), m2 = items.find(n => n.id === "m2"), l1 = items.find(n => n.id === "l1");
-    assert.equal(m1?.source, "mac", "the thread's source reaches the ask");
-    assert.equal(m1?.machine, "alex-mac");
-    assert.equal(m1?.node, "nodeA");
-    assert.equal(m2?.source, "mac", "the ask's own source counts too");
-    assert.deepEqual(m1?.options.map(o => o.decision), ["allow", "deny"], "the usual buttons");
-    assert.deepEqual(m2?.options.map(o => o.decision), ["allow", "deny"]);
-    assert.equal(l1?.source, undefined);
-    assert.equal(rows.elsewhere(/** @type {any} */ (m1)), null, "answerable here while your server forwards");
-
-    // The Mac is away: the box's words, the item stays, forwarding is not turned off.
-    answers["threads.answer"] = { $refuse: { code: "mac_offline", message: "alex-mac is not reachable" } };
-    calls.length = 0;
-    await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Allow once", decision: "allow" }), { code: "mac_offline", message: "alex-mac is not reachable" });
-    assert.deepEqual(calls[0], { name: "threads.answer", input: { ask: "m1", decision: "allow", surface: "deck", machine: "alex-mac" }, presence: null });
-    assert.ok(needs.current().some(n => n.id === "m1"), "still in the list");
-    assert.equal(needs.macAnswers(), true);
-    answers["threads.answer"] = { $refuse: { code: "timeout", message: "alex-mac did not answer" } };
-    await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Allow once", decision: "allow" }), { code: "timeout" });
-    assert.equal(needs.macAnswers(), true);
-
-    // Answered: gone from the list, the machine went with it.
-    answers["threads.answer"] = { ok: true };
-    calls.length = 0;
-    await needs.answer(/** @type {any} */ (m2), { label: "Answer", decision: "allow", answers: { "Which?": "Harlow Legal" } });
-    assert.deepEqual(calls[0].input, { ask: "m2", decision: "allow", surface: "deck", answers: { "Which?": "Harlow Legal" }, machine: "alex-mac" });
-    assert.equal(needs.current().some(n => n.id === "m2"), false);
-
-    // A local ask is unchanged: no machine.
-    calls.length = 0;
-    await needs.answer(/** @type {any} */ (l1), { label: "Deny", decision: "deny" });
-    assert.deepEqual(calls[0], { name: "threads.answer", input: { ask: "l1", decision: "deny", surface: "deck" }, presence: null });
-
-    // A box without forwarding: "Answer it on <mac>.", for the rest of the page.
-    answers["threads.answer"] = { $refuse: { code: "unsupported", message: "no forwarding" } };
-    await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Allow once", decision: "allow" }), { message: "Answer it on alex-mac." });
-    assert.equal(needs.macAnswers(), false);
-    assert.ok(heard.includes("deck:mac-answers"), "rows hear it");
-    assert.equal(rows.elsewhere(/** @type {any} */ (m1)), "alex-mac");
-    assert.ok(needs.current().some(n => n.id === "m1"), "still listed, answered on the Mac");
-    calls.length = 0;
-    await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Allow once", decision: "allow" }), /Answer it on alex-mac\./);
-    assert.equal(calls.length, 0, "nothing sent once your server has said so");
-  } finally {
-    rows.resetMacAnswers();
-    Object.assign(answers, { "threads.asks": saved.asks, "threads.list": saved.list, "threads.answer": saved.answer });
-    globalThis.dispatchEvent = saved.dispatch;
-  }
-});
-
-test("needs: which refusals say your server cannot forward a Mac's answer", () => {
-  assert.equal(needs.macRefused({ code: "no_such_tool" }, {}), true);
-  assert.equal(needs.macRefused({ code: "unsupported" }, { node: "n" }), true);
-  assert.equal(needs.macRefused({ code: "bad_input", message: "unknown field machine" }, {}), true);
-  assert.equal(needs.macRefused({ code: "bad_input", message: "decision must be allow or deny" }, {}), false);
-  assert.equal(needs.macRefused({ code: "not_found", message: "no ask m1" }, {}), true, "an ask your server never relayed");
-  assert.equal(needs.macRefused({ code: "not_found", message: "no ask m1" }, { node: "nodeA" }), false, "relayed, so it was answered");
-  for (const code of ["mac_offline", "timeout", "person_session_required", "presence_required", "offline"]) assert.equal(needs.macRefused({ code }, {}), false, code);
-});
-
 test("needs: an ask raised this session opens by id before the list has it, until answered", () => {
   needs.hear({ type: "ask.raised", at: T + 9, thread: "tm", project: "harlow-legal",
-    payload: { ask: "r1", tool: "Bash", summary: "npm run build", kind: "permission", source: "mac", machine: "alex-mac", node: "nodeA", agent: "kit" } });
+    payload: { ask: "r1", tool: "Bash", summary: "npm run build", kind: "permission", agent: "kit" } });
   const r = needs.find("r1");
   assert.equal(r?.kind, "ask");
   assert.equal(r?.command, "npm run build");
-  assert.equal(r?.machine, "alex-mac");
-  assert.equal(r?.node, "nodeA");
   assert.equal(r?.thread, "tm");
   assert.equal(needs.current().some(n => n.id === "r1"), false, "the list is your server's only");
   needs.hear({ type: "ask.answered", payload: { ask: "r1", decision: "allow" } });

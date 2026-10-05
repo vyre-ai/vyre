@@ -1,6 +1,6 @@
 // @ts-check
 // Rename in place (#65, team/0.2.2/deck-v2/devices.html): a name with a pencil beside it; the pencil opens a field where the name was, Enter or Save
-// keeps it, Esc or Cancel leaves it. The name is 1 to 64 characters. The caller says how it is saved (relay.devices.rename, link.rename,
+// keeps it, Esc or Cancel leaves it. The name is 1 to 64 characters. The caller says how it is saved (relay.devices.rename,
 // system.rename or computers.rename) and the control shows whatever the box answers. It follows a `device.renamed` event for the same id, so a name
 // changed on another screen changes here too.
 
@@ -52,8 +52,7 @@ export function renameField({ name, label = "Rename", save, allowEmpty = false, 
 }
 
 /** The tool that renames a device of this kind, with the input it takes (tailnet's #65: device.renamed carries {kind, id, name}). */
-export function renameCall(/** @type {"relay" | "mac" | "server" | "computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name) {
-  if (kind === "mac") return { tool: "link.rename", input: { id, name } };
+export function renameCall(/** @type {"relay" | "server" | "computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name) {
   if (kind === "server") return { tool: "system.rename", input: { name } };
   if (kind === "computer") return { tool: "computers.rename", input: { computer: id, name } };
   return { tool: "relay.devices.rename", input: { id, name } };

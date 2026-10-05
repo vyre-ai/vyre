@@ -6,9 +6,7 @@
 
 /** @typedef {{ kind: string, at: number, id?: string, project?: string|null, rule?: string, destination?: string|null, agent?: string|null, projectName?: string|null, threadName?: string|null, title?: string,
  *   command?: string, tool?: string, detail?: any, questions?: any[], why?: string, thread?: string|null, anchor?: any,
- *   source?: string|null, machine?: string|null, node?: string|null,
- *   gate?: { kind?: string, via?: string, to?: string[], toName?: string, summary?: string, draft?: Record<string, any>|null } | null,
- *   pair?: { name: string, node?: string|null, login?: string, expires: number } }} Item */
+ *   gate?: { kind?: string, via?: string, to?: string[], toName?: string, summary?: string, draft?: Record<string, any>|null } | null }} Item */
 
 const lastPart = (/** @type {string} */ p) => String(p || "").split("/").filter(Boolean).pop() || String(p || "");
 
@@ -118,7 +116,6 @@ export function requestFacts(g) {
 export function titleOf(n) {
   if (n.kind === "draft") return draftTitle(n.gate);
   if (n.kind === "question") return `${n.agent || "A session"} has a question`;
-  if (n.kind === "pair") return `Pair ${n.pair?.name || "a Mac"}`;
   return askTitle(n.tool || "", n.detail, n.command);
 }
 
@@ -133,17 +130,15 @@ export function secondLine(n) {
     return { text: typeof s === "string" && s ? s : plainSummary(n.gate), mono: false };
   }
   if (n.kind === "question") return { text: String(n.questions?.[0]?.question || n.why || ""), mono: false };
-  if (n.kind === "pair") return { text: "Type the code shown on it", mono: false };
   return { text: "", mono: false };
 }
 
-/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. @param {Item} n */
+/** Line 3: "<agent> · <project>". @param {Item} n */
 export function thirdLine(n) {
-  if (n.kind === "pair") return [n.pair?.node, n.pair?.login].filter(Boolean).join(" · ") || "A Mac asking to pair";
   // Without an agent, the session's own name says who asks.
   const who = n.agent || n.threadName || (n.kind === "draft" ? "an agent" : "a session");
   const where = n.projectName && n.projectName !== who ? n.projectName : n.agent && n.threadName ? n.threadName : null;
-  return [who, where, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
+  return [who, where].filter(Boolean).join(" · ");
 }
 
 /** "now", "12m", "3h", "2d": the row's time since it was held. */
@@ -167,44 +162,10 @@ export function agoLong(/** @type {number} */ t, now = Date.now()) {
   return say(Math.floor(h / 24), "day");
 }
 
-// ---- a session on the paired Mac (federation v2) -------------------------------------------------
-// A Mac session's ask or question (source "mac") is answered from here like any other: threads.answer
-// carries its `machine` and the box forwards it (needs.js answer). There is no box flag saying it
-// does, so the first refusal that says it cannot (needs.js macRefused) turns forwarding off for the
-// rest of the page, and from then on every Mac item says "Answer it on <mac>" instead. The switch
-// lives here, not in needs.js, so this file stays free of the DOM and of api.js; needs.js re-exports it.
-
-let forwards = true;
-/** Does this box forward answers to the paired Mac (true until a refusal says it does not)? */
-export const macAnswers = () => forwards;
-/** This box cannot forward answers: every Mac item says where to answer, for the rest of the page. */
-export function holdMacAnswers() { forwards = false; }
-/** For tests: back to the page's first state. */
-export function resetMacAnswers() { forwards = true; }
-
-/** Is this an ask or question from a session on the paired Mac? @param {Item} n */
-export const fromMac = n => !!n && n.source === "mac" && (n.kind === "ask" || n.kind === "question");
-
-/**
- * The Mac an ask or question waits on, when it cannot be answered from here: its session runs on
- * the paired Mac and this box has shown it does not forward answers (macAnswers false). Null for
- * every other item, and for every Mac item while answers go through.
- * @param {Item} n @returns {string|null}
- */
-export function elsewhere(n) {
-  if (!fromMac(n)) return null;
-  // waiting says this box cannot answer it (answer.tool null, answer.on the Mac): no buttons.
-  if (/** @type {any} */ (n).answerOn) return String(/** @type {any} */ (n).answerOn);
-  if (forwards) return null;
-  return n.machine ? String(n.machine) : "your Mac";
-}
-
-/** The two swipe actions of a row, by kind: [right, left]. A Mac's ask that cannot be answered here has none: [] (it only opens). */
+/** The two swipe actions of a row, by kind: [right, left]. */
 export function swipeActions(/** @type {Item} */ n) {
-  if (elsewhere(n)) return [];
   if (n.kind === "draft") return isSend(n) ? ["Send", "Discard"] : ["Approve", "Discard"];
   if (n.kind === "question") return ["Answer", "Later"];
-  if (n.kind === "pair") return ["Pair", "Deny"];
   return ["Approve", "Deny"];
 }
 
@@ -215,12 +176,11 @@ const isSend = (/** @type {Item} */ n) => !n.gate?.kind || n.gate.kind === "send
  * What committing a swipe does (the no-nag rule): an ask is approved or denied at once, as the
  * owner's own act. A draft goes outside as the person, so a right swipe only opens the sheet on
  * its final words, and Send there proves presence. A question has no one-swipe answer; its left
- * swipe is Later. A Mac asking to pair needs its code, so it opens too.
+ * swipe is Later.
  * @param {Item} n @param {"right"|"left"} side
  * @returns {"approve"|"deny"|"discard"|"later"|"sheet"}
  */
 export function swipeCommit(n, side) {
-  if (elsewhere(n)) return "sheet";
   if (side === "right") return n.kind === "ask" ? "approve" : "sheet";
   if (n.kind === "draft") return "discard";
   if (n.kind === "question") return "later";
@@ -233,7 +193,7 @@ export const SWIPE_HINT = "Swipe right to approve, left to deny.";
 /**
  * The sheet's primary button. An ask: "Approve" (no proof). A draft: "Send with Face ID" (it goes
  * out as the person), "Send edited" once a field changed, "Approve with Face ID" for a spend or
- * a delete. A question: "Answer". A pair: "Pair with Face ID". While a presence session covers
+ * a delete. A question: "Answer". While a presence session covers
  * the draft (`covered`, need-sheet.js's coverLine), no Face ID is asked, so it reads just "Send"
  * or "Approve".
  * @param {Item} n @param {string} word presenceWord() @param {boolean} [edited] @param {boolean} [covered]
@@ -241,7 +201,6 @@ export const SWIPE_HINT = "Swipe right to approve, left to deny.";
 export function sheetPrimary(n, word, edited = false, covered = false) {
   if (n.kind === "draft") return !isSend(n) ? (covered ? "Approve" : `Approve with ${word}`) : edited ? "Send edited" : covered ? "Send" : `Send with ${word}`;
   if (n.kind === "question") return "Answer";
-  if (n.kind === "pair") return `Pair with ${word}`;
   return "Approve";
 }
 
@@ -264,7 +223,6 @@ export function heldFor(/** @type {number} */ t, now = Date.now()) {
 
 /** The sheet's first row: "kit asks · Harlow Legal". */
 export function sheetWho(/** @type {Item} */ n) {
-  if (n.kind === "pair") return [n.pair?.name || "A Mac", "wants to pair"].join(" ");
   const who = n.agent || (n.kind === "draft" ? "An agent" : "A session");
   return [`${who} asks`, n.projectName || n.threadName].filter(Boolean).join(" · ");
 }
@@ -352,15 +310,13 @@ export function snoozes(store, key = "vyre.needs.later") {
  */
 export function ariaLabel(n, now = Date.now()) {
   const [a, b] = swipeActions(n);
-  const who = n.kind === "pair" ? (n.pair?.name || "A Mac") : (n.agent || (n.kind === "draft" ? "An agent" : "A session"));
-  const where = n.kind === "pair" ? null : (n.projectName || n.threadName);
+  const who = n.agent || (n.kind === "draft" ? "An agent" : "A session");
+  const where = n.projectName || n.threadName;
   const t = titleOf(n);
-  const want = n.kind === "question" ? "has a question" : n.kind === "pair" ? "wants to pair with your server"
-    : `wants to ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  const want = n.kind === "question" ? "has a question" : `wants to ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
   const line = secondLine(n).text;
-  const time = n.kind === "pair" ? null : agoLong(n.at, now);
-  const acts = a && b ? `Actions: ${a}, ${b}, Open.` : `Answer it on ${elsewhere(n)}. Actions: Open.`;
-  return `${[who, where, want, n.kind === "pair" ? null : line, time].filter(Boolean).join(", ")}. ${acts}`;
+  const time = agoLong(n.at, now);
+  return `${[who, where, want, line, time].filter(Boolean).join(", ")}. Actions: ${a}, ${b}, Open.`;
 }
 
 /**

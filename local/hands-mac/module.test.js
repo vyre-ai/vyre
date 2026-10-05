@@ -95,7 +95,7 @@ test("grant: every caller shape that claims an agent name is gated, and a caller
     const r = await reg.call("hands.observe", {}, caller);
     assert.equal(r.error && r.error.code, "denied", caller);
   }
-  for (const caller of ["tailnet-guest:sam", "module:newthing", "harness"]) {
+  for (const caller of ["guest:sam", "module:newthing", "harness"]) {
     const r = await reg.call("hands.observe", {}, caller);
     assert.equal(r.error && r.error.code, "denied", caller);
   }

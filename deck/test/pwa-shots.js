@@ -99,10 +99,6 @@ const SCREENS = [
   { name: "agent-pushed", path: "/agents/kit", shell: "pushed" },
   { name: "settings", path: "/settings", shell: "pushed" },
   { name: "offline", path: "/chat", offline: true },
-  // A Mac asking to pair. link.pair.request only answers over the tailnet, so the world cannot
-  // make one: link.pending's answer is stubbed in the page, and nothing else is.
-  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 719px), (max-height: 500px) and (pointer: coarse)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
-      const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
   // Undo is honest: a denied ask is not sent while its toast shows, and Undo means it never is.
   // Then an approve from the row's real button goes at once, with no presence proof (no-nag).
   { name: "now-undo", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=ask] .np-face', 15000);

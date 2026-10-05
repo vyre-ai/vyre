@@ -12,8 +12,8 @@ import { openTab } from "./cdp.js";
 
 const base = process.argv.slice(2).find(a => !a.startsWith("--")) || "http://127.0.0.1:4790";
 const CDP = process.env.CDP || "http://127.0.0.1:9422";
-const PLACES = ["/now", "/chat", "/projects", "/agents", "/memory", "/vault", "/files", "/settings"];
-const PUSHED = new Set(["/memory", "/vault", "/files", "/settings"]);
+const PLACES = ["/now", "/chat", "/projects", "/agents", "/memory", "/vault", "/settings"];
+const PUSHED = new Set(["/memory", "/vault", "/settings"]);
 const PHONE = [320, 360, 390, 430, 600, 719], DESK = [720, 768];
 
 let failed = 0;

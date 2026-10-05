@@ -11,10 +11,6 @@
 // session.indexed (Recall indexes a session when its turn completes) or thread.started, so the
 // list follows the user's terminal sessions live without polling.
 //
-// On the box, the list takes in the paired Mac's sessions too, each with a machine chip; opening
-// one reads it through the box (recall.thread) and never offers to send to it. A paired Mac that
-// is away shows as one quiet chip in the list's header, from link.macs, read with each refresh.
-//
 // The shell keeps pages mounted (deck/js/app.js): each address, query included, is its own page,
 // hidden rather than ended when the user leaves. So a kept Chat page's key handlers act only while
 // ctx.shown(), and a revisit refreshes through ctx.onShow.
@@ -36,7 +32,6 @@ import { mountFolders, foldersHref } from "./folders.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 import { markOpened, openedHere } from "./lib/opened-here.js";
 import { mergeSessions, title } from "./lib/sessions.js";
-import { machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { threadRow as rowOf } from "../js/thread-row.js";
 import { pageHeader } from "../js/page-header.js";
 
@@ -48,9 +43,9 @@ const CATALOG_LIMIT = 300;
 // shape as Now's own snapshot in deck/views/now.js — deck's call on what "offline read" may hold).
 const SNAP_KEY = "vyre.chat.snapshot";
 const saveSnapshot = (projects, rows) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(),
-  projects: projects.map(p => ({ slug: p.slug, name: p.name, threads: p.threads, last: p.last, source: p.source, machine: p.machine })),
+  projects: projects.map(p => ({ slug: p.slug, name: p.name, threads: p.threads, last: p.last })),
   rows: rows.slice(0, 100).map(t => ({ id: t.id, name: t.name, projects: t.projects, project: t.project, agent: t.agent, status: t.status,
-    last: t.last, turns: t.turns, asks: t.asks, human: t.human, live: t.live, source: t.source, machine: t.machine })) })); } catch {} };
+    last: t.last, turns: t.turns, asks: t.asks, human: t.human, live: t.live })) })); } catch {} };
 const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
 
 /** Every session row this page load has seen, by id, so opening one needs no list first. */
@@ -89,16 +84,14 @@ export default async function chat(ctx) {
   /** On screen now: a kept page that is hidden hears keys too, and must not act on them. */
   const shown = () => (typeof ctx.shown === "function" ? ctx.shown() : ctx.alive());
   let mounted = false;
-  const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false,
-    macs: /** @type {any[]} */ ([]) };
+  const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false };
 
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
-    const [p, c, t, macs] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
-      readMacs(attempt, state.macs), readSystem(attempt), readTeammates(attempt)]);
+    const [p, c, t] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
+      readSystem(attempt), readTeammates(attempt)]);
     if (!ctx.alive()) return;
     setProjects(p.data?.projects || []); // each project's tile seed (js/avatars.js)
-    state.macs = macs;
     const offline = [p, c, t].some(r => r.error?.code === "offline");
     const snap = offline ? loadSnapshot() : null;
     state.loaded = true;
@@ -234,7 +227,7 @@ export default async function chat(ctx) {
       const known = /** @type {any} */ (state.rows.find(r => r.id === thread));
       ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread, project: project || known?.project || null, projects: state.projects,
         recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
-        source: known?.source || null, machine: known?.machine || null, shown, onBack: () => back(project ? projectHref(project) : "/chat") })));
+        shown, onBack: () => back(project ? projectHref(project) : "/chat") })));
       return;
     }
     const note = state.offline ? h("div", { class: "empty chat-offline" }, `Offline. Showing the list as of ${when(state.snapAt)}.`) : null;
@@ -243,7 +236,7 @@ export default async function chat(ctx) {
       const rows = state.rows.filter(x => x.projects.includes(project));
       put(ctx.root, note, h("div", { class: "chat-pad" },
         pageHeader({ title: proj ? proj.name : project, meta: rows.length ? plural(rows.length, "conversation") : "No conversations yet",
-          actions: [machineChip(proj), offlineChip(state.macs), actions(project)] }),
+          actions: actions(project) }),
         link("/chat", { class: "chat-back", "aria-label": "All sessions" }, icon("left", 16), h("span", null, "Chat")),
         rows.length ? h("div", { class: "rows chat-rows" }, rows.map(r => threadRow(r, project)))
           : !proj && state.projects.length ? h("div", { class: "empty" }, `There is no project called ${project}.`)
@@ -252,13 +245,13 @@ export default async function chat(ctx) {
     }
     const recent = state.rows.filter(r => r.human || r.live).slice(0, 30);
     put(ctx.root, note, h("div", { class: "chat-pad" },
-      pageHeader({ title: "Chat", meta: state.rows.length ? plural(state.rows.length, "conversation") : "Talk to your assistant or any agent", actions: [offlineChip(state.macs), actions(null)] }),
+      pageHeader({ title: "Chat", meta: state.rows.length ? plural(state.rows.length, "conversation") : "Talk to your assistant or any agent", actions: actions(null) }),
       // On a phone the rail is hidden, so the projects are listed here as well.
       state.projects.length ? h("section", { class: "chat-projects", "aria-labelledby": "chat-projects-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-projects-h" }, "Projects")),
         h("div", { class: "rows" }, state.projects.map(p => {
           const n = state.rows.filter(r => r.projects.includes(p.slug)).length;
-          return rowOf({ href: projectHref(p.slug), title: p.name, project: p.slug, last: plural(n, "conversation"), human: false, extra: [machineChip(p)] });
+          return rowOf({ href: projectHref(p.slug), title: p.name, project: p.slug, last: plural(n, "conversation"), human: false });
         }))) : null,
       h("section", { class: "chat-recent", "aria-labelledby": "chat-recent-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-recent-h" }, "Recent")),
@@ -276,7 +269,6 @@ export default async function chat(ctx) {
   function threadRow(row, inProject) {
     const where = inProject ? null : state.projects.find(p => p.slug === row.project)?.name;
     return rowOf({ href: threadHref(row, inProject), title: title(row), project: row.project, agent: row.agent, thread: row.id, at: row.last, status: row.status,
-      asks: row.asks, turns: row.turns, where, human: row.human, participants: [row.holder],
-      extra: [machineChip(row)] });
+      asks: row.asks, turns: row.turns, where, human: row.human, participants: [row.holder] });
   }
 }

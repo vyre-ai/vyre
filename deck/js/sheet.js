@@ -9,8 +9,8 @@
 //   s.close();
 //
 // build fills `body` (and, when it wants them, `head` and `actions`). A sheet whose head is left
-// empty gets a plain one: the title and a close button. Styles: css/sheet.css, loaded once, the
-// same way pair.js loads pair.css. That file also defines --match and --scrim for both themes.
+// empty gets a plain one: the title and a close button. Styles: css/sheet.css, loaded once.
+// That file also defines --match and --scrim for both themes.
 
 import { h, put } from "./dom.js";
 

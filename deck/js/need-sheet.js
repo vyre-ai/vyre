@@ -1,6 +1,6 @@
 // @ts-check
 // The detail sheet of one Needs you item on the phone (docs/design/phone.md section 5): an ask
-// (a tool call), a draft held at the Gate, a question from a session, or a Mac asking to pair.
+// (a tool call), a draft held at the Gate, or a question from a session.
 //
 // Header: the agent's tile and "<agent> asks · <project>", close; the title; a violet dot and
 // "Held 4 min"; Open session, which closes the sheet and opens the exact moment in Chat.
@@ -11,16 +11,15 @@
 // caller (onLater), which waits them out behind its Undo toast; the rest are sent from here, and
 // on success the sheet closes and the caller hears onDone.
 //
-//   openNeedSheet(n, { word: "Face ID", onDone(what), onLater(what), onPaired(name) })
+//   openNeedSheet(n, { word: "Face ID", onDone(what), onLater(what) })
 
 import { h, put, go } from "./dom.js";
 import { openSheet, closeGlyph } from "./sheet.js";
 import * as needs from "./needs.js";
 import { form, gateFields } from "./editable.js";
-import { pairCard } from "./pair.js";
 import { initial, clock, since } from "./fmt.js";
 import { coveredUntil } from "./api.js";
-import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, elsewhere, plainSummary } from "./need-rows.js";
+import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, plainSummary } from "./need-rows.js";
 
 const NS = "http://www.w3.org/2000/svg";
 /**
@@ -57,14 +56,14 @@ export function problem(/** @type {any} */ e) {
 }
 
 /**
- * @typedef {"approve"|"always"|"send"|"answer"|"pair"} Done
+ * @typedef {"approve"|"always"|"send"|"answer"} Done
  * @typedef {"deny"|"discard"|"later"} Later
- * @typedef {{ word: string, onDone?: (what: Done, n: any) => void, onLater?: (what: Later, n: any) => void, onPaired?: (name: string) => void }} Opts
+ * @typedef {{ word: string, onDone?: (what: Done, n: any) => void, onLater?: (what: Later, n: any) => void }} Opts
  */
 
 /**
  * Open one item's sheet.
- * @param {any} n a needs.js item, or { kind: "pair", id, at, pair }
+ * @param {any} n a needs.js item
  * @param {Opts} o
  */
 export function openNeedSheet(n, o) {
@@ -72,28 +71,21 @@ export function openNeedSheet(n, o) {
   /** @type {(() => void)[]} */ const offs = [];
   const s = openSheet({ title, label: `${title}. ${sheetWho(n)}`, onClose: () => { for (const f of offs.splice(0)) f(); },
     build(body, close, { head, actions }) {
-      const href = n.kind === "pair" ? null : sessionHref(n);
+      const href = sessionHref(n);
       put(head,
         h("div", { class: "nsh-who" },
-          h("div", { class: "nsh-who-l" }, h("span", { class: "nsh-tile", "aria-hidden": "true" }, n.kind === "pair" ? "m" : n.agent ? initial(n.agent) : glyph("terminal", 14)), h("span", null, sheetWho(n))),
+          h("div", { class: "nsh-who-l" }, h("span", { class: "nsh-tile", "aria-hidden": "true" }, n.agent ? initial(n.agent) : glyph("terminal", 14)), h("span", null, sheetWho(n))),
           h("button", { type: "button", class: "sheet-close", "aria-label": "Close", onclick: close }, closeGlyph(16))),
         h("h2", { class: "sheet-title nsh-title" }, title),
         h("div", { class: "nsh-held" },
-          h("span", { class: "nsh-held-l" }, h("span", { class: "nsh-dot", "aria-hidden": "true" }), n.kind === "pair" ? minutesLeft(n.pair?.expires) : heldFor(n.at)),
+          h("span", { class: "nsh-held-l" }, h("span", { class: "nsh-dot", "aria-hidden": "true" }), heldFor(n.at)),
           href ? h("a", { class: "nsh-open", href, onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); close(); go(href); } }, "Open session", glyph("right", 16)) : null));
       const ctl = { close, actions, body };
       if (n.kind === "draft") draftBody(n, o, ctl, offs);
       else if (n.kind === "question") questionBody(n, o, ctl);
-      else if (n.kind === "pair") pairBody(n, o, ctl);
       else askBody(n, o, ctl, offs);
-      // A Mac session's ask or question on a box that cannot forward the answer: shown, not answered here.
-      const mac = elsewhere(n);
-      if (mac) {
-        for (const b of body.querySelectorAll("button, input")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-        put(actions, h("p", { class: "nsh-note", role: "status" }, `Answer it on ${mac}`));
-      }
       // Answered from another screen while this is open: say so, and nothing here can act twice.
-      if (n.kind !== "pair") offs.push(needs.watch(list => {
+      offs.push(needs.watch(list => {
         if (list.some(x => x.id === n.id) || busy.has(n.id)) return;
         for (const b of actions.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
         put(actions, h("p", { class: "nsh-note", role: "status" }, "This was answered on another screen."));
@@ -117,8 +109,6 @@ async function send(n, actions, status, run, ok) {
   busy.add(n.id);
   try { await run(); ok(); }
   catch (e) {
-    // The box cannot forward answers to this Mac (needs.js): the line says where, the buttons stay off.
-    if (/** @type {any} */ (e)?.elsewhere) { put(status, h("span", null, problem(e))); return; }
     put(status, h("span", { class: "nsh-failed" }, "failed"), h("span", null, problem(e)));
     for (const b of buttons) b.disabled = false;
   } finally { busy.delete(n.id); }
@@ -261,14 +251,3 @@ function questionBody(n, o, { close, actions, body }) {
   });
   put(actions, answer, h("button", { type: "button", class: "sb sb-full", onclick: () => { close(); o.onLater?.("later", n); } }, "Later"), status);
 }
-
-/** A Mac asking to pair: pair.js's own card (the code, Approve with the passkey, Deny). */
-function pairBody(/** @type {any} */ n, /** @type {Opts} */ o, /** @type {{ close: () => void, actions: HTMLElement, body: HTMLElement }} */ { close, body }) {
-  const card = pairCard(n.pair, { onPaired: r => { setTimeout(close, 900); o.onPaired?.(r.name); } });
-  put(body, h("div", { class: "nsh-pair" },
-    h("p", { class: "nsh-why" }, "Type the code shown on that Mac. Approving it proves it is you with your passkey."), card));
-  const code = /** @type {HTMLElement | null} */ (card.querySelector(".pair-code"));
-  requestAnimationFrame(() => code?.focus({ preventScroll: true }));
-}
-
-const minutesLeft = (/** @type {number} */ t) => { const m = Math.ceil((Number(t) - Date.now()) / 60_000); return m > 0 ? `${m} min left` : "expired"; };

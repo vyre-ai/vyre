@@ -1,7 +1,7 @@
 // @ts-check
-// A handler in core/switchboard/index.js that uses `meta` must take it: a half-merge once left two handlers destructuring `{ caller }` while their bodies called wantsMacs(..., meta), and every
+// A handler in core/switchboard/index.js that uses `meta` must take it: a half-merge once left two handlers destructuring `{ caller }` while their bodies read meta, and every
 // threads.send answered "meta is not defined". This reads the file the way a reviewer would: each `async (i, <second argument>) => {` handler, its body by brace matching, and fails when the
-// body names `meta` and the argument list does not bind it (and the body does not declare it). Every wantsMacs call must also pass meta as its last argument.
+// body names `meta` and the argument list does not bind it (and the body does not declare it).
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -46,10 +46,4 @@ test("no handler in the Switchboard uses meta without taking it", () => {
     bad.push(`line ${h.line}: async (${h.args.slice(0, 60)}) uses meta`);
   }
   assert.deepEqual(bad, [], "a handler uses `meta` but its arguments do not take it");
-});
-
-test("every wantsMacs call passes the call's meta", () => {
-  const calls = [...SRC.matchAll(/wantsMacs\(([^;\n]*?)\)\)?(?:\s*&&|\s*\)|\s*\?|;|\s*\{)/g)].map(m => ({ line: SRC.slice(0, m.index).split("\n").length, args: m[1] }));
-  assert.ok(calls.length >= 4, `found the call sites (${calls.length})`);
-  assert.deepEqual(calls.filter(c => !/\bmeta\b/.test(c.args)).map(c => `line ${c.line}: wantsMacs(${c.args})`), []);
 });

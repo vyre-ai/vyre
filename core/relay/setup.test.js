@@ -611,9 +611,9 @@ test("claim token: the page mints over its channel, the browser at the address c
   const spki = Buffer.from(p.key.spki).toString("base64url");
   const token = await claimToken({ privateKey: p.key.privateKey, route: route.route, challenge: route.challenge, host: "alex.vyre.run" });
   const at = { stableId: "n-laptop", node: "laptop", origin: "https://alex.vyre.run" };
-  const claim = (tok, caller = "tailnet:me@example.com", peer = at, sp = spki) => w.d.registry.call("relay.setup.claim", { token: tok, spki: sp }, caller, { peer });
+  const claim = (tok, caller = "device:rqvepu55xdjqs2te", peer = at, sp = spki) => w.d.registry.call("relay.setup.claim", { token: tok, spki: sp }, caller, { peer });
 
-  for (const caller of ["cli", "tailnet-guest:sam@harlow.example", "mcp:agent:kit", "tailnet:agent:kit"]) assert.ok((await claim(token, caller)).error, `refused for ${caller}`);
+  for (const caller of ["cli", "guest:sam@harlow.example", "mcp:agent:kit", "agent:kit"]) assert.ok((await claim(token, caller)).error, `refused for ${caller}`);
   // those refusals happened before the challenge was looked at, so it is still live
   const r = await claim(token);
   assert.equal(r.error, undefined, JSON.stringify(r.error));
@@ -626,7 +626,7 @@ test("claim token: the page mints over its channel, the browser at the address c
   const again = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
   const token2 = await claimToken({ privateKey: p.key.privateKey, route: again.route, challenge: again.challenge, host: "alex.vyre.run" });
   const phone = { stableId: "n-phone", node: "phone", origin: "https://alex.vyre.run" };
-  const r2 = await claim(token2, "tailnet:me@example.com", phone);
+  const r2 = await claim(token2, "device:rqvepu55xdjqs2te", phone);
   assert.match(r2.data.grant, /^[A-Za-z0-9_-]{43}$/);
   assert.notEqual(r2.data.grant, r.data.grant);
 

@@ -32,7 +32,7 @@ const MAX_SURFACES = 32;
 const INTERVAL_MS = 1000;
 // No mcp: a model neither reports where the person is nor reads their front window. Harness modules
 // read context.now as module callers and decide what a session may be told.
-const CALLERS = ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"];
+const CALLERS = ["cli", "local", "module", "deck", "capsule", "device", "space", "agent"];
 // Projects' own events, after which a folder may belong to another project (or to none).
 const PROJECT_EVENTS = /^(project|projects)\./;
 
@@ -268,7 +268,7 @@ export default {
      * @param {any} meta
      */
     const screen = async meta => {
-      if ((meta && meta.peer) || ownerDevice(meta && meta.caller) || /^tailnet/.test(String(meta && meta.caller))) return { screen: null, screen_why: "local_only" };
+      if ((meta && meta.peer) || ownerDevice(meta && meta.caller)) return { screen: null, screen_why: "local_only" };
       try {
         const r = await ctx.call("sight.now", { target: "mac", parts: ["text"] });
         if (r && r.error) return { screen: null, screen_why: r.error.code === "no_such_tool" ? "no_sight" : r.error.code };

@@ -147,7 +147,7 @@ export default {
 
     // The file tools that change a target (upload, move, mkdir, trash) are open to the person's surfaces and to a model: filesFor holds a model to its own computer's files and gives a plain mcp or harness session none.
     const FILE_WRITERS = new Set(["glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"]);
-    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...(FILE_WRITERS.has(name) ? { callers: FILE_WRITE_CALLERS } : {}), ...extra });
 
     // ---- screens -------------------------------------------------------------------------
@@ -209,7 +209,7 @@ export default {
     tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async (i, { caller } = {}) => {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM glass_sessions WHERE id = ? AND closed IS NULL").get(i.session));
       // A guest closes only the sessions it opened, never the owner's.
-      if (!row || (String(caller).startsWith("tailnet-guest:") && row.caller !== String(caller))) return { closed: false };
+      if (!row) return { closed: false };
       const at = now();
       db.prepare("UPDATE glass_sessions SET closed = ? WHERE id = ?").run(at, i.session);
       emit("glass.closed", { session: row.id, target: row.target, surface: row.surface, seconds: Math.round((at - Number(row.opened)) / 1000) });

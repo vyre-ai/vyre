@@ -32,10 +32,10 @@ export function createCmdBar(deps = {}) {
   const remember = (/** @type {string} */ id) => { try { storage?.setItem(RECENT_KEY, JSON.stringify([id, ...recents().filter((/** @type {string} */ x) => x !== id)].slice(0, 8))); } catch { /* private window */ } };
 
   async function load() {
-    const [pl, ag, th] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("agents.list", {}, { share: true }), attempt("threads.list", { machines: "local" }, { share: true })]);
+    const [pl, ag, th] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("agents.list", {}, { share: true }), attempt("threads.list", {}, { share: true })]);
     const assistant = (Array.isArray(ag.data) ? ag.data : []).find((/** @type {any} */ a) => a?.kind === "assistant")?.name || null;
     /** @type {import("./cmdbar-core.js").Entry[]} */ const out = [...actionEntries({ assistant })];
-    for (const p of (pl.data?.projects || [])) if (p && p.slug && !p.archived_at && p.source !== "mac") out.push({ id: "p:" + p.slug, group: "Projects", title: String(p.name || p.slug), href: `/projects/${encodeURIComponent(p.slug)}`, kind: "project", ref: p.slug });
+    for (const p of (pl.data?.projects || [])) if (p && p.slug && !p.archived_at) out.push({ id: "p:" + p.slug, group: "Projects", title: String(p.name || p.slug), href: `/projects/${encodeURIComponent(p.slug)}`, kind: "project", ref: p.slug });
     for (const a of (Array.isArray(ag.data) ? ag.data : [])) if (a?.name) out.push({ id: "a:" + a.name, group: "People and agents", title: String(a.name), meta: a.kind === "assistant" ? "Assistant" : "Agent", href: `/agents/${encodeURIComponent(a.name)}`, kind: "agent", ref: a.name });
     for (const t of (Array.isArray(th.data) ? th.data : []).slice(0, 30)) if (t?.id) out.push({ id: "t:" + t.id, group: "Threads", title: String(t.name || t.label || "New chat"), meta: t.project ? String(t.project) : undefined, href: threadHref({ id: t.id, project: t.project }), kind: "thread", ref: t.id });
     known = out; loaded = true;

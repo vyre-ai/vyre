@@ -71,7 +71,7 @@ test("allowed: person surfaces, the user's own session, and the assistant itself
   assert.equal(await allowed("mcp:agent:kit", c, { thread: "t1" }), true, "an agent label no one vouched for claims nothing: it is the session itself");
   assert.equal(await allowed("mcp:agent:juno", c), true, "the assistant");
   assert.equal(await allowed("mcp:agent:kit", c), false, "a project-scoped agent");
-  assert.equal(await allowed("tailnet:alex@example.com", c), false);
+  assert.equal(await allowed("device:nw3b43olz4rzbzfe", c), false);
   assert.equal(await allowed("mcp:agent:nobody", c), false);
 });
 

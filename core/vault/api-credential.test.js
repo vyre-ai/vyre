@@ -39,7 +39,7 @@ test("an api-credential is made and changed only from a person's own surfaces", 
   // Every caller that is not a person's own surface is refused, by name.
   for (const [who, caller, meta] of [
     ["a module", "module:onboard", {}], ["the watcher runtime", "module:watchers", {}], ["the mcp hub", "module:mcp", {}], ["sessions", "module:sessions", {}],
-    ["mcp", "mcp", {}], ["an agent", "mcp:agent:juno", { thread: "t-1", agent: "juno" }], ["a tailnet guest", "tailnet-guest:x@y.test", {}], ["an agent's node", "tailnet:agent:juno", {}],
+    ["mcp", "mcp", {}], ["an agent", "mcp:agent:juno", { thread: "t-1", agent: "juno" }], ["a tailnet guest", "guest:x@y.test", {}], ["an agent's node", "agent:juno", {}],
     ["a webhook", "hook", {}],
   ]) {
     const r = await put({}, caller, meta);
@@ -153,8 +153,8 @@ test("vault.request and its Gate sender: who may call, and what stops before the
   assert.ok((await reg("vault.put", { name: "harlow-api", kind: "api-credential", fields: { config: CONFIG, secret: fake("secret") } })).data);
   const req = { credential: "harlow-api", method: "GET", url: "https://api.harlow.test/v1/x" };
   // Not for a guest, or an agent's node.
-  assert.equal((await reg("vault.request", req, "tailnet-guest:x@y.test")).error.code, "denied");
-  assert.equal((await reg("vault.request", req, "tailnet:agent:juno")).error.code, "denied");
+  assert.equal((await reg("vault.request", req, "guest:x@y.test")).error.code, "denied");
+  assert.equal((await reg("vault.request", req, "agent:juno")).error.code, "denied");
   // A module needs its own grant; a watcher's is its own.
   assert.match((await reg("vault.request", req, "module:watchers")).error.message, /not granted to watchers for vault\.request/);
   assert.match((await reg("vault.request", { ...req, watcher: "inbox" }, "module:watchers")).error.message, /not granted to watchers\/inbox/);
@@ -165,7 +165,7 @@ test("vault.request and its Gate sender: who may call, and what stops before the
   assert.match((await reg("vault.request", { ...req, url: "https://evil.test/v1/x" }, "cli")).error.message, /not on this credential's allowed hosts/);
   assert.match((await reg("vault.request", { ...req, url: "https://api.harlow.test/v1/x", headers: { Authorization: "Bearer x" } }, "cli")).error.message, /set by the credential/);
   // The Gate's sender is internal, and only the Gate runs it.
-  for (const who of ["cli", "local", "mcp", "tailnet-guest:x@y.test", "hook"]) assert.equal((await reg("vault.api.send", { id: "abc" }, who)).error.code, "no_such_tool", who);
+  for (const who of ["cli", "local", "mcp", "guest:x@y.test", "hook"]) assert.equal((await reg("vault.api.send", { id: "abc" }, who)).error.code, "no_such_tool", who);
   assert.match((await reg("vault.api.send", { id: "abc" }, "module:sessions")).error.message, /only the Gate sends/);
   // The sender is offered to the Gate under a name in the vault's own namespace.
   // (Modules start in dependency order and neither needs the other, so the offer retries until the Gate is there.)

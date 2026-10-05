@@ -6,9 +6,6 @@
 // recent sessions from the catalogue stand in, so Now is never an empty page.
 // Learned today: memory.facts last seen today, on --hover, each with its source thread.
 //
-// On the box, Working and the recent sessions take in the paired Mac's too, with a machine chip
-// and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away
-// shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
 import { h, put, link, head, empty, isPhone } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
@@ -18,15 +15,13 @@ import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { setupCard } from "../js/phone-setup.js";
 import { assistantCard } from "../js/assistant-setup.js";
-import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { chatCounts, chatsWord } from "../js/chat-counts.js";
 import { threadAvatar, whoAvatar, unknownActorAvatar } from "../js/avatars.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
-import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere, fromMac, plainSummary, requestFacts } from "../js/need-rows.js";
+import { sessionHref, plainSummary, requestFacts } from "../js/need-rows.js";
 import { threadHref } from "../chat/lib/routes.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
@@ -49,9 +44,6 @@ export default async function now(ctx) {
   // The right column (from 1000 px): the last things that happened. Under it, on a narrow window, it stacks below.
   const side = h("aside", { class: "now-side", "aria-label": "Recent" });
 
-  // A Mac asking to pair waits on the person, so it sits above everything else.
-  const pairing = pairRequests();
-  ctx.cleanup(pairing.stop);
   // Finish setup (right column): a passkey when the box has none, and the assistant when there is none. One quiet card, shown while either is open.
   const finish = h("section", { class: "now-finish", hidden: true, "aria-labelledby": "fs-h" }, h("h2", { id: "fs-h", class: "lbl" }, "Finish setup"));
   const asstRow = h("div", { class: "fs-row", hidden: true });
@@ -64,7 +56,6 @@ export default async function now(ctx) {
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
-      pairing.el,
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, glassMini, working, learned, recentProjects),
     side));
@@ -135,13 +126,11 @@ export default async function now(ctx) {
   needs.load();
 
   // Working
-  let macs = /** @type {any[]} */ ([]);
   const drawWorking = async () => {
     // The latest sessions are asked for at the same time, in case nothing is running: one round trip instead of two.
     const latest = attempt("projects.catalog", { limit: 5 });
-    const [r, m] = await Promise.all([attempt("threads.list", {}), readMacs(attempt, macs)]);
+    const r = await attempt("threads.list", {});
     if (!ctx.alive()) return;
-    macs = m;
     if (r.error?.code === "offline") {
       const snap = loadSnapshot();
       const headRow = head("Working");
@@ -157,8 +146,7 @@ export default async function now(ctx) {
     const done = all.filter(t => !isRunning(t) && (t.last || 0) >= startOfToday());
     running = run.length;
     say();
-    const right = h("span", { style: { display: "inline-flex", gap: "10px", alignItems: "center" } }, offlineChip(macs),
-      h("span", { class: "lbl now-count" }, r.error ? "" : `${run.length} running · ${done.length} ${done.length === 1 ? "was" : "were"} active today`));
+    const right = h("span", { class: "lbl now-count" }, r.error ? "" : `${run.length} running · ${done.length} ${done.length === 1 ? "was" : "were"} active today`);
     const headRow = head("Working", right);
     /** @type {HTMLElement} */ (headRow.firstChild).id = "working-h";
     if (run.length) { put(working, headRow, h("div", { class: "rows" }, run.map(workRow))); return; }
@@ -207,7 +195,7 @@ export default async function now(ctx) {
   const drawLearned = async () => {
     // The box's own catalogue: it only maps Memory's sessions to projects, so the Mac is not asked for 500 rows.
     // projects.list is asked with the others (the Recent projects block asks it too, and the two share one request).
-    const [f, cat, pl] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" }), attempt("projects.list", {}, { share: true })]);
+    const [f, cat, pl] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500 }), attempt("projects.list", {}, { share: true })]);
     if (!ctx.alive()) return;
     const projectOf = new Map((cat.data?.sessions || []).map(s => [s.id, s.projects?.[0] || null]));
     const names = new Map(pl.data?.projects?.map(p => [p.slug, p.name]) || []);
@@ -232,13 +220,11 @@ export default async function now(ctx) {
   const drawRecent = async () => {
     const [r, counts] = await Promise.all([attempt("projects.list", {}, { share: true }), chatCounts(attempt)]);
     if (!ctx.alive()) return;
-    // Each opens its board on this machine, so a Mac's projects (listed under Projects) are left out.
-    const list = [...(r.data?.projects || [])].filter(p => !isMac(p)).sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
+    const list = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
     const headRow = head("Recent projects");
     /** @type {HTMLElement} */ (headRow.firstChild).id = "recent-h";
     if (r.error) { put(recentProjects); return; }
-    // Only a Mac's projects: nothing to open here. None at all: say so, with the way to make one.
-    if (!list.length && (r.data?.projects || []).length) { put(recentProjects); return; }
+    // None at all: say so, with the way to make one.
     if (!list.length) { put(recentProjects, headRow, h("div", { class: "empty" }, "No projects yet. A project is a folder, its threads and the people in it.", createProjectInline())); return; }
     put(recentProjects, headRow, h("div", { class: "rows" }, list.map(p =>
       h("div", { class: "work-row" },
@@ -253,8 +239,7 @@ export default async function now(ctx) {
 
 /** One held item: a draft at the Gate, or a question from a session. */
 function needCard(n) {
-  // A Mac session's: "on <mac>", where its answer runs.
-  const where = [n.projectName, n.threadName, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
+  const where = [n.projectName, n.threadName].filter(Boolean).join(" · ");
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   const status = h("div", { class: "small muted", role: "status" });
   const buttons = h("div", { class: "need-actions" });
@@ -268,17 +253,12 @@ function needCard(n) {
     try { await needs.answer(n, opt, f && f.changed() ? f.edited() : null); }
     catch (e) {
       put(status, problem(e));
-      // The box cannot forward answers to this Mac (needs.js): the line says where; the list redraws the card.
-      if (!(/** @type {any} */ (e)?.elsewhere)) for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
   // A question has choices, drawn where it was asked: the session's card answers it.
   const qHref = n.kind === "question" ? sessionHref(n) : null;
-  // A Mac session's ask or question on a box that cannot forward the answer: no buttons here.
-  const mac = elsewhere(n);
-  if (mac) put(buttons, h("span", { class: "small muted" }, `Answer it on ${mac}`), h("div", { style: { flexGrow: "1" } }),
-    threadHref ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
-  else if (n.kind === "question") put(buttons,
+  if (n.kind === "question") put(buttons,
     qHref ? link(qHref, { class: "btn btn-primary" }, "Answer in the session") : null,
     h("button", { type: "button", class: "btn btn-ghost", onclick: () => act({ label: "Decline", decision: "deny" }) }, "Decline"));
   else put(buttons,
@@ -362,28 +342,25 @@ export function titleOf(t) {
 }
 
 function workRow(t) {
-  // A Mac thread's project and agent are the Mac's: it opens read-only by id, and has no Watch here.
-  const mac = isMac(t);
-  const href = t.project && !mac ? `/projects/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/threads/${encodeURIComponent(t.id)}`;
+  const href = t.project ? `/projects/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/threads/${encodeURIComponent(t.id)}`;
   return h("div", { class: "work-row" },
     // Every thread has a mark and a title (#44): the same avatar a chat wears everywhere, and its name, else its first words, else "New chat" (never its id).
     threadAvatar({ agent: t.agent, project: t.project, thread: t.id }, { size: 24, cls: "av-agent", title: t.agent || "You" }),
     h("div", { class: "work-agent" }, t.agent || "you"),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(t)), machineChip(t), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(t)), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
       h("div", { class: "code ellipsis" }, t.activity || "")),
     h("div", { class: "code faint work-since" }, since(t.started)),
-    mac ? null : link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
+    link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
     h("span", { class: "work-chev phone-only", "aria-hidden": "true" }, icon("right")));
 }
 
 function recentRow(s) {
-  // A Mac session's projects are the Mac's own slugs, not boards here: it opens by id.
-  const href = s.projects?.[0] && !isMac(s) ? `/projects/${encodeURIComponent(s.projects[0])}/${encodeURIComponent(s.id)}` : `/threads/${encodeURIComponent(s.id)}`;
+  const href = s.projects?.[0] ? `/projects/${encodeURIComponent(s.projects[0])}/${encodeURIComponent(s.id)}` : `/threads/${encodeURIComponent(s.id)}`;
   return h("div", { class: "work-row" },
     threadAvatar({ agent: s.agent || null, project: s.projects?.[0] || null, thread: s.id }, { size: 24, cls: "av-agent" }),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(s)), machineChip(s)),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(s))),
       h("div", { class: "code ellipsis" }, base(s.cwd), s.turns ? `  ·  ${plural(s.turns, "turn")}` : "")),
     h("div", { class: "code faint work-since" }, when(s.last)));
 }

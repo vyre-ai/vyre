@@ -260,9 +260,9 @@ export function register({ vault, internal, tool, emit }) {
   const RESOLVERS = ["module:sessions", "module:assistant", "module:threads", "module:mentions"];
 
   if (tool) {
-    tool("vault.items.names", ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"], "Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.",
+    tool("vault.items.names", ["cli", "local", "deck", "capsule", "device", "space", "agent"], "Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.",
       obj({ q: str, kind: str, limit: { type: "integer" } }), ({ q, kind, limit }) => ({ items: pickable(q).filter(i => !kind || i.kind === kind).slice(0, Math.min(Number(limit) || 30, 100)) }));
-    tool("vault.mention.search", ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"], "The # picker's vault items: id and name are the item name, hint says the kind and host.",
+    tool("vault.mention.search", ["cli", "local", "deck", "capsule", "device", "space", "agent"], "The # picker's vault items: id and name are the item name, hint says the kind and host.",
       obj({ q: str, limit: { type: "integer" } }), ({ q, limit }) => ({ items: pickable(q).slice(0, Math.min(Number(limit) || 30, 100)).map(i => ({ id: i.name, name: i.name, hint: `${i.kind}${i.hosts.length ? " · " + i.hosts.join(", ") : ""}`, icon: "key" })) }));
   }
 

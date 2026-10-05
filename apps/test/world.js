@@ -8,7 +8,7 @@
 //
 // How a request becomes the phone's without weakening production: vyred runs in this process,
 // and the proxy hands each request to the daemon's own router the way the names listener does
-// after `tailscale whois`, with caller tailnet:alex@example.com and the phone as the peer. No
+// after `tailscale whois`, with caller device:nw3b43olz4rzbzfe and the phone as the peer. No
 // production code reads a caller from a header; only this script, which owns the listener, says
 // who is calling. vyred's own socket still answers only local callers.
 //
@@ -38,6 +38,8 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const PORT = process.argv[2] === undefined ? 4800 : Number(process.argv[2]);
 const OWNER = "alex@example.com";
 const ADDRESS = "https://vyre.example.ts.net";
+/** The phone arrives as a paired device. */
+const PHONE_LABEL = "device:alexphonetestxxx";
 const PHONE = { node: "alex-phone", stableId: "nTEST", login: OWNER };
 
 const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-mobile-")));
@@ -173,7 +175,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 403, { error: { code: "denied", message: "cross-site request" } });
     }
   }
-  return handle(req, res, `tailnet:${OWNER}`, PHONE);
+  return handle(req, res, PHONE_LABEL, PHONE);
 });
 
 server.listen(PORT, "127.0.0.1", () => {

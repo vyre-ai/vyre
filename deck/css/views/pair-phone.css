@@ -1,5 +1,5 @@
 /* /pair: the phone's side of `vyre phone add --tailscale-only` (deck/views/pair.js). app.js adds
-   it as that view's stylesheet (css/pair.css is the Mac pairing card's). Tokens only. One column
+   it as that view's stylesheet Tokens only. One column
    on a phone and on a desktop. */
 
 .pp { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }

@@ -640,11 +640,10 @@ async function body(req) {
  */
 export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
 
-// "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
-// core/modules): threads.answer takes it only with the box's signed assertion checked.
+// "link:" no longer names any caller; it stays forbidden so a socket client can never claim it.
 // "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
 // class words that only a tool's callers list uses (reviewer-3 LB-1b).
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|invitee:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
+const FORBIDDEN_LABEL = /^(module:|device:|link:|web:|setup:|space:|invitee:|onboard$|hook$|web$|setup$|space$|device$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -971,7 +970,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
-  // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
+  // webhook route sets, and "onboard" are identities only a listener establishes
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
   let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
@@ -983,7 +982,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // the Switchboard act on, and naming the assistant reaches every project. So it must come with
   // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
   // What vyred has checked about the caller, which tools get beside it: run(input, { caller, thread, agent, peer }).
-  // The tailnet peer a network listener established (node, stableId, login) rides here too.
+  // The peer a network listener established (node, stableId, login) rides here too.
   /** @type {{ thread?: string, agent?: string, peer?: any, person?: { id: string, kind: string } }} */
   const via = policy.peer ? { peer: policy.peer } : {};
   // A session's own socket (core/daemon/threadsock.js): vyred bound the thread and the agent when
@@ -1024,19 +1023,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(req.method === "POST" && url.pathname === "/v1/person/token")) return send(res, 401, { error: { code: "person_session_required", message: "sign in to this box from the app first" } });
   }
   if (person) via.person = person;
-  // A listener's own identity (policy.caller) is established by the listener, not claimed. The
-  // one exception is an agent's own tailnet node (`tailnet:agent:<name>`): whois strengthens the
-  // agent's key and never replaces it, so that caller must carry the key of that same agent too.
-  // Off the tailnet the key alone works as before.
-  const agentNode = Boolean(policy.caller && /^tailnet:agent:/.test(policy.caller));
-  const said = policy.caller && !agentNode ? null : AGENT_CLAIM.exec(caller);
-  if (agentNode && !(said && policy.peer && policy.peer.agent === said[1])) {
-    return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
-  }
+  // A listener's own identity (policy.caller) is established by the listener, not claimed.
+  const said = policy.caller ? null : AGENT_CLAIM.exec(caller);
   /** @type {string | null} */ let pluginAgent = null;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
-  } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
+  } else if (said && !AGENT_LABEL.test(caller)) {
     return send(res, 403, { error: { code: "denied", message: "an agent is named only as mcp:agent:<name> or harness:agent:<name>" } });
   } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
@@ -1341,7 +1333,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const css = url.pathname === "/theme.css";
     const q = url.searchParams.get("device");
     const device = q && /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,127}$/.test(q) ? q
-      : /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(String(caller)) ? String(caller) : undefined;
+      : /^device:[a-z2-7]{16}$/.test(String(caller)) ? String(caller) : undefined;
     const r = registry.tools.has("appearance.resolve") ? await registry.call("appearance.resolve", { ...(device ? { device } : {}) }, caller) : null;
     if (!r || r.error || !r.data) {
       if (!css) return send(res, 404, { error: { code: "not_found", message: "the appearance module is not running" } });

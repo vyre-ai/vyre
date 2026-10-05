@@ -18,7 +18,6 @@ test("parseCaller: person surfaces, devices, agent claims, models, modules and s
   assert.equal(parseCaller("hook", false).id, "hooks");
   assert.equal(parseCaller("device:abcdefghijklmnop", true).device, "device:abcdefghijklmnop");
   assert.equal(parseCaller("device:abcdefghijklmnop", true).person_session, true);
-  assert.equal(parseCaller("tailnet-guest:g@x", false).id, "guest:g@x");
   assert.equal(parseCaller("anonymous", false).id, "legacy-anonymous");
   assert.equal(parseCaller("cli extra", false).kind, "service", "a label that only starts like a surface is not one");
 });
@@ -48,7 +47,6 @@ test("gates: a device acts as the person only with the person's session, for a p
   assert.equal((await call(g, "a.proof", reg.tools.get("a.proof"), dev)).error.code, "person_session_required");
   assert.equal(await call(g, "a.proof", reg.tools.get("a.proof"), dev, { person: true }), null);
   assert.equal(await call(g, "a.plain", reg.tools.get("a.plain"), dev), null);
-  assert.equal((await call(g, "a.proof", reg.tools.get("a.proof"), "tailnet-guest:g@x")).error.code, "denied");
 });
 
 test("gates: presence and asked requirements come from the kernel; modules never need a proof", async () => {
@@ -114,7 +112,7 @@ test("person reach and the assistant: open for a PROVEN assistant unless a reaso
     assert.equal(personRefusesAgent("brand.new.tool", person, c, proven), true, "an unclassified tool is refused until it is classified");
     assert.equal(agentAskFirst(ask, c), true, `${ask} is held for ${c}`);
   }
-  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex"]) { assert.equal(personRefusesAgent(only, person, c, unproven), false, c); assert.equal(agentAskFirst(ask, c), false, c); }
+  for (const c of ["cli", "local", "deck", "capsule", "mobile", "device:ie22vhobxbbkmu66"]) { assert.equal(personRefusesAgent(only, person, c, unproven), false, c); assert.equal(agentAskFirst(ask, c), false, c); }
   assert.equal(agentOpensPerson(open, person, "module:agent:kit", proven), false, "a module is not a surface");
   assert.equal(personRefusesAgent(only, { reach: "anyone" }, "cli:agent:kit", unproven), false, "only person reach");
   for (const [n, r] of [...PERSON_ONLY, ...ASK_FIRST]) assert.ok(typeof r === "string" && r.length > 8, `${n} carries its reason`);

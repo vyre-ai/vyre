@@ -59,7 +59,6 @@ export function actionEntries(o = {}) {
   /** @type {Entry[]} */ const a = [{ id: "act:new-chat", group: "Actions", title: "New chat", href: "/chat?new", kind: "action" }];
   if (o.assistant) a.push({ id: "act:ask", group: "Actions", title: `Ask ${o.assistant}`, href: `/agents/${encodeURIComponent(o.assistant)}`, kind: "action" });
   a.push({ id: "act:planner", group: "Actions", title: "Planner", meta: "Alarms, todos and notes", href: "/planner", kind: "action" },
-    { id: "act:drive", group: "Actions", title: "Drive", href: "/files", kind: "action" },
     { id: "act:devices", group: "Actions", title: "Devices", meta: "Your phones, computers and Macs", href: "/settings#devices", kind: "action" },
     { id: "act:settings", group: "Actions", title: "Settings", href: "/settings", kind: "action" });
   return a;

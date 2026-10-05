@@ -25,7 +25,6 @@ import { initials } from "./fmt.js";
 import * as pwa from "./pwa.js";
 // Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
 import "./phone-setup.js";
-import { isMac } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
@@ -40,7 +39,6 @@ import { skeleton as kitSkeleton } from "./states.js";
 import { fillMore } from "./more.js";
 import { readPin } from "./places.js";
 import { haptic } from "./haptics.js";
-import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
@@ -79,12 +77,6 @@ const ROUTES = [
   ["/find", "find"],
   // An artifact an agent made, full screen (views/artifact.js).
   ["/a/:id", "artifact"],
-  // The box's shared folders, browsed from a phone (views/files.js).
-  ["/files", "files"],
-  ["/files/:share", "files"],
-  // Drive is where a person looks for it (#51): /drive works as a bookmark and after a reload, like the rail link.
-  ["/drive", "files"],
-  ["/drive/:share", "files"],
   // The generated screens of the UI build (views/ui.js dispatches through ui/screens.js): /u/now, /u/project/:id, /u/records/:type, /u/record/:id, /u/task/:id, /u/appearance.
   ["/u/:screen", "ui"],
   ["/u/:screen/:a", "ui"],
@@ -216,8 +208,7 @@ async function drawRail() {
   if (!ON_PROJECT.test(location.pathname)) { if (!railOwned) { side.classList.remove("rail-projects"); put(pins); sideSync(); } return; }
   const r = await attempt("projects.list", {}, { share: true });
   if (railOwned || !ON_PROJECT.test(location.pathname)) return;
-  // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
-  info.projects = (r.data?.projects || []).filter(p => !isMac(p));
+  info.projects = r.data?.projects || [];
   const pins_ = pinned();
   const chosen = pins_.length ? pins_.map(s => info.projects.find(p => p.slug === s)).filter(Boolean)
     : [...info.projects].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
@@ -725,18 +716,16 @@ function openFind(/** @type {string | undefined} */ words) {
 /** The More sheet, from the tab bar's last tab or the avatar (js/more.js in js/sheet.js's sheet): the places
  * that are not a tab. A tap opens one pushed, or goes to its page when it is the one kept as a fifth; a hold keeps or lets go. */
 function openMore() {
-  let stop = () => {};
   const s = openSheet({ title: "More", label: "More", build(body, close, parts) {
-    stop = fillMore(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
-      health: watchHealth, line: linkLine, pinned: keep,
+    fillMore(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
+      pinned: keep,
       open: t => {
         // The kept place is a page: go there without a history entry, as a tab tap does.
         if (!phone() || slotOf(t.href.split("#")[0]) < 0) { go(t.href); return; }
         if (location.pathname + location.search + location.hash !== t.href) history.replaceState(history.state, "", t.href);
         route();
-      } }).stop;
+      } });
   }, onClose() {
-    stop();
     matchMedia(PHONE_QUERY).removeEventListener("change", shut);
   } });
   // Out of the phone layout (a rotation, a wider window) the rail has the places: the sheet goes.
@@ -794,7 +783,7 @@ async function warm() {
 
 /** Each view has its own stylesheet, css/views/<name>.css, added once, before it first renders. */
 const styled = new Map();
-/** A view whose stylesheet has another name (css/pair.css is the Mac pairing card's). */
+/** A view whose stylesheet has another name. */
 const CSS_NAME = { pair: "pair-phone" };
 function style(name) {
   if (name === "missing") return Promise.resolve();

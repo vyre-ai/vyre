@@ -78,7 +78,7 @@ export function createAvatarCards(deps = {}) {
   const reduced = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 
   async function readData() {
-    const [ag, pl, th] = await Promise.all([attempt("agents.list", {}, { share: true }), attempt("projects.list", {}, { share: true }), attempt("threads.list", { machines: "local" }, { share: true })]);
+    const [ag, pl, th] = await Promise.all([attempt("agents.list", {}, { share: true }), attempt("projects.list", {}, { share: true }), attempt("threads.list", {}, { share: true })]);
     const w = whoIs();
     return { owner: w.owner, assistant: w.assistant, agents: Array.isArray(ag.data) ? ag.data : [], projects: pl.data?.projects || [], threads: Array.isArray(th.data) ? th.data : [] };
   }

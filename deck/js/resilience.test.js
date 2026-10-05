@@ -204,9 +204,9 @@ test("outbox: a refusal on its merits (4xx) is the view's error and is never tri
   assert.ok(r.error instanceof api.ApiError);
   assert.equal(r.error.code, "bad_input");
   assert.equal(r.error.message, "ask a9 was already answered");
-  // A tool's own "timeout" (a Mac that did not answer) is an answer too, not "not now".
-  box = () => ({ status: 500, body: { error: { code: "timeout", message: "alex-mac did not answer in time" } } });
-  const t = await api.queued("threads.send", { thread: "t2", text: "hello", surface: "deck", machine: "alex-mac" });
+  // A tool's own "timeout" (a tool that did not answer) is an answer too, not "not now".
+  box = () => ({ status: 500, body: { error: { code: "timeout", message: "the tool did not answer in time" } } });
+  const t = await api.queued("threads.send", { thread: "t2", text: "hello", surface: "deck" });
   assert.equal(t.error.code, "timeout");
   box = () => ({ status: 200, body: { data: {} } });
   await reconnect();

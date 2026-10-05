@@ -370,7 +370,7 @@ test("presence: the box never takes a terminal code; its first passkey comes fro
   // the owner's own device is a paired Wink device the owner confirmed (the presence module reads wink.device.record); nothing else is, whatever label it names
   p.ownerDevice = async caller => caller === "device:ownerphone0001";
   const { code } = p.mintCode();
-  for (const caller of ["cli", "local", "capsule", "tailnet:me@example.com", "device:strangerphone01", "mcp"]) {
+  for (const caller of ["cli", "local", "capsule", "device:rqvepu55xdjqs2te", "device:strangerphone01", "mcp"]) {
     assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller, proof: { method: "code", code } })).ok, false, caller);
   }
   assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "device:ownerphone0001", proof: { method: "code", code } })).ok, true, "the owner's paired device");
@@ -385,7 +385,7 @@ test("presence: a session proves reveal, copy, TOTP and sends for a while, on on
   assert.throws(() => p.openSession({ method: "tty" }), /only after/);
   const s = p.openSession({ method: "passkey", keyId: "cred-1", peer: { stableId: "phone" } });
   const proof = { method: "session", id: s.session, secret: s.secret };
-  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "tailnet:me@example.com", def };
+  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "device:rqvepu55xdjqs2te", def };
   assert.deepEqual(await p.verify({ ...reveal, proof, peer: { stableId: "phone" } }), { ok: true, method: "session", keyId: "cred-1" });
   assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "laptop" } })).ok, false, "another device");
   assert.equal((await p.verify({ ...reveal, input: { name: "card", reprompt: true }, proof, peer: { stableId: "phone" } })).ok, false, "an item that asks every time");
@@ -413,10 +413,10 @@ test("presence: a session covers vault reveal, approve and grant for the Deck an
   const s = p.openSession({ method: "touchid" });
   const proof = { method: "session", id: s.session, secret: s.secret };
   for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
-    for (const caller of ["deck", "capsule", "tailnet:alex@example.com", "device:abcdefghijklmnop"]) {
+    for (const caller of ["deck", "capsule", "device:nw3b43olz4rzbzfe", "device:abcdefghijklmnop"]) {
       assert.ok((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, `${tool} from ${caller}`);
     }
-    for (const caller of ["cli", "local", "mcp", "mcp:agent:kit", "deck agent:kit", "tailnet:agent:kit", "harness", "device:notarelaydeviceid", "device:abcdefghijklmnop agent:kit"]) {
+    for (const caller of ["cli", "local", "mcp", "mcp:agent:kit", "deck agent:kit", "agent:kit", "harness", "device:notarelaydeviceid", "device:abcdefghijklmnop agent:kit"]) {
       assert.equal((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, false, `${tool} from ${caller}`);
     }
   }
@@ -497,38 +497,38 @@ test("presence: a device signature proves one call, within 60 seconds, with a fr
   const { p, db, now } = setup(t);
   const k = deviceKey(p);
   const proof = k.sign(APPROVE.tool, APPROVE.input, now());
-  assert.deepEqual(await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof }), { ok: true, method: "device", keyId: k.id });
+  assert.deepEqual(await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof }), { ok: true, method: "device", keyId: k.id });
   assert.ok(db.prepare("SELECT last_used FROM presence_keys WHERE id = ?").get(k.id).last_used);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof })).message, /nonce was already used/);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now() - 61_000) })).message, /too old/);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now() + 61_000) })).message, /too old or from the future/);
-  assert.equal((await p.verify({ tool: "gate.approve", input: { id: "b2" }, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now()) })).ok, false, "a signature for a1 approved b2");
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof })).message, /nonce was already used/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: k.sign(APPROVE.tool, APPROVE.input, now() - 61_000) })).message, /too old/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: k.sign(APPROVE.tool, APPROVE.input, now() + 61_000) })).message, /too old or from the future/);
+  assert.equal((await p.verify({ tool: "gate.approve", input: { id: "b2" }, caller: "device:nw3b43olz4rzbzfe", proof: k.sign(APPROVE.tool, APPROVE.input, now()) })).ok, false, "a signature for a1 approved b2");
   const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
   const nonce = crypto.randomBytes(12).toString("base64url");
   const forged = { ...k.sign(APPROVE.tool, APPROVE.input, now(), nonce),
     sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${now()}\n${nonce}`), { key: other, dsaEncoding: "der" }).toString("base64url") };
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: forged })).message, /does not check out/);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), nonce: "bad nonce!" } })).message, /nonce is missing or malformed/);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), key: "nope" } })).message, /not enrolled/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: forged })).message, /does not check out/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), nonce: "bad nonce!" } })).message, /nonce is missing or malformed/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), key: "nope" } })).message, /not enrolled/);
   // One nonce set for both methods: a Capsule nonce cannot be replayed as a device one, and a Capsule key is not a device key.
   const c = capsuleKey(p);
   const cap = c.sign(APPROVE.tool, APPROVE.input, now());
   assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: cap })).ok, true);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now(), cap.nonce) })).message, /nonce was already used/);
-  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...c.sign(APPROVE.tool, APPROVE.input, now()), method: "device" } })).message, /not enrolled/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: k.sign(APPROVE.tool, APPROVE.input, now(), cap.nonce) })).message, /nonce was already used/);
+  assert.match((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: { ...c.sign(APPROVE.tool, APPROVE.input, now()), method: "device" } })).message, /not enrolled/);
   assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), method: "capsule" } })).message, /not enrolled/);
 });
 
 test("presence: device is offered only once a device key is enrolled, on the box too, and it opens a session", async t => {
   const { p, now } = setup(t);
   p.role = "box";
-  assert.ok(!(await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: null })).methods.includes("device"));
+  assert.ok(!(await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: null })).methods.includes("device"));
   const k = deviceKey(p);
-  assert.deepEqual((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: null })).methods, ["device"]);
-  const v = await p.verify({ tool: "presence.session.open", input: {}, caller: "tailnet:alex@example.com", proof: k.sign("presence.session.open", {}, now()) });
+  assert.deepEqual((await p.verify({ ...APPROVE, caller: "device:nw3b43olz4rzbzfe", proof: null })).methods, ["device"]);
+  const v = await p.verify({ tool: "presence.session.open", input: {}, caller: "device:nw3b43olz4rzbzfe", proof: k.sign("presence.session.open", {}, now()) });
   assert.deepEqual(v, { ok: true, method: "device", keyId: k.id });
   const s = p.openSession({ method: v.method, keyId: v.keyId, peer: { stableId: "nTEST" } });
-  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "tailnet:alex@example.com", def: { presence: { session: () => true } } };
+  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "device:nw3b43olz4rzbzfe", def: { presence: { session: () => true } } };
   assert.deepEqual(await p.verify({ ...reveal, proof: { method: "session", id: s.session, secret: s.secret }, peer: { stableId: "nTEST" } }), { ok: true, method: "session", keyId: k.id });
 });
 
@@ -672,7 +672,7 @@ test("presence: a grant enrolls the first passkey and nothing else, once, for fi
   assert.equal((await enroll("WRONG")).ok, false);
   assert.equal((await enroll(grant, { peer: { stableId: "n-other" } })).ok, false, "another node's browser");
   assert.equal((await enroll(grant, { caller: "device:strangerphone01" })).ok, false, "not the owner's paired device");
-  assert.equal((await enroll(grant, { caller: "tailnet:me@example.com" })).ok, false, "a tailnet login is no longer who the owner is");
+  assert.equal((await enroll(grant, { caller: "device:rqvepu55xdjqs2te" })).ok, false, "a tailnet login is no longer who the owner is");
   assert.equal((await enroll(grant, { caller: "cli" })).ok, false);
   assert.equal((await enroll(grant, { input: { kind: "device", rp_id: "alex.vyre.run" } })).ok, false, "only a passkey");
   assert.equal((await enroll(grant, { input: { kind: "passkey", rp_id: "evil.vyre.run" } })).ok, false, "only for the address it was claimed at");
@@ -1013,7 +1013,7 @@ test("presence: the owner's own device is a confirmed paired Wink device: a stra
   const calls = [];
   const ok = ownerDeviceOf(async (tool, input) => { calls.push([tool, input.id]); return { data: records[input.id] || null }; });
   assert.equal(await ok("device:ownerphone0001"), true);
-  for (const caller of ["device:unconfirmed0001", "device:removedphone01", "device:", "device:../x", "tailnet:alex@example.com", "cli", "mcp:agent:kit", "", undefined]) assert.equal(await ok(/** @type {any} */ (caller)), false, String(caller));
+  for (const caller of ["device:unconfirmed0001", "device:removedphone01", "device:", "device:../x", "device:nw3b43olz4rzbzfe", "cli", "mcp:agent:kit", "", undefined]) assert.equal(await ok(/** @type {any} */ (caller)), false, String(caller));
   assert.equal(await ownerDeviceOf(async () => { throw new Error("wink is off"); })("device:ownerphone0001"), false, "no wink module, no owner device");
   assert.deepEqual(calls.map(c => c[0]), ["wink.device.record", "wink.device.record", "wink.device.record"], "only well-formed device ids are looked up");
 });

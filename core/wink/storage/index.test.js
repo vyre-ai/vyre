@@ -222,7 +222,7 @@ test("tools: owner surfaces only, results carry no secret, presence words are th
   assert.deepEqual([...w.ctx.tools.keys()].sort(), ["wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick", "wink.storage.remove", "wink.storage.status"]);
   const call = (name, input, caller = "cli") => w.ctx.tools.get(`wink.storage.${name}`).run(input, { caller });
   await assert.rejects(call("pair", w.pairArgs, "agent:juno"), e => e.code === "denied");
-  await assert.rejects(call("offers", {}, "tailnet-guest:x"), e => e.code === "denied");
+  await assert.rejects(call("offers", {}, "guest:x"), e => e.code === "denied");
   const paired = await call("pair", w.pairArgs);
   const out = [paired, await call("offers", {}), await call("status", {}), await call("discover", {}), await call("card", { bucket: "b", capacity: 1e12 })];
   assert.ok(!everything(w, ...out).includes(SECRET));

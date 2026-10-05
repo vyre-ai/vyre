@@ -10,9 +10,6 @@
 // box is the same New chat there. /projects/<slug>/<thread> and /threads/<id> still work and go to Chat
 // (js/app.js). The board used to draw its own copy of a thread, which read events by the wrong fields and
 // drew empty rows and a composer that sent nothing (#37, #42).
-//
-// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list with a machine
-// chip. A Mac project has no page here; a Mac session opens in Chat like any other.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
@@ -20,8 +17,6 @@ import { icon } from "../js/icons.js";
 import { projectAvatar, setProjects } from "../js/avatars.js";
 import * as needs from "../js/needs.js";
 import { when, base, initial, plural } from "../js/fmt.js";
-import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
-import { elsewhere } from "../js/need-rows.js";
 import { createProject, createProjectInline, startThread, indexHistoryInline, offerThen } from "../js/empty-actions.js";
 import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
@@ -148,7 +143,6 @@ function parsePeople(s) {
 }
 
 function projectRow(p, pinned, redraw, counts = new Map()) {
-  if (isMac(p)) return macProjectRow(p);
   const pin = h("button", { type: "button", class: "ibtn pl-pin", "aria-pressed": String(pinned), "aria-label": `${pinned ? "Unpin" : "Pin"} ${p.name}`,
     title: pinned ? "Pinned to the rail" : "Pin to the rail", onclick: () => { setPin(p.slug, !pinned); redraw(); } }, icon("pin"));
   const ppl = peopleText(p.people);
@@ -165,29 +159,15 @@ function projectRow(p, pinned, redraw, counts = new Map()) {
     h("span", { class: "pl-chev", "aria-hidden": "true" }, icon("right")));
 }
 
-/** A paired Mac's project: listed with its machine, no board, no pin. */
-function macProjectRow(p) {
-  return h("div", { class: "pl-row" },
-    h("span", { class: "ibtn pl-pin", "aria-hidden": "true" }),
-    projectAvatar(p.slug, { size: 32, cls: "pl-av" }),
-    h("div", { class: "pl-main" },
-      h("div", { class: "pl-name" }, h("span", null, p.name), machineChip(p)),
-      h("div", { class: "readonly-note ellipsis" }, readOnlyNote(p))),
-    h("div", { class: "code pl-count" }, plural(p.threads || 0, "thread")),
-    h("div", { class: "code faint pl-last" }, p.last ? when(p.last) : "never"),
-    h("span", { class: "pl-chev", "aria-hidden": "true" }));
-}
-
 // ---- the board: /projects/:slug(/:thread) -----------------------------------------------
 
 async function board(ctx) {
   const slug = ctx.params.slug;
   const tab = TABS.some(t => t[0] === ctx.query.get("tab")) ? ctx.query.get("tab") : "threads";
   const [pl, pt, sw, cx] = await Promise.all([
-    // The Switchboard's threads on this machine only: a Mac's threads name the Mac's own projects.
-    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", { machines: "local" }), attempt("projects.context", { project: slug })]);
+    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", {}), attempt("projects.context", { project: slug })]);
   if (!ctx.alive()) return;
-  const p = (pl.data?.projects || []).find(x => x.slug === slug && !isMac(x));
+  const p = (pl.data?.projects || []).find(x => x.slug === slug);
   if (!p) {
     put(ctx.root, h("div", { class: "pl" }, link("/projects", { class: "pj-back small" }, icon("right", 14), "Projects"),
       pl.error ? empty("Projects are not available.", pl.error) : h("div", { class: "empty" }, `There is no project called ${slug}.`)));
@@ -273,11 +253,11 @@ function threadItem(it, on, href, open, project = null) {
   const t = it.live;
   const held = t && (t.state === "waiting") && open.some(n => n.thread === t.id);
   if (project) return rowOf({ href, title: it.name, project, agent: t?.agent || null, thread: it.id, at: it.at, status: t && t.state === "running" ? "running" : null,
-    asks: held ? 1 : 0, turns: it.rec?.turns || 0, human: !t?.agent, current: on, extra: [machineChip(it.rec)] });
+    asks: held ? 1 : 0, turns: it.rec?.turns || 0, human: !t?.agent, current: on });
   const who = t ? (t.agent || "you") : (it.rec?.agents ? "you with an agent" : "you");
   const state = t ? (held ? null : t.state) : plural(it.rec?.turns || 0, "turn");
   return link(href, { class: "pj-t", "aria-current": on ? "true" : false },
-    h("span", { class: "pj-t-row" }, h("span", { class: "pj-t-name ellipsis" }, it.name), machineChip(it.rec), h("span", { class: "code faint pj-t-at" }, when(it.at))),
+    h("span", { class: "pj-t-row" }, h("span", { class: "pj-t-name ellipsis" }, it.name), h("span", { class: "code faint pj-t-at" }, when(it.at))),
     h("span", { class: "pj-t-row pj-t-sub" }, h("span", { class: "ellipsis" }, who, state ? ` · ${state}` : ""),
       held ? h("span", { class: "pj-held" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "held") : null));
 }

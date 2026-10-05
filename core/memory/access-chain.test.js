@@ -60,8 +60,8 @@ test("each caller class does exactly what its label did: the table's rows, by th
     ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), await off.can("deck"), YES],
     ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
     ["the Capsule (pinned-binary proof)", await on.can("capsule", { kernelFacts: socket("capsule") }), await off.can("capsule"), YES],
-    ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), await off.can("tailnet:alex@example.com", { person: { id: "s1" } }), YES],
-    ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), null, UNSIGNED],
+    ["the person on another device over Wink (was tailnet:), signed in", await on.can("device:nw3b43olz4rzbzfe", { kernelFacts: device("s1") }), await off.can("device:nw3b43olz4rzbzfe", { person: { id: "s1" } }), YES],
+    ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("device:nw3b43olz4rzbzfe", { kernelFacts: device() }), null, UNSIGNED],
     ["the person's device over the relay, signed in (CHANGED by the ruling: it reads as the owner)", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), null, YES],
     ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), null, UNSIGNED],
     ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), await off.can("mcp:thread:t1"), null],
@@ -86,7 +86,7 @@ test("a tailnet login that is not the owner reads nothing: there is no such chai
   const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit"] });
   const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const on = await boot(t, { kernel: handle });
-  for (const caller of ["tailnet:bob@example.com", "tailnet-guest:bob", "mcp", "harness"]) {
+  for (const caller of ["device:l74gbpyrsbmwy4mi", "guest:bob", "mcp", "harness"]) {
     const r = await on.can(caller);
     assert.ok(Object.values(r).every(v => v === "denied"), `${caller}: ${JSON.stringify(r)}`);
   }
@@ -154,7 +154,7 @@ test("RULING 6 Oct: an owner's own device reads personal memory as the owner whe
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device("s1", "wink") }), ["yes", "yes", "yes"], "Wink, signed in");
   // 2. unsigned, either path: nothing personal
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), ["person_session_required", "person_session_required", "person_session_required"], "relay, unsigned");
-  assert.deepEqual(await reads("tailnet:alex@example.com", { kernelFacts: device(undefined, "wink") }), ["person_session_required", "person_session_required", "person_session_required"], "Wink, unsigned");
+  assert.deepEqual(await reads("device:nw3b43olz4rzbzfe", { kernelFacts: device(undefined, "wink") }), ["person_session_required", "person_session_required", "person_session_required"], "Wink, unsigned");
   // 3. a device that is not the owner's: the kernel builds a chain for that member and the gate refuses it
   const bobs = { kind: "device", device_key_id: "dk2", person: "per_bob", path: "relay", session: "s2" };
   assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: bobs }), ["denied", "denied", "denied"], "another person's device, signed in");
@@ -222,7 +222,7 @@ test("the sign-in hint on a refused READ goes only to the owner's own unsigned d
   };
   const HINT = /sign in with your passkey/;
   // the owner's own device, not signed in: the hint, with its own code, on every read, over Wink and the relay
-  for (const [label, path_] of [["device:abcdefghijklmnop", "relay"], ["tailnet:alex@example.com", "wink"]]) {
+  for (const [label, path_] of [["device:abcdefghijklmnop", "relay"], ["device:nw3b43olz4rzbzfe", "wink"]]) {
     for (const [code, message] of await says(label, { kernelFacts: device(undefined, path_) })) { assert.equal(code, "person_session_required", path_); assert.match(message, HINT, path_); }
   }
   // signed in: no refusal at all

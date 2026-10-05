@@ -7,7 +7,6 @@ import { h, put, empty } from "../js/dom.js";
 import { call, attempt, on, setHeader } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { base, when, plural } from "../js/fmt.js";
-import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { canRelayJoin } from "../js/join-caps.js";
@@ -596,8 +595,7 @@ const SCREENS = {
       const j = await attempt("onboard.join", { action: "verify", node: state.serverNode, becomeDevice: true });
       if (j.error && !j.error.missing) { put(st, String(j.error.message)); s.foot({ label: "Continue", run: verifyDevice }); return; }
       // A tool that answers without erroring still says whether it actually found the server:
-      // verify forwards to link.health, whose real shape (core/link/health.js) is `online` (and
-      // `path: "unknown"` with a `why`), not `ok`/`reachable` — reviewer-2 caught this being
+      // verify answers with `online` (and a `why` when it is false), not `ok`/`reachable` — reviewer-2 caught this being
       // skipped entirely (the real bug: any node, right or wrong, always proceeded).
       if (j.data && j.data.online === false) { put(st, j.data.why || `Could not reach ${state.serverNode}. Check the name and try again.`); s.foot({ label: "Continue", run: verifyDevice }); return; }
       put(st, "");
@@ -1099,8 +1097,7 @@ const SCREENS = {
   // choice is kept locally only until a real tool exists to save it to, same degrade-gracefully
   // shape as every other step here.
   devices(col, s) {
-    // A card a device (ADR 0008 section 6, reworked). The Mac installs Vyre with two commands and
-    // is approved right here, with pairRequests; the phone gets Tailscale, then this address, then
+    // A card a device (ADR 0008 section 6, reworked). The Mac installs Vyre with two commands; the phone gets Tailscale, then this address, then
     // the home screen. What Tailscale says about the owner's phones and tablets comes from
     // onboard.status (detail.devices.peers), refreshed on onboard.stepped, when the page is shown
     // again, and at most once a minute while this step is open and visible.
@@ -1117,8 +1114,6 @@ const SCREENS = {
 
     // Mac: install, `vyre up`, then approve the request it makes, in this card.
     const macState = h("div", { class: "dev-state", "aria-live": "polite" });
-    const pairs = pairRequests({ onPaired: r => paired(r.name) });
-    cleanup.push(pairs.stop);
     let macName = d.mac?.connected ? (d.mac.name || "your Mac") : null;
     const drawMac = () => put(macState, macName
       ? [h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Mac paired: ", h("b", null, macName))),
@@ -1128,8 +1123,6 @@ const SCREENS = {
       if (macName) return;
       macName = name || "your Mac";
       if (state.status?.detail?.devices) state.status.detail.devices.mac = { connected: true, name: macName };
-      pairs.stop();
-      pairs.el.remove();
       drawMac();
     };
     const macCard = h("section", { class: "dev-card", id: "dev-mac", tabindex: "-1", "aria-labelledby": "dev-mac-h" },
@@ -1138,10 +1131,8 @@ const SCREENS = {
       h("ol", { class: "dev-steps" },
         devStep("1", "Install Vyre", command("npm i -g https://vyre.run/box/vyre.tgz")),
         devStep("2", "Pair it with this server", command("vyre up"),
-          h("p", { class: "small muted" }, "It finds this server on your tailnet and shows a code. Type that code here to approve the Mac."))),
-      macName ? null : pairs.el,
+          h("p", { class: "small muted" }, "It finds this server on your tailnet and joins it."))),
       macState);
-    if (macName) pairs.stop();
     drawMac();
 
     // Phone: Tailscale, this address, the home screen.
@@ -1216,7 +1207,6 @@ const SCREENS = {
       drawNet();
     };
     cleanup.push(on("onboard.stepped", refresh));
-    cleanup.push(on("link.paired", e => paired(e.payload?.name)));
     const shown = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", shown);
     cleanup.push(() => document.removeEventListener("visibilitychange", shown));

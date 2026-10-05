@@ -51,7 +51,7 @@ const media = (/** @type {boolean} */ light) => () => ({ matches: light, addEven
 test("themeHref: the device and rev when known, plain /theme.css without them", () => {
   assert.equal(themeHref({}), "/theme.css");
   assert.equal(themeHref({ rev: 42 }), "/theme.css?rev=42");
-  assert.equal(themeHref({ device: "tailnet:alex-phone", rev: 7 }), "/theme.css?device=tailnet%3Aalex-phone&rev=7");
+  assert.equal(themeHref({ device: "device:2uwffior5lehgnfh", rev: 7 }), "/theme.css?device=tailnet%3Aalex-phone&rev=7");
 });
 
 test("schemeFor: paper, dark, system follows the OS, anything else leaves the device's own choice", () => {
@@ -70,7 +70,7 @@ test("repaints: only appearance.* keys", () => {
 
 test("start: the snapshot's rev and device go on the link; the old sheet leaves only once the new one loaded", async () => {
   const { doc, links } = fakeDoc();
-  const hub = fakeHub([{ data: { rev: 42, device: "tailnet:alex-phone", values: { "appearance.scheme": "paper" } } }]);
+  const hub = fakeHub([{ data: { rev: 42, device: "device:2uwffior5lehgnfh", values: { "appearance.scheme": "paper" } } }]);
   const kept = new Map([["vyre.theme", "dark-old"]]);
   followTheme({ ...hub.deps, doc, media: media(false), store: { setItem: (k, v) => kept.set(k, v), removeItem: k => kept.delete(k) } });
   await tick();
@@ -84,17 +84,17 @@ test("start: the snapshot's rev and device go on the link; the old sheet leaves 
 
 test("settings.changed: an appearance key reads again and swaps; another key or another device's change does nothing", async () => {
   const { doc, links } = fakeDoc();
-  const hub = fakeHub([{ data: { rev: 1, device: "tailnet:alex-mbp", values: {} } }, { data: { rev: 2, device: "tailnet:alex-mbp", values: { "appearance.scheme": "dark" } } }]);
+  const hub = fakeHub([{ data: { rev: 1, device: "device:gpzhvr7irq45zdmx", values: {} } }, { data: { rev: 2, device: "device:gpzhvr7irq45zdmx", values: { "appearance.scheme": "dark" } } }]);
   doc.documentElement.dataset.theme = "paper";
   followTheme({ ...hub.deps, doc, media: media(true) });
   await tick();
   links[1].fire("load");
   assert.equal(doc.documentElement.dataset.theme, "paper", "no hub value: the device's own choice stands");
   hub.emit({ type: "settings.changed", payload: { key: "sessions.effort", rev: 2 } });
-  hub.emit({ type: "settings.changed", payload: { key: "appearance.scheme", device: "tailnet:alex-phone", rev: 2 } });
+  hub.emit({ type: "settings.changed", payload: { key: "appearance.scheme", device: "device:2uwffior5lehgnfh", rev: 2 } });
   await tick();
   assert.equal(hub.asked.length, 1, "neither is this device's theme");
-  hub.emit({ type: "settings.changed", payload: { key: "appearance.scheme", device: "tailnet:alex-mbp", level: "device", rev: 2 } });
+  hub.emit({ type: "settings.changed", payload: { key: "appearance.scheme", device: "device:gpzhvr7irq45zdmx", level: "device", rev: 2 } });
   await tick();
   assert.equal(hub.asked.length, 2);
   assert.equal(links.at(-1).href, "/theme.css?device=tailnet%3Aalex-mbp&rev=2");

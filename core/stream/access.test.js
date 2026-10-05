@@ -12,7 +12,7 @@ import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, deviceFor } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { fakeThreads } from "./fake-threads.js";
 import { connect, wsDuplex } from "./client.js";
@@ -40,7 +40,7 @@ async function world(t) {
   await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
   const port = /** @type {any} */ (s.address()).port;
   t.after(async () => { s.closeAllConnections(); s.close(); await reg.stop(); db.close(); });
-  const as = (login, caller = `tailnet:${login}`) => (tool, input) => reg.call(tool, input, caller, { peer: { login, stableId: `n_${login}` }, person: { id: `ps-${login}`, kind: "cookie" } }); // a person-reach tool over the tailnet needs the person's session (ADR 0032): the router sets it from the sign-in, so a test sets it
+  const as = (login, caller = deviceFor(login)) => (tool, input) => reg.call(tool, input, caller, { peer: { login, stableId: `n_${login}` }, person: { id: `ps-${login}`, kind: "cookie" } }); // a person-reach tool over the tailnet needs the person's session (ADR 0032): the router sets it from the sign-in, so a test sets it
   const status = path => new Promise(resolve => {
     const r = http.request({ port, host: "127.0.0.1", path, headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13" } });
     r.on("response", res => resolve(res.statusCode));
@@ -59,7 +59,7 @@ async function group(w, session = "grp_cd") {
   return session;
 }
 
-test("C-1: cli, capsule, local, deck and tailnet:bob are each refused a chat between carol and dave; the two people open it", async t => {
+test("C-1: cli, capsule, local, deck and device:qg3dpwh42ldnuy2z are each refused a chat between carol and dave; the two people open it", async t => {
   const w = await world(t);
   const session = await group(w);
   for (const caller of ["cli", "capsule", "local", "deck"]) assert.equal(codeOf(await w.reg.call("stream.open", { session }, caller)), "not_found", caller);
@@ -132,7 +132,7 @@ test("C-1: a thread is read through threads.get AS THE CALLER, and its refusal i
   assert.equal(codeOf(await w.reg.call("stream.open", { session: "locked_1" }, "deck")), "ok");
   assert.equal(codeOf(await w.reg.call("stream.open", { session: "thr_9" }, "deck")), "ok");
   const calls = globalThis.__fakeThreadsCalls.filter(c => c.thread === "locked_1");
-  assert.deepEqual(calls.map(c => c.caller), [`tailnet:${BOB}`, "deck"], "asked under each caller's own label, not the module's");
+  assert.deepEqual(calls.map(c => c.caller), [deviceFor(BOB), "deck"], "asked under each caller's own label, not the module's");
 });
 
 test("C-3: over the real socket the ticket's viewer is drawn for: a sealed field reaches the second person as a placeholder with no ref", async t => {

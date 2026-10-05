@@ -31,7 +31,7 @@ test("tasks.*: the owner's device requests, lists, starts and submits a task und
   const again = await call("tasks.move", { id: made.id, to: "working" }, { root, caller: "cli" });
   assert.ok(again.error && ["bad_state", "not_allowed"].includes(again.error.code), JSON.stringify(again));
   assert.equal((await call("tasks.decide", { id: made.id, outcome: "approved" }, { root, caller: "cli" })).error.code !== undefined, true);
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "guest:x", "anonymous"]) {
     const r = await call("tasks.list", {}, { root, caller });
     assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
   }

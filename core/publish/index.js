@@ -44,7 +44,7 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 

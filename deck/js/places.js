@@ -73,8 +73,8 @@ function holdMs() {
  * @param {{ head: HTMLElement, sheet: HTMLElement }} parts
  * @param {{ name?: string | null, letter?: string, host?: string, open: (tile: typeof TILES[number]) => void,
  *   pinned?: (tile: typeof TILES[number] | null) => void, store?: any, hold?: number,
- *   health?: (fn: (x: any | null) => void) => () => void, line?: (x: any) => string, tiles?: readonly typeof TILES[number][] }} o  tiles: the places to show (default all of TILES; the phone's More sheet leaves out its tabs)
- * @returns {{ tiles: HTMLElement[], stop: () => void }}
+ *   tiles?: readonly typeof TILES[number][] }} o  tiles: the places to show (default all of TILES; the phone's More sheet leaves out its tabs)
+ * @returns {{ tiles: HTMLElement[] }}
  */
 export function fillPlaces(body, close, parts, o) {
   parts.sheet.classList.add("sheet-places");
@@ -83,12 +83,6 @@ export function fillPlaces(body, close, parts, o) {
     h("span", { class: "plc-avatar", "aria-hidden": "true" }, o.letter || "V"),
     h("div", { class: "plc-id" }, h("span", { class: "plc-name" }, o.name || "Account"), where),
     h("button", { type: "button", class: "sheet-close", "aria-label": "Close", onclick: close }, closeGlyph(16))));
-
-  // The path to the box, only when link.health knows it (the latency is the one it measured).
-  const stop = o.health ? o.health(x => {
-    const known = x && (x.path === "direct" || x.path === "relay" || x.path === "peer-relay");
-    put(where, o.host || "", known && o.line ? ` · ${o.line(x)}` : "");
-  }) : () => {};
 
   const hold = o.hold ?? holdMs();
   // A kept place leads the grid: it is a page now, and this is where to find it again.
@@ -151,5 +145,5 @@ export function fillPlaces(body, close, parts, o) {
   }
   mark(readPin(o.store));
   put(body, h("nav", { class: "plc-grid", "aria-label": "Places" }, tiles), h("p", { class: "plc-hint" }, HOLD_HINT));
-  return { tiles, stop };
+  return { tiles };
 }

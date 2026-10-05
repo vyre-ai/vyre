@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote, MAX_MENTIONS, NOTE_MAX } from "./said.js";
 
 test("personTurn: the person's own surfaces only", () => {
-  for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex@harlow", "link:box"]) assert.equal(personTurn(c), true, c);
-  for (const c of ["climb", "cli:thread:abc", "deck:thread:x", "link:box:thread:x", "link:", "tailnet-guest:x", "mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "tailnet:", "", undefined]) assert.equal(personTurn(c), false, String(c));
+  for (const c of ["cli", "local", "deck", "capsule", "device:4ja24p5nymh63ewl"]) assert.equal(personTurn(c), true, c);
+  for (const c of ["climb", "cli:thread:abc", "deck:thread:x", "link:box", "link:", "guest:x", "mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "device:", "", undefined]) assert.equal(personTurn(c), false, String(c));
 });
 
 test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; code, quotes and mid-word # mention nothing", () => {

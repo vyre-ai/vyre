@@ -31,7 +31,7 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   assert.equal(await person(ids.app, true), true, "a confirmed owner device, signed in, is the person");
   for (const k of ["web", "setup", "gone", "never"]) for (const signedIn of [true, false]) assert.equal(await person(ids[k], signedIn), false, `${k} (signed in: ${signedIn}) is nobody`);
   assert.equal(await person(ids.app, false), true, "the kernel counts a confirmed owner device as the person even unsigned (session proofs still need the session secret)");
-  for (const label of ["tailnet:alex@harlow.example", "tailnet:alex@harlow.example:agent:kit", "device:zzzzzzzzzzzzzzzz", "deck", "capsule", "weird"]) assert.equal(await presence.personOf({ caller: label }), false, `${label} with no proven facts`);
+  for (const label of ["device:hfd55n7tipo6fcmp", "device:hfd55n7tipo6fcmp:agent:kit", "device:zzzzzzzzzzzzzzzz", "deck", "capsule", "weird"]) assert.equal(await presence.personOf({ caller: label }), false, `${label} with no proven facts`);
 
   // vault connections: the person surface only for the person
   const list = async (id, signedIn) => { const { label, meta } = await metaOf(id, signedIn); return d.registry.call("vault.connections.list", {}, label, meta); };
@@ -42,12 +42,12 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   assert.ok(unsigned.error || unsigned.data.surface !== "person", `an owner device with no person session gets no person surface: ${JSON.stringify(unsigned.error || unsigned.data.surface)}`);
   const revokeUnsigned = await (async () => { const { label, meta } = await metaOf(ids.app, false); return d.registry.call("vault.connections.revoke", { id: "cn_none", surface: "agents" }, label, meta); })();
   assert.ok(revokeUnsigned.error, "revoke from an unsigned owner device is refused at the surface check");
-  const tn = await d.registry.call("vault.connections.list", {}, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "nodeA" } });
+  const tn = await d.registry.call("vault.connections.list", {}, "device:hfd55n7tipo6fcmp", { person: { id: "ps1" }, peer: { stableId: "nodeA" } });
   assert.ok(tn.error || tn.data.surface !== "person", "a tailnet label that merely claims a person session gets no person surface");
 
   // A person-only act: a paired Mac's tailnet label with a claimed person session and no proven facts is refused
   const cols = d.registry.deps.db.prepare("PRAGMA table_info(link_peers)").all().filter(c => c.notnull && c.dflt_value === null && c.name !== "stable_id");
   d.registry.deps.db.prepare(`INSERT INTO link_peers (stable_id${cols.map(c => `, ${c.name}`).join("")}) VALUES (?${cols.map(c => (/INT|REAL/i.test(c.type) ? ", 1" : ", 'x'")).join("")})`).run("macA");
-  const share = await d.registry.call("vault.vaults.create", { name: "x" }, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "macA" } });
+  const share = await d.registry.call("vault.vaults.create", { name: "x" }, "device:hfd55n7tipo6fcmp", { person: { id: "ps1" }, peer: { stableId: "macA" } });
   assert.ok(share.error && ["denied", "presence_required"].includes(share.error.code) && !(share.data && share.data.shared), `a paired Mac's label alone is not the person: ${JSON.stringify(share.error || share.data)}`);
 });

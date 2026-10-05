@@ -13,7 +13,7 @@ test("HD-3: wink.server.call is refused for every model and agent caller before 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [] }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  for (const caller of ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "tailnet-guest:sam@harlow.example", "anonymous"]) {
+  for (const caller of ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "guest:sam@harlow.example", "anonymous"]) {
     const r = await d.registry.call("wink.server.call", { tool: "artifacts.share", input: {} }, caller);
     assert.ok(r.error && r.error.code !== "no_link" && r.error.code !== "unpaired", `${caller}: refused for what it is, got ${r.error ? r.error.code : "OK"}`);
   }

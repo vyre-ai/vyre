@@ -152,7 +152,7 @@ test("peer stream: no peers option, a refusing allow(), a wrong space, a strange
     assert.equal((await answer(device.open({ peer: "wink", space: "harlow", device: "someone-else" }))).status, 400, "a head cannot name an identity");
     assert.equal((await answer(device.open({ peer: "tcp", space: "harlow" }))).status, 400);
     assert.equal(accepted.length, 0); device.close(); }
-  { const { device, accepted } = await peerWorld({}, "tailnet:alex@example.com");
+  { const { device, accepted } = await peerWorld({}, "device:nw3b43olz4rzbzfe");
     assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 403, "only paired devices");
     assert.equal(accepted.length, 0); device.close(); }
 });

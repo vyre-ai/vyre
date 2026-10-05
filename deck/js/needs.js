@@ -11,15 +11,6 @@
 // "question") is its own kind here, answered allow with `answers`, or deny to decline.
 // Only Send proves presence; every answer is the owner's own act (the no-nag rule).
 //
-// A session on the paired Mac (federation v2): threads.asks on the box lists each Mac's open asks
-// with source "mac", machine and node, and they are answered here like any other, with
-// threads.answer's `machine`; the box forwards the answer. Its refusals (answer, below):
-//   person_session_required, presence_required   api.js signs in or asks for the passkey, then again
-//   mac_offline, timeout                          the box's words; the item stays in the list
-//   no_such_tool, unsupported, bad_input naming machine, or not_found on an item without node
-//                                                 a box that does not forward: "Answer it on <mac>."
-//                                                 and every Mac item says so for the rest of the page
-
 // waiting (cohesion, ADR 0036 decision 4): where the box has it, waiting.list says what waits and
 // waiting.count, kept fresh by waiting.changed, is the one number every surface shows (the rail,
 // the top bar, the phone's Now label, the app icon). The owners' reads above still give each
@@ -28,10 +19,7 @@
 // pairings count but draw where they do today (Planner, the pairing row on Now). An older box
 // without waiting: the merge above, and the count is the list's length.
 
-import { attempt, call, queue, snapshot } from "./api.js";
-import { holdMacAnswers, macAnswers } from "./need-rows.js";
-
-export { macAnswers };
+import { attempt, queue, snapshot } from "./api.js";
 
 /**
  * @typedef {{ label: string, decision: string, primary?: boolean }} Option
@@ -42,7 +30,7 @@ export { macAnswers };
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
  *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
  *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
- *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null, node?: string|null, answerOn?: string }} Need
+ *   presence?: { required?: boolean, covered?: boolean } | null }} Need
  */
 
 /** @type {Need[]} */
@@ -83,12 +71,10 @@ export function waitingIds(rows) {
 export function fromWaiting(r, id) {
   const question = r.kind === "ask" && Array.isArray(r.answer?.fill) && r.answer.fill.includes("answers");
   const kind = question ? "question" : "ask";
-  const mac = typeof r.machine === "string" && r.machine;
   return { id, kind, at: typeof r.at === "number" ? r.at : 0, agent: null, project: r.project || null, projectName: null,
     thread: r.thread || null, threadName: null, title: String(r.title || ""), why: String(r.detail || ""), command: kind === "ask" ? String(r.detail || "") : "",
     options: question ? [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }]
-      : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }],
-    ...(mac ? { source: "mac", machine: mac, node: null } : {}) };
+      : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }], };
 }
 
 /** Has a load from the box finished? Then a snapshot never replaces what it said. */
@@ -147,7 +133,7 @@ export async function load() {
       options: [{ label: d.kind === "send" ? "Send" : "Approve", decision: "approve", primary: true }, { label: "Discard", decision: "reject" }] });
   }
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
-  for (const a of asks.data || []) out.push(askNeed(a, names({ ...a, threadName: a.threadName || a.thread_name }), a.thread ? thread.get(a.thread) : null));
+  for (const a of asks.data || []) out.push(askNeed(a, names({ ...a, threadName: a.threadName || a.thread_name })));
   /** @type {Need[]} */
   let list = out;
   const w = /** @type {any} */ (waiting.data);
@@ -155,8 +141,6 @@ export async function load() {
     // waiting is the one list: what it names, from the owners' reads where they have it.
     const want = waitingIds(w.rows);
     list = out.filter(n => want.has(n.id));
-    // A Mac's ask the box cannot forward yet (answer.tool null): "Answer it on <mac>", no buttons.
-    for (const n of list) { const r = want.get(n.id); if (r?.answer && r.answer.tool == null) n.answerOn = r.answer.on || n.machine || "your Mac"; }
     // An ask not read yet is answerable from its id; a draft is not shown before its words are read
     // (Send sends what was seen), and the next gate.held load brings it.
     for (const [id, r] of want) if (r.kind === "ask" && !r.answer?.fill?.includes("answers") && !list.some(n => n.id === id)) list.push(fromWaiting(r, id));
@@ -173,16 +157,13 @@ export async function load() {
 export const current = () => cache;
 
 /**
- * One ask or question as a Need. A session on the paired Mac (the ask, or its thread in
- * threads.list, says source "mac") keeps source, machine and node: its answer carries the machine.
+ * One ask or question as a Need.
  * @param {any} a a threads.asks row, or an ask.raised payload @param {{ project: string|null, projectName: string|null, threadName: string|null, agent: string|null }} n
- * @param {any} [t] its thread in threads.list @returns {Need}
+ * @returns {Need}
  */
-function askNeed(a, n, t) {
-  const mac = a.source === "mac" || t?.source === "mac";
+function askNeed(a, n) {
   const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
-    why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
-    ...(mac ? { source: "mac", machine: a.machine || t?.machine || null, node: a.node ?? null } : {}) };
+    why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "" };
   if (a.kind === "question") {
     return { ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
       command: a.summary || "", options: [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] };
@@ -227,22 +208,7 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  * @param {Need} n @param {Answer} opt @param {Record<string, any> | null} [edited]
  */
 export async function answer(n, opt, edited) {
-  if (n.source === "mac" && n.kind !== "draft") {
-    const machine = n.machine || "your Mac";
-    // A box that has shown it cannot forward: nothing is sent.
-    if (n.answerOn) throw Object.assign(new Error(`Answer it on ${n.answerOn}.`), { elsewhere: n.answerOn });
-    if (!macAnswers()) throw Object.assign(new Error(`Answer it on ${machine}.`), { elsewhere: machine });
-    // Straight to the box, not the outbox: the outbox would resend a timeout later, and an answer
-    // that reaches the Mac long after is not one the person gave. "asked" as for a local ask.
-    try { await call("threads.answer", { ...answerInput(n, opt), ...(n.machine ? { machine: n.machine } : {}) }, { presence: "asked", write: true }); }
-    catch (e) {
-      if (!macRefused(e, n)) throw e; // mac_offline, timeout and the rest: the box's words, the item stays
-      holdMacAnswers();
-      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:mac-answers", { detail: false }));
-      tell();
-      throw Object.assign(new Error(`Answer it on ${machine}.`), { elsewhere: machine, cause: e });
-    }
-  } else if (n.kind === "draft") {
+  if (n.kind === "draft") {
     // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
     if (opt.decision === "reject") await queue("gate.reject", { id: n.id }, { presence: "asked" });
     else {
@@ -283,20 +249,6 @@ export function badge(n) {
   if (!installed) return;
   badged = n;
   try { const p = n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.(); p?.catch?.(() => {}); } catch {}
-}
-
-/**
- * Does this refusal say the box cannot forward answers to the Mac? An unknown tool or an
- * unsupported input, bad_input naming `machine` (an older threads.answer), or not_found for an ask
- * the box never listed from a Mac (no node: it looked for the id among its own asks).
- * @param {any} err @param {{ node?: string|null }} n
- */
-export function macRefused(err, n) {
-  const code = err?.code;
-  if (code === "no_such_tool" || code === "unsupported") return true;
-  if (code === "bad_input") return /machine/i.test(String(err?.message || ""));
-  if (code === "not_found") return !n?.node;
-  return false;
 }
 
 /**

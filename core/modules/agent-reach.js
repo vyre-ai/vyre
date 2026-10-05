@@ -319,7 +319,6 @@ export const OPEN = new Set([
   "team.duties.run-now",
   "term.list",
   "threads.branch",
-  "threads.continue-here",
   "threads.edit",
   "threads.edit-retry",
   "threads.kill-task",

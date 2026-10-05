@@ -22,7 +22,7 @@ export function register({ ctx, vault, secretKey, ttlMs }) {
   const def = (name, d) => ctx.tool(name, d);
 
   def("vault.people", {
-    callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
+    callers: ["cli", "local", "deck", "capsule", "device", "module"],
     description: "The people this Vyre shares with: name, fingerprint, whether you verified it, and whether a changed key blocks new passes. Never a secret.",
     input: obj({}),
     run: () => share.people(),

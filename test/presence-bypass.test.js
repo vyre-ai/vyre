@@ -103,7 +103,7 @@ async function box(t) {
 
 test("bypass: curl on the socket with a forged caller cannot approve", async t => {
   const b = await box(t);
-  for (const caller of ["cli", "local", "capsule", "deck", "tailnet:me@example.com", "module:gate", "hook"]) {
+  for (const caller of ["cli", "local", "capsule", "deck", "device:rqvepu55xdjqs2te", "module:gate", "hook"]) {
     const r = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": caller });
     assert.equal(r.status, 403, caller);
     // Refused for want of a proof, or earlier, because the Gate does not take this caller at all.
@@ -262,9 +262,9 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
     const r = await raw(d.paths.socket, "/v1/tools/presence.enroll", enroll("me.vyre.run"), { "x-vyre-caller": caller, "x-vyre-presence": `code code=${await code()}` });
     assert.equal(r.status, 403, caller);
   }
-  const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "device:rqvepu55xdjqs2te", { proof: { method: "code", code: await code() } });
   assert.match(wrong.error.message, /must be for me\.vyre\.run/);
-  const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "device:rqvepu55xdjqs2te", { proof: { method: "code", code: await code() } });
   assert.ok(ok.data, JSON.stringify(ok));
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
 });
@@ -287,7 +287,7 @@ test("bypass: making or changing an agent is a person's, with no passkey; the as
   await allowed("agents.create", { name: "scout", projects: [] }, "capsule");
   // No model makes one, the assistant included, and no bare MCP session or guest.
   const make = { name: "ledger", auth: { vault: "claude-setup-token", budget_usd: 5 } };
-  for (const caller of ["mcp", "mcp:agent:juno", "mcp:agent:kit", "tailnet-guest:sam@example.com"]) await refused("agents.create", make, caller);
+  for (const caller of ["mcp", "mcp:agent:juno", "mcp:agent:kit", "guest:sam@example.com"]) await refused("agents.create", make, caller);
   assert.ok(!(await call("agents.list", {}, { root: b.root, caller: "cli" })).data.some(a => a.name === "ledger"), "nothing was made");
   // A person changes anything, with no proof: credentials and budget, projects, skills, its computer.
   for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: false }]) {
@@ -305,5 +305,5 @@ test("bypass: making or changing an agent is a person's, with no passkey; the as
   }
   assert.equal((await b.d.registry.call("agents.update", words, "mcp:agent:kit", { agent: "kit" })).error?.code, "denied", "kit is not the assistant");
   // Any other agent, a bare MCP session and a guest change nothing, not even words.
-  for (const caller of ["mcp", "mcp:agent:kit", "mcp:agent:scout", "tailnet-guest:sam@example.com"]) await refused("agents.update", words, caller);
+  for (const caller of ["mcp", "mcp:agent:kit", "mcp:agent:scout", "guest:sam@example.com"]) await refused("agents.update", words, caller);
 });

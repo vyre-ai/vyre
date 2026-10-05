@@ -105,7 +105,7 @@ test("bareUrl and cleanSummary: no query or fragment, one short line", () => {
   assert.equal(cleanSummary(`open  https://harlow.example/p?${QUERY}#f now`), "open https://harlow.example/p now");
   assert.equal(cleanSummary("a".repeat(400)).length, 200);
   assert.equal(offMac({ caller: "cli" }), false);
-  for (const m of [{ caller: "cli", peer: { node: "n" } }, { caller: "tailnet:alex" }, { caller: "tailnet-guest:kit" }, { caller: "device:abcdefghijklmnop" }]) assert.equal(offMac(m), true, JSON.stringify(m));
+  for (const m of [{ caller: "cli", peer: { node: "n" } }, { caller: "device:ie22vhobxbbkmu66" }, { caller: "guest:kit" }, { caller: "device:abcdefghijklmnop" }]) assert.equal(offMac(m), true, JSON.stringify(m));
 });
 
 test("normalize: desktop, chrome and hands events become one step shape", () => {
@@ -142,8 +142,8 @@ test("sight: acted events become stored steps and sight.stepped, and sight.steps
   assert.equal((await reg.call("sight.steps", { target: "phone" }, "cli")).error?.code, "bad_input");
 
   // Over the tailnet the Mac's steps are left out, and asking for them by name is refused.
-  assert.deepEqual(data(await reg.call("sight.steps", {}, "tailnet:alex")).steps.map(s => s.target), ["agent:juno", "agent:kit"]);
-  assert.equal((await reg.call("sight.steps", { target: "mac" }, "tailnet:alex")).error?.code, "local_only");
+  assert.deepEqual(data(await reg.call("sight.steps", {}, "device:ie22vhobxbbkmu66")).steps.map(s => s.target), ["agent:juno", "agent:kit"]);
+  assert.equal((await reg.call("sight.steps", { target: "mac" }, "device:ie22vhobxbbkmu66")).error?.code, "local_only");
   assert.equal((await reg.call("sight.steps", {}, "mcp")).error?.code, "denied", "no agent reads another's steps through sight");
 });
 
@@ -183,7 +183,7 @@ test("sight.targets: the Mac when screen runs, one row per computer, and nothing
     { target: "agent:kit", kind: "agent", label: "kit", live: true, holder: "glass:laptop" },
   ]);
   assert.equal(/** @type {any} */ (globalThis).__screenCalls, undefined, "listing never woke the screen helper");
-  assert.deepEqual(data(await reg.call("sight.targets", {}, "tailnet:alex")).targets.map(x => x.target), ["agent:juno", "agent:kit"], "the Mac is not offered over the tailnet");
+  assert.deepEqual(data(await reg.call("sight.targets", {}, "device:ie22vhobxbbkmu66")).targets.map(x => x.target), ["agent:juno", "agent:kit"], "the Mac is not offered over the tailnet");
 });
 
 test("sight.now for the Mac: app, window and bare URL; text only when asked; never over the tailnet", async t => {
@@ -204,7 +204,7 @@ test("sight.now for the Mac: app, window and bare URL; text only when asked; nev
   assert.equal(withText.focused.value, FIELD_VALUE, "the person who asked sees it");
   assert.ok(!withText.url.includes(QUERY));
 
-  for (const [caller, meta] of [["cli", { peer: { node: "juno", user: "alex" } }], ["tailnet:alex", {}], ["device:abcdefghijklmnop", {}]]) {
+  for (const [caller, meta] of [["cli", { peer: { node: "juno", user: "alex" } }], ["device:ie22vhobxbbkmu66", {}], ["device:abcdefghijklmnop", {}]]) {
     const r = await reg.call("sight.now", { target: "mac", parts: ["text"] }, caller, meta);
     assert.equal(r.error?.code, "local_only", `${caller} ${JSON.stringify(r)}`);
   }

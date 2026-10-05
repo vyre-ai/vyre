@@ -39,7 +39,6 @@ import { when, base, initial } from "../js/fmt.js";
 import { mergeSessions, title } from "../chat/lib/sessions.js";
 import { threadHref, projectHref } from "../chat/lib/routes.js";
 import { parseCommand, plan, rankSessions } from "../js/commands.js";
-import { machineChip } from "../js/machine.js";
 
 const SHOW = 5;
 const MIN = 2;
@@ -181,13 +180,6 @@ export default async function find(ctx) {
     return href ? link(href, props, kids) : h("button", { type: "button", ...props, onclick }, kids);
   }
   const line = (text, cls = "fd-title") => h("span", { class: cls }, text);
-  /** A session's title, with the machine chip when it is the paired Mac's (js/machine.js). */
-  // The chip sits beside the title, not in it, so a long title's ellipsis never hides it.
-  const titled = (/** @type {string} */ text, /** @type {any} */ r) => {
-    const chip = r ? machineChip(r) : null;
-    return chip ? h("span", { class: "fd-tline" }, line(text), chip) : line(text);
-  };
-
   /** A labelled section of at most SHOW rows, with "Show all N" when there are more. */
   function section(key, label, rows, { cls = "", lblCls = "", notes = [] } = {}) {
     const open = expanded.has(key);
@@ -204,12 +196,11 @@ export default async function find(ctx) {
   function sessionHits(q) {
     const ws = words(q), byId = new Map(base_.rows.map(r => [r.id, r])), seen = new Set(), out = [];
     const add = s => { seen.add(s.id); out.push(s); };
-    const from = (/** @type {any} */ r) => r && r.source === "mac" ? { source: "mac", machine: r.machine } : {};
-    for (const r of base_.rows) if (r.name && hasAll(r.name, ws)) add({ id: r.id, title: title(r), snip: "", project: r.project, cwd: r.cwd, ts: r.last, ...from(r) });
+    for (const r of base_.rows) if (r.name && hasAll(r.name, ws)) add({ id: r.id, title: title(r), snip: "", project: r.project, cwd: r.cwd, ts: r.last });
     for (const x of Array.isArray(cur.recall?.data) ? cur.recall.data : []) {
       if (!x?.session || seen.has(x.session)) continue;
       const r = byId.get(x.session);
-      add({ id: x.session, title: r ? title(r) : x.name || x.title || String(x.session).slice(0, 8), snip: x.snippet, project: r?.project || null, cwd: r?.cwd || x.cwd, ts: x.ts || r?.last, ...from(r || x) });
+      add({ id: x.session, title: r ? title(r) : x.name || x.title || String(x.session).slice(0, 8), snip: x.snippet, project: r?.project || null, cwd: r?.cwd || x.cwd, ts: x.ts || r?.last });
     }
     return out;
   }
@@ -217,7 +208,7 @@ export default async function find(ctx) {
 
   function sessionRows(q) {
     return sessionHits(q).map(s => row({ href: threadHref({ id: s.id, project: s.project }), glyph: icon("chat", 16) },
-      [titled(s.title, s), s.snip ? h("span", { class: "fd-snip" }, snippet(s.snip)) : null,
+      [line(s.title), s.snip ? h("span", { class: "fd-snip" }, snippet(s.snip)) : null,
         line([s.project ? base_.names.get(s.project) || s.project : base(s.cwd), when(s.ts)].filter(Boolean).join(" · "), "fd-sub")]));
   }
 
@@ -226,14 +217,10 @@ export default async function find(ctx) {
     if (!d) return null;
     const results = Array.isArray(d.results) ? d.results : [];
     const notes = (Array.isArray(d.sources) ? d.sources : []).filter(s => s && s.ok === false)
-      .map(s => `The ${s.source === "mac" ? "Mac" : s.source || "other machine"} did not answer${s.error ? ": " + s.error : "."}`);
-    // The box does not search the Mac's files (the link carries no files.search), so say that,
-    // unless a Mac did answer.
-    const macAnswered = (Array.isArray(d.sources) ? d.sources : []).some(s => s && s.source === "mac" && s.ok !== false);
-    if (!macAnswered && !results.some(f => f.source === "mac")) notes.push("Files on your Mac are not searched from here.");
+      .map(s => `The ${s.source || "other machine"} did not answer${s.error ? ": " + s.error : "."}`);
     if (!results.length) return h("div", { class: "fd-note fd-lone" }, notes);
     const rows = results.map(f => row({ onclick: () => openFile(f), glyph: icon(FILE_ICON[f.kind] || "file", 16) },
-      [line(f.name), line(parent(f.path), "fd-sub")], h("span", { class: "fd-tag" }, f.source === "mac" ? "mac" : "box")));
+      [line(f.name), line(parent(f.path), "fd-sub")], h("span", { class: "fd-tag" }, "box")));
     return section("files", "Files", rows, { notes });
   }
 
@@ -278,7 +265,7 @@ export default async function find(ctx) {
   function commandSection() {
     if (!("candidates" in cmd) || !cmd.candidates.length) return null;
     return section("cmd", cmd.kind === "drive" ? "Type into" : "Watch", cmd.candidates.map(r => row({ onclick: () => { chosen = r; drawPlan(); draw(); }, glyph: icon(r.id === chosen?.id ? "check" : "chat", 16), cls: r.id === chosen?.id ? "fd-chosen" : "" },
-      [titled(title(r), r), line([r.project ? base_.names.get(r.project) || r.project : base(r.cwd), when(r.last)].filter(Boolean).join(" · "), "fd-sub")])));
+      [line(title(r)), line([r.project ? base_.names.get(r.project) || r.project : base(r.cwd), when(r.last)].filter(Boolean).join(" · "), "fd-sub")])));
   }
   async function runCommand() {
     const c = cmd;
@@ -370,7 +357,7 @@ export default async function find(ctx) {
   async function openFile(f) {
     closeSheet();
     const body = h("div", { class: "fd-sbody" });
-    const meta = h("div", { class: "code fd-smeta" }, [f.source === "mac" ? "mac" : "box", f.path, size(f.size), when(f.mtime)].filter(Boolean).join(" · "));
+    const meta = h("div", { class: "code fd-smeta" }, ["box", f.path, size(f.size), when(f.mtime)].filter(Boolean).join(" · "));
     const panel = h("div", { class: "fd-sheet", role: "dialog", "aria-modal": "true", "aria-label": f.name, tabindex: "-1",
       onkeydown: (/** @type {KeyboardEvent} */ e) => { if (e.key === "Escape") { e.stopPropagation(); closeSheet(); input.focus(); } } },
       h("div", { class: "fd-grip", "aria-hidden": "true" }),
@@ -383,7 +370,7 @@ export default async function find(ctx) {
     if (!["text", "code", "image", "other"].includes(f.kind)) { put(body, h("div", { class: "small muted" }, "No preview for this kind of file.")); return; }
     put(body, h("div", { class: "small muted" }, "Opening…"));
     const mine = sheet;
-    const r = await attempt("files.preview", { path: f.path, ...(f.source === "mac" || f.source === "box" ? { source: f.source } : {}) });
+    const r = await attempt("files.preview", { path: f.path });
     if (!ctx.alive() || sheet !== mine) return;
     const d = r.data;
     if (r.error) put(body, empty("No preview.", r.error));
@@ -506,17 +493,14 @@ export default async function find(ctx) {
     const d = cur.files?.data;
     if (!d) return null;
     const results = Array.isArray(d.results) ? d.results : [];
-    // One line when the Macs are away: their files are the ones missing.
-    const away = !results.some(f => f.source === "mac")
-      ? h("p", { class: "fd-pnote" }, "Your Macs are away. Files on them show here when they are back.") : null;
-    if (!results.length) return scope === "files" || away ? away : null;
+    if (!results.length) return null;
     const open = expanded.has("files");
     return group("Files", h("div", { class: "fd-card" }, (open ? results : results.slice(0, SHOW)).map(f =>
       prow({ onclick: () => openFile(f), label: `${f.name}, ${home(f.path)}` },
         h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon(FILE_ICON[f.kind] || "file", 20)),
         h("span", { class: "fd-main" }, h("span", { class: "fd-path" }, home(f.path) || f.name),
-          h("span", { class: "fd-meta" }, [f.repo || base(parent(f.path)), f.machine || f.host || (f.source === "mac" ? "Mac" : "box")].filter(Boolean).join(" · ")))))),
-      results.length > SHOW && !open ? more("files", results.length) : null, away);
+          h("span", { class: "fd-meta" }, [f.repo || base(parent(f.path)), f.host || "box"].filter(Boolean).join(" · ")))))),
+      results.length > SHOW && !open ? more("files", results.length) : null);
   }
 
   /** Projects whose name or slug has the words, as a phone group. @param {string} q */
@@ -606,7 +590,7 @@ export default async function find(ctx) {
     const recent = base_.rows.filter(r => r.human || r.live).slice(0, SHOW);
     put(list,
       recent.length ? section("recent", "Recent", recent.map(r => row({ href: threadHref(r), glyph: icon("chat", 16) },
-        [titled(title(r), r), line([r.project ? base_.names.get(r.project) || r.project : base(r.cwd), when(r.last)].filter(Boolean).join(" · "), "fd-sub")]))) : null,
+        [line(title(r)), line([r.project ? base_.names.get(r.project) || r.project : base(r.cwd), when(r.last)].filter(Boolean).join(" · "), "fd-sub")]))) : null,
       base_.agents.length ? h("section", { class: "fd-sec", "aria-label": "Agents" }, h("h2", { class: "lbl" }, "Agents"),
         h("div", { class: "fd-chips" }, base_.agents.map(a => link(`/agents/${encodeURIComponent(a.name)}`, { class: "fd-chip", "data-row": "", role: "option" }, `@${a.name}`)))) : null,
       !base_.loaded ? h("div", { class: "fd-note" }, "Reading your sessions…") : null,

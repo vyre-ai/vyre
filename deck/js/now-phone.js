@@ -6,7 +6,7 @@
 //                        phone"), which opens that step in a sheet (js/phone-setup.js,
 //                        js/first-passkey.js). The big setup cards are gone from here.
 //   Needs you            one card, a row per item, oldest first: asks, held drafts, questions
-//                        (js/needs.js) and Macs asking to pair (link.pending). Rows swipe
+//                        (js/needs.js). Rows swipe
 //                        (data-swipe, so the pager leaves them alone), tap opens the detail sheet
 //                        (js/need-sheet.js), and real buttons carry the same actions.
 //   Working              running sessions with their step count and latest step; when nothing
@@ -35,7 +35,6 @@ import { showToast, UNDO_MS } from "./toast.js";
 import { openNeedSheet, glyph, problem } from "./need-sheet.js";
 import { titleOf, secondLine, thirdLine, ago, ariaLabel, presenceWord, swipeActions, swipeCommit, release, toastFor, deferred, snoozes,
   SWIPE_HINT, ACTION_W } from "./need-rows.js";
-import { isMac } from "./machine.js";
 import { threadHref } from "../chat/lib/routes.js";
 
 const local = (() => { try { return window.localStorage; } catch { return null; } })();
@@ -43,8 +42,6 @@ const getLocal = (/** @type {string} */ k) => { try { return local?.getItem(k) ?
 const setLocal = (/** @type {string} */ k, /** @type {string} */ v) => { try { local?.setItem(k, v); } catch {} };
 const SWIPED_KEY = "vyre.needs.swiped";
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/** first-passkey.js's card is styled in pair.css, which pair.js loads only when it draws. */
 
 /** An item a push notification opened (/needs/:id): its sheet opens once Now has it. */
 let wanted = /** @type {string | null} */ (null);
@@ -97,29 +94,17 @@ export function phoneNow(ctx) {
 
   // ---- Needs you ------------------------------------------------------------------------------
 
-  /** Macs asking to pair, from link.pending. Empty where this machine is not a box. */
-  let pairs = /** @type {any[]} */ ([]);
-  const loadPairs = async () => {
-    const r = await attempt("link.pending", {}, { ifPresent: true });
-    if (!ctx.alive()) return;
-    pairs = Array.isArray(r.data) ? r.data.map((/** @type {any} */ p) => ({ kind: "pair", id: "pair:" + p.id, at: Number(p.expires || Date.now()) - 600_000, pair: p })) : [];
-    drawNeeds();
-  };
-  const firstPairs = loadPairs();
-  ctx.cleanup(on("link.pair-requested", loadPairs));
-  ctx.cleanup(on("link.paired", loadPairs));
-
   /** Rows answered here and not gone yet: collapsed while their call waits or goes. */
   const hidden = new Set();
   /** The reason a commit failed, shown under line 3 until the next try. */
   const failed = new Map();
   /** Deferred calls behind an Undo toast. */
   const waiting = new Set();
-  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void, still: boolean }>} */
+  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void }>} */
   const rows = new Map();
   let dragging = false, redraw = false;
 
-  const visible = () => [...needs.current(), ...pairs]
+  const visible = () => needs.current()
     .filter(n => !hidden.has(n.id) && !(n.kind === "question" && later.has(n.id)))
     .sort((a, b) => a.at - b.at);
 
@@ -153,9 +138,6 @@ export function phoneNow(ctx) {
     /** @type {Element | null} */ let prev = null;
     for (const n of list) {
       let r = rows.get(n.id);
-      // A Mac's ask whose answers the box turned out not to forward (need-rows.js elsewhere): its
-      // row loses the swipe and the buttons, so it is drawn again.
-      if (r && r.still !== !swipeActions(n)[0]) { r.el.remove(); r = undefined; }
       if (!r) { r = row(n); rows.set(n.id, r); } else r.update(n);
       const at = prev ? prev.nextElementSibling : card.firstElementChild;
       if (r.el !== at) card.insertBefore(r.el, at);
@@ -164,7 +146,7 @@ export function phoneNow(ctx) {
     serveWanted();
   }
 
-  /** Has the box answered the first needs.load and link.pending? Then a wanted id not in the list is gone. */
+  /** Has the box answered the first needs.load? Then a wanted id not in the list is gone. */
   let boxed = false;
   /**
    * The item a push asked for (wantSheet): its sheet once the list has it. After the first load,
@@ -174,7 +156,7 @@ export function phoneNow(ctx) {
   function serveWanted() {
     if (!wanted) return;
     const id = wanted;
-    const n = visible().find(x => x.id === id || x.id === "pair:" + id);
+    const n = visible().find(x => x.id === id);
     if (n) { wanted = null; sheetFor(n); return; }
     if (!boxed) return;
     wanted = null;
@@ -223,13 +205,11 @@ export function phoneNow(ctx) {
     needs.answer(n, { label: "Approve", decision: "allow" }).then(() => { hidden.delete(n.id); haptic("success"); }, e => fail(n, e));
   }
 
-  /** Deny, Discard or a pair's Deny: collapsed now, sent when the toast ends, unless Undo. */
+  /** Deny or Discard: collapsed now, sent when the toast ends, unless Undo. */
   function holdBack(/** @type {"deny"|"discard"} */ what, /** @type {any} */ n) {
     failed.delete(n.id);
     flushAll(); // one toast at a time: the one before goes now
-    const run = n.kind === "pair"
-      ? async () => { const r = await attempt("link.pair.deny", { id: n.pair.id }); if (r.error) throw r.error; pairs = pairs.filter(p => p.id !== n.id); }
-      : () => needs.answer(n, what === "discard" ? { label: "Discard", decision: "reject" } : { label: "Deny", decision: "deny" });
+    const run = () => needs.answer(n, what === "discard" ? { label: "Discard", decision: "reject" } : { label: "Deny", decision: "deny" });
     const d = deferred(run, UNDO_MS);
     waiting.add(d);
     hidden.add(n.id);
@@ -258,18 +238,15 @@ export function phoneNow(ctx) {
 
   function sheetFor(/** @type {any} */ n) {
     openNeedSheet(n, { word,
-      onDone: what => say(toastFor(what === "always" || what === "pair" ? "approve" : what).text, null),
-      onLater: (what, x) => (what === "later" ? snooze(x) : holdBack(what, x)),
-      onPaired: name => { say(`${name} is paired`, null); loadPairs(); } });
+      onDone: what => say(toastFor(what === "always" ? "approve" : what).text, null),
+      onLater: (what, x) => (what === "later" ? snooze(x) : holdBack(what, x)) });
   }
 
   // ---- one row ------------------------------------------------------------------------------
 
   function row(/** @type {any} */ n) {
     const [rightL, leftL] = swipeActions(n);
-    // A Mac session's ask the box cannot forward (no swipe actions): a plain row that opens its sheet.
-    const still = !rightL;
-    const el = h("div", { class: "np-row", ...(still ? {} : { "data-swipe": "" }), "data-kind": n.kind });
+    const el = h("div", { class: "np-row", "data-swipe": "", "data-kind": n.kind });
     const revR = h("button", { type: "button", class: "np-rev np-rev-r", tabindex: "-1", "aria-hidden": "true" },
       h("span", { class: "np-rev-in" }, glyph(n.kind === "ask" ? "check" : n.kind === "question" ? "chat" : n.kind === "draft" ? "send" : "check", 24), h("span", null, rightL)));
     const revL = h("button", { type: "button", class: "np-rev np-rev-l", tabindex: "-1", "aria-hidden": "true" },
@@ -283,13 +260,13 @@ export function phoneNow(ctx) {
     const face = h("div", { class: "np-face" }, main);
     const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "button button-secondary button-touch np-kb-b", onclick: fn }, label);
     const kbd = h("div", { class: "np-kb" });
-    el.append(...(still ? [] : [revR, revL]), face, kbd);
+    el.append(revR, revL, face, kbd);
 
     let cur = n;
     const update = (/** @type {any} */ x) => {
       cur = x;
-      // The acting agent's own face; a neutral one when the record names no agent (never the assistant's). A Mac asking to pair is a Mac.
-      put(tile, x.kind === "pair" ? "m" : x.agent ? whoAvatar(x.agent, { size: 32 }) : unknownActorAvatar({ size: 32 }));
+      // The acting agent's own face; a neutral one when the record names no agent (never the assistant's).
+      put(tile, x.agent ? whoAvatar(x.agent, { size: 32 }) : unknownActorAvatar({ size: 32 }));
       put(t1, titleOf(x));
       put(time, ago(x.at));
       const l2 = secondLine(x);
@@ -300,7 +277,7 @@ export function phoneNow(ctx) {
       put(err, why ? [h("span", { class: "np-failed" }, "failed"), " ", why] : null);
       main.setAttribute("aria-label", ariaLabel(x) + (why ? ` Failed: ${why}` : ""));
       const title = titleOf(x);
-      put(kbd, still ? null : [kb(rightL, () => commit(cur, "right")), kb(leftL, () => commit(cur, "left"))], kb("Open", () => sheetFor(cur)));
+      put(kbd, kb(rightL, () => commit(cur, "right")), kb(leftL, () => commit(cur, "left")), kb("Open", () => sheetFor(cur)));
       for (const b of kbd.children) b.setAttribute("aria-label", `${b.textContent}: ${title}`);
     };
     update(n);
@@ -321,7 +298,7 @@ export function phoneNow(ctx) {
       el.classList.toggle("np-show-l", x < 0);
     };
     face.addEventListener("pointerdown", e => {
-      if (still || e.button !== 0 || pid !== -1) return;
+      if (e.button !== 0 || pid !== -1) return;
       pid = e.pointerId; x0 = lastX = e.clientX; y0 = e.clientY; lastT = e.timeStamp; axis = null; v = 0; dx = rest; moved = false;
     });
     face.addEventListener("pointermove", e => {
@@ -364,20 +341,16 @@ export function phoneNow(ctx) {
     });
     revR.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "right"); });
     revL.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "left"); });
-    return { el, update, still };
+    return { el, update };
   }
 
   ctx.cleanup(needs.watch(() => { loaded = true; drawNeeds(); }));
   drawNeeds();
   const first = needs.load().finally(() => { loaded = true; if (ctx.alive()) drawNeeds(); });
-  Promise.allSettled([first, firstPairs]).then(() => { boxed = true; if (ctx.alive()) serveWanted(); });
+  first.then(() => { boxed = true; if (ctx.alive()) serveWanted(); });
   const onWant = () => { drawNeeds(); serveWanted(); };
   window.addEventListener("vyre:want-need", onWant);
   ctx.cleanup(() => window.removeEventListener("vyre:want-need", onWant));
-  // The box turned out not to forward answers to the Mac: its rows lose their swipe (needs.js).
-  const onMacAnswers = () => drawNeeds();
-  window.addEventListener("deck:mac-answers", onMacAnswers);
-  ctx.cleanup(() => window.removeEventListener("deck:mac-answers", onMacAnswers));
   // The fallback: a minute, and never while hidden. The times on the rows move with it.
   const tick = window.setInterval(() => { if (!document.hidden && ctx.shown?.() !== false) { needs.load(); drawWorking(); } }, 60_000);
   ctx.cleanup(() => clearInterval(tick));
@@ -390,7 +363,7 @@ export function phoneNow(ctx) {
     const r = await attempt("threads.list", {});
     if (!ctx.alive()) return;
     const run = (r.data || []).filter((/** @type {any} */ t) => t.status !== "stopped");
-    await Promise.all(run.filter((/** @type {any} */ t) => !steps.has(t.id) && !isMac(t)).map(async (/** @type {any} */ t) => {
+    await Promise.all(run.filter((/** @type {any} */ t) => !steps.has(t.id)).map(async (/** @type {any} */ t) => {
       const g = await attempt("threads.get", { thread: t.id, limit: 60 });
       steps.set(t.id, stepsOf(g.data?.events || []));
     }));
@@ -405,7 +378,7 @@ export function phoneNow(ctx) {
   };
   const workRow = (/** @type {any} */ t) => {
     const s = steps.get(t.id) || { count: 0, last: "" };
-    const href = t.agent && !isMac(t) ? `/agents/${encodeURIComponent(t.agent)}` : threadHref({ id: t.id, project: isMac(t) ? null : t.project });
+    const href = t.agent ? `/agents/${encodeURIComponent(t.agent)}` : threadHref({ id: t.id, project: t.project });
     const right = t.status === "waiting" ? "Waiting on you" : s.count ? `${s.count} step${s.count === 1 ? "" : "s"}` : t.status === "starting" ? "Starting" : "";
     return link(href, { class: "np-wrow" },
       h("span", { class: "np-tile", "aria-hidden": "true" }, initial(t.agent || t.name)),
@@ -415,7 +388,7 @@ export function phoneNow(ctx) {
         t.projectName ? h("span", { class: "np-t3" }, t.projectName) : null),
       h("span", { class: "np-chev", "aria-hidden": "true" }, glyph("right", 16)));
   };
-  const recentRow = (/** @type {any} */ s) => link(threadHref({ id: s.id, project: !isMac(s) ? s.projects?.[0] || null : null }), { class: "np-wrow" },
+  const recentRow = (/** @type {any} */ s) => link(threadHref({ id: s.id, project: s.projects?.[0] || null }), { class: "np-wrow" },
     h("span", { class: "np-tile", "aria-hidden": "true" }, glyph("chat", 16)),
     h("span", { class: "np-lines" },
       h("span", { class: "np-l1" }, h("span", { class: "np-t1" }, s.label || s.title || s.id), h("span", { class: "np-time" }, s.last ? since(s.last) : "")),

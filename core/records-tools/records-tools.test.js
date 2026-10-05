@@ -45,7 +45,7 @@ test("records.*: a signed-in device creates and queries records in its Space und
   assert.equal((await ok("records.me", {})).person, d.kernel.id.owner);
   assert.ok((await ok("records.actors", {})).actors.some(a => a.id === d.kernel.id.owner));
   // refused: models, guests, anonymous, a module
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "guest:x", "anonymous"]) {
     const r = await call("records.list", { type: "contact" }, { root, caller });
     assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
   }
@@ -130,7 +130,7 @@ test("records.linked and records.kits.*: the reverse of a link under the caller'
   assert.equal(got.truncated, false);
   assert.equal((await ok("records.linked", { urn: jane.urn, type: "contact" })).rows.length, 0);
   assert.equal((await call("records.linked", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
-  for (const caller of ["mcp", "tailnet-guest:x", "anonymous"]) assert.ok((await call("records.linked", { urn: jane.urn }, { root, caller })).error, `${caller} is refused`);
+  for (const caller of ["mcp", "guest:x", "anonymous"]) assert.ok((await call("records.linked", { urn: jane.urn }, { root, caller })).error, `${caller} is refused`);
   const lib = (await ok("records.kits.library", {})).kits;
   const estate = lib.find(k => k.id === "estate-planning");
   assert.ok(estate && estate.adds.types.includes("matter") && estate.adds.sealed_fields.includes("contact.ssn"));
@@ -170,7 +170,7 @@ test("records.roles and records.holders: what a contact is to the Space, and who
   assert.equal((await ok("records.holders", { role: "prospect", include_ended: true })).rows.length, 1);
   assert.equal((await call("records.holders", { role: "contact" }, { root, caller: "cli" })).error.code, "bad_input", "a type that is not a role");
   assert.equal((await call("records.roles", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
-  for (const caller of ["mcp", "tailnet-guest:x", "anonymous"]) {
+  for (const caller of ["mcp", "guest:x", "anonymous"]) {
     assert.ok((await call("records.roles", { urn: jane.urn }, { root, caller })).error, `${caller} is refused`);
     assert.ok((await call("records.holders", { role: "client" }, { root, caller })).error, `${caller} is refused`);
   }

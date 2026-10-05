@@ -168,12 +168,6 @@ html.sheet-open, html.sheet-open body { background: #000; }
 .nsh-other::placeholder { color: var(--label); opacity: 1; }
 .nsh-other:focus, .nsh-other.has-text { border-color: var(--focus); }
 
-/* A Mac asking to pair: pair.js's card, flattened into the sheet. */
-.nsh-pair .pair-card { border: 0; padding: 0; background: none; margin-top: 12px; }
-.nsh-pair .pair-top, .nsh-pair .pair-title { display: none; }
-.nsh-pair .pair-code { font-size: 17px; min-height: 46px; }
-.nsh-pair .pair-actions .btn { flex: 1 1 0; }
-
 /* A setup step in a sheet: its own card, flattened. */
 .np-step-body { padding-top: 8px; }
 .np-step-body .first-passkey, .np-step-body .ps-card { background: none; border: 0; padding: 0; margin: 0; }

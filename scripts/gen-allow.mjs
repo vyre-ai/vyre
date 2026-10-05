@@ -115,7 +115,6 @@ export const OPEN_NOTES = Object.freeze({
   "team.duties.run-now": "runs a duty once now, refused while it is off",
   "term.list": "reads the live terminals: folder, opener, size and bytes",
   "threads.branch": "starts a new thread from any point of a conversation",
-  "threads.continue-here": "carries a paired Mac's session on in a new thread on this box",
   "threads.edit": "changes queued words before they are handed over",
   "threads.edit-retry": "edits and retries a message, rewinding the conversation to just before it",
   "threads.kill-task": "stops one of a thread's background tasks",

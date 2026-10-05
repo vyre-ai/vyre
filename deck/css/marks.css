@@ -2,8 +2,7 @@
    js/status-mark.js. One model, one shape per status, so colour is never the only signal. Marks are
    static: the running ring does not spin, and nothing here animates.
 
-   The old dots are aliases: .dot.beacon is the needs-you dot; .dot.health-direct, -relayed and
-   -unknown are the path dots (direct, relayed, none). The rail's Now count carries .sm-badge. */
+   The old dot is an alias: .dot.beacon is the needs-you dot. The rail's Now count carries .sm-badge. */
 
 .sm { display: inline-block; flex-shrink: 0; box-sizing: border-box; vertical-align: middle; border-radius: var(--radius-full, 999px); }
 /* needs you: 8 solid, the attention colour. */
@@ -19,13 +18,6 @@
 .sm-unread { width: 8px; height: 8px; background: var(--text); }
 /* done: 8 hollow, a 1.5 inset stroke in --label. */
 .sm-done { width: 8px; height: 8px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--label); }
-
-/* How a device is reached (not a status): direct --focus solid, relayed --label solid, none
-   --label hollow. Relayed is normal, never a warning, so never amber. */
-.sm-path-direct, .sm-path-relayed, .sm-path-none { width: 8px; height: 8px; }
-.sm-path-direct, .dot.health-direct { background: var(--focus); }
-.sm-path-relayed, .dot.health-relayed { background: var(--label); }
-.sm-path-none, .dot.health-unknown { background: transparent; box-shadow: inset 0 0 0 1.5px var(--label); }
 
 /* The status word beside a mark: "running · 4m", "failed". */
 .st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;

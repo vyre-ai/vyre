@@ -21,7 +21,7 @@ const PROJECTS = [
   { slug: "northwind", name: "Northwind", home: `${W}/northwind`, workspaces: [], threads: 3, picked: 1, picks: [PLANNING] },
 ];
 const AGENTS = [{ name: "kit", projects: ["northwind"] }, { name: "hal", projects: ["harlow"] }];
-const TAILNET = "tailnet:alex@example.com";
+const TAILNET = "device:nw3b43olz4rzbzfe";
 
 async function module_(t) {
   const db = open(path.join(tempHome(t), "vyre.db"));
@@ -140,15 +140,15 @@ test("tailnet: the user's other devices read as the owner, and correct only with
   // Signed in with a passkey on that device (ADR 0032), the person corrects there too.
   const signed = await call("memory.correct", { fact: WORKS, action: "confirm" }, TAILNET, { person: { id: "s1", kind: "cookie" } });
   assert.ok(!signed.error, JSON.stringify(signed));
-  assert.equal((await call("memory.correct", { fact: WORKS, action: "confirm" }, "tailnet:agent:kit", { person: { id: "s1" } })).code, "denied", "an agent's node never corrects");
+  assert.equal((await call("memory.correct", { fact: WORKS, action: "confirm" }, "agent:kit", { person: { id: "s1" } })).code, "denied", "an agent's node never corrects");
   // Find on the owner's phone searches memory by meaning, account-wide, as the Deck does.
   const rel = await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET);
   assert.ok(!rel.error && !rel.code, `memory.relevant: ${JSON.stringify(rel)}`);
-  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, "tailnet:")).code, "denied", "not a login");
+  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, "device:")).code, "denied", "not a login");
   // A caller that merely looks like one, or names an agent, is not the owner.
   // An agent's own tailnet node, and a guest from another tailnet, are not the user either.
-  for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "tailnet:agent:kit", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
-  assert.equal((await call("memory.corrections", {}, "tailnet:alex@example.com agent:kit")).code, "denied");
+  for (const caller of ["device:", "xdevice:nw3b43olz4rzbzfe", "mcp device:ie22vhobxbbkmu66", "agent:kit", "guest:sam@harlow.example"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
+  assert.equal((await call("memory.corrections", {}, "device:nw3b43olz4rzbzfe agent:kit")).code, "denied");
   assert.equal((await call("memory.corrections", {}, "mcp")).code, "denied");
 });
 
@@ -159,7 +159,7 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   // The tool decides (the person's surfaces, or their device with a person session). correct admits a model, which only suggests; merge and split are the person's surfaces only.
   assert.ok(tools.get("memory.correct").callers.includes("mcp"));
   for (const tool of ["memory.merge", "memory.split"]) assert.deepEqual(tools.get(tool).callers, ["cli", "local", "deck", "capsule"]);
-  for (const caller of ["module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
+  for (const caller of ["module:harness", "guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
   // A model (mcp) with no words of the person's behind it only suggests (core/memory/iq/heard.js).
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "mcp", { person: { id: "s1" } })).data.applied, false);
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");
@@ -212,7 +212,7 @@ test("contradictions: the person sees and settles them; a model never does", asy
   assert.equal((await call("memory.contradictions", {}, "mcp")).code, "denied");
   // Settling is the person's own words, which outweigh everything: never an agent, a model, a
   // module or a device nobody signed in on.
-  for (const [caller, meta] of [["mcp", {}], ["mcp:agent:kit", {}], ["deck agent:kit", {}], ["module:harness", {}], ["tailnet:agent:kit", { person: { id: "s1" } }], [TAILNET, {}]]) {
+  for (const [caller, meta] of [["mcp", {}], ["mcp:agent:kit", {}], ["deck agent:kit", {}], ["module:harness", {}], ["agent:kit", { person: { id: "s1" } }], [TAILNET, {}]]) {
     const r = await call("memory.settle", { id: home.id, pick: "Lisbon" }, caller, meta);
     assert.ok(["denied", "person_session_required"].includes(r.code), `${caller}: ${JSON.stringify(r)}`);
   }
