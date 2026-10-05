@@ -59,7 +59,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false, wink = false, kernelFor = undefined } = {}) {
+async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -86,7 +86,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined 
   const logs = [];
   const seen = [];
   events.on("*", e => seen.push(e));
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
+  const reg = new Registry({ db, events, config: { role: "box", ...(machine ? { machine } : {}), name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
@@ -236,6 +236,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const list = await d.ok("spaces.list");
   assert.equal(list.length, 1);
   assert.deepEqual([list[0].name, list[0].role, list[0].status, list[0].workspaceId], ["harlow.vyre.run", "owner", "done", null]);
+  assert.equal(list[0].tier, "basic", "a space whose home is a device is Basic");
   const got = await d.ok("spaces.get", { space: "harlow" });
   assert.deepEqual([got.owners, got.members], [1, 1]);
   assert.ok(got.warnings.some(x => x.code === "single_owner"));
@@ -1317,5 +1318,48 @@ test("the device reaches the paired server over the Wink peer session when the d
   hooks.sessionFor = async () => { throw new Error("closed"); };
   const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.equal(down.error?.code, "server_unreachable");
+  void w;
+});
+
+test("spaces.list tier: a space on this computer is cloud when this machine is a server, basic on a device", async t => {
+  const w = world(t);
+  const d = await device(t, { machine: "server" });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  await d.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["cloud"]);
+  void w;
+});
+
+test("spaces.tier: the home's tier from the machine role, the Cloud spaces the person is in, and an unknown space refused", async t => {
+  const w = world(t);
+  const dev = await device(t);
+  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [], time_zone: null }, "a device with no space: Basic, no Cloud spaces, no zone");
+  await dev.ok("spaces.identity.create", { name: "alex" });
+  const systemZoneNow = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; // no device zone sent: the creating machine's own
+  const s = await dev.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [], time_zone: systemZoneNow }, "a space on a device is Basic");
+  assert.equal((await dev.call("spaces.tier", { space: "spc_zzzzzzzzzzzz" }, "module:planner")).error?.code, "not_found");
+  const srv = await device(t, { machine: "server" });
+  await srv.ok("spaces.identity.create", { name: "sam" });
+  const c = await srv.ok("spaces.create", { name: "harbor", displayName: "Harbor Bakery", home: { kind: "this-computer", confirmed: true } });
+  const r = await srv.ok("spaces.tier", {}, "module:planner");
+  assert.equal(r.tier, "cloud");
+  assert.deepEqual(r.cloud.map(x => [x.id, x.label]), [[c.space, "harbor"]]);
+  assert.deepEqual(Object.keys(r.cloud[0]).sort(), ["id", "label", "name"], "id, name and label, nothing else");
+  void w;
+});
+
+test("a space's home time zone: the creator's device zone at creation, an owner changes it, a bad zone is refused, and it reaches list, get and tier", async t => {
+  const w = world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const s = await d.ok("spaces.create", { name: "zonal", displayName: "Zonal", home: { kind: "this-computer", confirmed: true } }, "cli", { zone: "Asia/Kuala_Lumpur" });
+  assert.equal((await d.ok("spaces.list")).find(x => x.id === s.space).time_zone, "Asia/Kuala_Lumpur", "the creator's device zone");
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "Asia/Kuala_Lumpur");
+  assert.equal((await d.ok("spaces.tier", { space: s.space }, "module:planner")).time_zone, "Asia/Kuala_Lumpur");
+  assert.deepEqual(await d.ok("spaces.time-zone.set", { space: s.space, zone: "America/Los_Angeles" }), { space: s.space, time_zone: "America/Los_Angeles" });
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles");
+  assert.equal((await d.call("spaces.time-zone.set", { space: s.space, zone: "Mars/Olympus" })).error?.code, "bad_input");
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles", "a refused zone changes nothing");
   void w;
 });

@@ -100,6 +100,8 @@ export function createChainBuilder(cfg) {
       }
       case "agent_session": {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
+        // `model:` names a Switchboard slot, which holds nothing of its own: only a `model_slot` fact makes one, never an agent session under that name (SL-1).
+        if (typeof f.agent === "string" && f.agent.startsWith("model:")) return refuse("an agent session is not a model slot");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
         return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });

@@ -17,6 +17,8 @@
 // purpose (the device displays it) and is kept as a hash.
 
 import crypto from "node:crypto";
+import * as config from "../config/index.js";
+import { validZone, systemZone } from "../../lib/time/index.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -765,6 +767,8 @@ export default {
         const home = { ...i.home };
         if (home.kind === "this-computer" && !home.device) home.device = { id: s.keyId, name: "this computer", alwaysOn: false };
         if (!resumed) spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
+        // the creator's device zone is the space's home zone until an owner or admin changes it
+        if (!resumed) await kv.put(`zone/${spaceId}`, { zone: validZone(meta && meta.zone) ? meta.zone : systemZone() });
         else spaces.patch(spaceId, { status: "running" }, now());
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         /** @type {any} */ let view;
@@ -1153,7 +1157,7 @@ export default {
       if (/^spc_[a-z2-7]{12}$/.test(String(i.id))) await files.keys.discard(String(i.id)).catch(() => {});
       return r;
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
-    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
+    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1176,7 +1180,8 @@ export default {
       const kp = await files.keys.generate();
       await files.keys.hold(id, kp.privateKey);
       return { space: id, existed: false, rootPublic: kp.publicKey };
-    }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
+    });
+    // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
     tool("spaces.attest", "Sign a joiner's nonce with this home's key for a space it hosts: { pub, sig }. For the peer door (modules only).", obj({ space: str, nonce: str }, ["space", "nonce"]), async (i, meta) => {
@@ -1250,7 +1255,16 @@ export default {
         return { enrolled: await isEnrolled(deviceId, id) };
       }, { internal: true });
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
+    /** The tier shown for a space (the user's two-tier ruling): a space whose home is a server (a team space, or a personal one on the person's own server) is "cloud"; a space whose home is this computer is "cloud" only when this machine is a server, and "basic" on a device. The same machine role storeMode reads. @param {any} home */
+    const tierOf = (home) => (home && home.kind && home.kind !== "this-computer") || config.isServer(ctx.config && ctx.config.machine) ? "cloud" : "basic";
+
+    /** A space's home time zone (an IANA zone), or null when none is set. Kept beside the space; modules read it through spaces.list, spaces.get and spaces.tier. @param {string} id */
+    const zoneOf = async (id) => { const v = await kv.get(`zone/${id}`); return v && typeof v.zone === "string" && validZone(v.zone) ? v.zone : null; };
+    const listSpaces = async (/** @type {any} */ i0, /** @type {any} */ meta0) => {
+      const rows = await listSpacesRaw(i0, meta0);
+      return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id) })));
+    };
+    const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
@@ -1259,7 +1273,7 @@ export default {
           let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-          mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
         return mine;
       }
@@ -1272,7 +1286,7 @@ export default {
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
-        out.push({ ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
+        out.push({ tier: tierOf(row.home), ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
       try {
@@ -1280,10 +1294,36 @@ export default {
           const id = String(r.key).slice("member-of/".length), v = JSON.parse(r.value);
           if (out.some(x => x.id === id)) continue;
           const name = typeof v.name === "string" ? v.name : null;
-          out.push({ id, name, label: name ? name.replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: { kind: "server" }, role: v.role || null, member: true });
+          out.push({ tier: "cloud", id, name, label: name ? name.replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: { kind: "server" }, role: v.role || null, member: true });
         }
       } catch { /* no joined spaces */ }
       return out;
+    };
+
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
+
+    tool("spaces.tier", "Which tier a space is on (basic or cloud), and the Cloud spaces this person is in. For a module that must refuse on a Basic personal space (Planner, tasks). With no space named, the home's own.",
+      obj({ space: str }), async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        /** @type {any[]} */ let rows = [];
+        try { rows = await listSpaces({}, meta); } catch { rows = []; }
+        const cloud = rows.filter(r => r.tier === "cloud").map(r => ({ id: r.id, name: r.name ?? null, label: r.label ?? null }));
+        if (i.space && !(K && i.space === K.space)) {
+          const r = rows.find(x => x.id === i.space);
+          if (!r) throw refuse("No such space here.", "not_found");
+          return { tier: r.tier, cloud, time_zone: r.time_zone ?? null };
+        }
+        return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null };
+      }, { internal: true });
+
+    tool("spaces.time-zone.set", "As an owner or admin: set a space's home time zone (an IANA zone such as America/Los_Angeles). Tasks, Flow schedules and business hours read it.", obj({ space: str, zone: str }, ["space", "zone"]), async (i, meta) => {
+      const row = spaceOf(i.space);
+      const s = me();
+      await notRemoved(row.id, meta);
+      const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      if (!(row.createdBy === s.id || (m && (m.role === "owner" || m.role === "admin")))) throw refuse("Only an owner or an admin can set the time zone.", "forbidden");
+      if (typeof i.zone !== "string" || i.zone.length > 64 || !validZone(i.zone)) throw refuse("That is not a time zone. Use a name like America/Los_Angeles.", "bad_input");
+      await kv.put(`zone/${row.id}`, { zone: i.zone });
+      return { space: row.id, time_zone: i.zone };
     });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
@@ -1296,7 +1336,7 @@ export default {
       return {
         id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, aliases: row.aliases, workspaceId: row.workspaceId,
         warnings: [...row.warnings, ...(await m.warnings())], members: all.length, owners: await m.ownerCount(), role: ((await membershipOf(row.id, /** @type {string} */ (s.id), meta)) || {}).role || null,
-        roleNames: m.getDisplayNames(), createdAt: row.createdAt, setup: await setupView(row, s),
+        roleNames: m.getDisplayNames(), createdAt: row.createdAt, setup: await setupView(row, s), time_zone: await zoneOf(row.id),
       };
     });
 

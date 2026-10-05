@@ -117,3 +117,13 @@ test("storeMode: a device install is Basic (no Twenty, no Docker); VYRE_STORE st
   assert.equal(await f("vyre://spc_aaaaaaaaaaaa"), undefined);
   assert.equal(called.length, 0);
 });
+
+test("storeMode in a packaged build: a server is always Twenty, a device always Basic, VYRE_STORE ignored", async () => {
+  const { storeMode } = await import("./space-store.js");
+  const pkg = fs.mkdtempSync(path.join(SCRATCH, "pkg-")); // no lib/build-kind.js: a packaged build
+  for (const v of [undefined, "sqlite", "auto", "twenty"]) {
+    const env = v ? { VYRE_STORE: v } : {};
+    assert.equal(storeMode(env, { server: true, root: pkg }), "twenty", `server with ${v}`);
+    assert.equal(storeMode(env, { server: false, root: pkg }), "sqlite", `device with ${v}`);
+  }
+});
