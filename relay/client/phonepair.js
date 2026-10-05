@@ -9,6 +9,7 @@
 // payload   the text of the existing device's QR, or the long code pasted.
 // code      INSTEAD of payload: the typed WINK-NNPP-PPPP the existing device shows (with `relay`, the relay's address). This device runs the code's PAKE over the relay, shows `onAck(ack)` (the person types
 //           that on the existing device), and then the same pairing follows with the ticket both ends derived from the code's key. The code is the confirmation: the existing device does not ask for the three words.
+// presenceKey  optional, THIS device's presence key for its paired session ({ public_key: P-256 SPKI base64url, alg: -7, storage }): the owner's yes confirms it, and the device then signs presence.person.start-paired with it.
 // key       THIS device's identity key: its public half (32 raw bytes, base64url) is sent to the existing device inside the pairing, over this device's own encrypted channel, so the yes at the
 //           words covers it. The private half never leaves the device.
 // onWords   called once with the three words this device derived. Show them: the person at the other device picks the same words from three sets.
@@ -36,7 +37,7 @@ export function parsePhonePayload(s) {
 
 /**
  * @param {{ payload: string, key: { publicKey: string, label?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
- *   code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
+ *   presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function addThisDevice(o) {
@@ -61,7 +62,7 @@ export async function addThisDevice(o) {
     const until = Date.now() + (o.timeoutMs ?? 5 * 60_000);
     for (;;) {
       try {
-        paired = await pairTicket(scan.seed, { relay, name: deviceName, crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });
+        paired = await pairTicket(scan.seed, { relay, name: deviceName, ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });
         break;
       } catch (e) {
         if (o.code === undefined || /** @type {any} */ (e).code !== "ticket_gone" || Date.now() > until || (o.signal && o.signal.aborted)) throw e;

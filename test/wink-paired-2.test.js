@@ -1175,7 +1175,7 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
   // a refused card holds the device for 10 minutes
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
-    const outward = { moment: "outward", request: { op: "email.send", fields: { to: "jane@example.com" } } };
+    const outward = { moment: "outward", request: { op: "mail.send", fields: { to: "jane@example.com" } } };
     const ask = await links.askApproval("srv", outward);
     // a software browser's no is ignored (it could stall the owner); the owner's own screen on the server can say no
     const softNo = await f.w.d.registry.call("approvals.answer", { id: ask.id, approve: false }, "device:zzzzzzzzzzzzzzzz", { peer: { kind: "device", stableId: "zzzzzzzzzzzzzzzz", node: "zzzzzzzzzzzzzzzz" }, person: { id: "ps-none" } });
@@ -1209,7 +1209,7 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
   assert.deepEqual(await yes("vault", { chain, ...req }, stranger.proof(chain, sg.op, sg.fields)), { ok: false, reason: "unknown_key" }, "a key the server never enrolled");
   assert.deepEqual(await yes("admin", { chain, ...req }, proof), { ok: false, reason: "wrong_request" }, "only the three moments");
   // each moment end to end on the real sealer (CS-3): the act words the sealing process takes, the card's op and fields inside
-  for (const [moment, r] of [["pair", { op: "wink.phone.pair.answer", fields: { name: "Alex's phone" } }], ["outward", { op: "email.send", fields: { to: "jane@example.com" } }]]) {
+  for (const [moment, r] of [["pair", { op: "wink.phone.pair.answer", fields: { name: "Alex's phone" } }], ["outward", { op: "mail.send", fields: { to: "jane@example.com" } }]]) {
     const g = signOf(moment, r), p = owner.proof(chain, g.op, g.fields);
     assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: true }, `${moment}: the real key says yes`);
     assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: false, reason: "replayed" }, `${moment}: once`);
