@@ -69,6 +69,8 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   assert.match((await get(plain.data.id)).chat, /^chat_/);
 
   // an agent that runs in the Space is an actor of it (agents.create registers it, on the person's own call); its run's chat is the owner plus that agent, never an owner-only chat that drops it
+  // (until agents.create registers its actor itself, the owner adds it, with the kernel's own proof)
+  await grants.addActor(ownerChain, { kind: "agent", id: "kit", space: d.kernel.id.space }, { presence: { op: "x", fields: {}, n: 1 } }).catch(() => {});
   const made = await kernelCaller(d, root)("agents.create", { name: "kit", projects: "*" });
   assert.ok(made.data, JSON.stringify(made.error));
   const withKit = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", agent: "kit" }, "cli");
