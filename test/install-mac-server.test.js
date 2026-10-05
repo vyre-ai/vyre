@@ -526,6 +526,33 @@ test("vyre-runtime: run writes the first size and starts Colima in the foregroun
   assert.equal(h.log(), before);
 });
 
+test("vyre-runtime: a resize leaves a restart flag and the job's run loop starts Colima again at the new size, because launchd would not relaunch an exit 0; no flag ends the job with Colima's exit code", t => {
+  const h = runtimeHelper(t);
+  const e = h.env(32, 8);
+  const flag = path.join(h.m.env.VYRE_HOME, "colima-restart");
+  // the fake colima's foreground start ends at once (as after `colima stop`), exit 0 the first time and 7 the second
+  const counter = path.join(h.m.base, "starts");
+  fs.writeFileSync(path.join(h.m.base, "rt-bin", "colima"), `#!/bin/sh
+echo "colima $*" >>"${h.m.base}/colima.log"
+if [ "$1" = start ]; then n=$(cat "${counter}" 2>/dev/null || echo 0); echo $((n + 1)) >"${counter}"; [ "$n" = 0 ] || exit 7; fi
+exit 0
+`, { mode: 0o755 });
+  fs.mkdirSync(h.m.env.VYRE_HOME, { recursive: true });
+  fs.writeFileSync(path.join(h.m.env.VYRE_HOME, "colima-size.env"), "SPACES=1\nCPUS=4\nMEMORY=5\nDISK=40\nJOB=1\n");
+  fs.writeFileSync(flag, "");
+  const r = h.call(["run"], e);
+  assert.equal(r.status, 7, "ends with Colima's own exit code once there is no restart flag");
+  assert.equal((h.log().match(/colima start --foreground/g) || []).length, 2, "started again after the flag");
+  assert.ok(!fs.existsSync(flag), "the flag is consumed");
+  // and a resize leaves the flag when a job supervises
+  fs.rmSync(counter);
+  h.setUp(true);
+  fs.writeFileSync(path.join(h.m.base, "rt-bin", "colima"), `#!/bin/sh\necho "colima $*" >>"${h.m.base}/colima.log"\ncase "$1" in start) : >"${h.up}" ;; stop) : >"${h.up}" ;; status) [ -f "${h.up}" ] ;; esac\n`, { mode: 0o755 });
+  const rz = h.call(["resize", "2"], e);
+  assert.equal(rz.status, 0, rz.stderr + rz.stdout);
+  assert.ok(fs.existsSync(flag), "resize left the restart flag for the run loop");
+});
+
 test("vyre-runtime: with no job (brew services), resize stops Colima and starts it again at the new size itself", t => {
   const h = runtimeHelper(t);
   const e = h.env(32, 8);
