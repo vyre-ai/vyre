@@ -53,7 +53,7 @@ class PauseFlow extends Error {
  *   clock?: () => number,
  *   emit?: (type: string, data: any, o: { chain: any, subject: string, corr: string }) => void,
  *   ports?: {
- *     call?: (chain: any, action: string, resource: string, input: any, o: { idem: string }) => Promise<any>,
+ *     call?: (chain: any, action: string, resource: string, input: any, o: { idem: string, approval?: string, bind?: string }) => Promise<any>,
  *     service?: (q: { chain: any, connector: string, request: { method: string, path: string, query?: any, headers?: any, body?: any, upload?: { drive: { path: string, version?: string, contentType?: string } }, saveTo?: string }, idem: string, approval?: string }) => Promise<{ status: number, ok?: boolean, headers?: Record<string, string>, body?: string } | { saved: { path: string, version: string|number, size: number, sha256: string } } | { held: boolean, kind?: string, summary?: string }>,
  *     sandbox?: (req: { language: string, source: string, hash: string, inputs: any, outputs: string[], needs: string[] }) => Promise<{ outputs: Record<string, any> }>,
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
@@ -483,13 +483,15 @@ export class FlowRunner {
       case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
       case "wait": out = await this.#wait(ctx, s, key, val); break;
       case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, _approval, rules) => {
+      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
         if (ctx.dry) return { dry: true };
         if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
         // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
         const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
         if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
-        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, val(s.input), { idem: draftAs ? `${idem}:draft` : idem });
+        // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
+        const input = val(s.input);
+        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
         return draftAs ? { draft: true, via: draftAs, result: r } : r;
       }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
