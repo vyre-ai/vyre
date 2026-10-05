@@ -4,19 +4,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parse, sshLine, envCandidates } from "./up.js";
+import { parse, envCandidates } from "./up.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 test("up: flags with and without values", () => {
   assert.deepEqual(parse(["--system", "--user", "alex", "--dry-run"]), { flags: { system: true, user: "alex", "dry-run": true }, rest: [] });
   assert.deepEqual(parse(["--user=alex", "file"]), { flags: { user: "alex" }, rest: ["file"] });
-});
-
-test("up: over SSH, the tunnel line points at the address the person connected to", () => {
-  assert.equal(sshLine(7300, "alex", { SSH_CONNECTION: "203.0.113.9 51234 198.51.100.4 22" }), "ssh -N -L 7300:127.0.0.1:7300 alex@198.51.100.4");
-  assert.equal(sshLine(7300, "alex", { SSH_CONNECTION: "2001:db8::9 51234 2001:db8::4 22" }), "ssh -N -L 7300:127.0.0.1:7300 alex@[2001:db8::4]");
-  assert.equal(sshLine(7300, "vyre", { SSH_CONNECTION: "203.0.113.9 51234 198.51.100.4 22", VYRE_HOST_USER: "alex" }), "ssh -N -L 7300:127.0.0.1:7300 alex@198.51.100.4", "the host account, not the container's");
-  assert.equal(sshLine(7300, "alex", {}), null, "not over SSH: no tunnel needed");
 });
 
 test("up: envCandidates counts secret-looking .env values, never the trivial or already-vault'd ones", (t) => {
@@ -180,41 +173,36 @@ test("up on a Mac: a temp or dev home never talks to a real box unless told to",
   assert.ok(g.calls.some(c => c[0] === "wink.server.home"));
 });
 
-test("up --box on a Mac: the one-time link is printed and opened; --json gives url and port", async t => {
+test("up on a server: no link and no browser; unpaired it says how to pair, paired it names the space", async t => {
   world(t, running([]));
-  const link = { data: { url: "http://127.0.0.1:7300/onboard#t=abc", port: 7300, user: "alex", address: null } };
-  const f = fakes(t, { tools: { "onboard.link": () => link } });
-  const prev = process.env.SSH_CONNECTION; delete process.env.SSH_CONNECTION;
-  t.after(() => { if (prev !== undefined) process.env.SSH_CONNECTION = prev; });
-  assert.equal(await up(["--box"], f.deps), 0);
-  assert.match(f.text(), /127\.0\.0\.1:7300\/onboard/);
-  assert.deepEqual(f.opened, [link.data.url]);
-  t.mock.restoreAll();
-
-  const j = fakes(t, { tools: { "onboard.link": () => link } });
-  assert.equal(await up(["--box", "--json"], j.deps), 0);
-  assert.deepEqual(JSON.parse(j.lines[0]), { role: "box", version: JSON.parse(j.lines[0]).version, url: link.data.url, port: 7300, ssh: null, address: null, box: null, ready: false });
-  assert.deepEqual(j.opened, [], "a caller parsing JSON opens what it wants");
-});
-
-test("up on a box after onboarding: the ending block, the same as on the Mac", async t => {
-  world(t, running([]));
-  config.save({ role: "box", onboard: { assistant: "Juno" } });
-  const done = { data: { url: null, port: null, user: "alex", address: BOX } };
-  const serving = () => ({ data: { phase: "serving" } });
-  const f = fakes(t, { tools: { "onboard.link": () => done, "names.status": serving } });
+  config.save({ role: "box" });
+  const f = fakes(t, { tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
   f.deps.platform = "linux";
   assert.equal(await up([], f.deps), 0);
-  assert.match(f.text(), /Vyre is ready\./);
-  assert.match(f.text(), /your assistant\s+Juno/);
-  assert.doesNotMatch(f.text(), /your address:/);
+  assert.match(f.text(), /not paired yet\. Pair this server from your Vyre app: run vyre call wink\.server\.code/);
+  assert.ok(!f.calls.some(c => c[0] === "onboard.link"), "no onboarding link is asked for");
+  assert.deepEqual(f.opened, [], "nothing is opened");
   t.mock.restoreAll();
 
-  const j = fakes(t, { tools: { "onboard.link": () => done, "names.status": serving } });
+  const p = fakes(t, { tools: { "wink.server.status": () => ({ data: { owned: true, space: "alex", device: "Alex's phone" } }) } });
+  assert.equal(await up([], p.deps), 0);
+  assert.match(p.text(), /paired to alex/);
+  t.mock.restoreAll();
+
+  const j = fakes(t, { tools: { "wink.server.status": () => ({ data: { owned: true, space: "alex" } }) } });
   assert.equal(await up(["--json"], j.deps), 0);
   const o = JSON.parse(j.lines[0]);
-  assert.equal(o.address, BOX);
-  assert.equal(o.ready, true);
+  assert.deepEqual([o.role, o.paired, o.space, o.ready], ["box", true, "alex", true]);
+});
+
+test("up --keep-link on a server (vyre update): accepted, and it only reports whether the server is paired", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const f = fakes(t, { tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
+  assert.equal(await up(["--keep-link", "--json"], f.deps), 0);
+  const o = JSON.parse(f.lines[0]);
+  assert.equal(o.paired, false);
+  assert.match(o.pairing, /wink\.server\.code/);
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */
@@ -325,26 +313,6 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   const f = fakes(t);
   f.deps.bring = async () => { throw new Error("bring broke"); };
   await assert.rejects(up([], f.deps), /bring broke/);
-});
-
-test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
-  world(t, running([]));
-  config.save({ role: "box" });
-  const open = { data: { url: null, pending: true, expires: Date.now() + 42 * 60_000, port: 7300, user: "alex", address: null, passkeyUrl: null } };
-  const f = fakes(t, { tools: { "onboard.link": () => open } });
-  f.deps.platform = "linux";
-  assert.equal(await up(["--keep-link"], f.deps), 0);
-  assert.deepEqual(f.calls.find(c => c[0] === "onboard.link")[1], { mint: false });
-  assert.match(f.text(), /set up is not finished; the link you have still works \(42 min left\)/);
-  assert.match(f.text(), /vyre up prints a new link and voids that one/);
-  assert.deepEqual(f.opened, []);
-  t.mock.restoreAll();
-
-  const none = { data: { ...open.data, pending: false, expires: null, port: null } };
-  const j = fakes(t, { tools: { "onboard.link": () => none } });
-  assert.equal(await up(["--keep-link", "--json"], j.deps), 0);
-  const o = JSON.parse(j.lines[0]);
-  assert.deepEqual([o.url, o.pending, o.expires], [null, false, null]);
 });
 
 test("up on a Mac, the very first time: the welcome, the three choices, and choice 3 saves the address and says how to pair", async t => {

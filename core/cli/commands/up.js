@@ -2,7 +2,7 @@
 // `vyre up` and the box's system commands.
 //
 // `vyre up` is the one command a person types. It starts vyred (or restarts it after an upgrade),
-// then prints one thing: the onboarding link, the box's address, or on a Mac the box it talks to.
+// then prints one thing: on a server whether it is paired (and how to pair it), or on a Mac the box it talks to.
 // `vyre up --system` (as root) installs the systemd units; `vyre uninstall --system` removes them.
 // Both print every change and make none with --dry-run. See docs/INSTALL.md and ADR 0002.
 //
@@ -64,19 +64,6 @@ export async function readPassphrase(question, { confirm = false } = {}) {
     if (a !== b) throw new Error("the two did not match");
   }
   return a;
-}
-
-/**
- * The line that reaches a headless box's loopback page from the person's own computer, or null
- * when this terminal is not over SSH. In the box's container, the host's `vyre` passes its own
- * SSH_CONNECTION through and names the host account in VYRE_HOST_USER, since the container's
- * account is not the one the person signs in with.
- */
-export function sshLine(port, user, env = process.env) {
-  const conn = String(env.SSH_CONNECTION || "").split(" ");
-  if (conn.length < 4) return null;
-  const host = conn[2].includes(":") ? `[${conn[2]}]` : conn[2];
-  return `ssh -N -L ${port}:127.0.0.1:${port} ${env.VYRE_HOST_USER || user}@${host}`;
 }
 
 const UNIT = path.join(system.ETC, "vyre.service");
@@ -234,7 +221,7 @@ async function run(args, deps) {
   if (flags.local || flags.connect) role = "local";
   if (flags["dry-run"]) {
     say(`  would start vyred ${VERSION} as ${os.userInfo().username}, role ${role}, home ${config.home()}`);
-    say(`  would then print ${role === "box" ? "the onboarding link" : "the box this machine talks to"}`);
+    say(`  would then print ${role === "box" ? "whether this server is paired" : "the box this machine talks to"}`);
     return done({ box: role === "local" ? cfg.network.box || null : null });
   }
   if (role !== cfg.role) config.save({ role });
@@ -273,76 +260,34 @@ async function run(args, deps) {
     return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json, pair: Boolean(flags.connect) }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
-  // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
-  const keep = Boolean(flags["keep-link"]);
-  let link = await callTool("onboard.link", keep ? { mint: false } : {});
-  // A daemon with the whole signed module list answers on its socket before every module has started: the tool is "not there" for a few seconds, then it is. Wait for it (a minute at most)
-  // rather than end the install with an error the next call would not have.
-  for (let tries = 0; link.error && link.error.code === "no_such_tool" && tries < 30; tries++) {
+  // A server has no first-run page and no one-time link (the kernel is always on): the way in is pairing. Say whether it is paired, and if not, where the code comes from.
+  // `--keep-link` (passed by vyre update) is accepted and changes nothing.
+  let st = await callTool("wink.server.status");
+  // A daemon with the whole signed module list answers on its socket before every module has started: the tool is "not there" for a few seconds, then it is. Wait (a minute at most).
+  for (let tries = 0; st.error && st.error.code === "no_such_tool" && tries < 30; tries++) {
     await (deps.sleep || ((/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms))))(2000);
-    link = await callTool("onboard.link", keep ? { mint: false } : {});
+    st = await callTool("wink.server.status");
   }
-  // A server with its kernel on has no first-run page to open: pairing is the way in (the installer shows the code, `vyre call wink.server.code`). A refusal of the old link is not a failed start.
-  if (link.error && link.error.code !== "no_such_tool") {
-    if (json) return done({ url: null, pending: false, paired: false, note: "pair from your device" });
-    say(dim("  Pair this server from your Vyre app: the installer shows the code, or run vyre call wink.server.code '{\"qr\":true}'"));
+  if (st.error) return fail("pairing_unavailable", "pairing is not available on this server: " + st.error.message);
+  const s = st.data || {};
+  if (s.owned) {
+    if (json) return done({ paired: true, space: s.space || null, ready: true });
+    say(`  paired to ${signal(String(s.space || "your space"))}${s.device ? dim(` · by ${s.device}`) : ""}`);
     return 0;
   }
-  if (link.error) return fail("onboarding_unavailable", "onboarding is not available: " + link.error.message);
-  const d = link.data;
-  const ssh = d.url ? sshLine(d.port, d.user) : null;
-  if (keep && "pending" in d) {
-    const left = d.pending && d.expires ? Math.max(1, Math.round((d.expires - Date.now()) / 60_000)) : 0;
-    if (json) return done({ url: null, pending: Boolean(d.pending), expires: d.expires ?? null, address: d.address || null });
-    say(d.pending ? `  set up is not finished; the link you have still works ${dim(`(${left} min left)`)}` : "  set up is not finished");
-    say(dim(`  vyre up prints a new link${d.pending ? " and voids that one" : ""}`));
-    return 0;
-  }
-  if (!d.url) {
-    // After onboarding: the same ending the Mac prints, so "is it done?" has one answer. The box
-    // cannot ask its own address (its listener refuses itself, ADR 0002), so it asks names.
-    const n = await callTool("names.status");
-    const ready = Boolean(d.address && n.data && (n.data.phase === "serving" || n.data.phase === "named"));
-    if (json) return done({ address: d.address || null, ready, passkeyUrl: d.passkeyUrl || null });
-    if (d.address) {
-      const f = await findAssistant(callTool).catch(() => ({}));
-      printEnding({ address: d.address, assistant: f.agent ? f.agent.name : config.load().onboard?.assistant || null });
-    }
-    else say("  set up is done; there is no address yet (vyre name)");
-    // No passkey yet: on a box it is the only way to prove it is you, so offer a fresh link to make one.
-    if (d.passkeyUrl) say(`\n  Make your passkey ${dim("(the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
-    return 0;
-  }
-  if (json) return done({ url: d.url, port: d.port ?? null, ssh, address: d.address || null });
-  say("");
-  say(`  Open this link to set up Vyre ${dim("(it works once, for an hour)")}:`);
-  say("");
-  say(`    ${signal(d.url)}`);
-  if (ssh) {
-    say("");
-    say(`  This box is headless. On your own computer, run this first, then open the link there:`);
-    say(`    ${ssh}`);
-  }
-  if (d.address) say(dim(`\n  or, at its address: ${d.address}`));
-  say("");
-  // `vyre up --box` on a Mac: the browser is right here, so open the link too.
-  if (platform === "darwin" && !ssh && (deps.openUrl || dialogsAllowed())) {
-    say(dim("  Opening it in your browser now."));
-    (deps.openUrl || openUrl)(d.url);
-  }
+  if (json) return done({ paired: false, ready: false, pairing: "vyre call wink.server.code '{\"qr\":true}'" });
+  say(`  not paired yet. Pair this server from your Vyre app: run ${signal("vyre call wink.server.code '{\"qr\":true}'")} here, then scan the QR or paste the long code.`);
   return 0;
 }
 
-/** The view of vyre up's one object: the onboarding link, the box, or where things stand. @param {any} d */
+/** The view of vyre up's one object: the pairing state, the box, or where things stand. @param {any} d */
 function upView(d) {
   const fields = [{ label: "vyred", value: `${d.version} · ${d.role}` }];
-  if (d.url) fields.push({ label: "Open this link to set up Vyre", value: String(d.url) });
-  if (d.ssh) fields.push({ label: "This box is headless: on your own computer, first", value: String(d.ssh) });
+  if (d.paired !== undefined) fields.push({ label: "Paired", value: d.paired ? String(d.space || "yes") : "not yet" });
   if (d.address) fields.push({ label: "Address", value: String(d.address) });
   if (d.box) fields.push({ label: "Your box", value: String(d.box) });
   if (d.pairing) fields.push({ label: "Pairing", value: String(d.pairing) });
-  if (d.passkeyUrl) fields.push({ label: "Make your passkey", value: String(d.passkeyUrl) });
-  if (!d.url && !d.box && !d.address && d.role === "local") fields.push({ label: "No box yet", value: "vyre box add user@host, vyre up --box, or vyre up --connect <address>" });
+  if (!d.box && !d.address && d.role === "local") fields.push({ label: "No box yet", value: "vyre box add user@host, vyre up --box, or vyre up --connect <address>" });
   return { kind: "card", title: d.ready ? "Vyre is ready" : "Vyre", state: d.ready ? "ok" : "wait", fields };
 }
 
