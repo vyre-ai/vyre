@@ -376,7 +376,7 @@ export default {
     ctx.tool("projects.access.pending", {
       description: "What agents could reach before reach became a kernel grant, still waiting for your approval to carry over: { rows, grants }. Read only.",
       input: { type: "object", properties: {} },
-      callers: OWNER,
+      callers: [...OWNER, "module"],
       run: async () => { const rows = legacyRows(); return { pending: rows.length, rows: rows.map(r => ({ project: r.project, agent: r.agent || "(every agent)", status: r.status })) }; },
     });
     ctx.tool("projects.access.restore", {

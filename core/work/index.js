@@ -111,6 +111,26 @@ export default {
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
         try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
+      // An upgraded box with agent project access from before reach became a kernel grant: ONE Needs-you item, once, so the person restores it (projects.access.restore, their own call). Nothing is
+      // granted by the upgrade itself, so until then every agent is denied.
+      const raiseRestore = async () => {
+        try {
+          const r = await ctx.call("projects.access.pending", {});
+          const n = r && r.data ? Number(r.data.pending) : 0;
+          if (!n) return;
+          const dbh = ctx.store.db;
+          dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
+          if (dbh.prepare("SELECT 1 FROM work_flags WHERE key = 'access-restore'").get()) return;
+          const k = kernelOf();
+          await k.ask.request(k.serviceChain("work"), {
+            title: "Restore who could see your projects", record: `vyre://${k.space}/project/access`,
+            doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
+            note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
+          });
+          dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
+        } catch { /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
+      };
+      const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
       // every Space has a General project, made with it
       void hubOf().generalProject().catch(() => {});
     }
