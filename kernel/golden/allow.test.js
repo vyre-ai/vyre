@@ -87,6 +87,7 @@ test("the gate lets a ruled presence removal through only for its tool, its pers
   const tool2 = mk("spaces.members.add", "deck", "presence_required");
   assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
   assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
+});
 
 test("every memory tool a model may call has a note, and a note is only for a tool the manifest still has", () => {
   const have = new Set(memoryAnyone());
