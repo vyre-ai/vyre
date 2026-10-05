@@ -536,3 +536,27 @@ test("agree op: a web-held key and an enclave entry without its esig are refused
   const w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
   await refused(step(w, { type: "agree", target: web.eid, agree: agreePoint() }, web, T0 + H), "web_key");
 });
+
+// The shared vector for every verifier (agree-vector.json): the exact op, its signed bytes and the state it makes.
+test("agree op vector: the signed bytes are vyre-chain-v1 and the canonical body, the signatures verify, and the state is the one the file says; the named refusals hold", async () => {
+  const fs = await import("node:fs");
+  const V = JSON.parse(fs.readFileSync(new URL("./agree-vector.json", import.meta.url), "utf8"));
+  assert.equal(new TextDecoder().decode(C.messageOf(V.genesis)), V.genesis_signed_bytes_utf8);
+  assert.equal(new TextDecoder().decode(C.messageOf(V.agree_op)), V.agree_op_signed_bytes_utf8);
+  const now = V.agree_op.ts;
+  const s0 = await C.verifyChain([V.genesis], { now });
+  assert.deepEqual(s0.entries, V.expect.entries_after_genesis);
+  const s1 = await C.verifyChain([V.genesis, V.agree_op], { now });
+  assert.deepEqual(s1.entries, V.expect.entries_after_agree);
+  assert.equal(s1.head, V.expect.head_after_agree);
+  assert.equal(s1.seq, V.expect.seq_after_agree);
+  assert.equal(await C.hashOf(V.agree_op), V.agree_op_head_hash);
+  // a second agree op for the same entry (made with the vector's own key) is refused
+  const seed = Buffer.from(V.signing_seed_hex, "hex");
+  const priv = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]), format: "der", type: "pkcs8" });
+  const eid = V.genesis.entry.eid;
+  const sign = m => crypto.sign(null, Buffer.from(m), priv);
+  await refused(C.applyOp(s1, await C.makeOp(s1, { type: "agree", target: eid, agree: V.agree_op.agree }, { by: eid, ts: now + 1000, sign }), { now: now + 1000 }), "exists");
+  await refused(C.applyOp(s0, await C.makeOp(s0, { type: "agree", target: "a".repeat(26), agree: V.agree_op.agree }, { by: eid, ts: now, sign }), { now }), "not_allowed");
+  await refused(C.applyOp(s0, await C.makeOp(s0, { type: "agree", target: eid, agree: Buffer.alloc(65, 1).toString("base64url") }, { by: eid, ts: now, sign }), { now }), "bad_entry");
+});
