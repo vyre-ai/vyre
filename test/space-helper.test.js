@@ -42,7 +42,14 @@ if (a[0] === "inspect") {
   process.exit(1);
 }
 if (a[0] === "events") { if (has("events")) { const lines = rd("events"); fs.rmSync(F + "/events"); out(lines); } process.exit(0); }
-if (a[0] === "pull") process.exit(has("pull-fails") ? 1 : 0);
+if (a[0] === "pull") {
+  const ref = a[a.length - 1];
+  // as the real docker: a reference that still holds a compose variable is not an image name
+  if (ref.includes("\${")) { process.stderr.write("invalid reference format\n"); process.exit(1); }
+  fs.appendFileSync(F + "/pulled", ref + "\n");
+  if (has("pull-fails")) { process.stderr.write("Error response from daemon: pull access denied for " + ref + "\n"); process.exit(1); }
+  process.exit(0);
+}
 if (a[0] === "image" && a[1] === "inspect") { const nm = a[a.length - 1].split(":")[0]; out(nm + "@sha256:" + require("crypto").createHash("sha256").update(rd("digest-salt", "x") + nm).digest("hex")); }
 if (a[0] === "ps") { const n = nameOf(a.join(" ")); out(n && has("running-" + n) ? "srv1" : ""); }
 if (a[0] === "network") {
@@ -430,7 +437,11 @@ test("space helper: install writes a path unit on the spool with the start limit
   assert.match(s, /StartLimitIntervalSec=0/); assert.match(s, /ExecStart=.*space-helper-run/);
   assert.equal(fs.readFileSync(path.join(r.SP, "private", "image"), "utf8").trim(), "sha256:" + "a".repeat(64));
   const images = fs.readFileSync(path.join(r.SP, "private", "images"), "utf8").trim().split("\n").map(l => l.split(" "));
-  assert.deepEqual(images.map(i => i[0]).sort(), ["postgres:16", "redis:7", "twentycrm/twenty:${TWENTY_TAG:-" + images.find(i => i[0].startsWith("twentycrm"))[0].match(/-(v[0-9.]+)\}/)[1] + "}"].sort());
+  const written = images.map(i => i[0]);
+  for (const want of [/postgres/, /redis/, /twentycrm\/twenty/]) assert.ok(written.some(w => want.test(w)), `${want} is recorded: ${written.join(", ")}`);
+  const pulled = fs.readFileSync(path.join(r.F, "pulled"), "utf8").trim().split("\n");
+  assert.ok(pulled.every(p => !p.includes("${")), `every pull names a real reference, never a compose template: ${pulled.join(", ")}`);
+  assert.ok(pulled.some(p => /^twentycrm\/twenty:v[0-9.]+(@sha256:[0-9a-f]{64})?$/.test(p)), `Twenty is pulled by its pinned tag and digest: ${pulled.join(", ")}`);
   for (const [, dg] of images) assert.match(dg, /^[a-z0-9\/]+@sha256:[0-9a-f]{64}$/, "every image is recorded by digest");
   assert.equal(fs.statSync(path.join(r.SP, "private")).mode & 0o777, 0o700);
   assert.match(r.calls(), /systemctl enable --now vyre-spaces\.path/);
@@ -603,7 +614,8 @@ test("space helper: the images are pulled and recorded by digest at install; a f
   const r = rig(t);
   r.flag("pull-fails");
   const bad = /** @type {any} */ (await r.run(["space-helper", "install"]));
-  assert.notEqual(bad.code, 0); assert.match(bad.out, /could not pull/);
+  assert.notEqual(bad.code, 0); assert.match(bad.out, /could not pull [a-z0-9]\S*: Error response from daemon: pull access denied/, "the real reference and the registry's reason");
+  assert.doesNotMatch(bad.out, /\$\{/, "never the raw compose template");
   fs.rmSync(path.join(r.F, "pull-fails"));
   await r.prime();
   r.ask("up harlow\n"); await r.helper();

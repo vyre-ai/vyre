@@ -48,6 +48,13 @@ test("twenty on a box that is too small refuses to start the Space, with the rea
   await assert.rejects(() => f(SP, { personal: true }), (e) => e.code === "unavailable" && /Docker is not installed/.test(e.message));
 });
 
+test("auto on a server that cannot run Twenty for a reason other than size refuses to start the Space, never SQLite quietly", async () => {
+  const home = tmp();
+  const f = createStoreFor({ home, mode: "auto", preflight: async () => ({ ok: false, reasons: ["Docker is not installed or this user cannot use it"], facts: {} }) });
+  await assert.rejects(() => f(SP, { personal: true }), (e) => e.code === "unavailable" && /Docker is not installed/.test(e.message));
+  assert.equal(fs.existsSync(path.join(kdir(home), "store.json")), false, "no choice is written: the next start tries Twenty again");
+});
+
 test("a Space made on Twenty never falls back to SQLite", async () => {
   const home = tmp(); fs.mkdirSync(kdir(home), { recursive: true });
   fs.writeFileSync(path.join(kdir(home), "store.json"), JSON.stringify({ kind: "twenty" }));
