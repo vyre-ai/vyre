@@ -28,6 +28,7 @@ import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
 import { backendFor } from "./storage/devices.js";
 import { createBridge } from "./storage/bridge.js";
+import { createMoves, holdDrive } from "./moves/carry.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -151,6 +152,8 @@ export async function createKernel(cfg) {
       // The pool behind this Space's Drive, for the Wink module only: it adds a node for every storage device a person paired (core/wink/storage/pool.js) and builds each node's backend with `backendFor`; `createBridge` serves
       // a drive on this computer to the Space's home. The Pool is what the Drive's chunks are placed on, so a module that holds it can place data: nothing else is given it.
       ...(m.name === "wink" && cfg.drive && cfg.drive.pool ? { storage: Object.freeze({ pool: cfg.drive.pool, backendFor, createBridge }) } : {}),
+      // A project's files move to another Space sealed (kernel/moves/carry.js): the work module asks, the bytes never leave the kernel, the answer is hashes.
+      ...(m.name === "work" ? { moves: Object.freeze({ carryFiles: (/** @type {any} */ from, /** @type {any} */ to, /** @type {any} */ q) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return createMoves({ spaceOf: (/** @type {string} */ id) => spaces.for(id) }).carryFiles(from, to, q); } }) } : {}),
       ...(m.name === "wink-storage" ? { storageIndex: Object.freeze({ record: recordStorageIndex, head: storageIndexHead }) } : {}),
       /** The runner's ports from the kernel's own pieces (see kernel/gateway/runner-ports.js): allowed, revocation and the device key are the kernel's. */
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
@@ -381,5 +384,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }
