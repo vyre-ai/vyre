@@ -1378,3 +1378,27 @@ test("typed code, release: a browser with no box pairs to the server by the code
   // a wrong code pairs nothing
   assert.equal((await joinWithCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", name: "x", waitMs: 500, pollMs: 50, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } })).ok, false);
 });
+
+test("the camera reader: wink.phone.open and an invitation's code carry the avatar bytes of the same code, and addThisDevice takes them in place of typing", async t => {
+  const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const { avatarBytesToCode } = await import("../relay/client/avatarcode.js");
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  const w = await world(t);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.equal(avatarBytesToCode(Buffer.from(open.avatar, "base64url")), open.code, "the avatar is the code, as a picture");
+  // the phone that decoded the ring pairs with it: the typed code's own pairing, the ack typed back
+  const phone = open;
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  let ack = "";
+  const joining = addThisDevice({ avatar: Buffer.from(phone.avatar, "base64url"), relay: w.status.url, key: { publicKey }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; } });
+  joining.catch(() => {});
+  await until(() => ack);
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: phone.code_offer, typed: ack })).data.ok, true);
+  assert.equal((await joining).paired, true);
+  // an invitation's code has its avatar too (a newer code replaces the one showing, so this comes after the pairing)
+  const carry = (await w.call("wink.code.carry", { link: "https://northwind.vyre.run/join/inv_abc.x" }, "module:spaces")).data;
+  assert.equal(avatarBytesToCode(Buffer.from(carry.avatar, "base64url")), carry.code);
+  await assert.rejects(() => addThisDevice({ avatar: [1, 2, 3, 4, 5, 6, 7, 8], relay: w.status.url, key: { publicKey }, crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "bad_code");
+});
