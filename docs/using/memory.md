@@ -157,6 +157,23 @@ which session it came out of, so a second roll reaches back through the first. `
 agent to use; `--session <id>` rolls a session other than the folder's newest; `--no-start` writes the seed to a file under `~/.vyre/rolls/` and
 says how to start it. A seed too long for a command line goes in that file, and the first message names it.
 
+## Three layers: identity, Spaces, projects
+
+Memory is kept in three layers, each with its own facts. A **project's** memory holds that project's facts, decisions and sessions. A **Space's** memory holds the Space's own. Your
+**identity** memory is yours alone: how you like to work, your writing style, how you run projects, your tech stack, what is true everywhere, plus a marker for every Space and
+project. Nothing learned in one Space or project is copied into another.
+
+Layers find each other by **markers**. A marker names a project's (or the Space's) memory with a short summary: counts of facts, decisions and sessions, and a few topics. It holds
+no content and grants nothing. `memory_markers` lists the markers you may see; `memory_follow` asks the memory behind one a question, with your own grants:
+
+```
+vyre call memory.markers '{}'
+vyre call memory.follow '{"marker":"Northwind","question":"what did we decide about the weekly invoice?"}'
+```
+
+You and your assistant follow every marker. An agent bound to a project reads only its own layer; a marker for a project it is not granted is only named ("exists"), with no
+summary, and following it is refused. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
+
 ## See what memory holds
 
 ```

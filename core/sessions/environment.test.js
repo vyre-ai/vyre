@@ -35,6 +35,8 @@ test("environment: says what Vyre is, the Space and the others, the records, app
   assert.match(e.text, /Outward acts[\s\S]*held as a task[\s\S]*propose/);
   assert.match(e.text, /memory_turn[\s\S]*word for word/);
   assert.match(e.text, /personal layer[\s\S]*one memory per project/);
+  assert.match(e.text, /three layers: the project, the Space, and the person's identity\. Yours is your own layer[\s\S]*memory_markers[\s\S]*memory_follow/);
+  assert.match(environmentOf({ ...base, agent: { name: "juno", kind: "assistant", projects: "*" } }).text, /the layer you read: their working, writing and project-management style/);
   assert.match(e.text, /Connected: gmail, slack \(failed\)/);
   assert.match(e.text, /You are kit, an agent\. You can work in these projects: northwind/);
   assert.match(e.text, /work\.tools[\s\S]*records\.types[\s\S]*work\.situation/);

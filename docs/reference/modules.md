@@ -49,7 +49,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 48 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
@@ -62,14 +62,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 17 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 22 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 9 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 39 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
@@ -84,7 +84,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 37 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 60 | 38 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
@@ -463,7 +463,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [46](tools.md#memory), 2 of them only for other modules
+- Tools: [48](tools.md#memory), 2 of them only for other modules
 - Emits: [15 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"sealDetect":true}`
@@ -607,7 +607,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#recall), 1 of them only for other modules
+- Tools: [17](tools.md#recall), 1 of them only for other modules
 - Emits: [5 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -693,7 +693,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [38](tools.md#sessions), 10 of them only for other modules
+- Tools: [39](tools.md#sessions), 11 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -865,8 +865,8 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [57](tools.md#threads), 20 of them only for other modules
-- Emits: [37 events](events.md#threads)
+- Tools: [60](tools.md#threads), 20 of them only for other modules
+- Emits: [38 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
