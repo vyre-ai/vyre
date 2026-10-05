@@ -197,6 +197,50 @@ export default {
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
       },
     });
+    // The SOURCE side of a move to a Space on another server (windows' remote form, team/0.3/DESIGN-project-move.md, "As built"): the spaces module serves the target home's pull from here, under the
+    // person's own chain in this Space, so a field hidden from them is never sent. Ops: plan (the plan the person approved, recomputed here: its hash must be the approved one), record, file, sealed.
+    // Each is refused unless this Space's log holds the move's own `project.move_started` for this move id, plan hash and project, by that person.
+    ctx.tool("work.move.serve", {
+      description: "Serve a move to another server from this Space: { space, person, op: plan | record | file | sealed, move_id, plan_hash, project, to_space, ... }. The spaces module's own; reads under the person's chain here.",
+      callers: ["module"],
+      input: obj({ space: { type: "string" }, person: { type: "string" }, op: { type: "string" }, move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" }, urn: { type: "string" }, path: { type: "string" }, offset: { type: "number" }, length: { type: "number" }, ref: { type: "string" } }, ["space", "person", "op", "move_id", "plan_hash", "project"]),
+      run: async (i, extra) => {
+        const k = kernelOf();
+        if (String((extra && extra.caller) || "") !== "module:spaces") throw fail("denied", "work.move.serve is the spaces module's");
+        if (String(i.space) !== k.space) throw fail("bad_input", "this is not the Space the move starts from");
+        const chain = k.chainForPerson(String(i.person));
+        // the move's own event, by this person, for exactly this plan and project
+        const evs = await k.events.read(chain, { type: "project.move_started" });
+        const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
+        if (!ev || ev.data.plan_hash !== i.plan_hash || ev.subject !== i.project || !String(ev.actor).startsWith(`person:${i.person}@`)) throw fail("not_found", "no such move");
+        const side = { space: k.space, records: k.records, drive: k.drive, chain, types: async () => [] };
+        const closure = async () => new Set(await linkedClosure(side, String(i.project)));
+        if (i.op === "plan") {
+          const plan = await planMove({ from: side, to: { space: String(i.to_space), remote: true }, project: String(i.project), client: i.client === "move" ? "move" : "leave" });
+          if (plan.hash !== i.plan_hash) throw fail("stale_plan", "the project is not what was approved");
+          if (plan.blockers.length) throw fail("blocked", plan.blockers.join("; "));
+          return { hash: plan.hash, ids: plan.ids, counts: plan.counts, files: plan.files.map((/** @type {string} */ p) => ({ path: p, size: plan.sizes[p] || 0, sha256: plan.hashes[p] || null })) };
+        }
+        if (i.op === "record") {
+          if (!(await closure()).has(String(i.urn))) throw fail("denied", "that record is not part of this project");
+          const [, , , type, id] = String(i.urn).split("/");
+          const r = await k.records.get(chain, type, id);
+          return r ? { urn: r.urn, version: r.version, data: r.data } : null;
+        }
+        if (i.op === "file") {
+          const root = await k.records.get(chain, "project", String(i.project).split("/").pop());
+          const folder = root && root.data.drive_path;
+          const p = String(i.path || "");
+          if (!folder || !p.startsWith(`${folder}/`) || p.split("/").some((/** @type {string} */ x) => x === ".." || x === ".")) throw fail("denied", "that file is not in this project's folder");
+          const got = await k.drive.get(chain, p);
+          const bytes = got instanceof Uint8Array ? got : (got.bytes || got.data);
+          const off = Math.max(0, Number(i.offset) || 0), len = Math.min(1 << 20, Math.max(0, Number(i.length) || (1 << 20)));
+          return { base64: Buffer.from(bytes.subarray(off, off + len)).toString("base64"), size: bytes.length };
+        }
+        if (i.op === "sealed") throw fail("unavailable", "a sealed value crosses servers through the sealing process, which this build does not offer yet; nothing was sent");
+        throw fail("bad_input", "op is plan, record, file or sealed");
+      },
+    });
     // The Work engine's session lines move with the project (core/work/memory/move.js). Each call refuses unless THIS Space's log holds the kernel's event for the move, the way the memory room's
     // do: `project.move_started` in the source, `project.move_in` in the target, for this move id, plan hash and project. The mover's own chain reads the log.
     const knowProof = async (/** @type {any} */ extra, /** @type {"project.move_started"|"project.move_in"} */ type, /** @type {any} */ i) => {

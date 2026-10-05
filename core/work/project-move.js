@@ -65,6 +65,7 @@ export async function planMove({ from, to, project, client = "leave" }) {
   let chatFiles = 0, chatBytes = 0; /** @type {string[]} */ let chatHashes = [];
   if (folder && from.drive && typeof from.drive.survey === "function") { try { const sv = await from.drive.survey(from.chain, folder); chatFiles = sv.files; chatBytes = sv.bytes; chatHashes = sv.hashes || []; } catch { /* not an owner or admin here: the plan shows only what the mover reads */ } }
   /** @type {string[]} */ const blockers = [];
+  if (chatFiles && to.remote === true) blockers.push("a project's chat folders cannot be carried to a Space on another server yet");
   if (chatFiles && to.remote !== true && !(typeof from.carry === "function" && to.drive)) blockers.push("this kernel cannot carry a chat's sealed files between Spaces yet");
   if (truncated || found.size >= MAX_RECORDS) blockers.push("the project has more linked records than one move carries");
   // a target on another server is not readable from here: it checks its own Drive and types when it receives the move (project-move-remote.js)
@@ -79,7 +80,8 @@ export async function planMove({ from, to, project, client = "leave" }) {
   const versions = [`${root.urn}@${root.version}`, ...[...found.values()].map(r => `${r.urn}@${r.version}`)].sort();
   // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
   const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install, hashes: Object.entries(hashes).sort(([a], [b]) => (a < b ? -1 : 1)), chat_hashes: chatHashes })).digest("base64url");
-  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hashes, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
+  /** @type {Record<string, number>} */ const sizes = Object.fromEntries(files.map(f => [f.path, f.size]));
+  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hashes, sizes, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
 /** A slug free in the target. @param {any} to @param {string} base */
