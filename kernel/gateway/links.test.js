@@ -150,3 +150,22 @@ test("links: a list link takes add and remove in an update: worked out against t
   const emptied = await rg.r.update(owner(), "matter", m.id, { parties: { remove: [{ urn: b.urn }, { urn: c.urn }] } }, 3);
   assert.deepEqual(emptied.data.parties, []);
 });
+
+test("chains: the person's assistant and a model slot act with the person's grants and no more, and the event says who really acted", async () => {
+  const rg = rig({ members: ["agent:assistant"] });
+  await rg.r.define(owner(), { add_types: [CONTACT] });
+  const asAssistant = chains.fromFacts({ kind: "agent_session", agent: "assistant", session: "s", thread: "t", person: OWNER, vouched: true, from_token: true });
+  const slot = chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s", model: "anthropic/claude-sonnet-5-5#1", vouched: true });
+  const a = await rg.r.create(asAssistant, "contact", { name: "By assistant" });
+  const b = await rg.r.create(slot, "contact", { name: "By slot" });
+  assert.equal((await rg.r.get(owner(), "contact", a.id)).data.name, "By assistant");
+  assert.equal((await rg.r.get(owner(), "contact", b.id)).data.name, "By slot");
+  const evA = rg.log.read({ type: "contact.created" }).find(e => e.subject === a.urn);
+  assert.equal(evA.actor, `person:${OWNER}@${SPACE}`);
+  assert.equal(evA.acted_via, "assistant");
+  // nobody without a grant gains one by wearing the assistant hop: another person's assistant has that person's nothing
+  const other = chains.fromFacts({ kind: "agent_session", agent: "assistant", session: "s", thread: "t", person: OWNER, vouched: true, from_token: true });
+  assert.equal(other.via, "assistant");
+  const agent = chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  await assert.rejects(() => rg.r.create(agent, "contact", { name: "Not allowed" }), { code: /not_allowed|not_found|denied/ });
+});
