@@ -20,6 +20,8 @@ async function world(t) {
   let asker = rig.person("per_alex");
   const kernel = Object.create(handle, {
     chainFor: { value: () => asker },
+    serviceChain: { value: (/** @type {string} */ name) => handle.serviceChain(name) },
+    chainForPerson: { value: (/** @type {any} */ p) => rig.withService(rig.person(p.id), "work") },
     chats: { value: rig.k.gateway.grants.chats },
     records: { value: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${rig.space}/x/rec_x`, data: {} })) }) },
   });
