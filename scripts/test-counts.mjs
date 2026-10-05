@@ -17,6 +17,11 @@ export const RECORD = path.join(REPO, "test", "test-counts.json");
 export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "deck/**/*.test.js", "modules/**/*.test.js", "local/*/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js"];
 
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
+/** The test files the globs name, as repo-relative paths: never one a dependency ships (apps/app/node_modules holds the tests of every package it installs, and they need modules this repo never installs). @param {string[]} [globs] */
+export function testFiles(globs = GLOBS) {
+  return globs.flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).sort();
+}
+
 export function declared(file) {
   const src = fs.readFileSync(path.join(REPO, file), "utf8");
   return (src.match(/^(test|it)\(/gm) || []).length;
@@ -70,7 +75,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
-    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort();
+    const all = testFiles(rest.length === 0 ? GLOBS : rest);
     // The boot tests run first, and always in shard 1, so a broken boot fails in minutes; the other files are sharded as before.
     const boot = BOOT_FIRST.filter(f => all.includes(f)), others = all.filter(f => !boot.includes(f));
     const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...others.filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1)];

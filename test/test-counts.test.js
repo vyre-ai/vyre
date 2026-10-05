@@ -2,7 +2,7 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { declared, problems } from "../scripts/test-counts.mjs";
+import { declared, problems, testFiles } from "../scripts/test-counts.mjs";
 
 const FILE = "test/test-counts.test.js";
 
@@ -25,4 +25,11 @@ test("a file that ran fewer tests than the last recorded count fails, and more p
 test("a recorded file that never ran fails a full run only", () => {
   assert.deepEqual(problems({}, { [FILE]: 3 }, { full: false }), []);
   assert.match(problems({}, { [FILE]: 3 }, { full: true })[0], /none ran/);
+});
+
+test("the suite never runs a dependency's own tests: apps/app/node_modules ships thousands, with modules this repo does not install", () => {
+  const files = testFiles();
+  assert.ok(files.includes(FILE), "this repo's own tests are found");
+  assert.deepEqual(files.filter(f => f.split("/").includes("node_modules")), []);
+  assert.deepEqual(testFiles(["apps/app/node_modules/**/*.test.js"]), []);
 });
