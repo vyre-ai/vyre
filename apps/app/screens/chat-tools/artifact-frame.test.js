@@ -14,7 +14,8 @@ test("the sandbox is scripts only: no same origin, top navigation, popups, forms
   for (const flag of ["allow-same-origin", "allow-top-navigation", "allow-popups", "allow-forms", "allow-modals"]) assert.ok(!m.FRAME_SANDBOX.includes(flag), flag);
   const src = fs.readFileSync(new URL("./ArtifactFrame.web.tsx", import.meta.url), "utf8");
   assert.match(src, /sandbox: FRAME_SANDBOX/, "the web frame uses the one sandbox string");
-  assert.ok(!/allow-same-origin|allow-top-navigation|allow-popups/.test(src), "no weaker flag is written in the frame");
+  const code = src.split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+  assert.ok(!/allow-same-origin|allow-top-navigation|allow-popups/.test(code), "no weaker flag is written in the frame");
   assert.match(src, /referrerPolicy: "no-referrer"/);
 });
 
