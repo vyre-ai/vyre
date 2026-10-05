@@ -31,8 +31,9 @@ async function space(id, root) {
   const g = k.gateway.grants;
   for (const [p, role] of [[BOB, "member"], [CAROL, "member"], [ADA, "admin"], [DAN, "member"]]) { const r = { person: p, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${id}/member/${p}`) }); }
   const bob = dev(BOB, "d-b"), carol = dev(CAROL, "d-c"), ada = dev(ADA, "d-a"), dan = dev(DAN, "d-d");
-  const chat = await g.chats.create(bob, { people: [CAROL] });
-  return { id, k, dir, pool, D: k.gateway.drive, g, owner, bob, carol, ada, dan, chat, folder: `Projects/p1/chat/${chat.id}` };
+  const chat = await g.chats.create(bob, { people: [CAROL, ADA] });   // the mover (Ada) is in this chat
+  const closed = await g.chats.create(bob, { people: [CAROL] });   // and not in this one
+  return { id, k, dir, pool, D: k.gateway.drive, g, owner, bob, carol, ada, dan, chat, folder: `Projects/p1/chat/${chat.id}`, closed: `Projects/p1/chat/${closed.id}` };
 }
 async function world(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-carry-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -55,10 +56,10 @@ test("a chat folder moves between two Spaces re-sealed: it arrives intact, the h
   const out = await moves.carryFiles(a.ada, b.ada, { entries, move_id: MOVE });
   assert.deepEqual(out, [{ dest, sha256: sha(text) }]);
   assert.ok(!JSON.stringify(out).includes("SECRET-CARRY-TEXT"), "no byte in the answer");
-  // the target's participants read it; the target's owner and admin, who are not in the chat, read nothing
+  // the target's participants read it; the target's owner and a plain member, who are not in the chat, read nothing
   assert.equal(new TextDecoder().decode(await b.D.get(b.bob, dest)), text);
   assert.equal(new TextDecoder().decode(await b.D.get(b.carol, dest)), text);
-  for (const [who, name] of [[b.owner, "owner"], [b.ada, "admin (the mover)"], [b.dan, "member"]]) await assert.rejects(() => b.D.get(who, dest), { code: "not_found" }, `${name} reads nothing in the target`);
+  for (const [who, name] of [[b.owner, "owner"], [b.dan, "member"]]) await assert.rejects(() => b.D.get(who, dest), { code: "not_found" }, `${name} reads nothing in the target`);
   // the source still has it (removal is the gateway's, after the target is verified)
   assert.equal(new TextDecoder().decode(await a.D.get(a.bob, `${a.folder}/note.txt`)), text);
   // sealed under each Space's own pool key: no chunk of A's pool is in B's, and neither folder holds the text
@@ -138,4 +139,18 @@ test("a Personal to My Cloud upgrade carries files too: space.upgrade_started fo
   // a changed file is still refused, and a path outside Projects is not a project's
   await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [{ ...entries[0], sha256: sha("other") }], upgrade_id: UP2 }), e => e.code === "conflict" || e.code === "not_found");
   await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [{ path: "General/x.txt", dest, sha256: sha(text), size: 1 }], upgrade_id: UP2 }), e => e.code === "bad_input");
+});
+
+test("a file of a chat the mover is not in is refused by name, in a move and in an upgrade: the project folder grant does not reach it", async t => {
+  const { a, b, moves, started } = await world(t);
+  const text = "closed chat ".repeat(8), UP = "55555555-5555-4555-8555-555555555555";
+  await a.D.put(a.bob, `${a.closed}/secret.txt`, enc(text)); await a.D.put(a.bob, `Projects/p1/plain.txt`, enc("plain"));
+  const closedE = { path: `${a.closed}/secret.txt`, dest: `${b.closed}/secret.txt`, sha256: sha(text), size: Buffer.byteLength(text) };
+  const plainE = { path: "Projects/p1/plain.txt", dest: "Projects/p1/plain.txt", sha256: sha("plain"), size: 5 };
+  started(a.ada, MOVE);
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [closedE], move_id: MOVE }), e => e.code === "not_found");
+  assert.deepEqual((await moves.carryFiles(a.ada, b.ada, { entries: [plainE], move_id: MOVE })).length, 1, "a project's own file still goes");
+  a.k.log.append(a.ada, { type: "space.upgrade_started", sv: 1, subject: `vyre://${A}/space/upgrade`, data: { upgrade_id: UP, to: B, plan_hash: "h".repeat(43) } });
+  await assert.rejects(moves.carryFiles(a.ada, b.ada, { entries: [closedE], upgrade_id: UP }), e => e.code === "not_found");
+  await assert.rejects(() => b.D.get(b.bob, closedE.dest), { code: "not_found" }, "nothing arrived");
 });
