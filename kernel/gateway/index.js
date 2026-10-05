@@ -155,8 +155,13 @@ export function createGateway(cfg) {
     let erased = 0, taskTextsCleared = 0;
     if (i.scrub_history !== false) {
       // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
-      if (plain.size && cfg.tasks) taskTextsCleared = (await cfg.tasks.scrubTexts({ values: [...plain], records: touched })).cleared;
-      if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
+      /** @type {{ ids: string[], fields: string[] } | null} */ let clearedTasks = null;
+      if (plain.size && cfg.tasks) { const r = await cfg.tasks.scrubTexts({ values: [...plain], records: touched }); taskTextsCleared = r.cleared; if (r.cleared && Array.isArray(r.ids) && Array.isArray(r.fields)) clearedTasks = { ids: r.ids, fields: r.fields }; }
+      if (typeof cfg.store.scrub === "function") {
+        // The words of a cleared task are on its record, and the record's change log keeps the earlier titles and notes: those entries lose the text fields too (only the tasks that were cleared).
+        if (clearedTasks) await cfg.store.scrub("task", clearedTasks.fields, new Set(clearedTasks.ids));
+        await cfg.store.scrub(i.type, [i.field]);
+      }
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {
         const d = e.data;

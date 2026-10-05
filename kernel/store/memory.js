@@ -321,11 +321,11 @@ export function createMemoryStore(cfg = {}) {
       if (cfg.persist && typeof cfg.persist.destroy === "function") cfg.persist.destroy(type, id);
     },
     /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
-    async scrub(type, fields) {
+    async scrub(type, fields, ids) {
       touch("scrub", [type, fields]);
       // the change log is read in slices (it may be backed by a table); a slice of the in-memory log holds the live entries, and a backed log is scrubbed by `cfg.persist.scrub` below
-      for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
-      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields);
+      for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type && (!ids || ids.has(e.id))) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
+      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields, ids);
     },
     features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; },
   };

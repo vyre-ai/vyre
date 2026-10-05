@@ -783,7 +783,7 @@ export function createTasks(cfg) {
         }
         cleared++;
       }
-      return { cleared };
+      return { cleared, ids: [...hit], fields: await (async () => { const defs = await recs.types(); return (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name); })() };
     },
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
     approved(/** @type {string} */ id, /** @type {string} */ payload_hash) {
