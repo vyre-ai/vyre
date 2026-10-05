@@ -54,7 +54,7 @@ export const CONCEPTS = [
   { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "apps/app/src/chat/ChatScreen.tsx" },
   { name: "computer", page: "using/agents.md#give-an-agent-a-computer", match: /\bcomputers?\b/i, code: "core/computers/index.js" },
   { name: "connector", page: "using/connectors.md", match: /\bconnectors?\b/i },
-  { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "deck/index.html" },
+  { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "apps/app/app/index.tsx" },
   { name: "enforcement", page: "using/learning.md#enforcement", match: /\benforce(?:s|d|ment)?\b/i, code: "core/harness/rules.js" },
   { name: "escalation", page: "using/learning.md#escalation", match: /\bescalat(?:e|es|ed|ion|ions)\b/i, code: "core/learn/index.js" },
   { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "core/events/index.js" },
