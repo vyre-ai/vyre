@@ -34,7 +34,7 @@ function brief(r) {
  * @param {any} kernel the kernel handle (records.get, records.linked, events.read when it has them) @param {any} chain the agent's chain @param {any} rec the focus record
  * @param {{ space: string, maxLinked?: number, maxComms?: number, maxHistory?: number }} o
  */
-export async function recordContext(kernel, chain, rec, { space, maxLinked = 8, maxComms = 6, maxHistory = 6 }) {
+export async function recordContext(kernel, chain, rec, { space, maxLinked = 8, maxComms = 6, maxHistory = 6, memory = null }) {
   /** @type {{ key: string, head: string, items: string[] }[]} */ const sections = [];
   /** @type {string[]} */ const quoted = [], urns = [];
   /** @type {any[]} */ const inputs = [];
@@ -79,5 +79,17 @@ export async function recordContext(kernel, chain, rec, { space, maxLinked = 8, 
     const items = [...evs].reverse().slice(0, maxHistory).map((/** @type {any} */ e) => `${when(e.time ?? e.received_at ?? e.at)} ${clean(e.type, 40)}`.trim());
     if (items.length) sections.push({ key: "history", head: "Lately:", items });
   } catch { /* history is a nicety; the rest stands */ }
+
+  // The project's memory: the Project record (this one, or the one it links to) names its memory scope, and what that room holds comes back as quoted data (it was written by people and models)
+  if (memory) {
+    const proj = rec.type === "project" ? rec : fwdRecs.find(r => r.type === "project");
+    const slug = proj && proj.data && typeof proj.data.slug === "string" ? proj.data.slug : null;
+    if (slug) {
+      try {
+        const text = await memory(slug);
+        if (text) { quoted.push(`memory of project ${slug}: ${clean(text, 1500)}`); sections.push({ key: "memory", head: "Project memory:", items: [`the memory room ${slug} is quoted below`] }); }
+      } catch { /* memory not running: the rest stands */ }
+    }
+  }
   return { sections, quoted, urns, inputs };
 }

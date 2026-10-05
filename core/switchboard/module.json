@@ -78,6 +78,11 @@
         "effect": "write"
       },
       {
+        "name": "threads.rename",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "threads.unarchive",
         "reach": "anyone",
         "effect": "write"
@@ -299,6 +304,7 @@
       "mode.changed",
       "thread.turn",
       "thread.state",
+      "thread.renamed",
       "thread.status",
       "thread.usage",
       "thread.steered",
