@@ -503,7 +503,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "members") {
     body = (
       <Page title="Who is in it?" sub="Invite people now, or later from Spaces and members. You are the owner.">
-        <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "alex" }} size={40} />} title={name || "alex"} sub="Owner, this device" />
+        <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "You" }} size={40} />} title={name || "You"} sub="Owner, this device" />
         {MOCK ? <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" /> : <Text tone="muted">Invites are made in Spaces and members, where you choose each person's role.</Text>}
         <View className="flex-row gap-s2">
           {MOCK ? <>
@@ -570,7 +570,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title="Join a space" sub="Scan the invite, or open its link.">
         <View className="w-ring self-center"><Ring seed={6} /></View>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="harlow.vyre.run/join/..." />
+        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="Paste the invite link" />
         {MOCK ? null : <TypeCode redeem={redeemInvite} onDone={(t) => { if (!t.invite) { setWrong("The code worked but gave no invitation."); return; } const l = t.invite.link; setLink(l); setBusy(true); setWrong(""); previewInvite(l).then((p) => { setInvite(inviteFrom(p, l)); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false)); }} />}
         <View className="flex-row gap-s2">
           <Button kind="primary" label="Open invite" disabled={!MOCK && (busy || !link.trim())} onPress={() => {

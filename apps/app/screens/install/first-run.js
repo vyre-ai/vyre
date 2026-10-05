@@ -126,8 +126,8 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
  * @typedef {{ title: string, line: string, action: string, route: string }} EmptyCopy
  */
 export const EMPTY = {
-  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/chats" },
-  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/new-chat" },
+  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/u/chats" },
+  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/u/chats/new" },
   agents: { title: "No assistants yet", line: "An assistant works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
 };
 
