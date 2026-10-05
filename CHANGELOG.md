@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the Planner page (/u/planner) follows the planner moving onto the Space's records (engine: work/web-planner f18a66cee). An item's id is its record's (a todo's, its task's), so each row has Open: a todo opens its task (/u/task/<id>), every other item its record (/u/record/<id>), and the page ends with where the planner's kinds live now, Reminders, Notes (Records) and Calendar. Deleting a todo says it was dropped (a skipped task does not come back); only reminders and notes can be restored for 30 days. The page still answers a ring with Done or Snooze and adds in words, through the same planner.* tools. The map retires this page once Records shows rings; until then it is the one place in the app a ring is answered. tests: screens/planner/planner.test.js (+1).
+
 - fix(app): the project Team tab keys on the Project record's own `slug` (core type `project`, work/project-hub) and no longer turns a title into a slug; a project with no slug says so (screens/teammates, 885 app tests).
 - feat(app): the rest of the chat tools (apps/app/screens/chat-tools): the watcher card (watchers.card, create, pause, resume; turn on carries the card's hash and a moved hash is refused), the spend-capped card (spend.raise), the assistant welcome (assistant.welcome), and source calls for threads.edit, term.close, suggest.query and picked, gate.get, files.recent, recall.thread, recall.index, recall.related and threads.watch (7 tests).
 - feat(app): the artifact page at /u/shared/[id] (the Deck's /a/<id>?v=N): the version in a sealed frame on the web, its versions, what happened to it (artifacts.activity.log) and a public link; the Shared list opens it.
