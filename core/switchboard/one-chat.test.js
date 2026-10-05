@@ -481,6 +481,13 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
   const inside = await d.registry.call("term.open", { session: thread, surface: "deck:inside" }, "cli");
   assert.ok(!inside.error || !["denied", "not_found"].includes(inside.error.code), `the person in the chat is not refused: ${JSON.stringify(inside.error).slice(0, 200)}`);
   if (inside.data && inside.data.term) await d.registry.call("term.close", { term: inside.data.term }, "cli");
+  // threads.bind hands out a key that speaks as the session: a Vyre run (stopped too, in a chat the caller is not in) binds only from its own process; a terminal session Vyre does not run still binds
+  await d.registry.call("threads.stop", { thread }, "cli");
+  await until(async () => ["stopped", "failed", "paused", "finished"].includes((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.status), "the run to stop");
+  const foreign = await d.registry.call("threads.bind", { session: thread, pid: process.pid }, "harness");
+  assert.ok(foreign.error && foreign.error.code === "denied", `a stopped run is not bindable from another process: ${JSON.stringify(foreign.error || foreign.data).slice(0, 200)}`);
+  const terminal = await d.registry.call("threads.bind", { session: "term-session-not-run-by-vyre", pid: process.pid }, "harness");
+  assert.ok(!terminal.error || terminal.error.code !== "denied", `a terminal session still binds: ${JSON.stringify(terminal.error).slice(0, 200)}`);
 });
 
 test("a chat's history leaves one device and comes back on another: its logged frames, its runs (stopped) and their events; a chat that already has its frames there is left as it is", { timeout: 150_000 }, async t => {

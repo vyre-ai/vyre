@@ -4653,7 +4653,8 @@ export default {
         const rec = sb.record(thread);
         const own = rec ? /** @type {any} */ (sb.db.prepare("SELECT pid FROM threads_runs WHERE id = ?").get(thread)) : null;
         const itsOwn = Boolean(own && own.pid && sb.sessions.claudeOf(Number(i.pid)) === Number(own.pid)); // the thread's own claude process binding itself
-        if (rec && sb.live.has(thread) && (meta || {}).thread !== thread && !itsOwn) throw Object.assign(new Error("that session is a live Vyre thread; it is bound only through its own socket"), { code: "denied" });
+        // a session Vyre runs (live or stopped, in any chat) is bound only by its own claude process: a key for it would speak as that session. A session Vyre does not run (a terminal's) binds as before.
+        if (rec && !itsOwn && (!sb.live.has(thread) || (meta || {}).thread !== thread)) throw Object.assign(new Error("that session is a Vyre thread; it is bound only by its own process"), { code: "denied" });
         return sb.sessions.bind(i.session, i.pid);
       }, ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
