@@ -580,6 +580,9 @@ const inRepo = (dir, paths) => {
   return d.startsWith(path.dirname(CORE_DIR) + path.sep) && !(home && d.startsWith(home));
 };
 
+/** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
+const IN_SPACE = Symbol("vyre.in_space");
+
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
@@ -784,11 +787,39 @@ export class Registry {
     }
   }
 
+  /**
+   * `ctx.kernel.for(space).call(tool, input, chain)`: run a module tool in a hosted Space's own instance, under the chain the caller holds THERE (`kernel.chainIn(space, meta)`), after that
+   * Space's own `authorize` allows the action the tool declares (`crossSpace` in its manifest entry, a kernel action name). Modules only: the handle is a first-party module's ctx, never on the
+   * wire. A tool that declares no `crossSpace` is refused, and the other Space's store is never read from here: the tool runs, routed by `meta.in_space`, in that Space's instance.
+   * @param {any} m the calling module's manifest @param {any} h its kernel handle
+   */
+  withCrossSpace(m, h) {
+    const reg = this;
+    const forSpace = (/** @type {string} */ id) => {
+      const base = h.for(id);
+      if (!base || base.hosted !== true || !base.gateway) return base; // a remote Space is reached by its own client, not by a module tool here
+      return Object.freeze({ ...base, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
+    };
+    return Object.freeze(Object.create(h, { for: { value: forSpace, enumerable: true } }));
+  }
+
+  /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain */
+  async callInSpace(m, space, base, tool, input, chain) {
+    const def = this.tools.get(tool);
+    if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (!def.crossSpace) return { error: { code: "not_declared", message: `${tool} does not declare that it may run in another Space` } };
+    if (!chain || typeof chain !== "object" || !Array.isArray(chain.hops) || chain.space !== space) return { error: { code: "denied", message: "the chain is not for that Space" } };
+    let verdict = null;
+    try { verdict = await base.gateway.authorize({ chain, action: def.crossSpace, resource: `vyre://${space}/tool/${tool}` }); } catch { verdict = null; }
+    if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space" } };
+    return this.call(tool, input, `module:${m.name}`, { [IN_SPACE]: { space, chain } });
+  }
+
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
     const { db, events, config, log, paths } = this.deps;
     // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
-    const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.deps.kernelFor(m) : undefined; })();
+    const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.withCrossSpace(m, this.deps.kernelFor(m)) : undefined; })();
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
     const entries = new Map(toolEntries(m).map(e => [e.name, e]));
     const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
@@ -1152,7 +1183,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
@@ -1219,6 +1250,10 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
+    // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
+    // make them: whatever a client or a module sends under those names is dropped here.
+    delete meta.in_space; delete meta.in_space_chain;
+    { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
