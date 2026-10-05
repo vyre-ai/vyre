@@ -86,7 +86,7 @@ test("box: /work is closed to every uid but vyre and the shared group (2770), in
 });
 
 test("box: every base image a Dockerfile builds from is pinned by digest (FROM and COPY --from), so a source build cannot be handed other bytes", () => {
-  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile"]) {
+  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile", "relay/Dockerfile"]) {
     const text = read(f);
     const refs = [...text.matchAll(/^FROM\s+(\S+)/gm)].map(m => m[1]).concat([...text.matchAll(/^COPY\s+--from=(\S+)/gm)].map(m => m[1]));
     assert.ok(refs.length > 0, `${f} has a FROM`);
