@@ -1334,11 +1334,11 @@ test("spaces.list tier: a space on this computer is cloud when this machine is a
 test("spaces.tier: the home's tier from the machine role, the Cloud spaces the person is in, and an unknown space refused", async t => {
   const w = world(t);
   const dev = await device(t);
-  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [], time_zone: null }, "a device with no space: Basic, no Cloud spaces, no zone");
+  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [], time_zone: null, personal_host: null }, "a device with no space: Basic, no Cloud spaces, no zone");
   await dev.ok("spaces.identity.create", { name: "alex" });
   const systemZoneNow = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; // no device zone sent: the creating machine's own
   const s = await dev.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
-  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [], time_zone: systemZoneNow }, "a space on a device is Basic");
+  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [], time_zone: systemZoneNow, personal_host: null }, "a space on a device is Basic");
   assert.equal((await dev.call("spaces.tier", { space: "spc_zzzzzzzzzzzz" }, "module:planner")).error?.code, "not_found");
   const srv = await device(t, { machine: "server" });
   await srv.ok("spaces.identity.create", { name: "sam" });
@@ -1362,5 +1362,22 @@ test("a space's home time zone: the creator's device zone at creation, an owner 
   assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles");
   assert.equal((await d.call("spaces.time-zone.set", { space: s.space, zone: "Mars/Olympus" })).error?.code, "bad_input");
   assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles", "a refused zone changes nothing");
+  void w;
+});
+
+test("a fresh home: the person's own space is listed with a label, a display name and a tier, and spaces.tier names where personal items live", async t => {
+  const w = world(t);
+  const HOME = "spc_hhhhhhhhhhhh";
+  /** @type {any} */ let ownerId = null;
+  const kernelFor = () => ({ space: HOME, get owner() { return ownerId; }, membership: async () => ({ member: true, role: "owner" }), for: () => { throw new Error("not here"); } });
+  for (const [machine, tier, display, host] of [[undefined, "basic", "Personal", null], ["server", "cloud", "My Cloud", HOME]]) {
+    const d = await device(t, { kernelFor, ...(machine ? { machine } : {}) });
+    ownerId = (await d.ok("spaces.identity.create", { name: machine ? "sam" : "alex" })).id;
+    const row = (await d.ok("spaces.list")).find(x => x.id === HOME);
+    assert.ok(row, `${machine || "device"}: the home space is listed`);
+    assert.deepEqual([row.label, row.displayName, row.tier, row.role], ["personal", display, tier, "owner"]);
+    const r = await d.ok("spaces.tier", {}, "module:planner");
+    assert.deepEqual([r.tier, r.personal_host], [tier, host]);
+  }
   void w;
 });

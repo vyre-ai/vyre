@@ -90,6 +90,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.personal-host.set", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.get", "effect": "read",
     "reach": "person"
    },

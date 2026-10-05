@@ -1264,6 +1264,8 @@ export default {
       const rows = await listSpacesRaw(i0, meta0);
       return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id) })));
     };
+    /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
+    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
@@ -1273,7 +1275,7 @@ export default {
           let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames().label : null, displayName: id === K.space ? homeNames().displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
         return mine;
       }
@@ -1288,6 +1290,14 @@ export default {
         if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ tier: tierOf(row.home), ...(row.home && row.home.kind === "server" && K && K.spaces && K.spaces.hosts(row.id) === true && !(await serverOf(row.id)) ? { hostedHere: true, note: "hosted on this device, home says server" } : {}), id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
+      // the person's own (home) space, when this home has a kernel and they are its person: it is not a row of the module's table, so it is added here, always with a name and a tier
+      try {
+        if (K && typeof K.space === "string" && K.owner && !out.some(x => x.id === K.space)) {
+          const sId = /** @type {string} */ (me().id);
+          const m = typeof K.membership === "function" ? await K.membership(sId, K.space).catch(() => null) : null;
+          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+        }
+      } catch { /* no home row */ }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
       try {
         for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'member-of/%'").all())) {
@@ -1302,17 +1312,34 @@ export default {
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
 
+    /**
+     * Which Cloud space keeps this person's encrypted personal items and identity home: their own server's home space when this machine is a server (My Cloud), else the Cloud space they chose
+     * (`spaces.personal-host.set`) while they are still in it, else the earliest one they joined, else null. @param {{ id: string }[]} cloud the Cloud rows, earliest first
+     */
+    const personalHostOf = async (cloud) => {
+      if (config.isServer(ctx.config && ctx.config.machine) && K && typeof K.space === "string") return K.space;
+      const chosen = await kv.get("personal-host");
+      if (chosen && typeof chosen.space === "string" && cloud.some(c => c.id === chosen.space)) return chosen.space;
+      return cloud.length ? cloud[0].id : null;
+    };
+    tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
+      let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
+      if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");
+      await kv.put("personal-host", { space: i.space });
+      return { personal_host: i.space };
+    });
     tool("spaces.tier", "Which tier a space is on (basic or cloud), and the Cloud spaces this person is in. For a module that must refuse on a Basic personal space (Planner, tasks). With no space named, the home's own.",
       obj({ space: str }), async (/** @type {any} */ i, /** @type {any} */ meta) => {
         /** @type {any[]} */ let rows = [];
         try { rows = await listSpaces({}, meta); } catch { rows = []; }
         const cloud = rows.filter(r => r.tier === "cloud").map(r => ({ id: r.id, name: r.name ?? null, label: r.label ?? null }));
+        const personalHost = await personalHostOf(cloud);
         if (i.space && !(K && i.space === K.space)) {
           const r = rows.find(x => x.id === i.space);
           if (!r) throw refuse("No such space here.", "not_found");
-          return { tier: r.tier, cloud, time_zone: r.time_zone ?? null };
+          return { tier: r.tier, cloud, time_zone: r.time_zone ?? null, personal_host: personalHost };
         }
-        return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null };
+        return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null, personal_host: personalHost };
       }, { internal: true });
 
     tool("spaces.time-zone.set", "As an owner or admin: set a space's home time zone (an IANA zone such as America/Los_Angeles). Tasks, Flow schedules and business hours read it.", obj({ space: str, zone: str }, ["space", "zone"]), async (i, meta) => {
