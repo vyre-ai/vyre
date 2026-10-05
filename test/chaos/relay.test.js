@@ -87,7 +87,7 @@ async function world(t) {
   chaosModule(root);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url: r.url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const first = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
   assert.ok(first.data, JSON.stringify(first.error));

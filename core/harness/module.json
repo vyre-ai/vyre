@@ -2,8 +2,8 @@
   "name": "harness",
   "version": "0.1.0",
   "roles": ["box", "local"],
-  "does": { "tools": [{ "name": "harness.brief", "effect": "write", "reach": "anyone", "projectArg": ["project", "projects"], "cwdArg": "cwd" }, { "name": "harness.enrich", "effect": "write", "reach": "anyone", "projectArg": "projects", "cwdArg": "cwd" }, { "name": "harness.rules", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.learn", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.stop", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.touched", "effect": "read", "reach": "anyone" }] },
-  "watches": { "emits": ["thread.started", "file.touched", "turn.completed", "tool.held"] },
+  "does": { "tools": [{ "name": "harness.brief", "effect": "write", "reach": "anyone", "projectArg": ["project", "projects"], "cwdArg": "cwd" }, { "name": "harness.enrich", "effect": "write", "reach": "anyone", "projectArg": "projects", "cwdArg": "cwd" }, { "name": "harness.rules", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.learn", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.stop", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.end", "effect": "write", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.touched", "effect": "read", "reach": "anyone" }] },
+  "watches": { "emits": ["thread.started", "thread.stopped", "file.touched", "turn.completed", "tool.held"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}
