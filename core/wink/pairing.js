@@ -31,6 +31,7 @@ import { verifyDevice } from "./node/peer-wire.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
+import { serverTools } from "./server-tools.js";
 import { directKey } from "./directkey.js";
 import { deviceKey } from "./devicekey.js";
 import { presenceKeyId } from "../../lib/presence-key-id.js";
@@ -489,7 +490,7 @@ export function createPairing(o) {
   /** The timer that applies pending releases; the module's stop() ends it. */
   const startRetries = () => { if (retryTimer || !retryEvery) return; retryTimer = setInterval(() => { void retryReleases().catch(() => {}); }, retryEvery); if (retryTimer.unref) retryTimer.unref(); };
   let stopped = false;
-  const stop = () => { stopped = true; if (retryTimer) clearInterval(retryTimer); retryTimer = null; if (links) { try { links.close(); } catch { /* closed */ } links = null; } };
+  const stop = () => { stopped = true; if (serverToolsHandle) { try { serverToolsHandle.stop(); } catch { /* closed */ } serverToolsHandle = null; } if (retryTimer) clearInterval(retryTimer); retryTimer = null; if (links) { try { links.close(); } catch { /* closed */ } links = null; } };
 
   /** Keeps what the relay answered with, so a refusal can be told from a missing connection. */
   const watchFetch = () => {
@@ -640,6 +641,7 @@ export function createPairing(o) {
   /** The waiting redeemer of an unconfirmed pairing is `web:<id>` at the relay; it is the device `device:<id>` it will become, so wink compares and records that. @param {string} c */
   const canonDevice = c => (/^web:[a-z2-7]{16}$/.test(c) ? `device:${c.slice(4)}` : c);
 
+  /** @type {{ stop(): void } | null} */ let serverToolsHandle = null;
   /** Registers this box's own tools. */
   function tools() {
     const { owner } = o;
@@ -1257,6 +1259,8 @@ export function createPairing(o) {
         } catch (e) { return { reachable: false, code: String((/** @type {any} */ (e)).remote || (/** @type {any} */ (e)).code || "refused"), message: String((/** @type {Error} */ (e)).message || "").slice(0, 200) }; }
       },
     });
+    // The paired server from this computer (home, call, health, events), and the one tool a server adds for its owner's devices (wink.events.read): core/wink/server-tools.js
+    serverToolsHandle = serverTools({ ctx, owner, identity: () => o.identity(), serverLinks, homeServerId, devices });
     ctx.tool("wink.server.owner", {
       internal: true,
       description: "For the spaces module: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
