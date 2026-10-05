@@ -32,6 +32,7 @@ import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, makeWake, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
+import { rekeyLegacy } from "./rekey.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
   headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
@@ -341,6 +342,16 @@ export default {
       .then(r => { if (r && r.error && r.error.code !== "no_such_tool") ctx.log?.(`team: no team-member record for ${tm.agent} (${r.error.message})`); }, () => {});
     /** The short name for a project id, or the id itself when Records cannot say: for words a person reads and for the parts that still take a short name. @param {string} id */
     const slugOf = async id => (await refOf(id).catch(() => null))?.slug || id;
+
+    // Rows an earlier build keyed by the project's short name are re-keyed to its record id once Records can say which. Records may not be up yet at start, so a name it could not place is asked
+    // again a few times; what it still cannot place is left alone (and named in the log), never dropped.
+    const rekey = async () => {
+      for (let attempt = 0; attempt < 12 && !stopped; attempt++) {
+        const r = await rekeyLegacy({ db, refOf, log: attempt === 11 ? (m => ctx.log?.(m)) : undefined });
+        if (!r.unknown.length) return;
+        await new Promise(res => setTimeout(res, 5_000));
+      }
+    };
 
     // ---------------------------------------------------------------- caller and project
 
@@ -1529,6 +1540,7 @@ export default {
       }
       for (const a of agents) pump(a);
     };
+    track(rekey());
     track(reconcile());
 
     return { async stop() {
