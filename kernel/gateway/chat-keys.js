@@ -49,6 +49,17 @@ export function createChatLease(cfg) {
       cfg.keys.hold(k);
       return { chat: a.chat, epoch: k.epoch };
     },
+    /**
+     * A chat the server started itself (CLI, a Flow): the server made the ring and holds its keys as the session lease, the same lifetime as a lent key (memory only, dropped by a lock or a rotation).
+     * Only the kernel's own module code reaches this, never a tool. @param {any} chain @param {import("../../lib/chat-keys.js").Keys} keys
+     */
+    adopt(chain, keys) {
+      own(chain);
+      cfg.grants.chats.read(chain, keys.id);
+      if (keys.epoch < cfg.grants.chats.epoch(keys.id)) { keys.lock(); throw new KernelError("bad_input", "that key is older than the chat's current one"); }
+      cfg.keys.hold(keys);
+      return { chat: keys.id, epoch: keys.epoch };
+    },
     /** @param {any} chain @param {string} chat */
     lock(chain, chat) { own(chain); cfg.grants.chats.read(chain, chat); cfg.keys.drop(chat); return { locked: true }; },
     /** Whether this chat's key is held here and current. @param {string} chat */
