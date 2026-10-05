@@ -1,13 +1,13 @@
 // @ts-check
 // A turn's links: the files, commits and urls it touched, found from the transcript's tool calls and the turn's own words.
 
-import "../../scripts/mac-test-guard.mjs";
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tempHome } from "../../test/helpers.js";
-import { read, fullTurns, CLIP } from "./index.js";
+import { tempHome } from "../../../../test/helpers.js";
+import { read, fullTurns, CLIP } from "./transcripts.js";
 import { toolLinks, textLinks, commitLinks, cleanLinks, pathRef, LINKS_PER_TURN } from "./links.js";
 
 const CWD = "/work/app";

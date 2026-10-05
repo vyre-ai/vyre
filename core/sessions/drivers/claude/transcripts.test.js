@@ -2,14 +2,14 @@
 // The transcripts adapter: finding transcript files as Claude Code lays them out, and reading
 // each into turns without ever throwing over a bad file or a bad line.
 
-import "../../scripts/mac-test-guard.mjs";
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { list, read, turnOf, CLIP } from "./index.js";
-import { SESSIONS, writeTranscripts, expected } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { list, read, turnOf, CLIP } from "./transcripts.js";
+import { SESSIONS, writeTranscripts, expected } from "../../../../test/fixtures/corpus.js";
+import { tempHome } from "../../../../test/helpers.js";
 
 const user = (text, extra = {}) => ({ type: "user", timestamp: "2026-09-01T09:00:00Z", cwd: "/home/alex/Work/harlow-site", message: { role: "user", content: text }, ...extra });
 const claude = (text, extra = {}) => ({ type: "assistant", timestamp: "2026-09-01T09:05:00Z", message: { role: "assistant", content: [{ type: "text", text }] }, ...extra });

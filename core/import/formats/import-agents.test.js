@@ -9,7 +9,7 @@ import path from "node:path";
 import { open, migrate } from "../../store/index.js";
 import { tempHome } from "../../../test/helpers.js";
 import mod from "../index.js";
-import { hashOf } from "./gemini.js";
+import { hashOf } from "../../sessions/drivers/gemini/import.js";
 
 test("import: Codex and Gemini CLI appear as sources, plan by folder, and send converted files", async t => {
   const root = tempHome(t);

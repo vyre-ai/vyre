@@ -14,8 +14,8 @@ import { rules } from "./rules.js";
 import { agentName, modelKey } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { withoutSeed } from "../../lib/seed.js";
-import { meterOf, wantsMillion, warning } from "./meter.js";
-import { claudeHome, transcriptFolders } from "../config/index.js";
+import { warning } from "./meter.js";
+import { isOwnTranscript, transcriptRoots, windowShare } from "../sessions/drivers/claude/terminal.js";
 
 const MIGRATIONS = [
   `CREATE TABLE harness_files (
@@ -203,9 +203,8 @@ export default {
     const warned = new Set();
     const rollNotice = async (/** @type {any} */ { session, transcript, agent: named }, /** @type {any} */ { caller, ...meta } = {}) => {
       try {
-        if (!session || typeof transcript !== "string" || !transcript.endsWith(".jsonl") || agentOf(named, caller) || (typeof meta.thread === "string" && meta.thread)) return null;
-        if (path.basename(transcript, ".jsonl") !== String(session)) return null;
-        const folders = transcriptFolders(ctx.config.transcripts || [], ctx.paths?.root || "");
+        if (!session || !isOwnTranscript(transcript, session) || agentOf(named, caller) || (typeof meta.thread === "string" && meta.thread)) return null;
+        const folders = transcriptRoots(ctx.config.transcripts, ctx.paths?.root || "");
         // Inside a transcript folder, by real path: a symlink out of one is outside it.
         const real = fs.realpathSync(path.resolve(transcript));
         const inside = (/** @type {string} */ dir) => { try { const r = path.relative(fs.realpathSync(dir), real); return Boolean(r) && !r.startsWith("..") && !path.isAbsolute(r); } catch { return false; } };
@@ -214,7 +213,7 @@ export default {
         if (on && on.value === false) return null;
         const at = await ask("settings.get", { key: "sessions.rollover_at" });
         const line = (at && typeof at.value === "number" ? at.value : 60) / 100;
-        const m = meterOf(transcript, { million: wantsMillion(claudeHome(ctx.paths?.root)) });
+        const m = windowShare(transcript, ctx.paths?.root);
         if (!m) return null;
         const key = String(session);
         if (m.share < line - 0.1) { warned.delete(key); return null; }
