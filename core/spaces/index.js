@@ -21,6 +21,7 @@ import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
+import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -1426,10 +1427,17 @@ export default {
       return { chain, moves: h.gateway.moves };
     };
     const asRefusal = (/** @type {any} */ e) => { const c = String((e && e.code) || ""); if (/^(not_found|invalid|bad_input|chain_not_person|rate_limited|unavailable|not_allowed|needs_presence)$/.test(c)) return refuse(String(e.message || "That move is refused."), c); throw plainKernelError(e); };
-    tool("spaces.moves.evidence", "In the SOURCE home: the signed evidence that you started a move of a project out of a space here, for the target to check. { evidence, pub, sig }; the Space's own key signs only what its own log says.", obj({ space: str, move_id: str }, ["space", "move_id"]), async (i, meta) => {
+    tool("spaces.moves.evidence", "In the SOURCE home: the signed evidence that you started a move of a project out of a space here, for the target to check. { evidence, pub, sig }; the Space's own key signs only what its own log says. `toName` and `pin` say which published space the move goes to: this home resolves that space's key now and holds the right to pull for that space only.", obj({ space: str, move_id: str, toName: str, pin: str }, ["space", "move_id", "toName", "pin"]), async (i, meta) => {
       const { chain, moves } = await moveSide(i.space, meta);
       let evidence; try { evidence = moves.evidenceOf(chain, { move_id: i.move_id }); } catch (e) { throw asRefusal(e); }
-      return { evidence, ...(await signMove(String(i.space), MOVE_EVIDENCE_TAG, evidence)) };
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the target space's list.", "bad_input");
+      const toKey = await publishedKeyOf(evidence.to, { name: String(i.toName), pin });
+      if (!toKey) throw refuse("The target space has no published key, so a move to it cannot be checked. Ask its owner to publish it.", "not_found");
+      const signed = await signMove(String(i.space), MOVE_EVIDENCE_TAG, evidence);
+      // this home may now serve a pull for this move to the target space whose key it just resolved, for as long as a pull may live
+      await kv.put(`move-pull/${evidence.move_id}`, { from: String(i.space), to: evidence.to, to_pub: toKey, person: evidence.person, plan_hash: evidence.plan_hash, project: evidence.project, expires: evidence.at + SESSION_CAP_MS });
+      return { evidence, ...signed };
     });
     tool("spaces.moves.receive", "In the TARGET home: receive a project moved from a space on another home. `bundle` is the signed evidence; `fromName` and `pin` say which published space it names, the way an invite does.", obj({ space: str, from: str, project: str, plan_hash: str, move_id: str, bundle: { type: "object" }, fromName: str, pin: str }, ["space", "from", "project", "plan_hash", "move_id", "bundle", "fromName", "pin"]), async (i, meta) => {
       const { chain, moves } = await moveSide(i.space, meta);
@@ -1457,6 +1465,56 @@ export default {
       catch (e) { throw asRefusal(e); }
       finally { moveContext.delete(key); }
     });
+    /** @type {Map<string, any>} one pull source per hosted Space this home serves, so a stream's nonces and sessions persist between its requests */ const pullSources = new Map();
+    const pullSourceOf = (/** @type {string} */ space) => {
+      let src = pullSources.get(space);
+      if (!src) {
+        const serve = async (/** @type {any} */ input) => { const r = await ctx.call("work.move.serve", { space, ...input }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "the move could not be served")), { code: String(r.error.code || "unavailable") }); return r.data; };
+        src = createPullSource({
+          space,
+          grantOf: async (/** @type {string} */ moveId) => { const g = await kv.get(`move-pull/${moveId}`); return g && g.from === space ? g : null; },
+          sign: async (/** @type {string} */ m) => { const k = files.keys.load(space); if (!k) throw refuse("This home holds no key for that space.", "unavailable"); return b64u(await k.sign(Buffer.from(m))); },
+          verify: async (/** @type {string} */ pub, /** @type {string} */ m, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(m), sig); } catch { return false; } },
+          planFor: (g) => serve({ op: "plan", person: g.person, project: g.project }),
+          readRecord: (g, urn) => serve({ op: "record", person: g.person, urn }),
+          readFile: async (g, path, offset, length) => Buffer.from(String((await serve({ op: "file", person: g.person, path, offset, length })).base64 || ""), "base64"),
+          sealedFor: (g, ref) => serve({ op: "sealed", person: g.person, ref }),
+          log: (m) => ctx.log.info(m),
+        });
+        pullSources.set(space, src);
+      }
+      return src;
+    };
+    tool("spaces.moves.pull", "In the SOURCE home: answer one request of a target home's pull (hello, auth, plan, records, file, sealed or done). For the daemon's peer door only: the target proves itself with its Space key, and nothing is served outside the plan this home recomputes under the mover. See lib/spaces/move-pull.js.", obj({ space: str, request: { type: "object" } }, ["space", "request"]), async (i, meta) => {
+      onlyModules(meta, ["vyred"]);
+      const space = String(i.space);
+      if (!SPACE_ID_RE.test(space) || !K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      const r = i.request;
+      const t = r && typeof r.t === "string" ? r.t : "";
+      if (!["hello", "auth", "plan", "records", "file", "sealed", "done"].includes(t)) throw refuse("That is not a request this home answers.", "bad_input");
+      try { return await pullSourceOf(space)[/** @type {"hello"} */ (t)](r); }
+      catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (/^(not_found|denied|bad_input|rate_limited|plan_changed|too_large|unavailable)$/.test(c)) throw refuse(String(/** @type {Error} */ (e).message), c); throw plainKernelError(e); }
+    }, { internal: true });
+    // the TARGET side of the pull: the driver (the Flow's copy) checks the source before it signs anything, then asks this home to sign with the target Space's key. Neither tool takes a key or returns one.
+    tool("spaces.moves.pull-check-source", "In the TARGET home: is this signature the SOURCE space's, by its published key (`fromName`, `pin`)? The driver asks before it signs anything.", obj({ from: str, to: str, move_id: str, nonce: str, src_sig: str, fromName: str, pin: str }, ["from", "to", "move_id", "nonce", "src_sig", "fromName", "pin"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      const key = await publishedKeyOf(String(i.from), { name: String(i.fromName), pin });
+      return { ok: Boolean(key) && await C.verifyWith(key, Buffer.from(srcMessage(i.from, i.to, i.move_id, i.nonce)), String(i.src_sig)).catch(() => false) };
+    }, { internal: true });
+    tool("spaces.moves.pull-sign", "In the TARGET home: sign the pull proof for a move this space received, bound to both spaces, the move and the source's nonce, with this space's key. Only for a move this space has received (`project.move_in` in its log).", obj({ space: str, from: str, move_id: str, nonce: str }, ["space", "from", "move_id", "nonce"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const space = String(i.space);
+      if (!K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      const h = K.spaces.hosted(space);
+      const got = h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_in" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id && e.data.from === i.from) : null;
+      if (!got) throw refuse("This space received no such move.", "not_found");
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(i.nonce))) throw refuse("That is not a challenge.", "bad_input");
+      const k = files.keys.load(space);
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
+      return { proof: b64u(await k.sign(Buffer.from(pullMessage(String(i.from), space, String(i.move_id), String(i.nonce))))) };
+    }, { internal: true });
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
       if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");

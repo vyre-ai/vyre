@@ -94,6 +94,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.moves.pull", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-check-source", "effect": "read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-sign", "effect": "write",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.moves.evidence", "effect": "read",
     "reach": "person"
    },
