@@ -218,7 +218,7 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
       const h = await home();
       await h.call("files.drop.register", { eid });
       await takeAll();
-    } catch (e) { if (!on) return; retry = setTimeout(() => { retry = null; ready().catch(() => {}); }, RETRY); retry.unref(); }
+    } catch (e) { if (!on) return; log(`receiving is not registered with the server yet (${String(/** @type {any} */ (e).code || "failed")}: ${String(/** @type {Error} */ (e).message).slice(0, 120)}); trying again in a minute`); retry = setTimeout(() => { retry = null; ready().catch(() => {}); }, RETRY); retry.unref(); }
   }
   ctx.tool("files.receive", {
     description: "Turn on or off whether this computer takes in files your other computers send it with files.send. Off by default. Turning it on tells your server which key on your identity list opens them; it holds a file for it until it is on.",
