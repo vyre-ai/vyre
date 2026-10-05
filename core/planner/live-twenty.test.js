@@ -24,6 +24,8 @@ if (!URL_ || !KEY_FILE) {
   async function kernel(/** @type {any} */ more = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-planner-"));
     const store = createTwentyStore({ client, space: "planner-live", dir, graceMs: 250 });
+    // a Space's store has the core types (project, task) before its kernel starts
+    await store.define({ add_types: [PROJECT, TASK] });
     const k = await newKernel(store, more);
     await prepareKernel(k);
     // The Twenty outlives a run: what an earlier one left is cleared, so this one reads only its own (the types are defined first so the store can be asked).
