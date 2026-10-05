@@ -49,7 +49,7 @@ test("a real put-if against a live space: atomic compare-and-set, then the seale
   const laptop2 = await open("laptop");
   assert.equal((await laptop2.store.query("reminder", { page: { limit: 10 } })).rows.length, 2);
   // the server's own folder for this person: names and ciphertext, nothing readable
-  const all = []; const walk = p => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { const f = path.join(p, e.name); if (e.isDirectory()) { all.push(e.name); walk(f); } else { all.push(e.name, fs.readFileSync(f, "latin1")); } } };
+  const all = []; const walk = p => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { const f = path.join(p, e.name); if (e.isDirectory()) { all.push(e.name); walk(f); } else { all.push(e.name); try { all.push(fs.readFileSync(f, "latin1")); } catch { /* a socket */ } } } };
   walk(root);
   const disk = all.join("\n");
   for (const secret of ["Dana Reyes", "dentist", "Pick up the keys"]) assert.ok(!disk.includes(secret), `${secret} is not on the server's disk`);
