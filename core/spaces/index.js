@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
+import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -1370,6 +1371,92 @@ export default {
       return wrapStorage(() => storage.setCap(i.space, i.person, i.bytes));
     });
 
+    // ---- moving a project to a Space on ANOTHER home (kernel/gateway/moves.js, reviewer-3's team/0.3/reviews/remote-move-design.md). The mover's own device is the courier between the two homes; each side
+    // signs only what its own log says, with its Space key (the one whose public half is the Space's published `rootPublic`), and the other side checks that signature against the DIRECTORY's key for
+    // that Space id, resolved under the pin the mover's device holds (RM-6), never against a key it is handed. ----
+    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1";
+    const EVIDENCE_KEYS = ["v", "from", "to", "project", "plan_hash", "move_id", "person", "at"];
+    const RECEIPT_KEYS = ["v", "move_id", "from", "to", "counts", "files_root", "at"];
+    const exactKeys = (/** @type {any} */ o, /** @type {string[]} */ keys) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
+    /** The directory context a hook needs for the move being checked, set by the tool around its one kernel call. @type {Map<string, { name: string, pin: any }>} */
+    const moveContext = new Map();
+    /** Sign `obj` under `tag` with a hosted Space's own key: { pub, sig }. The kernel hands over only what its own log said, never a key. */
+    const signMove = async (/** @type {string} */ space, /** @type {string} */ tag, /** @type {any} */ obj) => {
+      const k = files.keys.load(space);
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
+      return { pub: k.publicKey, sig: b64u(await k.sign(Buffer.from(`${tag}\n${canonicalOf(obj)}`))) };
+    };
+    /** The Space's published key, by Space id, resolved under the pin (RM-6): null unless the directory names this very Space id with a key. */
+    const publishedKeyOf = async (/** @type {string} */ spaceId, /** @type {{ name: string, pin: any } | undefined} */ c) => {
+      if (!c || typeof c.name !== "string" || !c.pin) return null;
+      let r; try { r = await dir.resolve(c.name.replace(/\.vyre\.run$/, ""), { pin: c.pin, resolve: ownerLookup }); } catch { return null; }
+      return r && r.ok && r.kind === "space" && r.payload && r.payload.id === spaceId && typeof r.payload.rootPublic === "string" && r.payload.rootPublic ? r.payload.rootPublic : null;
+    };
+    const verifySigned = async (/** @type {string} */ pub, /** @type {string} */ tag, /** @type {any} */ obj, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(`${tag}\n${canonicalOf(obj)}`), sig); } catch { return false; } };
+    if (K && K.spaces && typeof K.spaces.setMoveHooks === "function") {
+      K.spaces.setMoveHooks({
+        /** The target checks the source's signed evidence: the signature is the Space key's, and that key is the directory's for the source Space id. */
+        remoteEvidence: async (/** @type {any} */ bundle, /** @type {{ from: string, to: string }} */ c) => {
+          if (!bundle || typeof bundle.pub !== "string" || typeof bundle.sig !== "string" || !exactKeys(bundle.evidence, EVIDENCE_KEYS) || bundle.evidence.v !== 1) return null;
+          const ev = bundle.evidence;
+          if (ev.from !== c.from || ev.to !== c.to) return null;
+          const ctx = moveContext.get(`${ev.from}/${ev.to}/${ev.move_id}`);
+          const published = await publishedKeyOf(ev.from, ctx);
+          if (!published || published !== bundle.pub) return null;
+          return (await verifySigned(bundle.pub, MOVE_EVIDENCE_TAG, ev, bundle.sig)) ? ev : null;
+        },
+        /** The source checks the target's signed receipt the same way, against the TARGET Space's published key. */
+        verifyReceipt: async (/** @type {any} */ receipt, /** @type {{ from: string, to: string }} */ c) => {
+          if (!receipt || typeof receipt.pub !== "string" || typeof receipt.sig !== "string" || !exactKeys(receipt.body, RECEIPT_KEYS) || receipt.body.v !== 1) return null;
+          const b = receipt.body;
+          if (b.from !== c.from || b.to !== c.to) return null;
+          const ctx = moveContext.get(`${b.from}/${b.to}/${b.move_id}`);
+          const published = await publishedKeyOf(b.to, ctx);
+          if (!published || published !== receipt.pub) return null;
+          return (await verifySigned(receipt.pub, MOVE_RECEIPT_TAG, b, receipt.sig)) ? b : null;
+        },
+      });
+    }
+    /** The mover's chain in a hosted Space and its gateway's moves. @param {string} space @param {any} meta */
+    const moveSide = async (space, meta) => {
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(String(space)) !== true) throw refuse("This home does not host that space.", "not_found");
+      let chain; try { chain = await K.chainIn(String(space), meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
+      const h = K.spaces.hosted(String(space));
+      if (!h || !h.gateway || !h.gateway.moves) throw refuse("That space cannot move projects.", "unavailable");
+      return { chain, moves: h.gateway.moves };
+    };
+    const asRefusal = (/** @type {any} */ e) => { const c = String((e && e.code) || ""); if (/^(not_found|invalid|bad_input|chain_not_person|rate_limited|unavailable|not_allowed|needs_presence)$/.test(c)) return refuse(String(e.message || "That move is refused."), c); throw plainKernelError(e); };
+    tool("spaces.moves.evidence", "In the SOURCE home: the signed evidence that you started a move of a project out of a space here, for the target to check. { evidence, pub, sig }; the Space's own key signs only what its own log says.", obj({ space: str, move_id: str }, ["space", "move_id"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      let evidence; try { evidence = moves.evidenceOf(chain, { move_id: i.move_id }); } catch (e) { throw asRefusal(e); }
+      return { evidence, ...(await signMove(String(i.space), MOVE_EVIDENCE_TAG, evidence)) };
+    });
+    tool("spaces.moves.receive", "In the TARGET home: receive a project moved from a space on another home. `bundle` is the signed evidence; `fromName` and `pin` say which published space it names, the way an invite does.", obj({ space: str, from: str, project: str, plan_hash: str, move_id: str, bundle: { type: "object" }, fromName: str, pin: str }, ["space", "from", "project", "plan_hash", "move_id", "bundle", "fromName", "pin"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      const key = `${i.from}/${i.space}/${i.move_id}`;
+      moveContext.set(key, { name: String(i.fromName), pin });
+      try { return await moves.in(chain, { from: i.from, project: i.project, plan_hash: i.plan_hash, move_id: i.move_id, bundle: i.bundle }); }
+      catch (e) { throw asRefusal(e); }
+      finally { moveContext.delete(key); }
+    });
+    tool("spaces.moves.receipt", "In the TARGET home, after the copy is checked: finish the move here and answer the receipt the SOURCE needs ({ body, pub, sig }), signed with this space's key over the counts and the root of the per-file hashes.", obj({ space: str, move_id: str, counts: { type: "object" }, files_root: str }, ["space", "move_id", "counts", "files_root"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      let body; try { body = await moves.finishTarget(chain, { move_id: i.move_id, counts: i.counts, files_root: i.files_root }); } catch (e) { throw asRefusal(e); }
+      return { body, ...(await signMove(String(i.space), MOVE_RECEIPT_TAG, body)) };
+    });
+    tool("spaces.moves.finish", "In the SOURCE home: the target's signed receipt arrived. Checked against the target space's published key (`toName`, `pin`), then the move is marked done here, and only then may anything be cleared from the source.", obj({ space: str, move_id: str, receipt: { type: "object" }, toName: str, pin: str }, ["space", "move_id", "receipt", "toName", "pin"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the target space's list.", "bad_input");
+      const b = i.receipt && i.receipt.body;
+      const key = `${i.space}/${b && b.to}/${i.move_id}`;
+      moveContext.set(key, { name: String(i.toName), pin });
+      try { return await moves.finishSource(chain, { move_id: i.move_id, receipt: i.receipt }); }
+      catch (e) { throw asRefusal(e); }
+      finally { moveContext.delete(key); }
+    });
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
       if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");

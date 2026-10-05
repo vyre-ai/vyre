@@ -94,6 +94,22 @@
     "reach": "person"
    },
    {
+    "name": "spaces.moves.evidence", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receive", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receipt", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.finish", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.storage.put", "effect": "write",
     "reach": "person"
    },

@@ -202,7 +202,7 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
-  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence, remoteEvidence: cfg.remoteMoveEvidence, verifyReceipt: cfg.verifyMoveReceipt });
 
   return Object.freeze({
     authorize: authorizer.authorize,
