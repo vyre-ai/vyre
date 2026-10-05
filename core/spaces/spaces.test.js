@@ -1330,3 +1330,21 @@ test("spaces.list tier: a space on this computer is cloud when this machine is a
   assert.deepEqual((await d.ok("spaces.list")).map(x => x.tier), ["cloud"]);
   void w;
 });
+
+test("spaces.tier: the home's tier from the machine role, the Cloud spaces the person is in, and an unknown space refused", async t => {
+  const w = world(t);
+  const dev = await device(t);
+  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [] }, "a device with no space: Basic, no Cloud spaces");
+  await dev.ok("spaces.identity.create", { name: "alex" });
+  const s = await dev.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [] }, "a space on a device is Basic");
+  assert.equal((await dev.call("spaces.tier", { space: "spc_zzzzzzzzzzzz" }, "module:planner")).error?.code, "not_found");
+  const srv = await device(t, { machine: "server" });
+  await srv.ok("spaces.identity.create", { name: "sam" });
+  const c = await srv.ok("spaces.create", { name: "harbor", displayName: "Harbor Bakery", home: { kind: "this-computer", confirmed: true } });
+  const r = await srv.ok("spaces.tier", {}, "module:planner");
+  assert.equal(r.tier, "cloud");
+  assert.deepEqual(r.cloud.map(x => [x.id, x.label]), [[c.space, "harbor"]]);
+  assert.deepEqual(Object.keys(r.cloud[0]).sort(), ["id", "label", "name"], "id, name and label, nothing else");
+  void w;
+});
