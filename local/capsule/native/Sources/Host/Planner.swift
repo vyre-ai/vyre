@@ -229,7 +229,7 @@ final class PlannerBanners: NSObject, UNUserNotificationCenterDelegate {
     /// wink.server.call when this vyred does not carry the planner itself.
     func call(_ tool: String, _ input: [String: Any]) async -> VyredResult {
         if vyred.has(tool) { return await vyred.call(tool, input, presence: false) }
-        let r = await vyred.call(WinkServer.call, WinkServer.callInput(tool, input), presence: false)
+        let r = await vyred.call(WinkServer.callTool(vyred.has), WinkServer.callInput(tool, input), presence: false)
         if let d = r.data as? [String: Any], d["result"] == nil { return .success(d) }
         return r
     }

@@ -394,7 +394,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     public let box = BoxLink()
     public func has(_ tool: String) -> Bool {
         lock.lock()
-        let local = tools.contains(tool), linkCall = tools.contains(WinkServer.call)
+        let local = tools.contains(tool), linkCall = tools.contains(WinkServer.call) || tools.contains(WinkServer.legacyCall)
         lock.unlock()
         return local || (linkCall && box.offers(tool))
     }

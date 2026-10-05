@@ -23,6 +23,13 @@ public enum WinkServer {
     /// Error codes that mean the server is not there (as opposed to slow or refusing).
     public static let unreachableCodes: Set<String> = ["box_unreachable", "server_unreachable", "no_link", "unpaired"]
 
+    /// A vyred that does not have the Wink tools yet (an older one, or a trunk that has not merged them) still answers the link.* tools: the same answers, so the Mac keeps working against it.
+    public static let legacyHome = "link.status", legacyCall = "link.call", legacyEventsPath = "/v1/link/events"
+    public static func homeTool(_ has: (String) -> Bool) -> String { has(home) ? home : legacyHome }
+    public static func callTool(_ has: (String) -> Bool) -> String { has(call) ? call : legacyCall }
+    /// The events route follows the same choice: the Wink route where the vyred has the Wink tools.
+    public static func eventsPath(_ has: (String) -> Bool) -> String { has(home) ? eventsPath : legacyEventsPath }
+
     public struct Home: Sendable, Equatable {
         public var linked: Bool
         public var reachable: Bool?

@@ -132,7 +132,8 @@ final class HistoryImportModel: ObservableObject {
         step = .scanning
         sources = []; ticked = []; plan = nil; upload = nil; pace = nil; mode = nil
         // Is there a box to send to? Without one a choice would go nowhere: say so first.
-        let link = await vyred.call(WinkServer.home, [:])
+        var link = await vyred.call(WinkServer.home, [:])
+        if case .failure = link { link = await vyred.call(WinkServer.legacyHome, [:]) }
         if case .success(let d) = link, let h = WinkServer.parseHome(d) {
             if !h.linked { step = .unpaired; return }
             boxName = h.name

@@ -11,13 +11,13 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
 }
 
 /// A Mac's vyred: its own agents.list is empty (no assistant here), wink.server.call answers for the server.
-private func pairedMac(linked: Bool = true, boxUp: Bool = true) -> FakeVyred {
+private func pairedMac(linked: Bool = true, boxUp: Bool = true, legacy: Bool = false) -> FakeVyred {
     let v = FakeVyred(); v.start()
-    v.tool("wink.server.home") { _ in ["role": "local", "linked": linked, "reachable": boxUp, "box": ["name": "kit", "address": "https://kit.vyre.run"]] as [String: Any] }
+    v.tool(legacy ? "link.status" : "wink.server.home") { _ in ["role": "local", "linked": linked, "reachable": boxUp, "box": ["name": "kit", "address": "https://kit.vyre.run"]] as [String: Any] }
     v.tool("agents.list") { _ in [] as [Any] }
     v.tool("apps.list") { _ in ["apps": ["mail"]] as [String: Any] }
     v.tool("threads.get") { i in ["thread": ["id": i["thread"] ?? ""], "from": "mac"] as [String: Any] }
-    v.tool("wink.server.call") { i in
+    v.tool(legacy ? "link.call" : "wink.server.call") { i in
         if !boxUp { return FakeError(code: "box_unreachable", message: "the box is not reachable") }
         let tool = (i["tool"] as? String) ?? "", input = (i["input"] as? [String: Any]) ?? [:]
         switch tool {
@@ -32,6 +32,20 @@ private func pairedMac(linked: Bool = true, boxUp: Bool = true) -> FakeVyred {
 }
 
 let boxLinkSuite = Suite("box link") { t in
+    t.test("a vyred with only the link.* tools still pairs and routes (the Wink tools are not on every trunk yet)") {
+        let v = pairedMac(legacy: true); defer { v.stop() }
+        let c = VyredClient(socket: v.socket)
+        let r: VyredResult? = t.wait {
+            _ = await c.refreshTools()
+            await c.box.refresh(c)
+            return await c.call("agents.list", [:], presence: false)
+        }
+        t.eq(c.box.linked, true)
+        t.eq(c.box.boxName, "kit")
+        if case .success(let d)? = r { t.eq(((d as? [Any])?.first as? [String: Any])?["name"] as? String, "assistant", "the server's list") } else { t.ok(false, "agents.list answered") }
+        t.eq(v.callsOf("link.call").compactMap { $0["tool"] as? String }, ["agents.list"])
+    }
+
     t.test("not linked: every call stays on this Mac, and the server's tools are not offered") {
         let v = pairedMac(linked: false); defer { v.stop() }
         let c = VyredClient(socket: v.socket)
@@ -114,7 +128,7 @@ let boxLinkSuite = Suite("box link") { t in
             _ = c.on("gate.*") { e in heard.add("\(e.type)") }
         }
         let _: Bool? = t.wait { _ = await c.refreshTools(); await c.box.refresh(c); return true }
-        t.ok(MainActor.assumeIsolated { true } && (t.wait { await until { v.openBoxStreams == 3 } } ?? false), "three streams: thread, ask and memory")
+        t.ok(MainActor.assumeIsolated { true } && (t.wait { await until { v.openBoxStreams == 4 } } ?? false), "four streams: thread, ask, memory and link")
         t.ok(v.boxStreamQueries.contains { $0.contains("type=thread.*") } && v.boxStreamQueries.contains { $0.contains("type=ask.*") } && v.boxStreamQueries.contains { $0.contains("type=memory.*") })
         v.emitBox("thread.text", thread: "t-9", ["text": "hello"])
         v.emitBox("gate.held", ["id": "x"])   // never followed: the Gate is this Mac's
@@ -128,7 +142,7 @@ let boxLinkSuite = Suite("box link") { t in
         let v = pairedMac(); defer { v.stop() }
         let c = VyredClient(socket: v.socket)
         let _: Bool? = t.wait { _ = await c.refreshTools(); await c.box.refresh(c); return true }
-        t.ok(t.wait { await until { v.openBoxStreams == 3 } } ?? false)
+        t.ok(t.wait { await until { v.openBoxStreams == 4 } } ?? false)
         v.tool("wink.server.home") { _ in ["role": "local", "linked": false] as [String: Any] }
         let _: Bool? = t.wait { await c.box.refresh(c); return true }
         t.eq(c.box.linked, false)

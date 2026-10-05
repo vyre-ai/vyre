@@ -80,7 +80,7 @@ public final class BoxLink: @unchecked Sendable {
 
     /// Run a routed call on the server. Never falls back to this Mac.
     func call(_ client: VyredClient, _ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
-        let r = await client.callLocal(WinkServer.call, WinkServer.callInput(tool, input), timeout: max(timeout, 5))
+        let r = await client.callLocal(WinkServer.callTool(client.has), WinkServer.callInput(tool, input), timeout: max(timeout, 5))
         switch r {
         case .success(let d):
             learn(from: d)
@@ -112,8 +112,9 @@ public final class BoxLink: @unchecked Sendable {
 
     /// wink.server.home, then the server's events while linked. Called when this vyred is found and when the panel shows.
     @MainActor func refresh(_ client: VyredClient) async {
-        guard client.has(WinkServer.home) else { setLinked(false, client); return }
-        let r = await client.callLocal(WinkServer.home, [:], timeout: 5)
+        let homeTool = WinkServer.homeTool(client.has)
+        guard client.has(homeTool) else { setLinked(false, client); return }
+        let r = await client.callLocal(homeTool, [:], timeout: 5)
         guard case .success(let d) = r, let h = WinkServer.parseHome(d) else { return }
         lock.lock()
         name = h.name
@@ -141,8 +142,9 @@ public final class BoxLink: @unchecked Sendable {
     @MainActor private func startStreams(_ client: VyredClient) {
         stopStreams()
         lock.lock(); let gen = generation; lock.unlock()
+        let events = WinkServer.eventsPath(client.has)
         let made = Self.eventTypes.map { type in
-            SSEConnection(socket: client.socket, path: "\(WinkServer.eventsPath)?type=\(type)&since=latest",
+            SSEConnection(socket: client.socket, path: "\(events)?type=\(type)&since=latest",
                 onOpen: {},
                 onEvent: { [weak self, weak client] json in
                     guard let e = VyredEvent(json: json) else { return }
