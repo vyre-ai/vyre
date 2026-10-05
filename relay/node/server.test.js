@@ -368,7 +368,7 @@ async function codeBox(base, key) {
 }
 
 test("code: a box is given a free rendezvous for 10 minutes, one live code per box, and a new ask replaces the old", async t => {
-  const relay = createRelay();
+  const relay = createRelay({ code: { graceMs: 0 } });
   const base = await relay.listen();
   t.after(() => relay.close());
   const http = base.replace(/^ws/, "http");
@@ -391,6 +391,34 @@ test("code: a box is given a free rendezvous for 10 minutes, one live code per b
   await new Promise(r => setTimeout(r, 50));
   assert.equal(relay.stats().codes, 0);
   void http;
+});
+
+test("code: a box whose control socket drops and reconnects keeps the code its screen shows, and a box that stays gone loses it after the grace", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { graceMs: 200 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const key = newRouteKey();
+  const a = await codeBox(base, key);
+  // the link flaps: the old socket dies, the same box (same route key) comes back before the grace is up
+  a.s.ws.close();
+  await new Promise(r => setTimeout(r, 40));
+  const back = await box(base, key);
+  await back.s.json();
+  assert.equal(relay.stats().codes, 1, "the rendezvous survived the reconnect");
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  const got = await back.s.json();
+  assert.equal(got.t, "code.msg");
+  assert.equal(got.rv, a.a.rv);
+  back.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
+  assert.equal((await p).status, 200, "a typed code still redeems after the box's link was re-made");
+  // a box that does not come back loses the code once the grace has passed
+  back.s.ws.close();
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(relay.stats().codes, 1, "still held during the grace");
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(relay.stats().codes, 0, "released after the grace");
+  assert.equal((await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.77")).status, 404);
 });
 
 test("code: the relay forwards a typist's message only to the route that holds the rendezvous, and its answer back", async t => {
