@@ -206,6 +206,7 @@
       "actions": [
         "tasks.request",
         "tasks.work",
+        "projects.access.restore",
         "records.read",
         "records.create",
         "records.update",
