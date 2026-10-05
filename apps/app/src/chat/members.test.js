@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { membersFrom, runThreadOf } from "./members.js";
+import { membersFrom, runThreadOf, whereLine } from "./members.js";
 
 test("a chat's members from work.chat.get: the viewer is You, a person without a name is Someone, agents by name", () => {
   // work.chat.get (core/work/index.js): { chat, open, people: [ids], agents: [names], slots, transcript }
@@ -16,4 +16,14 @@ test("the run's thread is the first slot's thread work.chat.get names; none befo
   assert.equal(runThreadOf({ slots: [{ slot: "model:claude/default#1", thread: "th_1" }] }), "th_1");
   assert.equal(runThreadOf({ slots: [] }), null);
   assert.equal(runThreadOf(null), null);
+});
+
+test("where a chat runs: the server unless runner.places has a row for the chat, and offline says so", () => {
+  const row = (o) => ({ chat: "chat_1", session: "s1", computer: "Dana's laptop", device: "dev_1", online: true, ...o });
+  assert.equal(whereLine(null, "chat_1"), "On the server");
+  assert.equal(whereLine([], "chat_1"), "On the server");
+  assert.equal(whereLine([row()], "chat_2"), "On the server", "another chat's row is not this chat's");
+  assert.equal(whereLine([row()], "chat_1"), "On Dana's laptop");
+  assert.equal(whereLine({ places: [row({ online: false })] }, "chat_1"), "Dana's laptop is offline");
+  assert.equal(whereLine([row({ computer: " " })], "chat_1"), "On the server", "a computer with no name is never shown as an id");
 });

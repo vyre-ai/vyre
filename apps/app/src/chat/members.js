@@ -31,3 +31,16 @@ export function slotNames(got) {
   const slots = Array.isArray(got?.slots) ? got.slots : [];
   return slots.filter((/** @type {any} */ x) => x && typeof x.slot === "string").map((/** @type {any} */ x) => ({ id: x.slot, name: /** @type {Record<string, string>} */ (PROVIDER_WORD)[String(x.provider)] ?? "Assistant" }));
 }
+
+/**
+ * Where a chat's work runs, in words, from runner.places ({ chat, session, computer, device, online } per lent run, only for chats the caller is in): no row for the chat is the server's own run, "On <computer>"
+ * for a lent computer that is up, "<computer> is offline" when it is not. A row with no computer name is not shown by an id: it reads as the server's line. A box without runner.places answers nothing, and says the same.
+ * @param {any} places runner.places's answer (an array, or { places }) @param {string} chat the chat's id @returns {string}
+ */
+export function whereLine(places, chat) {
+  const rows = Array.isArray(places) ? places : Array.isArray(places?.places) ? places.places : [];
+  const row = rows.find((/** @type {any} */ r) => r && r.chat === chat && typeof r.computer === "string" && r.computer.trim());
+  if (!row) return "On the server";
+  const name = row.computer.trim();
+  return row.online === false ? `${name} is offline` : `On ${name}`;
+}

@@ -203,7 +203,7 @@ test("words: ago, short folders, missing tool", { skip: !strip }, async () => {
   assert.equal(shortDir("/etc/hosts"), "/etc");
   assert.equal(missingNote({ code: "no_such_tool" }), "That is not available on your server yet.");
   assert.equal(missingNote({ message: "Nope" }), "Nope");
-  assert.equal(hasAll("Juniper Studio", words("legal harl")), true);
+  assert.equal(hasAll("Juniper Studio", words("studio junip")), true);
   assert.equal(hasAll("Juniper", words("legal")), false);
 });
 
