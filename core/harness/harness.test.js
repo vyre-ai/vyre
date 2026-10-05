@@ -188,7 +188,7 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
   } };`;
   // core/team absent entirely: ask() fails closed to null, same as any other missing module.
   const { reg: withoutTeam } = await harness(t, [["projects", { version: "0.1.0", does: { tools: ["projects.context"] } }, projects]]);
-  assert.equal((await withoutTeam.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
+  assert.equal(body(await withoutTeam.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")), "Project harlow-legal.");
   // core/team running, but this project's person turned team.default off (its own tool says so).
   const teamOff = `export default { async start(ctx) {
     ctx.tool("team.project-append", { effect: "read", run: async () => ({ project: "harlow-legal", text: null }) });
@@ -198,7 +198,7 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
     ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
     ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, teamOff],
   ]);
-  assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
+  assert.equal(body(await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")), "Project harlow-legal.");
   // core/style running, but the person turned it off (its own tool says so).
   const styleOff = `export default { async start(ctx) {
     ctx.tool("style.append", { effect: "read", run: async () => ({ project: null, text: null }) });

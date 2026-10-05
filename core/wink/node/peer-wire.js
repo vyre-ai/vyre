@@ -308,7 +308,7 @@ export function admitPeer(pipe, o) {
         const e = await o.entry(eid);
         if (!e || e.eid !== eid || !peerKindOk(e) || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
         if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call its bridge functions");
-        return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey, zone: frame && frame.zone });
+        return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey, ...(frame && frame.zone ? { zone: frame.zone } : {}) });
       },
       onframe: f => {
         if (f.type !== T.proof || settled || eid) return false;
