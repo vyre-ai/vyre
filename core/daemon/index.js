@@ -894,15 +894,17 @@ export async function asTaken(caller, socket, registry, thread, deps) {
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
       server: !w.inside && w.server ? w.server : null,
       couldNotTell: Boolean((w.nopid && canReadPeers) || w.unreadable),
+      // which half failed, for the log and the refusal: the kernel gave no pid for the socket, or the pid's ancestry could not be read
+      why: w.nopid && canReadPeers ? "peer_pid_unread" : w.unreadable ? "process_chain_unreadable" : undefined,
     }));
     v = mine;
     taken.set(socket, mine);
     // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": never a person, asked again on the next call, and logged ONCE per connection (a model's
     // shell must not be able to fill the log by calling again and again).
-    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`ancestry: unknown for a socket call (${a.why || "not definite"}; not a person; asked again next call)`); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) };
 }
 const PEER_RETRIES = 3;
 /** Sockets whose unknown ancestry was already logged. @type {WeakSet<object>} */
@@ -1338,7 +1340,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
-    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
+    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
