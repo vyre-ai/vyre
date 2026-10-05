@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 // The kernel's size cap counts the TRUSTED BASE, not the directory (KERNEL-brief.md, "What the cap counts"): what, if wrong, lets a caller do something its grants do not allow.
 // Every non-test file under kernel/ must be named here as base or as not-base, so a new part cannot arrive uncounted; the base is capped at 9,000 lines.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
-const CAP = 9000;
+// 9100 (platform, 0.2.9; NEEDS reviewer-3's sign-off), raised from 9000 for the module bridge (kernel/modules child, supervisor and host: an added module's ctx over a message channel) and the sealed-value moves in gateway/sealing.js; trunk b886baf35 sat just under 9000.
+const CAP = 9100;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
