@@ -610,6 +610,11 @@ test("export and import: a sealed value moves to a Space on another server wrapp
   assert.ok(!JSON.stringify(blob).includes("123-45-6789") && !JSON.stringify(blob).includes(Buffer.from("123-45-6789").toString("base64")), "the blob is wrapped");
   const moved = await b.s.api.import({ chain: to, blob, record: REC, field: "ssn" });
   assert.equal(await code(b.s.api.import({ chain: to, blob, record: REC2, field: "ssn" })), "bad_input", "a blob is bound to its record and field");
+  // The record's urn changes with the Space: an export may name the target's urn, and then only that one opens it.
+  const f2 = { ...fields, to_record: REC2 };
+  const w2 = await a.s.api.export({ chain: from, ...f2, proof: a.alex.proof(from, "seal.export", f2) });
+  assert.equal(await code(b.s.api.import({ chain: to, blob: w2.blob, record: REC, field: "ssn" })), "bad_input");
+  assert.ok((await b.s.api.import({ chain: to, blob: w2.blob, record: REC2, field: "ssn" })).ref.ref);
   assert.equal(await code(a.s.api.import({ chain: from, blob, record: REC, field: "ssn" })), "bad_input", "another server's process cannot open it");
   assert.equal(await code(b.s.api.import({ chain: withAgent(), blob, record: REC, field: "ssn" })), "human_only");
   assert.deepEqual(Object.keys(moved.ref).sort(), ["present", "ref", "sealed", "set_at", "valid_format"]);

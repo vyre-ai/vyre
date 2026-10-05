@@ -103,7 +103,7 @@ export class Sealer {
     const ctx = this.ctxOf(r.ctx);
     need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
     need(typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && typeof r.record === "string" && typeof r.field === "string" && typeof r.ref === "string", "bad_input");
-    const why = this.presence.refuse(r.proof, { op: "seal.export", space: ctx.space, fields: { ref: r.ref, record: r.record, field: r.field, target_key: r.target_key }, ctx });
+    const why = this.presence.refuse(r.proof, { op: "seal.export", space: ctx.space, fields: { ref: r.ref, record: r.record, ...(typeof r.to_record === "string" ? { to_record: r.to_record } : {}), field: r.field, target_key: r.target_key }, ctx });
     if (why) throw err(why === "no_proof" ? "needs_presence" : why);
     const v = this.open(ctx, r.ref);
     let pub; try { pub = crypto.createPublicKey({ key: Buffer.from(r.target_key, "base64"), type: "spki", format: "der" }); } catch { throw err("bad_input"); }
@@ -111,7 +111,7 @@ export class Sealer {
     const eph = crypto.generateKeyPairSync("x25519");
     const key = Buffer.from(crypto.hkdfSync("sha256", crypto.diffieHellman({ privateKey: eph.privateKey, publicKey: pub }), Buffer.alloc(0), "vyre-upgrade-field-v1", 32));
     const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", key, iv);
-    c.setAAD(Buffer.from(`${r.record}\0${r.field}`));
+    c.setAAD(Buffer.from(`${typeof r.to_record === "string" ? r.to_record : r.record}\0${r.field}`));
     const ct = Buffer.concat([c.update(JSON.stringify({ class: v.meta.class, value: v.plaintext }), "utf8"), c.final()]);
     return { blob: { epk: eph.publicKey.export({ type: "spki", format: "der" }).toString("base64"), iv: iv.toString("base64"), ct: ct.toString("base64"), tag: c.getAuthTag().toString("base64") }, event: { type: "field.exported", record: r.record, field: r.field, class: v.meta.class } };
   }
