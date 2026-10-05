@@ -284,6 +284,7 @@ export default {
       run: async (/** @type {any} */ i) => {
         if (!db) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
         const chat = String(i.chat);
+        logs.get(chat); // the log's table is made the first time any log is opened
         if (db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
         let frames = 0, members = 0;
         for (const f of /** @type {any[]} */ (i.frames)) { if (f && Number.isInteger(f.cur) && typeof f.json === "string") { db.prepare("INSERT OR IGNORE INTO stream_frames (session, cur, first, json) VALUES (?,?,?,?)").run(chat, f.cur, Number.isInteger(f.first) ? f.first : f.cur, f.json); frames++; } }
