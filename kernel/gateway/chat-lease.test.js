@@ -94,3 +94,51 @@ test("the lease: a participant's device opens the ring and lends the key; the ch
   assert.equal(lease.unlocked(id), false);
   assert.ok(keys);
 });
+
+// ---- end to end on a real Drive and its disk: a chat made with a ring from a device, a participant's device lends the key, the files are ciphertext on the disk and open for the participant
+import fs from "node:fs";
+import path from "node:path";
+import { Pool } from "../storage/pool.js";
+import { Drive } from "../storage/drive.js";
+import { memoryBackend } from "../storage/backends.js";
+import { tmp } from "../seal/testing.js";
+
+test("end to end: a new chat's files are ciphertext on the disk, names included, and a participant's device opens them; a non-participant with the disk gets nothing", async t => {
+  const dir = tmp("chat-e2e"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const MB = 1 << 20;
+  const pool = new Pool({ dir, key: Buffer.alloc(32, 5), now: () => 1_000_000, chunk: MB });
+  pool.addNode({ id: "home", backend: memoryBackend(), home: true, offered: 50 * MB });
+  const keys = new ProcessKeys(() => true);
+  /** @type {any} */ let gs = null;
+  const drive = sealedDrive(new Drive(pool, { now: () => 1_000_000 }), { keysFor: c => { const k = keys.get(c); return k && gs && k.epoch >= gs.chats.epoch(c) ? k : null; }, sealed: c => Boolean(gs && gs.chats.epoch(c) > 0) });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), presence, drive, chatKeys: keys });
+  gs = k.gateway.grants;
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  for (const p of [BOB, CAROL]) { const r = { person: p, role: "member" }; await gs.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const carol = k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  const bobDev = newDeviceKey(), carolDev = newDeviceKey();
+  const hold = d => fingerprint(d.publicJwk);
+  // Bob's device makes the chat's ring for both participants' devices and the chat is created with it
+  const id = "chat_e2e001";
+  const made = createRing(id, { [hold(bobDev)]: bobDev.publicJwk, [hold(carolDev)]: carolDev.publicJwk });
+  const chat = await gs.chats.create(bob, { id, people: [CAROL], ring: made.doc });
+  assert.equal(gs.chats.epoch(chat.id), 1);
+  // Bob's device lends the key; he writes files in the chat's folder
+  const ask = gs.chats.keys.begin(bob, id);
+  gs.chats.keys.finish(bob, ask.request, bundleFor(openRing(gs.chats.read(bob, id).ring, hold(bobDev), bobDev.privateJwk), ask.session_pub));
+  const dirP = `Projects/p1/chat/${id}`;
+  await k.gateway.drive.put(bob, `${dirP}/Harlow settlement offer.txt`, new TextEncoder().encode("Dana Reyes accepts 250,000"));
+  // the disk: every byte the pool holds and the drive's index
+  const all = []; const walk = d => { for (const n of fs.readdirSync(d)) { const p = path.join(d, n); if (fs.statSync(p).isDirectory()) { all.push(n); walk(p); } else { all.push(n, fs.readFileSync(p, "latin1")); } } }; walk(dir);
+  const disk = all.join("\n");
+  for (const s of ["Harlow", "settlement", "offer", "Dana Reyes", "250,000"]) assert.ok(!disk.includes(s), `${s} is not on the disk`);
+  // Carol's device lends its own request later; she reads what Bob wrote, through the server, while it is unlocked
+  assert.equal(new TextDecoder().decode(await k.gateway.drive.get(carol, `${dirP}/Harlow settlement offer.txt`)), "Dana Reyes accepts 250,000");
+  // locked: the same disk, the same people, nothing opens
+  gs.chats.keys.lock(bob, id);
+  await assert.rejects(() => k.gateway.drive.get(carol, `${dirP}/Harlow settlement offer.txt`), { code: "not_found" });
+  // and the person outside the chat, with the exact path, gets nothing either way
+  const dan = k.chains.fromFacts({ kind: "device", device_key_id: "d-d", person: OWNER, path: "direct" });
+  await assert.rejects(() => k.gateway.drive.get(dan, `${dirP}/Harlow settlement offer.txt`), { code: "not_found" });
+});
