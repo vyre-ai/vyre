@@ -262,7 +262,12 @@ async function startLocked(opts, root, p, release) {
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The Space's calendar, in step with an outside one, by default.
-      calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }) });
+      calendarSync: createCalendarSyncHost({ root, log, connectors: catalogOfConnectors }),
+      // The Google accounts the google module holds (a signed-in calendar), read and written through google.api as module:leases (the daemon's own label for the kernel's lease path)
+      google: {
+        accounts: async () => { const r = await registry.call("google.accounts", {}, "module:leases"); const d = r && !r.error ? r.data : null; return Array.isArray(d) ? d : d && Array.isArray(d.accounts) ? d.accounts : []; },
+        api: async (account, req) => { const r = await registry.call("google.api", { account, ...req }, "module:leases"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");

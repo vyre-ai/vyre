@@ -36,6 +36,7 @@ export function createCalendarSyncHost(o) {
   /**
    * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, personChain: (id: string) => any, ownerId: () => string,
    *   subscribe?: (cb: (e: any) => any) => any,
+   *   google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
    *   service: (q: { chain: any, connector: string, request: any, idem?: string, approval?: string, bind?: string }) => Promise<any> }} s
    */
   function attach(s) {
@@ -46,12 +47,16 @@ export function createCalendarSyncHost(o) {
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space: s.space });
 
     /** One connector's sync, made once. */
-    function syncFor(/** @type {string} */ connector) {
+    function syncFor(/** @type {string} */ connector, /** @type {string | null} */ googleAccount = null) {
       let sync = syncs.get(connector);
       if (sync) return sync;
       const state = stateFile(s.space, connector);
       const resource = `vyre://${s.space}/service/${encodeURIComponent(connector)}`;
-      const send = async (/** @type {any} */ req, /** @type {any} */ extra) => {
+      // A connected Google account (the google module owns its token) is called through google.api; a vault connector through the kernel's forward.
+      const send = googleAccount ? async (/** @type {any} */ req) => {
+        const r = await /** @type {any} */ (s.google).api(googleAccount, { method: req.method, path: req.path, ...(req.query ? { query: req.query } : {}), ...(req.body !== undefined ? { body: req.body } : {}), ...(req.headers ? { headers: req.headers } : {}) });
+        return { status: Number(r && r.status) || 0, body: (r && r.body) || {} };
+      } : async (/** @type {any} */ req, /** @type {any} */ extra) => {
         const approval = extra && extra.approval;
         const r = await s.service({ chain: s.ownerChain(), connector, request: req, idem: extra && extra.idem, ...(approval ? { approval, bind: requestBind({ connector, method: req.method, path: req.path, query: req.query, body: req.body, headers: req.headers }) } : {}) });
         if (r && r.held) throw Object.assign(new Error("the vault is holding the call for a yes"), { code: "held" });
@@ -92,6 +97,11 @@ export function createCalendarSyncHost(o) {
         }
         const t = await s.gw.ask.get(chain, note.task);
         if (t && t.state === "done" && t.outcome === "approved") {
+          // A vault connector's forward checks the approval itself; a Google account is not called through the forward, so the approval is checked here, for this act and no other.
+          if (googleAccount) {
+            const ok = await s.gw.authorize({ chain, action: "service.call", resource, approval: note.task });
+            if (ok.effect !== "allow") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
+          }
           const value = await perform({ approval: note.task, idem: change.key });
           setPending(change.key, undefined);
           return { done: true, value };
@@ -117,6 +127,14 @@ export function createCalendarSyncHost(o) {
           const have = new Set(((c && c.ops) || []).map((/** @type {any} */ x) => x.name));
           if (!NEEDS.every(n => have.has(n))) continue;
           try { out[name] = await syncFor(name).sync(); } catch (e) { out[name] = { error: /** @type {Error} */ (e).message }; log(`calendar sync ${s.space}/${name}: ${/** @type {Error} */ (e).message}`); }
+        }
+        // Every Google account connected to the google module (a real calendar the person signed in), by the same sync
+        if (s.google) {
+          const accts = await s.google.accounts().catch(() => []);
+          for (const a of accts) {
+            const key = `google-${a.name}`;
+            try { out[key] = await syncFor(key, a.name).sync(); } catch (e) { out[key] = { error: /** @type {Error} */ (e).message }; log(`calendar sync ${s.space}/${key}: ${/** @type {Error} */ (e).message}`); }
+          }
         }
       } finally { busy = false; }
       return out;

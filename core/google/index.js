@@ -424,6 +424,26 @@ export default {
       }),
     });
 
+    // The Space's calendar sync (core/daemon/calendar-sync.js) reads and writes the account's primary calendar through this, so a connected Google account is kept in step without a second
+    // credential: the token is minted here from the vault item, as for every other call. Calendar events only (the list, one event, insert, patch, delete), by method and exact path shape; the
+    // scope is the narrowest the method needs. Vyre's own modules only: a write here is outward, and the sync holds it for the owner's yes before it ever calls.
+    const CAL_PATH = /^\/calendar\/v3\/calendars\/(?:primary|[^/\s?#]{1,200})\/events(?:\/[^/\s?#]{1,200})?$/;
+    ctx.tool("google.api", {
+      internal: true,
+      description: "A Calendar events call for one account, for the calendar sync: { account, method, path, query?, body?, headers? } -> { status, body }. Events paths only; the status of a refusal (404, 409, 410, 412) is returned, not thrown. Vyre's own modules only.",
+      input: obj({ account: str, method: { type: "string", enum: ["GET", "POST", "PATCH", "DELETE"] }, path: str, query: { type: "object" }, body: {}, headers: { type: "object" } }, ["account", "method", "path"]),
+      run: safe(async (i, meta) => {
+        if (!(meta && typeof meta.caller === "string" && meta.caller.startsWith("module:"))) throw fail("only Vyre's own modules call Google through here", "denied");
+        const acct = accounts.get(String(i.account));
+        if (!acct) throw fail(`no account ${String(i.account).slice(0, 40)}`, "not_found");
+        const method = String(i.method).toUpperCase(), path = String(i.path);
+        if (!["GET", "POST", "PATCH", "DELETE"].includes(method) || !CAL_PATH.test(path)) throw fail("only Calendar events calls go through here", "bad_input");
+        const scope = method === "GET" ? "calendar.readonly" : "calendar.events";
+        try { return { status: 200, body: await request(acct, { api: "calendar", scope, method, path, ...(i.query ? { query: i.query } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.headers ? { headers: i.headers } : {}) }) }; }
+        catch (e) { const st = /** @type {any} */ (e)?.status; if (Number.isInteger(st)) return { status: st, body: {} }; throw e; }
+      }),
+    });
+
     ctx.tool("google.release", {
       internal: true,
       description: "The Gate's call once the user approved a held email or invite: sends exactly the approved `to` and content.",

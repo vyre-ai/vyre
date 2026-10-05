@@ -147,3 +147,43 @@ test("an event edited while its change waits is a new ask with the new details; 
   assert.match(ts[1].title, /stranger@elsewhere.test/);
   assert.equal(sent.length, 0);
 });
+
+test("a connected Google account (the google module's, not a vault connector) is synced the same way: events come in with source google, and a write is held, then goes out once approved with that approval checked", async t => {
+  const google = fakeGoogle({ mailbox: "alex@harlow.test" });
+  const w = await world();
+  t.after(() => w.stopListening());
+  w.kernel.rules.push({ match: i => i.action === "service.call" && !i.approval, effect: "ask", reason: "outward" });
+  // an act the owner approved (a task, by id) is what satisfies the ask, for that act only: the stand-in for the kernel's approvedAct
+  const checked = [];
+  w.kernel.rules.push({ match: i => { if (i.action === "service.call" && i.approval) { checked.push(i.approval); return true; } return false; }, effect: "allow", reason: "approved" });
+  const sent = [];
+  const api = async (account, req) => {
+    assert.equal(account, "work");
+    const url = new URL(`https://www.googleapis.com${req.path}${req.query ? "?" + new URLSearchParams(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : ""}`);
+    if (req.method !== "GET") sent.push(req.method + " " + req.path);
+    const out = google.handle({ method: req.method, url, headers: { ...(req.headers || {}), authorization: `Bearer ${TOKEN}` }, body: req.body === undefined ? undefined : JSON.stringify(req.body) });
+    return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
+  };
+  const sync = createCalendarSyncHost({ root: tempHome(t), log: () => {}, connectors: async () => ({}), everyMs: 3_600_000, firstMs: 3_600_000 });
+  t.after(() => sync.stop());
+  const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
+  const chains = { forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
+  const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, service: async () => { throw new Error("a Google account is not called through the vault forward"); },
+    subscribe: cb => w.kernel.onEvent(cb, "calendar-sync"), google: { accounts: async () => [{ name: "work" }], api } });
+  google.putEvent({ id: "sign1", summary: "Signing", start: { dateTime: "2026-10-08T16:00:00Z" }, end: { dateTime: "2026-10-08T17:00:00Z" } });
+  let out = await h.runNow();
+  assert.equal(out["google-work"].pulled.created, 1, JSON.stringify(out));
+  const rows = async () => (await w.kernel.records.query(owner(), "event", { page: { limit: 50 } })).rows;
+  assert.deepEqual([(await rows())[0].data.source, (await rows())[0].data.calendar], ["google", "google-work"]);
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
+  out = await h.runNow();
+  assert.equal(out["google-work"].pushed.held, 1, JSON.stringify(out));
+  assert.equal(sent.length, 0);
+  await w.kernel.idle();
+  const [task] = w.kernel.tasks.filter(x => /Calendar:/.test(x.title));
+  w.kernel.completeTask(task.id, { outcome: "approved" });
+  for (let i = 0; i < 50 && sent.length < 1; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.deepEqual(sent, ["POST /calendar/v3/calendars/primary/events"], "sent once, on the approval event");
+  assert.deepEqual(checked, [task.id], "the approval was checked for this act before the write");
+  assert.ok((await rows()).some(r => r.data.title === "Closing call" && r.data.external_id));
+});
