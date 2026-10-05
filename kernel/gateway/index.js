@@ -14,6 +14,7 @@ import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
 import { createLeases } from "./leases.js";
 import { createDriveGateway } from "./drive.js";
+import { createChatLease } from "./chat-keys.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -210,6 +211,12 @@ export function createGateway(cfg) {
   }
 
   const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+  // The lease a participant's device lends a chat's key by (kernel/gateway/chat-keys.js): the keys it is given live in the process keys cfg.chatKeys names and nowhere else.
+  const chatLease = gs && cfg.chatKeys ? createChatLease({ keys: cfg.chatKeys, grants: { chats: { read: gs.chatRead, epoch: gs.chatEpoch } } }) : undefined;
+  // A chat's files stored under ids (kernel/storage/sealed-drive.js): the share grant names the stored path, and the file key is also wrapped to the project's ring when this process holds it.
+  const storedOf = (/** @type {string} */ path) => { if (!cfg.drive || typeof cfg.drive.stored !== "function") return path; try { return cfg.drive.stored(path); } catch { throw new KernelError("not_found", "no such file"); } };
+  const shareFileOf = gs ? async (/** @type {any} */ chain, /** @type {string} */ path) => { const g = await gs.shareFile(chain, storedOf(path)); if (cfg.drive && typeof cfg.drive.share === "function") { try { await cfg.drive.share(path); } catch { throw new KernelError("unavailable", "the file is shared, but its key could not be wrapped to the project: share it again"); } } return g; } : undefined;
+  const unshareFileOf = gs ? async (/** @type {any} */ chain, /** @type {string} */ path) => { const r = await gs.unshareFile(chain, storedOf(path)); if (cfg.drive && typeof cfg.drive.unshare === "function") { try { await cfg.drive.unshare(path, {}); } catch { throw new KernelError("unavailable", "the share is taken back, but the file key could not be rotated: unshare it again"); } } return r; } : undefined;
 
   return Object.freeze({
     authorize: authorizer.authorize,
@@ -223,7 +230,7 @@ export function createGateway(cfg) {
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, shareFile: gs.shareFile, unshareFile: gs.unshareFile, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, capOf: gs.capOf, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, shareFile: shareFileOf, unshareFile: unshareFileOf, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead, epoch: gs.chatEpoch, ...(chatLease ? { keys: chatLease } : {}) }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, capOf: gs.capOf, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
