@@ -15,13 +15,14 @@ function fakes({ failHsOnce = false, failNode = false, nodes = /** @type {any[] 
   let hsFailed = false;
   const policies = /** @type {any[]} */ ([]);
   const deleted = /** @type {number[]} */ ([]);
+  const keyIds = /** @type {number[]} */ ([]);
   const createHeadscale = (/** @type {any} */ o) => ({
     listen: { host: "127.0.0.1", port: o.listenPort },
     async start() { calls.push(`hs.start ${o.serverUrl}`); if (failHsOnce && !hsFailed) { hsFailed = true; throw new Error("headscale did not become healthy in time"); } return {}; },
     async stop() { calls.push("hs.stop"); },
-    async createPreauthKey() { calls.push("hs.key"); return { key: "hskey-fake0123456789" }; },
+    async createPreauthKey() { calls.push("hs.key"); keyIds.push(200 + keyIds.length); return { key: "hskey-fake0123456789", id: keyIds.at(-1) }; },
     prefix: "100.99.1.0/24",
-    async listNodes() { return (nodes || [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: nodeNameFor("devB"), ips: ["100.99.1.2"] }]).filter(n => !deleted.includes(n.id)); },
+    async listNodes() { return (nodes || [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: nodeNameFor("devB"), ips: ["100.99.1.2"], preAuthKeyId: 100 }]).filter(n => !deleted.includes(n.id)); },
     async deleteNode(/** @type {number} */ id) { calls.push(`hs.delete ${id}`); deleted.push(id); },
     setPolicy(/** @type {string} */ t) { calls.push("hs.policy"); policies.push(JSON.parse(t)); return { changed: true }; },
   });
@@ -39,10 +40,12 @@ function fakes({ failHsOnce = false, failNode = false, nodes = /** @type {any[] 
       status: () => spaces.map(s => ({ id: s.id, node: "up", links: [], peers: [], door: "listening" })),
     };
   };
-  return { calls, policies, deps: { createHeadscale, createGate, createHost, freePort: (() => { let p = 41000; return async () => p++; })() } };
+  return { calls, policies, keyIds, deps: { createHeadscale, createGate, createHost, freePort: (() => { let p = 41000; return async () => p++; })() } };
 }
+/** A home whose pre-auth key 100 was minted for devB (what a pairing's hand-over records). */
+function homeWithKeys() { const r = home(); fs.mkdirSync(path.join(r, "wink-net"), { recursive: true }); fs.writeFileSync(path.join(r, "wink-net", "keys.json"), JSON.stringify({ 100: "devB" })); return r; }
 const base = (/** @type {any} */ f, /** @type {any} */ extra = {}) => ({
-  root: home(), space: async () => "spc_home1", box: async () => "boxid", entry: async () => ({ eid: "x", kind: "device", pub: "p" }),
+  root: homeWithKeys(), space: async () => "spc_home1", box: async () => "boxid", entry: async () => ({ eid: "x", kind: "device", pub: "p" }),
   devices: () => ["devB"], serve: async () => ({}), binaries: { headscale: "/x/headscale", forwarder: "/x/wink-forwarder" }, deps: f.deps, retryMs: 0, reach: null, ...extra,
 });
 
@@ -194,12 +197,12 @@ test("findBinaries: under node --test nothing is found unless both programs are 
 });
 
 test("join policy: a node reaches the door only while its device row exists; a node bound to no row gets no rule and is deleted", async () => {
-  const nodes = [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: nodeNameFor("devB"), ips: ["100.99.1.2"] }, { id: 3, name: "w-unknown", ips: ["100.99.1.3"] }];
+  const nodes = [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: "anything-it-chose", ips: ["100.99.1.2"], preAuthKeyId: 100 }, { id: 3, name: nodeNameFor("devB"), ips: ["100.99.1.3"], preAuthKeyId: 999 }];
   const f = fakes({ nodes });
   const n = createNetd(base(f));
   await n.start();
   assert.deepEqual(f.policies.at(-1).acls[0].src, ["n-d-2"], "only the node whose device has a row is a device");
-  assert.ok(f.calls.includes("hs.delete 3"), "the node bound to nothing is removed once no join key is outstanding");
+  assert.ok(f.calls.includes("hs.delete 3"), "a node that took devB's name but joined with no key minted for devB is bound to nothing and removed, once no join key is outstanding");
   assert.ok(!f.calls.includes("hs.delete 2"));
 });
 
@@ -224,7 +227,7 @@ test("join policy: a node that joined inside a key's window waits for its row, a
   const h = await n.handover({ device: "devB" });
   assert.equal(h.hostname, nodeNameFor("devB"));
   assert.equal(h.peerAddr, "100.99.1.1:8443", "a paired server is told where the home's door is");
-  nodes.push({ id: 2, name: h.hostname, ips: ["100.99.1.2"] });   // the device used its key
+  nodes.push({ id: 2, name: h.hostname, ips: ["100.99.1.2"], preAuthKeyId: f.keyIds.at(-1) });   // the device used its key
   await n.deviceChanged();
   assert.ok(!f.calls.includes("hs.delete 2"), "inside the window a node is not deleted");
   assert.equal(f.policies.at(-1).acls.length, 0, "no row yet, no rule");
@@ -290,7 +293,7 @@ test("public gate: the hand-over carries the public address and the pin only onc
   await ok.start();
   const h = await ok.handover({ device: "devB" });
   assert.equal(h.controlUrl, "https://alex.vyre.run:7443");
-  assert.equal(h.pin, "sha256/abc");
+  assert.equal(h.pin, undefined, "no pin is sent: the forwarder cannot enforce one, the gate's certificate is checked against the public CAs");
   assert.equal(h.hostname, nodeNameFor("devB"));
   assert.equal(h.authKey, "hskey-fake0123456789");
   await ok.stop();

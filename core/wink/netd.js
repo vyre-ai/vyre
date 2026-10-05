@@ -185,11 +185,21 @@ export function createNetd(o) {
     return m.createReach({ log, ports: [{ port: gatePort, proto: "tcp" }], ...(verify ? { verify } : {}), onchange: () => { if (pub) pub.reachChanged().catch(() => {}); } });
   }
 
+  /** Which device each pre-auth key was minted for: key id -> device id, kept in a 0600 file so a restart keeps every joined node bound. */
+  const keysFile = () => path.join(o.root, "wink-net", "keys.json");
+  const keyDevices = () => { try { const j = JSON.parse(fs.readFileSync(keysFile(), "utf8")); return j && typeof j === "object" ? j : {}; } catch { return {}; } };
+  /** @param {number | null} id @param {string | undefined} device */
+  const noteKey = (id, device) => {
+    if (id === null || id === undefined || !device) return;
+    const m = keyDevices(); m[String(id)] = String(device);
+    fs.mkdirSync(path.dirname(keysFile()), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(keysFile(), JSON.stringify(m), { mode: 0o600 });
+  };
   const v4 = (/** @type {string[] | undefined} */ l) => (l || []).find(x => /^\d+\.\d+\.\d+\.\d+$/.test(x)) || null;
   /**
    * The network half of the grants: this home is the hub, and a node is a device only while its paired device row exists. A node joined with a one-time key under the name
-   * nodeNameFor(device) the pairing handed out; it gets a rule that reaches the hub's door port (control/policy.js, deny by default) only when `o.devices()` lists that device,
-   * so removing the row takes the rule away on the next sync and the node itself is deleted. A node whose name matches no row is bound to nothing: it reaches nothing, and once no
+   * the pre-auth key minted for that device (hand-over or joinKey); it gets a rule that reaches the hub's door port (control/policy.js, deny by default) only when `o.devices()` lists that device,
+   * so removing the row takes the rule away on the next sync and the node itself is deleted. A node whose key was minted for no live device is bound to nothing: it reaches nothing, and once no
    * join key is outstanding it is deleted. WHO the device is stays decided at the door by its identity-list key.
    */
   async function syncPolicy() {
@@ -197,9 +207,11 @@ export function createNetd(o) {
     const nodes = await hs.listNodes();
     const homeIp = v4(ips);
     if (!homeIp) return { changed: false };
-    const live = new Set((await Promise.resolve(o.devices ? o.devices() : [])).map(nodeNameFor));
+    const liveIds = new Set(await Promise.resolve(o.devices ? o.devices() : []));
+    const keyed = keyDevices();
     const others = nodes.filter((/** @type {any} */ n) => v4(n.ips) && v4(n.ips) !== homeIp);
-    const bound = others.filter((/** @type {any} */ n) => live.has(String(n.name)) || live.has(String(n.givenName)));
+    // A node is bound to the device its pre-auth key was minted for (the key id Headscale records on the node), never to the name it chose: a joiner cannot pick its way into a device's rule.
+    const bound = others.filter((/** @type {any} */ n) => n.preAuthKeyId !== null && n.preAuthKeyId !== undefined && liveIds.has(keyed[String(n.preAuthKeyId)]));
     const stray = nodes.filter((/** @type {any} */ n) => !bound.includes(n) && n.ips && v4(n.ips) !== homeIp && Date.now() > joinUntil);
     for (const n of stray) await hs.deleteNode(n.id).catch((/** @type {Error} */ e) => log(`wink net: could not delete node ${n.id}: ${e.message}`));
     const rows = [{ id: "home", kind: /** @type {const} */ ("hub"), bound: true, ip: homeIp },
@@ -279,10 +291,11 @@ export function createNetd(o) {
      * or null when the network is not up or has no address another machine can reach (the pairing then hands over only the device id and the relay carries everything).
      * @param {{ target?: any, device?: string }} [_q]
      */
-    /** A one-time join key for a node that will reach this network on `controlUrl`, in memory only, and the watch that gives the new node its door rule. For in-process callers (the pairing's hand-over, the real test); never a tool. @param {number} [ttlMs] @param {string} [device] the paired device the key is for: its node must join as nodeNameFor(device) */
+    /** A one-time join key for a node that will reach this network on `controlUrl`, in memory only, and the watch that gives the new node its door rule. For in-process callers (the pairing's hand-over, the real test); never a tool. @param {number} [ttlMs] @param {string} [device] the paired device the key is for: the key's id is recorded, and the node that joins with it is bound to that device */
     async joinKey(ttlMs = 120_000, device) {
       if (st.state !== "up" || !hs) throw Object.assign(new Error("the network is not up"), { code: "unavailable" });
       const key = await hs.createPreauthKey({ ttlMs });
+      noteKey(key.id, device);
       watchJoin(ttlMs);
       return key.key;
     },
@@ -295,8 +308,9 @@ export function createNetd(o) {
       const url = o.controlUrl ? String(o.controlUrl) : ps && ps.state === "up" && ps.published ? pub.controlUrl() : null;
       if (st.state !== "up" || !hs || !url) return null;
       const key = await hs.createPreauthKey({ ttlMs: 300_000 });
+      noteKey(key.id, _q && _q.device ? String(_q.device) : undefined);
       watchJoin(300_000);
-      return { controlUrl: url, authKey: key.key, space, box: await o.box(), ...(v4(ips) ? { peerAddr: `${v4(ips)}:${PEER_PORT}` } : {}), ...(ps && ps.pin && !o.controlUrl ? { pin: ps.pin } : {}), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
+      return { controlUrl: url, authKey: key.key, space, box: await o.box(), ...(v4(ips) ? { peerAddr: `${v4(ips)}:${PEER_PORT}` } : {}), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
     },
   };
 }
