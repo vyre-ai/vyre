@@ -68,7 +68,9 @@ test("wink.events.read: events after a cursor with the new cursor; waits for the
   assert.equal((await g.run("wink.events.read", { since: 0, type: "thread.*" })).cursor, 4, "the cursor passes what was scanned");
   assert.deepEqual((await g.run("wink.events.read", { since: 3, type: "thread.*" })), { events: [], cursor: 4 });
   assert.equal((await g.run("wink.events.read", { since: 0, type: "*" })).events.length, 4);
-  await assert.rejects(g.run("wink.events.read", { type: "th*ead" }), e => e.code === "bad_input");
+  assert.deepEqual((await g.run("wink.events.read", { since: 0, types: ["thread.*", "ask.q"] })).events.map(e => e.id), [1, 3, 4], "several types are an OR");
+  assert.deepEqual((await g.run("wink.events.read", { since: 0, types: ["memory.x"] })).events.map(e => e.id), [2], "an exact type");
+  for (const bad of ["th*ead", "thread*", "*.x", "a b", "thread.**"]) await assert.rejects(g.run("wink.events.read", { type: bad }), e => e.code === "bad_input", bad);
   setTimeout(() => r.log.push({ id: 4, type: "c" }), 100);
   const t0 = Date.now(); const w = await r.run("wink.events.read", { since: 3, wait_ms: 5000 });
   assert.deepEqual(w.events.map((/** @type {any} */ e) => e.id), [4]); assert.ok(Date.now() - t0 < 3000, "it returned when the event came, not at the end of the wait");
@@ -87,9 +89,10 @@ test("the SSE route streams the server's events as link did, says link.down when
   const chunks = /** @type {string[]} */ ([]); let head = 0; const closers = /** @type {any[]} */ ([]);
   const res = { writeHead: (/** @type {number} */ s) => { head = s; }, write: (/** @type {string} */ s) => { chunks.push(s); }, end() { chunks.push("END"); } };
   const req = { headers: {}, on: (/** @type {string} */ e, /** @type {any} */ f) => { if (e === "close") closers.push(f); } };
-  r.routes.get("server-events")(req, res, { caller: "cli", url: new URL("http://x/v1/wink/server-events") });
+  r.routes.get("server-events")(req, res, { caller: "cli", url: new URL("http://x/v1/wink/server-events?type=thread.*&type=ask.*&since=2") });
   for (let i = 0; i < 50 && chunks.length < 1; i++) await new Promise(x => setTimeout(x, 20));
   assert.equal(head, 200); assert.match(chunks.join(""), /id: 5\nevent: thread\.msg\ndata: .*"source":"box"/);
+  const asked = r.calls.find(c => c[0] === "wink.events.read")[1]; assert.deepEqual([asked.types, asked.since], [["thread.*", "ask.*"], 2], "several ?type= values and ?since= go to the server");
   closers[0](); assert.ok(chunks.includes("END"));
   const bad = { code: 0, body: "" }; const res2 = { writeHead: (/** @type {number} */ s) => { bad.code = s; }, end: (/** @type {string} */ b) => { bad.body = b; }, write() {} };
   r.routes.get("server-events")({ headers: {}, on() {} }, res2, { caller: "agent:kit", url: new URL("http://x/v1/wink/server-events") });
