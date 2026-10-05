@@ -739,7 +739,7 @@ test("typed code: the owner's typed-back ack is the yes, so the device that came
   const TAG = "t".repeat(43), OTHER = "u".repeat(43);
   const typed = world({ confirm: true });
   typed.p.typedAck(TAG);
-  const done = await adoptAs(typed, "device:app1", { ...ASKED, pairing: { tag: TAG } });
+  const done = await adoptAs(typed, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } });
   assert.equal(done.pending, undefined, "no question to wait on");
   assert.deepEqual(done.owner, { kind: "identity", id: ME });
   assert.equal(typed.p.meta.get("adopter"), "device:app1");
@@ -748,7 +748,7 @@ test("typed code: the owner's typed-back ack is the yes, so the device that came
   // the long-code and QR paths (no typed ack for their ticket) still ask the words
   const qr = world({ confirm: true });
   qr.p.typedAck(TAG);
-  const asked = await adoptAs(qr, "device:app1", { ...ASKED, pairing: { tag: OTHER } });
+  const asked = await adoptAs(qr, "device:app1", { ...ASKED, pairing: { typed_tag: OTHER } });
   assert.equal(asked.pending, true, "another ticket is not covered by the ack");
   assert.equal((await atServer(qr, "wink.server.pairing")).asking, true);
   const plain = world({ confirm: true });
@@ -756,14 +756,14 @@ test("typed code: the owner's typed-back ack is the yes, so the device that came
   // one ticket, one use: the ack is spent by the first adoption that carries its tag
   const once = world({ confirm: true });
   once.p.typedAck(TAG);
-  await adoptAs(once, "device:app1", { ...ASKED, pairing: { tag: TAG } });
+  await adoptAs(once, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } });
   once.p.meta.del("owner"); once.p.meta.del("adopter");
-  assert.equal((await adoptAs(once, "device:app2", { ...ASKED, pairing: { tag: TAG } })).pending, true, "the same tag again is asked");
+  assert.equal((await adoptAs(once, "device:app2", { ...ASKED, pairing: { typed_tag: TAG } })).pending, true, "the same tag again is asked");
   // and an ack that is never used ends with the ask window
   let t = 9_000_000;
   const late = world({ confirm: true, now: () => t });
   late.p.typedAck(TAG); t += 6 * 60_000;
-  assert.equal((await adoptAs(late, "device:app1", { ...ASKED, pairing: { tag: TAG } })).pending, true, "an ack that waited more than five minutes covers nothing");
+  assert.equal((await adoptAs(late, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } })).pending, true, "an ack that waited more than five minutes covers nothing");
 });
 
 test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {

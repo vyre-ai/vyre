@@ -351,7 +351,7 @@ export function createPairing(o) {
   /**
    * What the new server needs to reach its home with no one to carry it (home address, box id, the node's join key, the relay and its own device id),
    * handed over only inside the paired channel's encrypted call to wink.server.adopt, stored on the server, never in a card, an event or a log.
-   * @param {any} paired @param {{ kind: string, id: string }} target @param {{ identity: string, peerSecret: string, device: string, ownerName?: string, handover?: any, seed?: Uint8Array, onConfirm?: (words: string, until: number) => void }} x */
+   * @param {any} paired @param {{ kind: string, id: string }} target @param {{ identity: string, peerSecret: string, device: string, ownerName?: string, handover?: any, seed?: Uint8Array, typedSeed?: Uint8Array, onConfirm?: (words: string, until: number) => void }} x */
   const adopt = async (paired, target, x) => {
     if (ports.adopt) return ports.adopt(paired, target, x);
     const hand = x.handover && typeof x.handover === "object" ? { ...x.handover, device: x.device } : { device: x.device };
@@ -369,7 +369,9 @@ export function createPairing(o) {
     // sha256(its nonce) first, the server answers with its own nonce, then this app reveals its nonce, so neither side can pick a nonce after seeing the other's.
     const seed = x.seed ? b64url(x.seed) : "";
     const na = newNonce(), commit = await nonceCommit(na), tag = seed ? await ticketTag(seed) : "";
-    const pair = (/** @type {any} */ more) => ({ ...input, pairing: { commit, ...(tag ? { tag } : {}), ...more } });
+    // A pairing that came in by the typed code names that code's ticket in its own field (`typed_tag`), never in `tag`: a server that has the typed-ack rule reads it, an older one ignores it and asks the words as before
+    const typedTag = x.typedSeed ? await ticketTag(b64url(x.typedSeed)) : "";
+    const pair = (/** @type {any} */ more) => ({ ...input, pairing: { commit, ...(tag ? { tag } : {}), ...(typedTag ? { typed_tag: typedTag } : {}), ...more } });
     /** @type {string} */
     let mine = "";
     const cancel = () => { void callServer(paired, "wink.server.adopt", { ...input, pairing: { cancel: true, commit, ...(tag ? { tag } : {}) } }).catch(() => null); };
@@ -560,7 +562,7 @@ export function createPairing(o) {
           let ok = false, why = null;
           // A release that could not be delivered when the person removed this server goes now, over the channel this pairing just made.
           if (meta.get(`release:${sid}`)) { if ((await callRelease(channelOf(pd) || meta.get(`release:${sid}`))) !== "unreachable") meta.del(`release:${sid}`); }
-          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed || (i.code ? t.seed : undefined), onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
+          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed, ...(i.code && !i.seed ? { typedSeed: t.seed } : {}), onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
@@ -1070,14 +1072,14 @@ export function createPairing(o) {
           }
           const fresh = !to && !o.pairWordsFor;
           // The owner typed back the ack of the typed code this device came in by: that is the yes, so no three words are asked (single use; the QR and long-code paths ask them)
-          const typedYes = Boolean(pr.tag) && takeTypedAck(String(pr.tag));
+          const typedYes = Boolean(pr.typed_tag) && takeTypedAck(String(pr.typed_tag));
           // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
           const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
           if (pr.tag) liveTickets.delete(String(pr.tag));
           if (pr.cancel === true) throw fail("denied", words("pairCancelled"));
           if (fresh && !/^[0-9a-f]{64}$/.test(String(pr.commit || ""))) throw fail("bad_input", words("pairNeedsFresh"));
           let ticket = "";
-          if (fresh && pr.tag && !typedYes) {
+          if (fresh && pr.tag) {
             const t = liveTicket;
             if (!t || t.until <= now()) throw fail("denied", words("ticketTaken"));
             ticket = t.seed;
