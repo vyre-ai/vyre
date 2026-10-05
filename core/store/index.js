@@ -33,8 +33,6 @@ export function open(file) {
   return db;
 }
 
-/** Every module's migration list as the last `migrate` saw it: the append-only hygiene test (test/migrations-append-only.test.js) reads it. */
-export const MIGRATION_LISTS = new Map();
 /** Called when a "duplicate column name" step was treated as applied (a repair for a box that ran a mis-ordered list). Replaceable so the daemon can log it and a test can count it. @type {(line: string) => void} */
 export let onRepair = line => { try { process.stderr.write(line + "\n"); } catch { /* nothing to log to */ } };
 /** @param {(line: string) => void} fn */
@@ -47,7 +45,6 @@ export const setRepairLog = fn => { onRepair = fn; };
  * @param {string[]} steps SQL, one string per version, never edited once released
  */
 export function migrate(db, module, steps) {
-  MIGRATION_LISTS.set(module, steps);
   const done = new Set(db.prepare("SELECT version FROM _migrations WHERE module = ?").all(module).map(r => Number(r.version)));
   steps.forEach((sql, i) => {
     const v = i + 1;

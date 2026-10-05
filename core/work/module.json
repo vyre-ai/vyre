@@ -80,24 +80,6 @@
         "summary": "accept a proposed fact onto its record",
         "reach": "person",
         "effect": "write"
-      },
-      {
-        "name": "work.engineer.talk",
-        "summary": "ask the Engineer to explain or change this Space's definitions; admins only",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "work.engineer.revise",
-        "summary": "edit the Engineer's proposed definition yourself; the earlier approval is void",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "work.engineer.approve",
-        "summary": "approve or reject the Engineer's change with your own presence proof",
-        "reach": "person",
-        "effect": "write"
       }
     ]
   },

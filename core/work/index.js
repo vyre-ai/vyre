@@ -1,9 +1,8 @@
 // @ts-check
-// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Four things, one module, all over the kernel contracts:
+// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Three things, one module, all over the kernel contracts:
 //  - native.*   the tool surface generated from the Space's definitions and the action registry (kernel/tools), the situation and the component for a result
 //  - teammates.* what a teammate starts with, adding one under the adder's ceiling, the doing-now line
 //  - recall.*   the three-layer memory: lines, meaning search, answers with citations, fact proposals
-//  - engineer.* the admin-only Engineer: propose, revise, approve under the admin's own presence proof
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
@@ -15,7 +14,6 @@ import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/ro
 import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
-import { createEngineer } from "./engineer/index.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -29,7 +27,6 @@ export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
     /** @type {any} */ let engine = null;
-    /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
@@ -75,12 +72,6 @@ export default {
       const k = kernelOf();
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
       return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
-    };
-    const engineerOf = () => {
-      if (engineer) return engineer;
-      const k = kernelOf();
-      if (!k.compile) throw unavailable();
-      return (engineer = createEngineer({ kernel: k, compile: k.compile, simulate: k.simulate || null, ...(k.engineerChain ? { engineerChain: k.engineerChain } : {}) }));
     };
 
     ctx.tool("work.tools", {
@@ -211,25 +202,6 @@ export default {
         if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules erase a session's lines");
         return { erased: e.forgetSession(String(input.session)) };
       },
-    });
-
-    ctx.tool("work.engineer.talk", {
-      description: "Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.",
-      input: obj({ text: { type: "string" } }, ["text"]),
-      run: async (input, extra) => {
-        const r = await engineerOf().talk(await chainOf(extra), String(input.text));
-        return { ...r, component: toComponent("work.engineer.talk", r.kind === "proposal" ? { kind: "flow_diff", ...r.card } : r) };
-      },
-    });
-    ctx.tool("work.engineer.revise", {
-      description: "Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.",
-      input: obj({ id: { type: "string" }, source: { type: "string" } }, ["id", "source"]),
-      run: async (input, extra) => engineerOf().revise(await chainOf(extra), String(input.id), String(input.source)),
-    });
-    ctx.tool("work.engineer.approve", {
-      description: "Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.",
-      input: obj({ id: { type: "string" }, proof: { type: "object" }, outcome: { enum: ["approved", "rejected"] }, reason: { type: "string" } }, ["id", "proof"]),
-      run: async (input, extra) => engineerOf().approve(await chainOf(extra), String(input.id), { proof: input.proof, outcome: input.outcome || "approved", ...(input.reason ? { reason: String(input.reason) } : {}) }),
     });
 
     return { async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); } };

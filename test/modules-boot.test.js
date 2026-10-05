@@ -17,7 +17,6 @@ const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "c
 /** Modules that need something a bare test home does not have. Each says what. Keep this empty or shrinking. */
 const EXPECTED = /** @type {Record<string, string>} */ ({
   onboard: "needs the daemon's router to hand out; a bare registry has none",
-  "space-sessions": "BROKEN on work/v0.3: its entry file does not export default { start(ctx) } (owner: sessions). Remove this line when it is fixed",
 });
 
 for (const role of /** @type {const} */ (["box", "local"])) {
