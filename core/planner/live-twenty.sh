@@ -15,7 +15,7 @@ KEY="$(find "$HOME_DIR" -name service.key | head -1)"
 set +e
 docker run --rm --network "vyre-${SPACE}-twenty_store" -v "$PWD:/repo:ro" -v "$KEY:/data/twenty.key:ro" -w /repo \
   -e VYRE_TEST_HOSTED=1 -e VYRE_TWENTY_LIVE_URL="http://twenty-${SPACE}:3000" -e VYRE_TWENTY_LIVE_KEY_FILE=/data/twenty.key node:22-alpine \
-  node --test --test-timeout=280000 --test-reporter=spec core/planner/live-twenty.test.js
+  node --test --test-timeout=1500000 --test-reporter=spec core/planner/live-twenty.test.js
 RC=$?
 if [ -n "${KEEP:-}" ]; then echo "kept: remove with  docker compose -p vyre-${SPACE}-twenty down -v; rm -rf $HOME_DIR $STATE"; exit $RC; fi
 docker compose -p "vyre-${SPACE}-twenty" down -v >/dev/null 2>&1

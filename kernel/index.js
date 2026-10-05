@@ -26,6 +26,7 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { TASK } from "../records/core-types.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -84,7 +85,14 @@ export async function createKernel(cfg) {
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
+    // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
+    // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
+    records: store,
+    projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
+  // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
+  await store.define({ add_types: [TASK] });
+  await tasks.migrate();
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
@@ -92,6 +100,8 @@ export async function createKernel(cfg) {
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
+    // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
+    moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
@@ -138,7 +148,7 @@ export async function createKernel(cfg) {
       space: cfg.space, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
       canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
-      records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
+      records, memory: gateway.memory, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
@@ -328,7 +338,14 @@ export async function createKernel(cfg) {
       if (space === cfg.space) return handle.chain(meta);
       const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
       if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
-      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && typeof meta.token === "string") {
+        try { return await h.surfaces.chainFor(meta.token); } catch { /* not a token of that Space's own: a session of this home, below */ }
+        // A session opened in this home speaks for its person in every Space they belong to (an assistant works wherever its person does): this home verifies the token it signed, and the other Space
+        // builds the chain from the person and agent the token names by the same rule a session of its own gets. The Space's own grants still decide what that chain may do, and a person who is not a member there gets no chain.
+        let t; try { t = await surfaces.verify(meta.token); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+        const facts = t.agent ? { kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, from_token: true, vouched: true } : { kind: "session_person", person: t.person, session: t.session, from_token: true, vouched: true };
+        try { return h.kernel.chains.fromFacts(facts); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+      }
       if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
         if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
         try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }

@@ -1,6 +1,6 @@
 // @ts-check
 // The planner that kept its own tables (0.2.x) is carried into the Space's records once. A crash part way is safe: the tables stay, the next start carries only what is not yet
-// there, and nothing is ever made twice.
+// there, and nothing is ever made twice. The planner module's migration list (the five released steps, one added) is pinned here and by test/migrations-append-only.test.js.
 
 import "../../scripts/mac-test-guard.mjs";
 import fs from "node:fs";
@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { world, MIN, HOUR, DAY, T0, FACTS } from "./testing.js";
-import { importLegacy } from "./legacy.js";
+import { MIGRATIONS, importLegacy } from "./legacy.js";
 
 const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
 
@@ -56,10 +56,10 @@ async function counts(/** @type {any} */ w, /** @type {any} */ K) {
     task: (await K.tasks.list(K.serviceChain(), { doer: K.owner })).filter((/** @type {any} */ t) => t.form && t.form.planner && t.form.planner.legacy_id).length, planner_firing: await n("planner_firing"), planner_state: await n("planner_state") };
 }
 
-test("legacy: a planner with its own tables starts, carries what it held into records, and the tables are gone", async t => {
+test("legacy: a planner with its own tables starts, carries what it held into records, and the tables stay", async t => {
   const db = oldDb();
   const w = await world(t, { store: { db } });
-  assert.deepEqual(tables(db), [], "the old tables are dropped");
+  assert.equal(tables(db).length, 4, "the old tables stay: a table goes only through an appended migration step");
   const K = w.k.kernelFor({ name: "planner", needs: NEEDS });
   assert.deepEqual(await counts(w, K), WANT);
   // what the person sees: every kind, the repeat rule, the filing, the chain, and the answered ring
@@ -98,7 +98,7 @@ test("legacy: a crash at any write is safe: the tables stay, the re-run carries 
     const second = await importLegacy({ db, K: real, log: () => {} });
     assert.ok(second, `limit ${limit}: the re-run finishes`);
     assert.deepEqual(await counts(w, real), WANT, `limit ${limit}: exactly one of each after the re-run`);
-    assert.deepEqual(tables(db), [], `limit ${limit}: and then the tables go`);
+    assert.equal(tables(db).length, 4, `limit ${limit}: and the tables stay`);
     // a third run, and a run over a copy of the same tables again, add nothing
     const again = oldDb();
     assert.ok(await importLegacy({ db: again, K: real, log: () => {} }));
@@ -121,4 +121,9 @@ test("legacy: a chained task's wait is repointed on the re-run too", async t => 
   const all = await w2.ok("planner.list", { state: "all", limit: 200 });
   assert.equal(all.find((/** @type {any} */ x) => x.title === "Draft the recap").waits_on, all.find((/** @type {any} */ x) => x.title === "Call the printer").id);
   assert.equal(all.length, 6, "no item was made twice");
+});
+
+test("legacy: the migration list keeps its five released steps and adds one at the end that records what moved", () => {
+  assert.equal(MIGRATIONS.length, 6);
+  assert.match(MIGRATIONS[5], /CREATE TABLE planner_moved/);
 });

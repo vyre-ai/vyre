@@ -1,18 +1,74 @@
 // @ts-check
-// A planner that kept its own tables (0.2.x: planner_items, planner_firings, planner_calendar, planner_state) brings what they hold into the Space's records once, at the
-// first start that has the kernel, and then drops the tables. Nothing is read from them again.
+// The planner's old tables (0.2.x: planner_items, planner_firings, planner_calendar, planner_state), kept so an upgraded box brings what they hold into the Space's records once, at the
+// first start that has the kernel. The first five migration steps are released and never change (test/migrations.released.json: a module's list is append-only); the sixth,
+// `planner_moved`, is this file's bookkeeping. The tables themselves are never dropped here: a table goes only through a step appended to MIGRATIONS.
 //   alarms, timers, reminders and tasks that run later  -> `reminder` records      notes -> `note` records
 //   events the planner made                              -> `event` records         open todos -> the kernel's Tasks (a done or dropped todo is not carried)
 //   rings and their answers, and the settings            -> `planner_firing` and `planner_state` records
 // The connected calendars' copy is not carried: it is read again from Google within 15 minutes of the first start. Items soft-deleted in the old planner are not carried.
 //
-// A crash part way leaves the old tables in place, and the next start runs the import again. It never writes anything twice: every record it makes carries the old id
+// A crash part way leaves the tables as they are, and the next start runs the import again. It never writes anything twice: every record it makes carries the old id
 // (a Reminder or Note's `legacy_id`, an event's `external_id` as "planner:<id>", a Task's `form.planner.legacy_id`), a ring keeps its own unique ring id and a setting its
-// unique key, and the import first reads which of those are already in the records and carries only the rest.
+// unique key, and the import first reads which of those are already in the records and carries only the rest. `planner_moved` repeats that as a list, written after the records
+// are, and a run that carried everything adds one row "~complete", so every later start does nothing at all.
 
 import { toData, toTaskSpec, typeOf } from "./records.js";
 
-const TABLES = ["planner_items", "planner_firings", "planner_calendar", "planner_state"];
+export const MIGRATIONS = [
+  `CREATE TABLE planner_items (
+     id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT,
+     list TEXT, priority INTEGER NOT NULL DEFAULT 0, parent TEXT, project TEXT, thread TEXT,
+     tags TEXT NOT NULL DEFAULT '[]', pinned INTEGER NOT NULL DEFAULT 0,
+     state TEXT NOT NULL DEFAULT 'open',
+     at INTEGER, tz TEXT, floating INTEGER NOT NULL DEFAULT 0, wall TEXT, date TEXT, repeat TEXT, due TEXT,
+     duration_ms INTEGER, snooze_until INTEGER, next_fire INTEGER,
+     created INTEGER NOT NULL, updated INTEGER NOT NULL, done_at INTEGER, deleted_at INTEGER, source TEXT);
+   CREATE INDEX planner_items_fire ON planner_items (next_fire) WHERE next_fire IS NOT NULL;
+   CREATE INDEX planner_items_snooze ON planner_items (snooze_until) WHERE snooze_until IS NOT NULL;
+   CREATE INDEX planner_items_kind ON planner_items (kind, state);
+   CREATE TABLE planner_firings (
+     id TEXT PRIMARY KEY, item TEXT NOT NULL, kind TEXT NOT NULL, due INTEGER NOT NULL,
+     ring INTEGER NOT NULL DEFAULT 1, missed INTEGER NOT NULL DEFAULT 0,
+     state TEXT NOT NULL, fired_at INTEGER NOT NULL, next_ring INTEGER,
+     acked_at INTEGER, action TEXT, by TEXT, until INTEGER);
+   CREATE INDEX planner_firings_item ON planner_firings (item, fired_at);
+   CREATE INDEX planner_firings_ring ON planner_firings (next_ring) WHERE next_ring IS NOT NULL;
+   CREATE TABLE planner_calendar (
+     id TEXT PRIMARY KEY, account TEXT NOT NULL, event_id TEXT NOT NULL, title TEXT, start INTEGER NOT NULL, end INTEGER,
+     all_day INTEGER NOT NULL DEFAULT 0, where_ TEXT, url TEXT, synced_at INTEGER NOT NULL,
+     UNIQUE (account, event_id));
+   CREATE INDEX planner_calendar_start ON planner_calendar (start);
+   CREATE TABLE planner_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // The calendar slice: a cached event's pending ring, the start it last rang for (so a resync
+  // never rings twice), a snooze; and a place for the planner's own events.
+  `ALTER TABLE planner_calendar ADD COLUMN next_fire INTEGER;
+   ALTER TABLE planner_calendar ADD COLUMN rung_start INTEGER;
+   ALTER TABLE planner_calendar ADD COLUMN snooze_until INTEGER;
+   CREATE INDEX planner_calendar_fire ON planner_calendar (next_fire) WHERE next_fire IS NOT NULL;
+   ALTER TABLE planner_items ADD COLUMN where_ TEXT;`,
+  // Who added an item, as the person sees it: an agent's name, or null for the person and their assistant.
+  `ALTER TABLE planner_items ADD COLUMN source_name TEXT;`,
+  // /later (the user's decision, 2026-09-28): a "task" item runs an instruction instead of
+  // ringing one. waits_on chains it after another item's own done (rule: "when X finishes, do
+  // Y"), resolved by a listener on planner.changed, not by the scheduler's time-based nextFire.
+  // run_count and last_result make a recurring task's history visible (rule 2: a runaway loop
+  // must be visible), and paused lets a person stop just this one without deleting it.
+  `ALTER TABLE planner_items ADD COLUMN waits_on TEXT;
+   ALTER TABLE planner_items ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE planner_items ADD COLUMN last_result TEXT;
+   ALTER TABLE planner_items ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
+  // Bug fix: a chained task never re-armed itself (the comment above was already the intended
+  // rule), but nothing recorded WHICH of the dependency's done_at instants it already ran for -
+  // the task's own state stays "open" forever (running it does not finish it), so reopening the
+  // dependency and finishing it again re-fired the same chained task a second time. waits_on_fired
+  // is the dependency's done_at at the moment this task last ran for it; a later done with the
+  // same done_at is a no-op, a new (later) done_at fires again.
+  `ALTER TABLE planner_items ADD COLUMN waits_on_fired INTEGER;`,
+
+  // The move to Records: which old items have been put into the Space's records, and as what, so a restart or a second start never makes one twice.
+  `CREATE TABLE planner_moved (id TEXT PRIMARY KEY, as_type TEXT NOT NULL, at INTEGER NOT NULL);`,
+];
+
 const iso = (/** @type {any} */ ms) => (ms == null ? null : new Date(Number(ms)).toISOString());
 
 /**
@@ -24,6 +80,9 @@ export async function importLegacy({ db, K, log }) {
   if (!db) return null;
   const has = (/** @type {string} */ t) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t));
   if (!has("planner_items")) return null;
+  // The bookkeeping table is the sixth migration step; a database without it (a test that did not run the list) is imported all the same, just without the list.
+  const book = has("planner_moved");
+  if (book && db.prepare("SELECT 1 FROM planner_moved WHERE id = '~complete'").get()) return null;
   const chain = () => K.serviceChain();
   const rows = /** @type {any[]} */ (db.prepare("SELECT * FROM planner_items WHERE deleted_at IS NULL ORDER BY created, id").all());
   const firings = has("planner_firings") ? /** @type {any[]} */ (db.prepare("SELECT * FROM planner_firings ORDER BY fired_at, id").all()) : [];
@@ -113,7 +172,11 @@ export async function importLegacy({ db, K, log }) {
   }
 
   if (failed > 0) { log(`planner: ${failed} things were not written; the old tables are kept and read again at the next start`); return null; }
-  for (const t of TABLES) if (has(t)) db.exec(`DROP TABLE ${t}`);
-  log(`planner: carried ${items} items, ${firingsMade} rings and ${settings} settings into the Space's records (${already} were already there); the planner's own tables are gone`);
+  if (book) {
+    const mark = db.prepare("INSERT OR IGNORE INTO planner_moved (id, as_type, at) VALUES (?, ?, ?)");
+    for (const [id, c] of carried) mark.run(id, c.type, Date.now());
+    mark.run("~complete", "all", Date.now());
+  }
+  log(`planner: carried ${items} items, ${firingsMade} rings and ${settings} settings into the Space's records (${already} were already there); the old tables are left as they are`);
   return { items, firings: firingsMade, settings, already };
 }

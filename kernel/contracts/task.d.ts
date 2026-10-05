@@ -69,6 +69,8 @@ export interface Task {
   readonly assigned_by: Actor;
   /** The task this one is a part of (a sub-item). Set when it is made or by `edit`. */
   readonly parent?: Uuid;
+  /** The Project record of this Space the task belongs to (a link). Set when it is made or by `edit`; `list` takes `{ project }`. */
+  readonly project?: Urn;
   readonly labels: Labels;
   readonly created_at: Ms;
   readonly updated_at: Ms;
@@ -97,7 +99,7 @@ export interface TransitionRule {
 
 export interface TaskApi {
   /** Change a task's title, note, due time, form or parent: its doer, a person, or the chain that assigned it. Not one waiting for its check. */
-  edit(chain: import('./chain.js').Chain, id: Uuid, patch: { readonly title?: string; readonly note?: string | null; readonly due?: Ms | null; readonly form?: unknown; readonly parent?: Uuid | null }): Promise<Task>;
+  edit(chain: import('./chain.js').Chain, id: Uuid, patch: { readonly title?: string; readonly note?: string | null; readonly due?: Ms | null; readonly form?: unknown; readonly parent?: Uuid | null; readonly project?: Urn | null }): Promise<Task>;
   /** Open a done or skipped task again (no checker, no outward act): its doer, a person, or the chain that assigned it. */
   reopen(chain: import('./chain.js').Chain, id: Uuid): Promise<Task>;
   /** `ask.request`: a task assigned to an actor, with an optional checker. */

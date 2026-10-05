@@ -11,6 +11,7 @@ import path from "node:path";
 import { createTwentyStore } from "../../stores/twenty/store.js";
 import { TwentyClient } from "../../stores/twenty/client.js";
 import { PLANNER_TYPES } from "./types.js";
+import { CORE_TYPES } from "../../records/core-types.js";
 import { world, newKernel, prepareKernel, FACTS, T0, HOUR, DAY, MIN, iso } from "./testing.js";
 
 const URL_ = process.env.VYRE_TWENTY_LIVE_URL, KEY_FILE = process.env.VYRE_TWENTY_LIVE_KEY_FILE;
@@ -20,14 +21,17 @@ if (!URL_ || !KEY_FILE) {
 } else {
   const client = new TwentyClient({ url: URL_, key: () => fs.readFileSync(KEY_FILE, "utf8").trim() });
   /** One kernel over a fresh store of this Twenty, with the Event type and the assistants defined. */
-  async function kernel() {
+  async function kernel(/** @type {any} */ more = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-planner-"));
     const store = createTwentyStore({ client, space: "planner-live", dir, graceMs: 250 });
-    const k = await newKernel(store);
+    // a Space's store has the core types (project, task) before its kernel starts
+    // The first run on a fresh Twenty makes the core types (slow: every type, its relations and views); later kernels of this file find them there.
+    await store.define({ add_types: [...CORE_TYPES] });
+    const k = await newKernel(store, more);
     await prepareKernel(k);
     // The Twenty outlives a run: what an earlier one left is cleared, so this one reads only its own (the types are defined first so the store can be asked).
-    await store.define({ add_types: PLANNER_TYPES });
-    for (const type of ["reminder", "note", "planner_firing", "planner_state", "event"]) {
+    await store.define({ add_types: [...PLANNER_TYPES] });
+    for (const type of ["reminder", "note", "planner_firing", "planner_state", "event", "task"]) {
       for (;;) {
         const page = await store.query(type, { page: { limit: 100 } }).catch(() => ({ rows: [] }));
         if (!page.rows.length) break;
@@ -112,5 +116,26 @@ if (!URL_ || !KEY_FILE) {
     const upcoming = await w.ok("planner.agenda", { from: noon(T0), to: noon(T0 + 30 * DAY) });
     assert.equal(JSON.stringify(upcoming).split(`${run} Retro`).length - 1 >= 2, true, "the planner expands the repeat into more than one occurrence");
     await R.remove(w.owner, "event", ev.id, await ver()).catch(() => {});
+  });
+
+  test("live: a Task is a record in Twenty: made, edited, moved and read back, with the kernel keeping the authority", { timeout: 300_000 }, async () => {
+    const k = await kernel();
+    const owner = k.chains.fromFacts(FACTS), R = k.gateway.records, T = k.tasks;
+    const t = await T.request(owner, { title: "Send the engagement letter", doer: { kind: "person", id: "per_owner", space: "spc_aaaaaaaaaaaa" }, output: { kind: "note" }, note: "use the new template", due: T0 + 3 * HOUR, fields: { priority: 2, list: "clients" } });
+    const rec = await R.get(owner, "task", t.id);
+    assert.deepEqual([rec.data.title, rec.data.status, rec.data.priority, rec.data.list], ["Send the engagement letter", "ready", 2, "clients"]);
+    assert.equal(Date.parse(rec.data.due), T0 + 3 * HOUR);
+    const upd = await R.update(owner, "task", t.id, { title: "Send the Harlow letter", note: null, priority: 3 }, rec.version);
+    assert.deepEqual([upd.data.title, upd.data.priority, upd.data.note], ["Send the Harlow letter", 3, undefined]);
+    await T.start(owner, t.id);
+    await T.complete(owner, t.id, { note: "Done", sources: ["vyre://x/y/z"] });
+    assert.equal((await R.get(owner, "task", t.id)).data.status, "done");
+    await assert.rejects(() => R.update(owner, "task", t.id, { status: "ready" }, null), { code: "field_not_allowed" });
+    const made = await R.create(owner, "task", { title: "Call Dana Wine", due: iso(T0 + 4 * HOUR), list: "clients" });
+    assert.equal((await T.get(owner, made.id)).doer.id, "per_owner");
+    const rows = (await R.query(owner, "task", { filter: { field: "status", op: "eq", value: "ready" }, page: { limit: 20 } })).rows;
+    assert.deepEqual(rows.map(r => r.id), [made.id], "a view by status finds the open one");
+    await T.reopen(owner, t.id);
+    assert.equal((await T.get(owner, t.id)).title, "Send the Harlow letter", "the words are the record's");
   });
 }

@@ -299,3 +299,88 @@ test("retire (RT-1, more): a database that cannot be read refuses with the folde
   assert.ok(fs.existsSync(folder(b)));
   // member.removed and grant.revoked are allowed only because any record they could hide stays in the table, where it is found
 });
+
+test("a new Space has the person's default assistant as an actor from its start, the personal Space and a hosted one alike, so a task there can go to it", async () => {
+  const { spaces, personal, pid } = await home();
+  const a = await spaces.host({ owner: ME });
+  for (const h of [spaces.for(pid), a]) assert.equal(h.kernel.grants.hasDefaultAssistant(), true, `${h.space}`);
+  void personal;
+});
+
+test("moving a project between two Spaces of one home: approved once where it starts, received under the role in the other, single use, same person, this target and plan only", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  const pid = "0190c3f2-1111-4abc-8def-000000000001";
+  const project = `vyre://${a.space}/project/${pid}`;
+  const plan_hash = "p".repeat(43);
+  const req = { project, to: b.space, plan_hash };
+  // no proof: the source asks for the person's approval
+  await assert.rejects(() => a.gateway.moves.out(ca, req), { code: "needs_presence" });
+  // a proof for another plan is no proof for this one
+  await assert.rejects(() => a.gateway.moves.out(ca, req, sign(a.space, "moveOut", { ...req, plan_hash: "q".repeat(43) })), { code: /needs_presence|bad_proof|wrong/ });
+  const out = await a.gateway.moves.out(ca, req, sign(a.space, "moveOut", req));
+  assert.match(out.move_id, /^[0-9a-f-]{36}$/);
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 1);
+  const receive = { from: a.space, project, plan_hash, move_id: out.move_id };
+  // another plan, another project, another person, another target: none of these is that move
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, plan_hash: "q".repeat(43) }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, project: `vyre://${a.space}/project/0190c3f2-1111-4abc-8def-000000000002` }), { code: "not_found" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, move_id: "0190c3f2-1111-4abc-8def-0000000000ff" }), { code: "not_found" });
+  const bobCb = b.kernel.chains.fromFacts({ kind: "device", device_key_id: "d9", person: ME, path: "direct" });
+  void bobCb;
+  const got = await b.gateway.moves.in(cb, receive);
+  assert.deepEqual(got, { received: true, move_id: out.move_id });
+  assert.equal(b.kernel.log.read({ type: "project.move_in" }).length, 1);
+  // single use
+  await assert.rejects(() => b.gateway.moves.in(cb, receive), { code: "invalid" });
+  // the source cannot be named as the target, and a move to oneself is refused
+  await assert.rejects(() => a.gateway.moves.out(ca, { ...req, to: a.space }, sign(a.space, "moveOut", { ...req, to: a.space })), { code: "bad_input" });
+  await assert.rejects(() => b.gateway.moves.in(cb, { ...receive, from: b.space }), { code: "bad_input" });
+});
+
+test("moving several projects at once: one approval covers the target, the plan and the exact list; each project is then received on its own, single use", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME), cb = await ownerChain(b.kernel, ME);
+  const ids = ["0190c3f2-1111-4abc-8def-000000000011", "0190c3f2-1111-4abc-8def-000000000012", "0190c3f2-1111-4abc-8def-000000000013"];
+  const projects = ids.map(x => `vyre://${a.space}/project/${x}`);
+  const plan_hash = "p".repeat(43);
+  const req = { projects, to: b.space, plan_hash };
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req), { code: "needs_presence" });
+  // a proof for fewer projects, another plan or another target is no proof for this batch
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, projects: projects.slice(0, 2) })), { code: /needs_presence|bad_proof|wrong/ });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, sign(a.space, "moveOutMany", { ...req, plan_hash: "q".repeat(43) })), { code: /needs_presence|bad_proof|wrong/ });
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 0, "nothing was started by a refused call");
+  // every project is checked before the proof is spent; a duplicate or a foreign one is refused
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [projects[0], projects[0]] }), { code: "bad_input" });
+  await assert.rejects(() => a.gateway.moves.outMany(ca, { ...req, projects: [`vyre://${b.space}/project/${ids[0]}`] }), { code: "bad_input" });
+  const proof = sign(a.space, "moveOutMany", req);
+  const out = await a.gateway.moves.outMany(ca, req, proof);
+  assert.equal(out.moves.length, 3);
+  assert.equal(a.kernel.log.read({ type: "project.move_started" }).length, 3, "one event per project");
+  // the same proof cannot start the batch again
+  await assert.rejects(() => a.gateway.moves.outMany(ca, req, proof), { code: /needs_presence|bad_proof|replay|used|wrong/ });
+  for (const m of out.moves) {
+    const got = await b.gateway.moves.in(cb, { from: a.space, project: m.project, plan_hash, move_id: m.move_id });
+    assert.deepEqual(got, { received: true, move_id: m.move_id });
+  }
+  assert.equal(b.kernel.log.read({ type: "project.move_in" }).length, 3);
+  await assert.rejects(() => b.gateway.moves.in(cb, { from: a.space, project: out.moves[0].project, plan_hash, move_id: out.moves[0].move_id }), { code: "invalid" });
+});
+
+test("a module tool's cross-space action: the hosted Space's own authorize allows a member's chain and refuses a stranger and another Space's chain", async () => {
+  const { spaces } = await home();
+  const a = await spaces.host({ owner: ME }), b = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME);
+  await a.gateway.grants.setRole(ca, { person: ALICE, role: "member" }, sign(a.space, "setRole", { person: ALICE, role: "member" }));
+  const res = `vyre://${a.space}/tool/notes.there`;
+  const mine = await a.gateway.authorize({ chain: ca, action: "records.read", resource: res });
+  assert.equal(mine.effect, "allow", "the owner may");
+  const alice = await ownerChain(a.kernel, ALICE);
+  assert.equal((await a.gateway.authorize({ chain: alice, action: "records.read", resource: res })).effect, "allow", "a member may read");
+  const stranger = await ownerChain(a.kernel, BOB);
+  assert.notEqual((await a.gateway.authorize({ chain: stranger, action: "records.read", resource: res })).effect, "allow", "a stranger may not");
+  const other = await ownerChain(b.kernel, ME);
+  assert.notEqual((await a.gateway.authorize({ chain: other, action: "records.read", resource: res })).effect, "allow", "a chain from another Space may not");
+});

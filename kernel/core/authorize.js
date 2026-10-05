@@ -5,6 +5,8 @@
 // the obligations returned here.
 import { isChain, hasKind, isExactlyPerson } from "./chain.js";
 const DEFAULT_ASSISTANT = "assistant";
+/** A model slot (`model:<provider>/<model>#<n>`, the Switchboard's) beside a person: it is the person's own authority, narrowed, and holds nothing of its own, so it is no member and needs no grant. Without a person it is nothing. */
+const isSlot = (/** @type {any} */ actor, /** @type {any} */ chain) => actor.kind === "agent" && String(actor.id).startsWith("model:") && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person");
 import { mintId } from "./ids.js";
 import { segments, covers, containedPrefix, spaceOf } from "./urn.js";
 import { KernelError } from "./errors.js";
@@ -163,7 +165,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
- * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
+ * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
  * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | { ok: boolean, reason?: string } | Promise<boolean | { ok: boolean, reason?: string }>} [verifyPresence] the hardware-signer check (core/presence.js); default none
@@ -246,6 +248,7 @@ export function createAuthorizer(cfg) {
         // A Flow run's automation hop is a job label under its approving person (kernel/core/chain.js forFlow: only the builder makes one, and only from a person's chain): it adds no
         // grants and takes none away, so the run can do exactly what its approver can, narrowed further by the runner's declared caps. Without a person in the chain it is nothing.
         if (actor.kind === "automation" && typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
           if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource))) return deny("not_a_member");
@@ -254,7 +257,7 @@ export function createAuthorizer(cfg) {
         if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
         // The default assistant is a delegate: acting for a person (that person is in the chain) it adds no grants of its own and takes none away, so the chain's authority is the
         // person's. Alone, or with no person beside it, it is an ordinary actor with no grants and can do nothing. Named assistants are never delegates: their own grants narrow them.
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") {
           if (ms.expires === undefined || ms.expires <= now) return deny("expired");
@@ -304,7 +307,7 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
+      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 
@@ -415,8 +418,9 @@ export function createAuthorizer(cfg) {
       const proto = `vyre://${cfg.space}/${type}/x`;
       for (const h of chain.hops) {
         const actor = h.actor;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor) || actor.kind === "service") return false;
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") return false;
         let wholeCover = false;
@@ -457,8 +461,9 @@ export function createAuthorizer(cfg) {
       /** @type {Record<string, string>[] | null} */ let result = null;
       for (const h of chain.hops) {
         const actor = h.actor;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor) || actor.kind === "service") return null;
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") return null;
         let whole = false;

@@ -13,7 +13,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { world, MIN, HOUR, DAY, T0 } from "./testing.js";
-import { importLegacy } from "./legacy.js";
+import { migrate } from "../store/index.js";
+import { MIGRATIONS as LEGACY, importLegacy } from "./legacy.js";
 import { MIGRATIONS, store as oldStore } from "./legacy-fixture/store-0.2.3-rc.2.js";
 
 const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
@@ -21,7 +22,9 @@ const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.ur
 /** A 0.2.3 planner's database on disk, with what a used planner holds. */
 function makeOld(/** @type {string} */ file) {
   const db = new DatabaseSync(file);
-  for (const m of MIGRATIONS) db.exec(m);
+  // the way the 0.2.3 daemon applied them: through the store's migrate, which records each step in _migrations
+  db.exec("CREATE TABLE IF NOT EXISTS _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
+  migrate(db, "planner", MIGRATIONS);
   const st = oldStore(db);
   const base = { created: T0 - 3 * DAY, updated: T0 - 3 * DAY, source: "cli" };
   st.insert({ id: "i_alarm", kind: "alarm", title: "Wake up", at: T0 + 20 * HOUR, tz: "Asia/Karachi", wall: "07:00", repeat: { every: "day" }, next_fire: T0 + 20 * HOUR, ...base });
@@ -84,6 +87,10 @@ function assertExactlyOnce(/** @type {Map<string, number>} */ made, /** @type {R
   assert.deepEqual([...made.keys()].filter(k => !keys.includes(k)), [], `${when}: nothing else was made (skipped rows stay behind)`);
 }
 const tables = (/** @type {DatabaseSync} */ db) => /** @type {any[]} */ (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'planner_%'").all()).map(r => r.name);
+/** The store a planner with Records is started over: the daemon's, whose migrate puts the module's whole list (the five released steps and the one this release adds) on the database. */
+const storeFor = (/** @type {DatabaseSync} */ db) => ({ db, migrate: (/** @type {string[]} */ steps) => migrate(db, "planner", steps) });
+const upgrade = (/** @type {DatabaseSync} */ db) => migrate(db, "planner", LEGACY);
+const moved = (/** @type {DatabaseSync} */ db) => /** @type {any[]} */ (db.prepare("SELECT id FROM planner_moved").all()).map(r => r.id);
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "planner-legacy-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 
 test("upgrade from a real 0.2.3 planner database: carried once, nothing lost, skipped rows named", async t => {
@@ -98,16 +105,18 @@ test("upgrade from a real 0.2.3 planner database: carried once, nothing lost, sk
 
   // first start with Records: the file is opened by the planner, which carries and drops
   const first = new DatabaseSync(file);
-  const w = await world(t, { store: { db: first } });
+  const w = await world(t, { store: storeFor(first) });
   const K = w.k.kernelFor({ name: "planner", needs: NEEDS });
   assertExactlyOnce(await inventory(w, K), want, "after the first start");
-  assert.deepEqual(tables(first), [], "the old tables are dropped once everything is written");
+  assert.equal(tables(first).length, 5, "the old tables stay (a table goes only through an appended migration step), beside planner_moved");
+  assert.ok(moved(first).includes("~complete"), "the run that carried everything says so");
+  assert.deepEqual(moved(first).filter(id => id !== "~complete").sort(), want.carried.map(r => r.id).sort(), "and lists what it carried");
   first.close();
 
   // a second start over the same records, the database reopened from disk: nothing to carry, nothing added
   const reopened = new DatabaseSync(file);
   assert.equal(await importLegacy({ db: reopened, K, log: () => {} }), null);
-  const w2 = await world(t, { kernel: w.k, store: { db: reopened } });
+  const w2 = await world(t, { kernel: w.k, store: storeFor(reopened) });
   assertExactlyOnce(await inventory(w2, K), want, "after the second start");
 
   // what a person sees after the upgrade
@@ -135,13 +144,14 @@ test("upgrade: the same old rows carried again over the records already made add
   const dir = tmp(t);
   const a = makeOld(path.join(dir, "a.db"));
   const want = expectedFrom(a);
-  const w = await world(t, { store: { db: a } });
+  const w = await world(t, { store: storeFor(a) });
   const K = w.k.kernelFor({ name: "planner", needs: NEEDS });
   assertExactlyOnce(await inventory(w, K), want, "first");
   // a restored backup of the same old database, the import run over it again
   const b = makeOld(path.join(dir, "b.db"));
+  upgrade(b);
   assert.ok(await importLegacy({ db: b, K, log: () => {} }));
-  assert.deepEqual(tables(b), []);
+  assert.equal(tables(b).length, 5);
   assertExactlyOnce(await inventory(w, K), want, "after the second import");
 });
 
@@ -153,6 +163,7 @@ test("upgrade: a crash before any write leaves the old tables, and the re-run fi
   probe.close();
   for (let limit = 0; limit < total; limit++) {
     const db = makeOld(path.join(dir, `crash-${limit}.db`));
+    upgrade(db);
     const w = await world(t);
     const real = w.k.kernelFor({ name: "planner", needs: NEEDS });
     let writes = 0;
@@ -160,10 +171,30 @@ test("upgrade: a crash before any write leaves the old tables, and the re-run fi
       records: { ...real.records, create: async (/** @type {any[]} */ ...a) => { if (writes++ >= limit) throw new Error("crash"); return real.records.create(...a); } },
       tasks: { ...real.tasks, request: async (/** @type {any[]} */ ...a) => { if (writes++ >= limit) throw new Error("crash"); return real.tasks.request(...a); } } });
     assert.equal(await importLegacy({ db, K: crashing, log: () => {} }), null, `limit ${limit}: a crash reports nothing carried`);
-    assert.equal(tables(db).length, 4, `limit ${limit}: the old tables stay`);
+    assert.equal(tables(db).length, 5, `limit ${limit}: the old tables stay`);
+    assert.ok(!moved(db).includes("~complete"), `limit ${limit}: a crashed run is not marked complete`);
     assert.ok(await importLegacy({ db, K: real, log: () => {} }), `limit ${limit}: the re-run finishes`);
     assertExactlyOnce(await inventory(w, real), want, `limit ${limit}`);
-    assert.deepEqual(tables(db), [], `limit ${limit}: then the tables go`);
+    assert.equal(tables(db).length, 5, `limit ${limit}: the tables are still there`);
+    assert.ok(moved(db).includes("~complete"), `limit ${limit}: and the finished run is marked`);
     db.close();
   }
+});
+
+test("upgrade: the fixture's five steps are the released ones, and the module's list is those five plus planner_moved", () => {
+  assert.deepEqual(LEGACY.slice(0, 5), MIGRATIONS, "the released steps in legacy.js are the 0.2.3 store's, unedited");
+  assert.equal(LEGACY.length, 6);
+  assert.match(LEGACY[5], /CREATE TABLE planner_moved/);
+});
+
+test("upgrade: a start after a complete run does nothing, whatever the old tables hold", async t => {
+  const dir = tmp(t);
+  const db = makeOld(path.join(dir, "done.db"));
+  const w = await world(t, { store: storeFor(db) });
+  const real = w.k.kernelFor({ name: "planner", needs: NEEDS });
+  let writes = 0;
+  const spy = /** @type {any} */ ({ ...real, records: { ...real.records, create: async (/** @type {any[]} */ ...a) => { writes++; return real.records.create(...a); } }, tasks: { ...real.tasks, request: async (/** @type {any[]} */ ...a) => { writes++; return real.tasks.request(...a); } } });
+  db.prepare("INSERT INTO planner_items (id, kind, title, created, updated) VALUES ('i_late', 'note', 'Added after the move', 1, 1)").run();
+  assert.equal(await importLegacy({ db, K: spy, log: () => {} }), null);
+  assert.equal(writes, 0, "nothing is read from the old tables again once the list says everything moved");
 });

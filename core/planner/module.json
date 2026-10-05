@@ -43,13 +43,35 @@
         "planner_firing/*",
         "planner_state/*",
         "event/*",
-        "task/*"
+        "task/*",
+        "project/*"
       ],
       "types": [
         {
           "name": "reminder",
           "label": "Reminder",
           "icon": "IconBell",
+          "views": [
+            {
+              "name": "reminders_calendar",
+              "type": "calendar",
+              "of": "reminder",
+              "label": "Calendar",
+              "dateField": "at"
+            },
+            {
+              "name": "reminders_list",
+              "type": "list",
+              "of": "reminder",
+              "label": "List",
+              "sort": [
+                {
+                  "field": "at",
+                  "dir": "asc"
+                }
+              ]
+            }
+          ],
           "fields": [
             {
               "name": "title",
@@ -93,17 +115,38 @@
             {
               "name": "floating",
               "kind": "boolean",
-              "label": "Follows the planner's zone"
+              "label": "Follows the planner's zone",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "wall",
               "kind": "text",
-              "label": "Time of day (HH:MM)"
+              "label": "Time of day (HH:MM)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "date",
               "kind": "text",
-              "label": "Date (YYYY-MM-DD)"
+              "label": "Date (YYYY-MM-DD)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "repeat",
@@ -123,7 +166,14 @@
             {
               "name": "next_fire",
               "kind": "number",
-              "label": "Next ring (ms, the planner's own)"
+              "label": "Next ring (ms, the planner's own)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "body",
@@ -163,22 +213,50 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "removed_at",
@@ -203,12 +281,26 @@
             {
               "name": "run_count",
               "kind": "number",
-              "label": "Times run"
+              "label": "Times run",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "last_result",
               "kind": "text",
-              "label": "Last result"
+              "label": "Last result",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "paused",
@@ -218,7 +310,14 @@
             {
               "name": "waits_on_fired",
               "kind": "number",
-              "label": "Last completion it ran for"
+              "label": "Last completion it ran for",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             }
           ]
         },
@@ -282,22 +381,50 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
             },
             {
               "name": "removed_at",

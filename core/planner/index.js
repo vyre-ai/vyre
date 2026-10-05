@@ -9,11 +9,13 @@
 import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
 import { openRecords, fromEvent, recordOf } from "./records.js";
 import { parseRule } from "./rrule.js";
-import { importLegacy } from "./legacy.js";
+import { MIGRATIONS as LEGACY_MIGRATIONS, importLegacy } from "./legacy.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendar, shapeCal } from "./events.js";
+import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
+import { cloudGate } from "../../lib/cloud-gate.js";
 import { isPerson } from "../../lib/caller.js";
 
 /**
@@ -24,6 +26,8 @@ import { isPerson } from "../../lib/caller.js";
 export const seams = new Map();
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** The callers that are a person's own device in hand: their zone is where they are. (A shell on a server is the server's zone, which is never used.) */
+const FOLLOWS = new Set(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
 const AGENTS = ["mcp", "module", "harness"];
 /** What an agent may add with no permission (the user's rule): everything but an event, which is an invite. */
 const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note", "task"];
@@ -63,7 +67,8 @@ export default {
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
     const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how), zone: () => settings().timezone });
-    // A planner that kept its own tables (0.2.x) brings what they hold into the records once, then the tables go.
+    // An upgraded box still has the planner's old tables: their list stays registered (a module's migration list is append-only) and the tables stay. What is in them moves into Records once (legacy.js).
+    if (ctx.store && ctx.store.migrate) ctx.store.migrate(LEGACY_MIGRATIONS);
     if (K) { await importLegacy({ db: ctx.store && ctx.store.db, K, log: ctx.log }); await st.load(); }
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
@@ -73,7 +78,7 @@ export default {
     /** @returns {import("./scheduler.js").Settings} */
     const settings = () => {
       const { timezone, ...kept } = st.state.get("settings") || {};
-      const out = /** @type {any} */ ({ escalate_after: 5, escalate_max: 3, event_lead: 10, ...kept });
+      const out = /** @type {any} */ ({ escalate_after: 5, escalate_max: 3, event_lead: 10, follow_device: true, ...kept });
       return Object.defineProperty(out, "timezone", { enumerable: true, get: () => timezone || defaultZone() });
     };
 
@@ -895,6 +900,7 @@ export default {
       const cur = settings();
       const next = { ...(st.state.get("settings") || {}) };
       if (i.timezone !== undefined) { if (!validZone(i.timezone)) throw fail(`${i.timezone} is not a time zone`); next.timezone = String(i.timezone); }
+      if (i.follow_device !== undefined) next.follow_device = Boolean(i.follow_device);
       const int = (k, lo, hi) => {
         if (i[k] === undefined) return;
         const v = Number(i[k]);
@@ -970,9 +976,14 @@ export default {
     /** A reminder, note or to-do the records say changed from outside: its next ring follows its time, and a finished one stops ringing. */
     const external = (row, how) => {
       if (how === "removed") { cancelRinging(row.id); scheduler.arm(); return; }
-      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null && !row._task) {
+      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null) {
         const n = schedule(row, now());
-        if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
+        // A to-do's ring time is not stored (the Task has its due time): it is worked out here, in the working set only, with its date and time of day read from the due time in its zone.
+        if (row._task) {
+          row.next_fire = n.next_fire;
+          if (row.at != null) { const p = localParts(row.at, zoneOf(row, settings())); row.date = dateString(p); row.wall = wallString(p); row.due = row.date; }
+        }
+        else if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
       }
       if (row.state !== "open" || row.deleted_at != null) cancelRinging(row.id);
       emit(how === "added" ? "planner.added" : "planner.changed", how === "added" ? { item: row.id, kind: row.kind, title: row.title, ...(row.at != null ? { at: row.at } : {}) } : { item: row.id, kind: row.kind, fields: ["records"] }, row);
@@ -1006,10 +1017,19 @@ export default {
       run: async (i, meta) => {
         const w = await who(i, meta.caller, meta.thread || null, meta.agent || null);
         const { as: _as, ...rest } = i || {};
-        if (!K && !local && !(role === "local" && (await checkLink()))) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
-        if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
+        // A Mac paired with a box hands every call to the box, which is where the planner lives and decides; only a call that stays here is asked whether this space can hold the planner.
+        const paired = !local && role === "local" && (await checkLink());
+        // A Basic personal space has no store for the planner: it needs a Cloud space, and the answer lists the ones the person is in.
+        if (!local && !paired) { const gate = await cloudGate(ctx, K ? K.space : undefined); if (gate) throw gate; }
+        if (!K && !local && !paired) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
+        if (paired) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
         if (!local && (!READS.has(name) || name === "planner.bin")) w.chain = await K.chain(meta).catch(() => null);
+        // A personal reminder follows the person: a device they are using says which zone it is in (lib/time), and the planner's zone (which floating alarms are read in) moves to it, unless they turned that off.
+        if (!local && K && w.person && FOLLOWS.has(callerKind(meta.caller)) && meta.zone && (role === "local" || callerKind(meta.caller) !== "cli")) {
+          const here = zoneFrom(meta.zone, "");
+          if (here && settings().follow_device !== false && here !== settings().timezone && name !== "planner.settings") { try { changeSettings({ timezone: here }); } catch (e) { ctx.log(`planner: zone not followed (${/** @type {Error} */ (e).message})`); } }
+        }
         const out = await run(rest, w);
         // A write answers once the records have it; a write the gateway refused is the caller's error.
         if (!local && !READS.has(name)) await st.flush();
@@ -1097,7 +1117,7 @@ export default {
       { type: "object", required: ["text"], properties: { text: str, kind: { type: "string", enum: KINDS } } }, async i => parseText(i.text, now(), i.kind), { agents: true, local: true });
 
     tool("planner.settings", "The planner's zone (floating alarms follow it), escalate_after (minutes, from 1), escalate_max (rings after the first) and event_lead (minutes). With no input, the current settings.",
-      { type: "object", properties: { timezone: str, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));
+      { type: "object", properties: { timezone: str, follow_device: bool, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));
 
     // ---- Start --------------------------------------------------------------------------------
 

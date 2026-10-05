@@ -30,6 +30,12 @@ export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space:
 /** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
 export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
+/**
+ * One person acting for themselves, or the person's own default assistant acting AS them (`chain.via === "assistant"`: the person's chain plus the assistant hop, never a second principal). Not a
+ * space or project agent (that chain carries a different agent and no `via`), not a viewer, and not a model slot. What only a human may do (an approval, a proof) still asks `isExactlyPerson`.
+ */
+export const actsAsPerson = (/** @type {any} */ chain) => isExactlyPerson(chain) || (isChain(chain) && chain.viewer !== true && chain.via === "assistant" && chain.hops[0].actor.kind === "person");
+
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
 /** An unknown trust or class is an error, never "weakest": a bad label must not drop a taint (invariant 9). */
@@ -61,7 +67,9 @@ export function createChainBuilder(cfg) {
   const hop = (/** @type {string} */ kind, /** @type {string} */ id, /** @type {any} */ entered_by, /** @type {any} */ via) =>
     ({ actor: { kind, id, space }, ...(via ? { via } : {}), entered_by });
   const make = (/** @type {any[]} */ hops, /** @type {any} */ labels, /** @type {any} */ extra = {}) => {
-    const c = deepFreeze({ space, hops, labels: { ...labels, source_spaces: [...labels.source_spaces] }, built_at: clock(), ...extra });
+    // The person's assistant acts AS the person: a person hop followed by the default assistant. `via: "assistant"` says so, for the log and for the apps ("Sent by Vyre Assistant"); it is never a second principal.
+    const delegate = hops.length >= 2 && hops[0].actor.kind === "person" && hops[hops.length - 1].actor.kind === "agent" && hops[hops.length - 1].actor.id === "assistant";
+    const c = deepFreeze({ space, hops, labels: { ...labels, source_spaces: [...labels.source_spaces] }, built_at: clock(), ...(delegate ? { via: "assistant" } : {}), ...extra });
     BUILT.add(c);
     return /** @type {import("../contracts/index.js").Chain} */ (/** @type {unknown} */ (c));
   };
@@ -98,9 +106,19 @@ export function createChainBuilder(cfg) {
       }
       case "agent_session": {
         if (!f.vouched) return refuse("agent claim not vouched by the kernel's own session");
+        // `model:` names a Switchboard slot, which holds nothing of its own: only a `model_slot` fact makes one, never an agent session under that name (SL-1).
+        if (typeof f.agent === "string" && f.agent.startsWith("model:")) return refuse("an agent session is not a model slot");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
         return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+      }
+      case "model_slot": {
+        // A model slot (the Switchboard's): the person's chain plus an agent hop `model:<provider>/<model>#<n>`. It acts as the person, narrowed by whatever the Switchboard weakened the session to, and holds nothing of its own.
+        if (!f.vouched) return refuse("model slot not vouched by the kernel's own session");
+        if (typeof f.model !== "string" || !/^[a-z0-9][a-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*#[0-9]{1,6}$/.test(f.model)) return refuse("a model slot names provider/model#n");
+        const who = f.person ?? cfg.owner;
+        if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", `model:${f.model}`, "session", { session: f.session })], base(), { delegated: true, model: f.model, ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "invitee": {
         // Someone who holds an invite and is not a member yet: the Surfaces door verified who they are. Their chain can do one thing, accept the invite

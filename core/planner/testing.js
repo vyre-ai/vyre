@@ -41,7 +41,7 @@ const proofFor = (/** @type {string} */ action, /** @type {any} */ input, /** @t
 const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_proof") };
 
 /** The assistants of the test Space: actors the owner added, working under the person. */
-export const ASSISTANTS = ["juno", "kit"];
+export const ASSISTANTS = ["juno", "kit", "assistant"];
 /** Two members who are not the owner: they hold no admin role, so the Bin lists only what is theirs. */
 export const MEMBERS = ["per_member", "per_third"];
 export const memberFacts = (/** @type {string} */ person) => ({ kind: "invitee", person, vouched: true });
@@ -64,7 +64,7 @@ export async function prepareKernel(/** @type {any} */ k) {
 }
 
 /** A kernel for a test: the memory store, or any store handed in (the live suite passes a real Twenty's). */
-export const newKernel = async (/** @type {any} */ store) => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...(store ? { store } : {}) });
+export const newKernel = async (/** @type {any} */ store, /** @type {any} */ more = {}) => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...(store ? { store } : {}), ...more });
 
 export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null, store = null } = {}) {
   const k = kernel || await newKernel();
@@ -92,14 +92,14 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
     log: m => logs.push(m),
     events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),
-    call: async (tool, input) => (tool === "agents.list" ? { data: w.agents } : google.call(tool, input)),
+    call: async (tool, input) => (tool === "agents.list" ? { data: w.agents } : tool === "spaces.tier" && w.tier ? { data: w.tier } : google.call(tool, input)),
     remote: async () => ({ error: { code: "no_link", message: "no link" } }),
   };
   const handle = await planner.start(ctx);
   t.after(() => handle.stop());
   const R = k.gateway.records;
   const w = {
-    k, events, clock, timers, fired, acked, logs, google, handle, owner, agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
+    k, events, clock, timers, fired, acked, logs, google, handle, owner, tier: /** @type {any} */ (null), agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
     /** Call as another person of the Space (a member, not the owner): `facts` is what the daemon proved about their connection. */
     async callAs(/** @type {any} */ facts, /** @type {string} */ name, input = {}) {
@@ -108,18 +108,18 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
       try { return { data: await def.run(input, { caller: "deck", kernelFacts: facts }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
-    async call(name, input = {}, caller = "cli") {
+    async call(name, input = {}, caller = "cli", more = {}) {
       const def = tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
       const facts = ["cli", "local", "deck", "capsule"].includes(caller) ? { kernelFacts: FACTS } : {};
       const as = /^mcp:agent:([a-z]+)$/.exec(caller);
       const chain = as ? { kernelChain: k.chains.fromFacts({ kind: "agent_session", agent: as[1], session: "s", thread: "t", vouched: true }) } : {};
-      try { return { data: await def.run(input, { caller, ...facts, ...chain }) }; }
+      try { return { data: await def.run(input, { caller, ...facts, ...chain, ...more }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
-    async ok(name, input = {}, caller = "cli") {
-      const r = await w.call(name, input, caller);
+    async ok(name, input = {}, caller = "cli", more = {}) {
+      const r = await w.call(name, input, caller, more);
       assert.ok(!r.error, `${name}: ${JSON.stringify(r.error)}`);
       return r.data;
     },

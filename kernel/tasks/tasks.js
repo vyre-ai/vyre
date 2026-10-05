@@ -5,12 +5,17 @@
 // person, with a hardware-signer proof over the exact payload, the decision and the chain, once.
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
-import { isChain, isExactlyPerson } from "../core/chain.js";
+import { isChain, isExactlyPerson, actsAsPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
 import { createIdem } from "../core/idem.js";
+import { TASK } from "../../records/core-types.js";
+
+/** The fields a task's own calls set (and `records.update` routes through `tasks.edit`); every other field of the type is the person's, custom, and plain. */
+const TASK_PERSON_FIELDS = Object.freeze(["title", "note", "due", "parent", "project"]);
+import { createMemoryStore } from "../store/memory.js";
 
 /** The actions task calls register with the authorizer (contract 6.1). */
 export const TASK_ACTIONS = Object.freeze([
@@ -20,7 +25,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -107,12 +112,75 @@ export function createTasks(cfg) {
   /** @type {Set<string>} tasks being decided right now: a second decide on one is refused before it can release again */ const deciding = new Set();
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
+  // ---- The task record (DESIGN-tasks-records) -----------------------------------------------------------------------------------------------------------------------------------------------
+  // With a record port (`cfg.records`, the Space's store) a task's title, note, due time, parent, project and every custom field live in its `task` record, the source of truth; what the kernel
+  // keeps is what decides who may act. `status` on the record mirrors the kernel's state and is written only here. Reads lay the record's fields over the kernel's task.
+  // The Space's store (the kernel hands it in); a bare caller (a test rig) gets a memory store with the type defined.
+  const recs = cfg.records || createMemoryStore({ clock: cfg.clock });
+  const recsReady = cfg.records ? Promise.resolve() : Promise.resolve(recs.define({ add_types: [TASK] }));
+  const RESERVED = new Set([...TASK_PERSON_FIELDS, "status", "stage", "record"]);
+  const CACHE_MS = 5000;
+  /** @type {Set<string>} tasks whose status the record has not been told yet */ const dirty = new Set();
+  /** @type {Map<string, { at: number, rec: any }>} */ const recCache = new Map();
+  const isoOf = (/** @type {number} */ ms) => new Date(ms).toISOString();
+  async function recGet(/** @type {string} */ id, /** @type {boolean} */ fresh = false) {
+    const c = recCache.get(id);
+    if (!fresh && c && Date.now() - c.at < CACHE_MS) return c.rec;
+    await recsReady;
+    const rec = await recs.get("task", id);
+    recCache.set(id, { at: Date.now(), rec });
+    return rec;
+  }
+  /** A link field holds a reference, { urn } (the contract's shape); the kernel keeps a task's parent as an id and its project and record as urns. */
+  const link = (/** @type {string} */ urn) => ({ urn });
+  const urnIn = (/** @type {any} */ v) => (v && typeof v.urn === "string" ? v.urn : undefined);
+  const parentIn = (/** @type {any} */ v) => { const u = urnIn(v); return u ? u.split("/").pop() : undefined; };
+  /** The record's person-facing fields from a task: only what is there. */
+  const recFieldsOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.due !== undefined ? { due: isoOf(t.due) } : {}), status: t.state, ...(t.parent ? { parent: link(`vyre://${cfg.space}/task/${t.parent}`) } : {}), ...(t.project ? { project: link(t.project) } : {}), ...(t.stage ? { stage: t.stage } : {}), ...(t.record && String(t.record).startsWith("vyre://") ? { record: link(t.record) } : {}) });
+  /** The task as a reader sees it: the kernel's task with the record's title, note, due, parent and project laid over it. A task whose record is not there yet reads as the kernel has it. */
+  async function overlay(/** @type {any} */ t) {
+    let r = null;
+    try { r = await recGet(t.id); } catch { r = null; }
+    if (!r) return t;
+    const d = r.data || {};
+    const { note: _n, due: _d, parent: _p, project: _pr, ...rest } = t;
+    return freeze({ ...rest, title: d.title ?? t.title, ...(d.note !== undefined && d.note !== null ? { note: d.note } : {}), ...(d.due ? { due: Date.parse(d.due) } : {}), ...(parentIn(d.parent) ? { parent: parentIn(d.parent) } : {}), ...(urnIn(d.project) ? { project: urnIn(d.project) } : {}) });
+  }
+  async function recUpdate(/** @type {string} */ id, /** @type {any} */ patch) {
+    for (let i = 0; i < 3; i++) {
+      const cur = await recGet(id, true);
+      if (!cur) throw new KernelError("unavailable", "the task's record is not there");
+      try { const n = await recs.update("task", id, patch, cur.version); recCache.set(id, { at: Date.now(), rec: n }); return n; }
+      catch (e) { if (!e || /** @type {any} */ (e).code !== "version_conflict") throw e; }
+    }
+    throw new KernelError("version_conflict", "the task's record kept changing");
+  }
+  /** Tell the record about every state change since last time. A record that cannot be reached keeps the change for the next call: the kernel's state is the truth either way. */
+  async function mirrorAll() {
+    for (const id of [...dirty]) {
+      const t = tasks.get(id);
+      dirty.delete(id);
+      if (!t) continue;
+      try {
+        const cur = await recGet(id, true);
+        if (cur && cur.data.status !== t.state) await recUpdate(id, { status: t.state });
+      } catch { dirty.add(id); }
+    }
+  }
+
+  /** A task names its project as a link to the Project record of THIS Space, one the chain may read: a link to another Space or to a record it cannot see names nothing. */
+  async function checkProject(/** @type {any} */ chain, /** @type {any} */ project) {
+    const m = typeof project === "string" ? /^vyre:\/\/([^/\s]+)\/project\/([A-Za-z0-9_-]{1,64})$/.exec(project) : null;
+    if (!m || m[1] !== cfg.space) throw new KernelError("bad_input", "a task's project is a Project record of this Space");
+    try { await gate(chain, "records.read", project); } catch (e) { if (e instanceof KernelError && e.code === "not_found") throw new KernelError("bad_input", "no such project"); throw e; }
+    if (typeof cfg.projectExists === "function" && !(await cfg.projectExists(project))) throw new KernelError("bad_input", "no such project");
+  }
   const get_ = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw new KernelError("not_found", "no such task"); return t; };
   // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
   /** @type {Map<string, any>} */ const pending = new Map();
   /** @type {Set<string>} task|payload pairs already released (sent) whose approval event may not have been written yet */ const sent = new Set();
-  const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
+  const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); dirty.add(id); return next; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
   const unstage = (/** @type {string} */ id) => {
     const prev = pending.get(id); pending.delete(id);
@@ -161,9 +229,10 @@ export function createTasks(cfg) {
   // itself lives in the task store (`cfg.texts`, durable), which a scrub can empty when a record is forgotten or a field is sealed late. A restart reads the text back from the store and keeps it only
   // if it hashes to what the log recorded.
   const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
-  const textOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
-  const withoutText = (/** @type {any} */ t) => { const { note: _n, answer: _a, form: _f, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
-  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title }; for (const k of ["note", "answer", "form"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  // A task's title and note are the record's, not the text store's: only what the kernel itself holds as free text (the doer's answer, a Flow's form, a block's reason) is kept here.
+  const textOf = (/** @type {any} */ t) => ({ ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
   const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
     const now = tasks.get(t.id) || t;
@@ -188,11 +257,12 @@ export function createTasks(cfg) {
     return r;
   }
   const isDoer = (/** @type {any} */ chain, /** @type {any} */ t) => {
+    // The person, or their default assistant acting AS them (chain.via === "assistant"): a to-do the assistant made for the person is the person's own act. A space or project agent is neither.
+    if (t.doer.kind === "person") return actsAsPerson(chain) && same(chain.hops[0].actor, t.doer);
     const a = acting(chain);
     if (!same(a, t.doer)) return false;
     // A task an assistant works carries its assigner in the chain, so an assigner cannot borrow a broader teammate (R6-9).
     if (t.doer.kind === "agent") return chain.hops.length >= 2 && same(chain.hops[0].actor, t.assigned_by);
-    if (t.doer.kind === "person") return isExactlyPerson(chain);
     return true;
   };
   const checkersOf = (/** @type {any} */ t) => {
@@ -200,7 +270,7 @@ export function createTasks(cfg) {
     const list = !c ? [] : c.role ? roleHolders(c.role) : [c];
     return list.filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
   };
-  const personOf = (/** @type {any} */ chain) => (isExactlyPerson(chain) ? chain.hops[0].actor : null);
+  const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   const promote = (/** @type {any} */ chain) => {
     for (const t of [...tasks.values()]) {
       if (t.state !== "waiting") continue;
@@ -238,6 +308,10 @@ export function createTasks(cfg) {
       const persons = checkersOf(/** @type {any} */ probe);
       if (checker && !persons.length) throw new KernelError(checker.role ? "no_checker" : "same_actor", checker.role ? "no person holds that role" : "the checker must be a person other than the doer");
       for (const d of spec.depends_on || []) if (!tasks.has(d)) throw new KernelError("bad_input", "a dependency does not exist");
+      if (spec.fields !== undefined) {
+        if (!spec.fields || typeof spec.fields !== "object" || Array.isArray(spec.fields) || Object.keys(spec.fields).some(k => RESERVED.has(k))) throw new KernelError("bad_input", "fields are the type's own custom fields, not title, note, due, status, parent or project");
+      }
+      if (spec.project !== undefined) await checkProject(chain, spec.project);
       if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
@@ -247,20 +321,28 @@ export function createTasks(cfg) {
         ...(checker ? { checker: freeze({ ...checker }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
-        ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
+        ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
         ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
         state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
       });
-      stage(id, t);
-      note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length });
+      let made = null;
+      await recsReady;
+      made = await recs.create("task", id, { ...recFieldsOf(t), ...(spec.fields || {}) });
+      recCache.set(id, { at: Date.now(), rec: made });
+      try {
+        stage(id, t);
+        note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length });
+      } catch (e) { if (made) await recs.remove("task", id, made.version).catch(() => {}); recCache.delete(id); throw e; }
+      dirty.delete(id);
       return t;
     },
 
     async get(/** @type {any} */ chain, /** @type {string} */ id) {
       try { await gate(chain, "tasks.read", urnOf(cfg.space, id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
-      return tasks.get(id) || null;
+      const t = tasks.get(id);
+      return t ? overlay(t) : null;
     },
 
     /**
@@ -273,12 +355,16 @@ export function createTasks(cfg) {
       const out = [];
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
-        if (q.parent !== undefined && (t.parent || null) !== q.parent) continue;
+        if (q.project !== undefined || q.parent !== undefined) {
+          const v = await overlay(t);
+          if (q.project !== undefined && (v.project || null) !== q.project) continue;
+          if (q.parent !== undefined && (v.parent || null) !== q.parent) continue;
+        }
         if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
-        out.push(t);
+        out.push(await overlay(t));
       }
       return out;
     },
@@ -488,19 +574,36 @@ export function createTasks(cfg) {
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not edited");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task edits it");
       if (t.state === "needs_check") throw new KernelError("bad_state", "a task waiting for its check is not edited");
-      for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
+      for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent", "project"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
       const next = { ...t };
       if (patch.title !== undefined) { if (typeof patch.title !== "string" || !patch.title.trim()) throw new KernelError("bad_input", "a task needs a title"); next.title = patch.title.trim().slice(0, 200); }
       if (patch.note !== undefined) { if (patch.note === null || patch.note === "") delete next.note; else next.note = String(patch.note).slice(0, FIX_CAP); }
       if (patch.due !== undefined) { if (patch.due === null) delete next.due; else if (Number.isFinite(patch.due)) next.due = patch.due; else throw new KernelError("bad_input", "due is a time in ms"); }
       if (patch.form !== undefined) { if (patch.form === null) delete next.form; else next.form = opaque(patch.form); }
+      if (patch.project !== undefined) { if (patch.project === null) delete next.project; else { await checkProject(chain, patch.project); next.project = patch.project; } }
       if (patch.parent !== undefined) {
         if (patch.parent === null) delete next.parent;
         else {
           if (typeof patch.parent !== "string" || !tasks.has(patch.parent) || patch.parent === id) throw new KernelError("bad_input", "a parent task does not exist");
-          for (let a = tasks.get(patch.parent); a; a = a.parent ? tasks.get(a.parent) : undefined) if (a.id === id) throw new KernelError("bad_input", "a task cannot sit under its own sub-task");
+          for (let cur = patch.parent, hops = 0; cur && hops < 200; hops++) {
+            if (cur === id) throw new KernelError("bad_input", "a task cannot sit under its own sub-task");
+            const up = tasks.get(cur);
+            cur = up ? (await overlay(up)).parent : undefined;
+          }
           next.parent = patch.parent;
         }
+      }
+      {
+        // The record is the source of truth for these fields: it is written first, and a refusal there leaves the task as it was.
+        const rp = {};
+        for (const k of Object.keys(patch)) {
+          if (k === "title") rp.title = next.title;
+          else if (k === "note") rp.note = patch.note === null || patch.note === "" ? null : next.note;
+          else if (k === "due") rp.due = patch.due === null ? null : isoOf(next.due);
+          else if (k === "parent") rp.parent = patch.parent === null ? null : link(`vyre://${cfg.space}/task/${next.parent}`);
+          else if (k === "project") rp.project = patch.project === null ? null : link(next.project);
+        }
+        if (Object.keys(rp).length) await recUpdate(id, rp);
       }
       const n = stage(id, freeze({ ...next, updated_at: clock() }));
       note(chain, "task.edited", n, { fields: Object.keys(patch) });
@@ -535,11 +638,12 @@ export function createTasks(cfg) {
       rule(t, "skipped", "proposal_for_person_with_presence");
       const who = cfg.responsibleFor ? cfg.responsibleFor(t.doer) : t.assigned_by;
       if (!who || who.kind !== "person") throw new KernelError("no_checker", "no person to decide a skip");
-      const body = deepFreeze({ op: "skip", task: id, title: t.title.slice(0, 80), reason: String(reason || "").slice(0, 200) });
+      const shown = (await overlay(t)).title || "";
+      const body = deepFreeze({ op: "skip", task: id, title: shown.slice(0, 80), reason: String(reason || "").slice(0, 200) });
       const pid = mintUuid(clock());
       const decision = (await cfg.authorizer.authorize({ chain, action: "tasks.work", resource: urnOf(cfg.space, id) })).decision;
       const proposal = freeze({
-        id: pid, space: cfg.space, title: `Skip "${t.title.slice(0, 80)}"?`, source: "manual", kernel: true, doer: SYSTEM, checker: freeze({ ...who }),
+        id: pid, space: cfg.space, title: `Skip "${shown.slice(0, 80)}"?`, source: "manual", kernel: true, doer: SYSTEM, checker: freeze({ ...who }),
         output: freeze({ kind: "decision" }), state: "needs_check", assigned_by: freeze({ ...chain.hops[0].actor }),
         payload: freeze({ payload_hash: sha256(canonical(body)), decision }), labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }), created_at: clock(), updated_at: clock(),
       });
@@ -552,16 +656,17 @@ export function createTasks(cfg) {
       const person = personOf(chain);
       if (!person) return [];
       await gate(chain, "tasks.read", urnOf(cfg.space, "mine"));
-      return [...tasks.values()].filter(t =>
+      const mine = [...tasks.values()].filter(t =>
         (t.state === "needs_check" && checkersOf(t).some((/** @type {any} */ c) => same(c, person)))
         || (t.state === "ready" && same(t.doer, person))
         || (t.state === "stuck" && (same(t.doer, person) || (cfg.responsible ? cfg.responsible(person, t.doer) : false)))).sort((a, b) => (a.id < b.id ? -1 : 1));
+      return Promise.all(mine.map(t => overlay(t)));
     },
 
     /** The card the checker sees, built from the canonical payload. */
     async card(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.read", urnOf(cfg.space, id));
-      const t = get_(id);
+      const t = await overlay(get_(id));
       const b = bodies.get(id);
       return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },
@@ -590,10 +695,16 @@ export function createTasks(cfg) {
     /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
-     * @param {{ id: string, chain: any, action: string, resource: string }} q
+     * @param {{ id: string, chain: any, action: string, resource: string, bind?: string }} q
      */
     approvedAct(q) {
       const a = api.approvalFor(q.id), t = tasks.get(q.id);
+      // The bind: when the approval recorded the bind of exactly what the person saw (form.bind, a digest of the request as it would be sent), the request being sent must carry that same one: a different
+      // request, or one that states none, is a different act and is refused (the connectors' calendar sync checks it for itself; this makes it universal for every outward act). An approval that recorded
+      // none is judged as before.
+      const recorded = t && t.form && typeof /** @type {any} */ (t.form).bind === "string" ? /** @type {any} */ (t.form).bind : null;
+      const asked = typeof q.bind === "string" && q.bind ? q.bind : null;
+      if (recorded !== null && recorded !== asked) return false;
       return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && a.body.action === q.action && a.body.resource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
     },
     /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
@@ -608,13 +719,13 @@ export function createTasks(cfg) {
      * `values`: plain values (strings) that moved into a sealed field: every task whose stored text contains one, as a substring, loses its whole text. `record`: every task about that record loses its text.
      * The task keeps its structure with a plain title, a task waiting for its check goes back to ready, and the log's `text_hash` no longer resolves to anything. @param {{ values?: string[], record?: string }} o @returns {{ cleared: number }}
      */
-    scrubTexts(o = {}) {
+    async scrubTexts(o = {}) {
       const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
       let cleared = 0;
       /** @type {Set<string>} */ const hit = new Set();
       // Every task about one of these records loses its text, whatever it says: a person's name or number can be written in more ways than any comparison can know ("Ana M. Lopez", "LOPEZ, Ana").
-      const recs = new Set([...(typeof o.record === "string" && o.record ? [o.record] : []), ...(Array.isArray(o.records) ? o.records.filter((/** @type {any} */ r) => typeof r === "string") : [])]);
-      if (recs.size) for (const t of tasks.values()) if (t.record && recs.has(t.record)) hit.add(t.id);
+      const aboutRecs = new Set([...(typeof o.record === "string" && o.record ? [o.record] : []), ...(Array.isArray(o.records) ? o.records.filter((/** @type {any} */ r) => typeof r === "string") : [])]);
+      if (aboutRecs.size) for (const t of tasks.values()) if (t.record && aboutRecs.has(t.record)) hit.add(t.id);
       if (values.length) {
         // A value is looked for in the normalised text: compatibility-folded (NFKC), case-folded, without spaces (of any kind), punctuation or zero-width marks, so "123-45-6789", "123 45 6789",
         // "ANA  MARIA" and a value split across two form fields (the leaves are joined) all match. Plain and JSON-escaped spellings are checked too.
@@ -627,6 +738,19 @@ export function createTasks(cfg) {
           const flat = norm(leaves(x, []).join(""));
           if (values.some((/** @type {string} */ v) => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1))) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(id));
         }
+        // The words of a task are its record's: look there too, in every text field of the type (custom ones included).
+        const defs = await recs.types();
+        const names = (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name);
+        for (let cursor; ;) {
+          const page = await recs.query("task", { page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+          for (const row of page.rows) {
+            const text = names.map((/** @type {string} */ n) => (typeof row.data[n] === "string" ? row.data[n] : "")).join("");
+            const flat = norm(text);
+            if (values.some((/** @type {string} */ v) => text.includes(v)) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(row.id));
+          }
+          cursor = page.next_cursor;
+          if (!cursor) break;
+        }
       }
       for (const id of hit) {
         const t = tasks.get(id);
@@ -636,6 +760,12 @@ export function createTasks(cfg) {
           const { payload, ...rest } = /** @type {any} */ (t);
           const plain = withoutText(rest);
           tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(t.state === "needs_check" ? { state: "ready" } : {}) }));
+        }
+        // and the words on its record go too: the title is replaced, the note and every other text field emptied
+        {
+          const defs = await recs.types();
+          const names = (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["title", "status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name);
+          try { await recUpdate(id, { title: "(the text of this task was removed)", ...Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) }); } catch { /* a record that is not there has nothing to clear */ }
         }
         cleared++;
       }
@@ -665,13 +795,37 @@ export function createTasks(cfg) {
       const logged = /** @type {any} */ (t).text_hash, { text_hash: _h, ...rest } = /** @type {any} */ (t);
       const x = texts.get(id);
       const restored = x && typeof x === "object" ? withText(rest, x) : null;
-      if (restored && sha256(canonical(textOf(restored))) === logged) {
+      // A task logged before its title and note moved to the record hashed them too: that form still verifies, and the move onto records (`migrate`) takes the words from it.
+      if (restored && (sha256(canonical(textOf(restored))) === logged || sha256(canonical({ title: restored.title, ...(restored.note !== undefined ? { note: restored.note } : {}), ...textOf(restored) })) === logged)) {
         tasks.set(id, deepFreeze(restored));
         if (t.state === "needs_check" && x.body && t.payload && sha256(canonical(x.body)) === t.payload.payload_hash) bodies.set(id, deepFreeze(structuredClone(x.body)));
       } else tasks.set(id, deepFreeze({ ...rest, title: "(the text of this task is no longer available)" }));
     }
     for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
   } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }
+  {
+    /**
+     * Make a `task` record for every task the kernel holds that has none (the one-time move onto records, safe to run again: the task's id is the record's, so a task that has a record is skipped and a
+     * crash in the middle is finished by the next run). One `tasks.migrated` event says how many were made.
+     */
+    api.migrate = async () => {
+      let created = 0, existing = 0;
+      for (const [id, t] of [...tasks]) {
+        const have = await recs.get("task", id);
+        if (have) { existing++; continue; }
+        const made = await recs.create("task", id, recFieldsOf(t));
+        recCache.set(id, { at: Date.now(), rec: made });
+        created++;
+      }
+      if (created) { try { cfg.log.append(cfg.chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { type: "tasks.migrated", sv: 1, subject: urnOf(cfg.space, "all"), data: { created, existing } }); } catch { /* the records are the record of it */ } }
+      return { created, existing };
+    };
+    // Every call that can change a task's state tells the record afterwards; the kernel's state is the truth if the record cannot be reached.
+    for (const m of ["request", "start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix", "unblock", "skip", "edit", "reopen"]) {
+      const f = api[m];
+      api[m] = async (/** @type {any[]} */ ...a) => { try { return await f.apply(api, a); } finally { await mirrorAll(); } };
+    }
+  }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));

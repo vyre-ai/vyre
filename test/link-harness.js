@@ -46,7 +46,11 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
     if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
       let raw = "";
       for await (const c of req) raw += c;
-      const r = await box.registry.call(decodeURIComponent(url.pathname.slice(10)), raw ? JSON.parse(raw) : {}, `tailnet:${who.login}`, { peer: who });
+      // The listener's own proof of who is calling (what the daemon's route hands the registry): the owner's tailnet device, a paired app row so the device is enrolled.
+      const label = `tailnet:${who.login}`, node = "aaaaaaaaaaaaaaaa"; // a test peer's id ("nMAC") is shorter than a device id may be, so the row carries a well-formed one
+      if (box.kernel) box.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(node);
+      const f0 = box.kernel ? callerFacts(label, { caller: label, peer: who }, null, box.kernel, false, null) : null, facts = f0 ? { ...f0, device_key_id: node } : null;
+      const r = await box.registry.call(decodeURIComponent(url.pathname.slice(10)), raw ? JSON.parse(raw) : {}, label, { peer: who, ...(facts ? { kernelFacts: facts } : {}) });
       return json(r.error ? 400 : 200, r);
     }
     if (req.method === "GET" && url.pathname === "/v1/events/stream") {
@@ -126,6 +130,8 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   const factsFor = (/** @type {any} */ d, /** @type {string} */ caller, /** @type {any} */ meta) => {
     if (!d.kernel || (meta && meta.kernelFacts)) return meta;
     if (["cli", "deck", "capsule"].includes(caller)) return { ...meta, kernelFacts: { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: caller === "capsule" } };
+    // The device is enrolled only if the box knows it as a paired app (spaces.devices.enrolled): a well-formed id (eight characters or more) gets that row here, as pairing would have made it.
+    if (caller.startsWith("tailnet:") && meta && meta.peer && /^[A-Za-z0-9_-]{8,64}$/.test(String(meta.peer.stableId || meta.peer.node || ""))) d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(String(meta.peer.stableId || meta.peer.node));
     if (caller.startsWith("tailnet:") && meta && meta.peer) { const f = callerFacts(caller, { caller, peer: meta.peer }, null, d.kernel, false, null); return f ? { ...meta, kernelFacts: f } : meta; }
     return meta;
   };
