@@ -43,6 +43,25 @@
         "effect": "write"
       },
       {
+        "name": "work.know.move-export",
+        "summary": "a project's Work-engine lines, read for a move between Spaces (needs the move's own event)",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.move-import",
+        "summary": "write a moved project's Work-engine lines in the target Space (needs the move's own event)",
+        "reach": "person",
+        "effect": "write",
+        "crossSpace": "project.move_in"
+      },
+      {
+        "name": "work.know.move-forget",
+        "summary": "drop a moved project's Work-engine lines in the source Space, against the receipt",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "work.project.ensure",
         "summary": "the Project record for a short name, made if missing (the projects module only)",
         "reach": "modules",

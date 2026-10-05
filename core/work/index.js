@@ -10,13 +10,14 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
-import { planMove, runMove } from "./project-move.js";
+import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
 import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
+import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { createEngineer } from "./engineer/index.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -156,8 +157,55 @@ export default {
         };
         const room = { offer: mem(to, "memory.room.offer"), export: mem(from, "memory.room.export"), import: mem(to, "memory.room.import"), forget: mem(from, "memory.room.forget") };
         const memory = Object.values(room).every(Boolean) ? room : undefined;
-        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
+        const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
+        const know = Object.values(kn).every(Boolean) ? kn : undefined;
+        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
+      },
+    });
+    // The Work engine's session lines move with the project (core/work/memory/move.js). Each call refuses unless THIS Space's log holds the kernel's event for the move, the way the memory room's
+    // do: `project.move_started` in the source, `project.move_in` in the target, for this move id, plan hash and project. The mover's own chain reads the log.
+    const knowProof = async (/** @type {any} */ extra, /** @type {"project.move_started"|"project.move_in"} */ type, /** @type {any} */ i) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
+      const evs = await kernelOf().events.read(await chainOf(extra), { type });
+      const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
+      if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
+    };
+    const knowMove = obj({ move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } }, ["move_id", "plan_hash", "project"]);
+    ctx.tool("work.know.move-export", {
+      description: "Source side of a project's Work-engine lines move: the lines of the project's records, read for the move. Refused unless this Space's log holds project.move_started for it. Returns { rows, digest, count }.",
+      input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } } } },
+      run: async (i, extra) => {
+        await knowProof(extra, "project.move_started", i);
+        const k = kernelOf();
+        const allowed = new Set(await linkedClosure(await sideOf(k.space, extra), String(i.project)));
+        const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
+        if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
+        return exportKnow(ctx.store.db, { records });
+      },
+    });
+    ctx.tool("work.know.move-import", {
+      description: "Target side: writes the exported lines under the target project's records (one transaction, a repeat is a no-op) and indexes them. Refused unless this Space's log holds project.move_in for the move. Returns the receipt { digest, count }.",
+      input: { ...knowMove, properties: { ...knowMove.properties, rows: { type: "array", items: { type: "object" } }, map: { type: "object" }, from_space: { type: "string" } } },
+      run: async (i, extra) => {
+        await knowProof(extra, "project.move_in", i);
+        const k = kernelOf();
+        const r = importKnow(ctx.store.db, Array.isArray(i.rows) ? i.rows : [], { map: i.map && typeof i.map === "object" ? i.map : {}, from: String(i.from_space || ""), to: k.space });
+        for (const s of r.sessions) { try { await engineOf().index({ kind: "lines", session: s }); } catch { /* indexed by the next sweep */ } }
+        return { digest: r.digest, count: r.count };
+      },
+    });
+    ctx.tool("work.know.move-forget", {
+      description: "Source side, after the target imported: needs the receipt; refuses if the lines changed since the export; drops them and what was derived from them. Returns { forgotten }.",
+      input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } }, receipt: { type: "object" } } },
+      run: async (i, extra) => {
+        await knowProof(extra, "project.move_started", i);
+        const k = kernelOf();
+        const allowed = new Set(await linkedClosure(await sideOf(k.space, extra), String(i.project)));
+        const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
+        if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
+        return forgetKnow(ctx.store.db, { records, receipt: i.receipt });
       },
     });
     // The Project record for a short name, made if this Space has none yet: what the projects module asks before it grants an agent reach (a grant names the record).

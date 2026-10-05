@@ -18,6 +18,18 @@ const sha = (/** @type {any} */ v) => crypto.createHash("sha256").update(typeof 
 const urnParts = (/** @type {string} */ u) => { const [, , space, type, id] = String(u).split("/"); return { space, type, id }; };
 const bytesOf = (/** @type {any} */ r) => (r instanceof Uint8Array ? r : r && (r.bytes || r.data) instanceof Uint8Array ? (r.bytes || r.data) : Buffer.from(r && (r.bytes || r.data) || ""));
 
+/** The records linked to a project, breadth first under the caller's chain (the set a move carries). @param {any} side @param {string} project @returns {Promise<string[]>} */
+export async function linkedClosure(side, project) {
+  /** @type {Set<string>} */ const seen = new Set([project]);
+  /** @type {string[]} */ const queue = [project];
+  while (queue.length && seen.size < MAX_RECORDS) {
+    const u = /** @type {string} */ (queue.shift());
+    const r = await side.records.linked(side.chain, u, { limit: 200 });
+    for (const row of r.rows) { const rec = row.record; if (rec && !seen.has(rec.urn)) { seen.add(rec.urn); queue.push(rec.urn); } }
+  }
+  return [...seen];
+}
+
 /**
  * Everything that would move, read only. The hash covers both Spaces, the project, the client choice, the counts and the sorted ids, so what the person approves is exactly this.
  * @param {{ from: any, to: any, project: string, client?: "move" | "leave" }} o
@@ -162,6 +174,14 @@ export async function runMove({ from, to, plan, ports = {} }) {
     state.memory_receipt = await ports.memory.import({ package: exp.package, into: target.urn });
   }
 
+  // 5b. the Work engine's session lines (`ports.know`: export, import, forget), copied the same way and forgotten only against the receipt
+  const knowRecords = [root.urn, ...wanted.map((/** @type {any} */ r) => r.urn)];
+  if (ports.know && !state.know_receipt) {
+    step("know");
+    const exp = await ports.know.export({ records: knowRecords });
+    state.know_receipt = await ports.know.import({ rows: exp.rows, map: state.map, from_space: from.space });
+  }
+
   // 6. the old Space keeps a marker and nothing else
   step("marker");
   /** @type {string[]} */ let left = [];
@@ -173,10 +193,11 @@ export async function runMove({ from, to, plan, ports = {} }) {
     left = remove ? ((await remove(plan.files)) || []) : [...plan.files];
     if (!left.length) state.cleaned = true;
   }
+  if (ports.know && state.know_receipt && !state.know_forgotten) { step("forget-know"); await ports.know.forget({ records: knowRecords, receipt: state.know_receipt }); state.know_forgotten = true; }
   if (ports.memory && state.memory_receipt && !state.memory_forgotten) { step("forget"); const f = await ports.memory.forget({ receipt: state.memory_receipt }); state.memory_forgotten = true; state.memory_counts = f && f.forgotten; }
   const cur = await from.records.get(from.chain, PROJECT, id);
   await from.records.update(from.chain, PROJECT, id, { status: "moved", moved_to: `${to.space}:${target.urn}`, repo: null, client: null, drive_path: null, memory_scope: null }, cur.version);
-  const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}) }, left_behind: left, map: state.map };
+  const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}), ...(state.know_receipt ? { know: state.know_receipt.count } : {}) }, left_behind: left, map: state.map };
   step("done");
   return out;
 }

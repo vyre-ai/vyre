@@ -155,3 +155,17 @@ test("the memory room moves between the files and the marker: offered, sealed, i
   assert.deepEqual(order, ["offer", "export", "import", "forget"]);
   assert.deepEqual(done.moved.memory, { writes: 3 });
 });
+
+test("the Work engine's lines move with the files: exported, imported through the id map, forgotten only after, with the records they were filed under", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[]} */ const order = [];
+  const know = {
+    export: async (/** @type {any} */ i) => { order.push("export"); assert.ok(i.records.includes(proj.urn)); return { rows: [{ record: proj.urn }] }; },
+    import: async (/** @type {any} */ i) => { order.push("import"); assert.match(i.map[proj.urn], /^vyre:\/\/B\/project\//); assert.equal(i.from_space, "A"); return { digest: "k", count: 1 }; },
+    forget: async (/** @type {any} */ i) => { order.push("forget"); assert.equal(i.receipt.digest, "k"); return { forgotten: 1 }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const done = await runMove({ from: a, to: b, plan, ports: { know } });
+  assert.deepEqual(order, ["export", "import", "forget"]);
+  assert.equal(done.moved.know, 1);
+});
