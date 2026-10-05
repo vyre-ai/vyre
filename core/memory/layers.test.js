@@ -33,7 +33,7 @@ async function world(t) {
 }
 const cwdsOf = r => (r.data.passages || r.data.hits || []).map(p => p.cwd).filter(Boolean);
 
-test("layers: a project agent cannot retrieve another project's memory, sees that it exists and not what is in it, and cannot follow its marker; the identity assistant and the person can", async t => {
+test("layers: a project agent cannot retrieve another project's memory, is not even told it exists, and cannot follow its marker; the identity assistant and the person can", async t => {
   const { d, nw: nwDir } = await world(t);
   const ask = (tool, input, caller) => d.registry.call(tool, input, caller);
 
@@ -48,15 +48,14 @@ test("layers: a project agent cannot retrieve another project's memory, sees tha
   assert.equal(named.error?.code, "denied");
   assert.ok(!JSON.stringify(across.data.passages).includes("Dana Reyes"), "nor its words");
 
-  // 2. The markers: kit follows its own, and is only told the other exists.
+  // 2. The markers: kit follows its own, and the other is not named or counted.
   const kmr = (await ask("memory.markers", {}, "mcp:agent:kit")).data;
   assert.equal(kmr.layer, "project", "an agent holds its own layer");
   const km = kmr.markers;
-  const nw = km.find(m => m.name === "Northwind"), hl = km.find(m => m.name === "Harlow");
+  const nw = km.find(m => m.name === "Northwind");
   assert.equal(nw.access, "follow");
   assert.match(nw.summary, /\d+ facts?, \d+ decisions?, \d+ sessions?/);
-  assert.deepEqual(Object.keys(hl).sort(), ["access", "kind", "name", "urn"], "named, nothing more: no summary, counts, topics or slug");
-  assert.equal(hl.access, "exists");
+  assert.ok(!km.some(m => m.name === "Harlow") && !JSON.stringify(km).includes("Harlow") && !km.some(m => m.kind === "space"), "another project and the Space are not named");
   assert.ok(!JSON.stringify(km).includes("Dana"), "a marker carries no content of another layer");
 
   // 3. Following: its own, yes; the other's, refused with the reason, by name or by address.
@@ -64,10 +63,11 @@ test("layers: a project agent cannot retrieve another project's memory, sees tha
   assert.equal(f1.error, undefined, JSON.stringify(f1));
   assert.equal(f1.data.layer, "project");
   assert.ok(cwdsOf(f1).every(c => /northwind$/.test(c)));
-  for (const ref of ["Harlow", hl.urn]) {
+  const hlUrn = (await ask("memory.markers", {}, "cli")).data.markers.find(m => m.name === "Harlow").urn;
+  for (const ref of ["Harlow", hlUrn]) {
     const r = await ask("memory.follow", { marker: ref, question: "intake form" }, "mcp:agent:kit");
-    assert.equal(r.error?.code, "denied", JSON.stringify(r));
-    assert.match(r.error.message, /exists, but your grants do not reach it/);
+    assert.equal(r.error?.code, "not_found", JSON.stringify(r));
+    assert.ok(!/does not reach|exists/.test(r.error.message), "answers as if there were none");
   }
   assert.equal((await ask("memory.follow", { marker: "Nowhere", question: "x" }, "mcp:agent:kit")).error?.code, "not_found");
 
@@ -88,7 +88,7 @@ test("layers: a project agent cannot retrieve another project's memory, sees tha
   assert.ok((await ask("memory.follow", { marker: "Harlow", question: "intake" }, "tailnet-guest:bob")).error, "a guest has no layer to follow from");
 });
 
-test("markers: derived, never content; the Space's marker is for the assistant and the person, and a project agent only knows it exists", () => {
+test("markers: derived, never content; the Space's marker is for the assistant and the person, and a project agent is shown only the projects it may follow", () => {
   const nw = projectMarker({ space: "s1", slug: "northwind", name: "Northwind", facts: 3, decisions: 1, sessions: 2, topics: ["Sam Okafor", "Sam Okafor", "<b>x</b>", "Northwind Bakery"], updated: 5 });
   assert.equal(nw.urn, "vyre://s1/project/northwind");
   assert.equal(nw.summary, "3 facts, 1 decision, 2 sessions; about Sam Okafor, b x /b, Northwind Bakery");
@@ -97,11 +97,10 @@ test("markers: derived, never content; the Space's marker is for the assistant a
   const hl = projectMarker({ space: "s1", slug: "harlow", name: "Harlow" });
   const all = [sp, nw, hl];
   const agent = visible(all, { slugs: new Set(["northwind"]) });
-  assert.deepEqual(agent.map(m => `${m.name}:${m.access}`), ["Studio:exists", "Northwind:follow", "Harlow:exists"]);
-  assert.deepEqual(Object.keys(agent[0]).sort(), ["access", "kind", "name", "urn"]);
+  assert.deepEqual(agent.map(m => `${m.name}:${m.access}`), ["Northwind:follow"]);
   assert.ok(visible(all, { assistant: true }).every(m => m.access === "follow"));
   assert.ok(visible(all, { all: true }).every(m => m.access === "follow"));
-  assert.ok(visible(all, {}).every(m => m.access === "exists"));
+  assert.deepEqual(visible(all, {}), []);
   assert.equal(find(all, "harlow")?.slug, "harlow");
   assert.equal(find(all, "NORTHWIND")?.name, "Northwind");
   assert.equal(find(all, nw.urn)?.kind, "project");

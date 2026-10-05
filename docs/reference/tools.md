@@ -4529,7 +4529,7 @@ The phone's answer to an unlock request. Accepted only while the person's grant 
 
 ### `memory.markers`
 
-The markers of the layers below yours: one per project's memory (and the Space's own), each with its name and whether you may follow it. A marker you may follow carries a short summary, counts and topics; one you may not follow is only named. Following is memory.follow. Nothing learned in one project or Space is copied into another: you move between them by following a marker, under your own grants.
+The markers of the layers below yours: one per project's memory (and the Space's own) that you may follow, each with a short summary, counts and topics. A marker you may not follow is not shown. Following is memory.follow. Nothing learned in one project or Space is copied into another: you move between them by following a marker, under your own grants.
 
 - Input:
   - `agent` string
@@ -7246,6 +7246,7 @@ The environment brief an agent starting now is told (what Vyre is, its Space, it
 - Input:
   - `agent` string
   - `agent_kind` string
+  - `artifacts_dir` string
   - `project` string
   - `provider` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
@@ -7362,6 +7363,7 @@ The system prompt for a session starting now: the environment brief, then the le
   - `agent` string
   - `agent_kind` string
   - `append` string
+  - `artifacts_dir` string
   - `context` string
   - `facts` list of string
   - `project` string

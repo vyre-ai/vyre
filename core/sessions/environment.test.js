@@ -92,12 +92,31 @@ test("environment: the Spaces and record types in the brief come from the kernel
   t.after(() => d.stop());
   const real = d.registry.call.bind(d.registry);
   d.registry.call = async (tool, input, caller, meta) => tool === "spaces.brief" ? { data: { spaces: [{ name: "Studio", role: "owner", current: true }, { name: "Harlow", role: "member", current: false }] } }
-    : tool === "work.space-brief" ? { data: { space: "spc_x", types: [{ name: "matter", fields: ["title", "stage"] }] } } : real(tool, input, caller, meta);
-  const r = (await d.registry.call("sessions.environment", { agent: "kit", agent_kind: "agent" }, "module:vyred")).data;
+    : tool === "work.space-brief" ? { data: { space: "spc_x", types: [{ name: "matter", fields: ["title", "stage"] }] } }
+    : tool === "mcp.servers" ? { data: [{ name: "Secretmail", state: "running" }] } : tool === "team.list" ? { data: [{ name: "Mallory", role: "designer" }] } : real(tool, input, caller, meta);
+  const brief = async i => (await d.registry.call("sessions.environment", i, "module:vyred")).data.text;
+  const r = { text: await brief({ agent: "kit", agent_kind: "agent" }) };
   assert.match(r.text, /This session is in the Space Studio, where the person is owner\./);
-  assert.match(r.text, /They also belong to: Harlow \(member\)/);
   assert.match(r.text, /Types here: matter \(title, stage\)/);
   assert.doesNotMatch(r.text, /Ask records\.types for the types/);
+  // ENV-1: a scoped agent hears of the current Space only, and of no connector or teammate it holds no tool for.
+  assert.doesNotMatch(r.text, /Harlow|They also belong/, "no other Space's name reaches a project agent");
+  assert.doesNotMatch(r.text, /Secretmail/, "nor a connector it holds no tool of");
+  const mayList = d.registry.listTools("mcp:agent:kit").some(x => x.name === "team.list");
+  assert.equal(/Mallory/.test(r.text), mayList, "teammates are named only to an agent that may list them");
+  // The identity-level assistant, acting as the person, and the person's own session are told of all their Spaces.
+  for (const who of [{ agent: "juno", agent_kind: "assistant" }, {}]) {
+    const x = await brief(who);
+    assert.match(x.replace(/\s+/g, " "), /They also belong to: Harlow \(member\)/, JSON.stringify(who));
+    assert.match(x, /Secretmail/, JSON.stringify(who));
+  }
+});
+
+test("environment: a launch that has an artifacts folder says where to save files, once, on every driver's brief", async t => {
+  const e = environmentOf({ tools: ["work.call", "files.list"], artifactsDir: "/tmp/s1/artifacts", agent: { name: "kit", kind: "agent", projects: ["x"] } });
+  assert.match(e.text, /belong in \$VYRE_ARTIFACTS_DIR \(\/tmp\/s1\/artifacts\)/);
+  assert.equal((e.text.match(/VYRE_ARTIFACTS_DIR/g) || []).length, 1);
+  assert.doesNotMatch(environmentOf({ tools: ["files.list"] }).text, /VYRE_ARTIFACTS_DIR/);
 });
 
 // ---------------------------------------------------------------------------------------------------- the same brief on every driver

@@ -1122,7 +1122,7 @@ export default {
     };
     ctx.tool("memory.markers", {
       effect: "read",
-      description: "The markers of the layers below yours: one per project's memory (and the Space's own), each with its name and whether you may follow it. A marker you may follow carries a short summary, counts and topics; one you may not follow is only named. Following is memory.follow. Nothing learned in one project or Space is copied into another: you move between them by following a marker, under your own grants.",
+      description: "The markers of the layers below yours: one per project's memory (and the Space's own) that you may follow, each with a short summary, counts and topics. A marker you may not follow is not shown. Following is memory.follow. Nothing learned in one project or Space is copied into another: you move between them by following a marker, under your own grants.",
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => {
         const { markers } = await layerMarkers();
@@ -1137,10 +1137,11 @@ export default {
       input: { type: "object", required: ["marker", "question"], properties: { marker: { type: "string", description: "a marker's urn, or a project's slug or name" }, question: { type: "string" }, k: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
       run: async (input, extra = {}) => {
         const { markers, rooms } = await layerMarkers();
-        const m = findMarker(markers, String(input.marker));
+        const mine = visibleMarkers(markers, await layerReach(input, extra));
+        // A marker the caller may not follow answers exactly as one that does not exist.
+        const seen = findMarker(mine, String(input.marker));
+        const m = seen && markers.find(x => x.urn === seen.urn);
         if (!m) throw Object.assign(new Error(`no marker ${plain(String(input.marker), 60)}: memory.markers lists them`), { code: "not_found" });
-        const seen = visibleMarkers([m], await layerReach(input, extra))[0];
-        if (seen.access !== "follow") throw denied(`${m.name}'s memory exists, but your grants do not reach it`);
         if (m.kind === "space") {
           const hits = await spaceHits((tool, x) => rawCtx.call(tool, x), String(input.question || ""), input.k ?? 8);
           return { marker: m.urn, layer: "space", hits };

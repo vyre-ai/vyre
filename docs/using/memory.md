@@ -171,8 +171,8 @@ vyre call memory.markers '{}'
 vyre call memory.follow '{"marker":"Northwind","question":"what did we decide about the weekly invoice?"}'
 ```
 
-You and your assistant follow every marker. An agent bound to a project reads only its own layer; a marker for a project it is not granted is only named ("exists"), with no
-summary, and following it is refused. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
+You and your assistant follow every marker. An agent bound to a project reads only its own layer; a project it is not granted does not appear in its markers and is not counted, and
+following it answers as if there were none. `memory.profile` takes `class` (`working_style`, `writing_style`, `pm_style`, `stack`, `life`) to read one part of your identity memory.
 
 ### Where your identity memory lives
 

@@ -28,19 +28,16 @@ export function spaceMarker({ space, name = null, projects = 0 }) {
 
 /**
  * What a caller sees of the markers. Following needs the grant for that layer: the person's own surfaces and the identity-level assistant follow every one; an agent follows the
- * projects it is granted and nothing above them. A marker the caller may not follow is still named (that a project's memory exists is not a secret), with no summary, counts or topics.
+ * projects it is granted and nothing above them. A marker the caller may not follow is not shown at all, and not counted: a project's name can be a client's.
  * @param {Marker[]} markers
  * @param {{ all?: boolean, assistant?: boolean, slugs?: Set<string>, space?: boolean }} reach
  * @returns {Seen[]}
  */
 export function visible(markers, reach) {
   const everything = Boolean(reach.all || reach.assistant);
-  return markers.map(m => {
-    const can = m.kind === "space" ? everything || Boolean(reach.space) : everything || Boolean(m.slug && reach.slugs && reach.slugs.has(m.slug));
-    return can
-      ? { kind: m.kind, urn: m.urn, name: m.name, access: /** @type {const} */ ("follow"), ...(m.slug ? { slug: m.slug } : {}), summary: m.summary, topics: m.topics, counts: m.counts, updated: m.updated }
-      : { kind: m.kind, urn: m.urn, name: m.name, access: /** @type {const} */ ("exists") };
-  });
+  // A caller sees only the markers it may follow: the others are not named and not counted (a project's name can be a client's).
+  return markers.filter(m => (m.kind === "space" ? everything || Boolean(reach.space) : everything || Boolean(m.slug && reach.slugs && reach.slugs.has(m.slug)))).map(m =>
+    ({ kind: m.kind, urn: m.urn, name: m.name, access: /** @type {const} */ ("follow"), ...(m.slug ? { slug: m.slug } : {}), summary: m.summary, topics: m.topics, counts: m.counts, updated: m.updated }));
 }
 
 /** The marker among `markers` a caller names: by urn, or by a project's slug or name. @param {Marker[]} markers @param {string} ref */

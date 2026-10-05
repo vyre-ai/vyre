@@ -43,7 +43,7 @@ const some = (xs, max, what) => (xs.length <= max ? xs.join(", ") : `${xs.slice(
  * @typedef {{ agent?: { name: string, kind?: string|null, projects?: string[]|"*" }|null, project?: string|null, provider?: string|null,
  *   tools?: string[], space?: { name?: string|null, role?: string|null }|null, spaces?: { name: string, role?: string|null, current?: boolean }[],
  *   types?: { name: string, fields?: string[], kind?: string }[]|null, connectors?: { name: string, state?: string }[], team?: { name: string, role?: string|null }[],
- *   memory?: boolean, vaultItems?: string[], person?: string|null }} Sources
+ *   memory?: boolean, vaultItems?: string[], person?: string|null, artifactsDir?: string|null }} Sources
  */
 
 /**
@@ -89,8 +89,9 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
     ]);
   }
 
-  if (has("project")) add("project", 4, [
-    "A Project is one record. Its session records, Drive folder, repository, memory and client hang off it or point at it; work.situation names the one you are in. Folders and files are reached with the files tools.",
+  if (has("project") || s.artifactsDir) add("project", 4, [
+    s.artifactsDir ? `Files you make for the person (images, documents, pages, spreadsheets, code output) belong in $VYRE_ARTIFACTS_DIR (${clean(s.artifactsDir, 200)}): save them there at the top level, not in the repository. Vyre keeps what is saved there in the project's Drive folder. Do not put secrets there. A file the person drops into the chat is already kept under chat/ and needs no action.` : "",
+    has("project") ? "A Project is one record. Its session records, Drive folder, repository, memory and client hang off it or point at it; work.situation names the one you are in. Folders and files are reached with the files tools." : "",
   ]);
 
   if (has("work")) add("work", 5, [
@@ -111,7 +112,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   if (s.memory !== false && has("memory")) add("memory", 8, [
     "Memory is automatic. Vyre indexes every session turn by words and by meaning, and learns facts about people and projects from what the person says and does; it keeps a personal layer (the person's own life, theirs alone) and one memory per project. You get a few relevant lines with each prompt, marked as memory.",
     s.agent && s.agent.kind !== "assistant"
-      ? "Memory has three layers: the project, the Space, and the person's identity. Yours is your own layer (your project's memory). The person's identity memory (how they work, write and build, and their life) is private to them and their assistant; do not look for it or repeat it. Nothing learned in one Space or project is copied into another: memory_markers lists what exists below or beside you, and memory_follow reads a marker you are granted. A marker you are not granted is only named."
+      ? "Memory has three layers: the project, the Space, and the person's identity. Yours is your own layer (your project's memory). The person's identity memory (how they work, write and build, and their life) is private to them and their assistant; do not look for it or repeat it. Nothing learned in one Space or project is copied into another: memory_markers lists the projects you are granted, and memory_follow reads one of them."
       : "Memory has three layers: the project, the Space, and your person's identity, which is the layer you read: their working, writing and project-management style, their stack, what is true everywhere, and a marker for every Space and project. memory_markers lists them; memory_follow reads one for your person. Nothing learned in one Space is copied into another, so cite where you found a thing and follow the marker rather than restating it elsewhere.",
     "To find more: memory_search (a result names a session and a turn; filter with file or commit), memory_turn to read the turns around a hit word for word, memory_ask for an answer, memory_decisions for what the person decided. Quote a past turn from memory_turn, not from recall. Record a lasting fact or decision you learned with memory_remember, and pass on a correction the person made with memory_correct.",
     "A long session is rolled into a fresh window by Vyre before it fills; a block at the top of your first message then carries the decisions, the plan, an index of pointers and the last turns, and everything earlier stays readable with memory_turn.",
