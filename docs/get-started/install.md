@@ -254,8 +254,8 @@ Now shows a **Set up this phone** card for notifications and a passkey. More in
 
 ## What the Vyre app shows the first time
 
-Open the Vyre app on your phone and it walks you through five screens. The pictures use the
-sample world (a team called Juniper Studio).
+These are the screens the Vyre app shows when you set up, and the two you work in afterwards. The
+pictures use the sample world (a team called Juniper Studio).
 
 First you choose a name. It is yours to take, and the app tells you as you type whether it is free.
 
@@ -275,12 +275,11 @@ words your terminal shows.
 
 ![Pair your server, second step: the terminal says the words are maple copper island, and the phone shows three choices](shots/first-run-pair-words.png "Check the three words")
 
-Your first chat opens next, with your assistant ready to work.
+A chat is where you work with your assistant and your agents.
 
 ![The first chat, "Fix the intake date check", with the assistant editing and the composer below](shots/first-run-chat.png "First chat")
 
-After that, Now is where you land each day: today's calls, the spaces you are in, and the things
-that need you.
+Now shows your day: the next call, the spaces you are in, and the things that need you.
 
 ![Now, "Good morning, Alex", with the spaces All spaces, Mine and Juniper Studio, the next call and the things that need you](shots/first-run-now.png "Now")
 
