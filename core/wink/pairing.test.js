@@ -1102,7 +1102,7 @@ test("a second scanner is refused without ending the first one's ask (break 2), 
   assert.equal(app.p.devices.list(ME).length, 0);
 });
 
-test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a plain reason unless the development flag is set; scan and paste always work", async () => {
+test("typed code kill switch (typedCode false): the typed paths are refused with a plain reason; scan and paste always work", async () => {
   const w = world({ typedCode: false });
   const target = { kind: "identity", id: ME };
   await assert.rejects(() => w.call("wink.server.code", { typed: true }), e => e.code === "typed_code_off" && /switched off/.test(e.message));
@@ -1115,7 +1115,7 @@ test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a pl
   const scan = await w.call("wink.pair.server", { payload: made.qr, target });
   assert.equal(scan.ack, null, "a scan or a paste has nothing to type");
   assert.equal(w.typed.length, 0, "no typing port was used");
-  // the flag brings the old behaviour back, tests and development only
+  // with the switch not set the typed code is on
   const dev = world({ typedCode: true });
   assert.equal((await dev.call("wink.server.code", {})).code, "WINK-ZZZZ-ZZZZ");
   assert.equal((await dev.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target })).ack, "WINK-AB12-CD34");
