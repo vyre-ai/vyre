@@ -279,6 +279,15 @@ export default {
       // A presence session from the Deck or the Capsule covers approving (the floor keeps the CLI out).
       }, { session: () => true }));
 
+    // The answer to "is this item granted to the calling module (and this watcher)?", from the very check `release` makes; it hands over no value. For a module that reads through something the vault
+    // does not hold the token of (a Google account), so the person's per-watcher grant is the one permission, not a second copy of it.
+    ctx.tool("vault.granted", {
+      internal: true,
+      description: "Whether an item is granted to the calling module, and to exactly this watcher when one is named: { granted }. The same check vault.release makes; no value is returned.",
+      input: obj({ name: str, watcher: str, project: str }, ["name"]),
+      run: (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) }; },
+    });
+
     ctx.tool("vault.release", {
       internal: true,
       description: "One value, to a module holding a grant for it. `project`, when the grant names one, must match.",

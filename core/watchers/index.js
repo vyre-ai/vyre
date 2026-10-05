@@ -75,9 +75,9 @@ export default {
       googleGranted: async (account, watcher) => {
         const r = await ctx.call("google.accounts", {}); const a = (Array.isArray(r.data) ? r.data : []).find(/** @param {any} x */ x => x.name === account);
         const item = a && a.auth && a.auth.item; if (!item) return false;
-        const l = await ctx.call("vault.list", { filter: String(item) });
-        const row = ((l.data && l.data.items) || []).find(/** @param {any} x */ x => x.name === item);
-        return Boolean(row && (row.grants || []).some(/** @param {any} g */ g => g.module === "watchers" && g.watcher === watcher));
+        // the vault's own check, the one release makes: a grant to this module and exactly this watcher
+        const g = await ctx.call("vault.granted", { name: String(item), watcher });
+        return Boolean(g.data && g.data.granted);
       },
       google: async input => { const r = await ctx.call("google.api", input); if (r.error) throw new Error(r.error.message || r.error.code || "the google module refused the request"); return r.data; },
       request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },

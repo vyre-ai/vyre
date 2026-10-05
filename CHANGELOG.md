@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(vault,watchers): reviewer-4 G-3, properly. The grant check is one function, `Vault.granted`, which `release` now calls; a new module-only tool `vault.granted` answers it without handing over a value, and the watcher's Google read asks that instead of reading the vault's grants and matching them itself. A grant to the watchers module as a whole is still not a grant to a watcher.
 - fix(watchers): reviewer-4 G-3. The Google read matches a vault grant to exactly this watcher (as `vault.release` does), so a grant to the watchers module as a whole reads nothing; tested.
 - fix(watchers): reviewer-4 G-1. A watcher that reads a Google account (`net.<host>.google`) reads nothing until a person grants the account's vault item to that watcher (`vyre vault grant <item> watchers --watcher <name>`), checked in the runtime for a dry run and for a run alike; `watchers.preset` answers with that grant command. Before, the read went through `google.api` with no grant, so a model could write and dry-run such a watcher and read the owner's mail.
 - fix(google): reviewer-4's hold on calendar-live. `google.api` takes an exact caller (`module:leases` for the calendar sync, `module:watchers` for reads only), and refuses a write whose `sendUpdates` is not none unless the body names attendees. Tests: another module is denied; a change to a pulled event that has guests is held for a yes (the pull keeps attendees as people).
