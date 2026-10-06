@@ -102,7 +102,9 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   for (const r of refs) assert.ok(r > pkg && r < mac.indexOf("\n      - name:", pkg + 10), "an Apple secret is read only by the package step");
   // Its own push and dispatch triggers never sign: `sign` exists only as a workflow_call input, defaulting to false, so no environment and no secret.
   assert.match(mac, /sign:\n        description: [^\n]*\n        type: boolean\n        default: false/);
-  assert.ok(!/workflow_dispatch:\n    inputs/.test(mac), "dispatch has no input that could turn signing on");
+  // dispatch may take the version to stamp (a rehearsal), never anything that could turn signing on
+  const dispatch = (mac.match(/workflow_dispatch:\n((?: {4}.*\n)*)/) || ["", ""])[1];
+  assert.ok(!/\bsign\b|environment|secret/i.test(dispatch), "dispatch has no input that could turn signing on");
   const gate = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(gate, /MAC_SIGNING: \$\{\{ vars\.MAC_SIGNING \}\}/);
   assert.match(gate, /\[ "\$MAC_SIGNING" = required \]/);

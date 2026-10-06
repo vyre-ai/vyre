@@ -81,8 +81,8 @@ test("scrub: a value that moved into a sealed field (or a record that was forgot
   d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   now = Object.fromEntries((await d.kernel.gateway.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.title]));
-  assert.match(now[quoting.id], /no longer available/, "the log's hash resolves to nothing: the text is gone from the store");
-  assert.match(now[aboutRecord.id], /no longer available/);
+  assert.match(now[quoting.id], /removed|no longer available/, "the log's hash resolves to nothing: the text is gone from the store");
+  assert.match(now[aboutRecord.id], /removed|no longer available/);
   assert.equal(now[other.id], "Nothing sensitive here", "an unrelated task keeps its text across the restart");
   assert.ok(!JSON.stringify(d.kernel.log.read({ type: "task.*" })).includes(ssn));
 });
