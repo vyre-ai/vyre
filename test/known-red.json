@@ -7,10 +7,6 @@
   "owner": "launch",
   "seen": "lead integration 6 Oct 2026: a CLI over the socket is a person only with a measured outside ancestry (LB-1); under ssh on a test box it is not"
  },
- "core/cli/commands/phone.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/cli/screen/screen-live.test.js": {
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -19,48 +15,16 @@
   "owner": "app-wire",
   "seen": "lead integration 6 Oct 2026: needs the app's web export built in the checkout (npm run export:web); the gate builds it, a bare test run does not"
  },
- "core/glass/glass.test.js": {
-  "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/hooks/hooks.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/names/system.test.js": {
   "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/runner/lent-wire.test.js": {
-  "owner": "runner",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/runner/person-chain.test.js": {
-  "owner": "runner",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/sessions/api-key.test.js": {
-  "owner": "sessions",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/sessions/sessions.test.js": {
   "owner": "sessions",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/settings/hub.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/watchers/reach.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "kernel/golden/golden.test.js": {
   "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/chrome-flags.test.js": {
-  "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/federation-send.test.js": {
@@ -75,18 +39,6 @@
   "owner": "network",
   "seen": "lead integration 6 Oct 2026: the link and tailnet listener were removed with Tailscale (network c67dcbfc6); the 0.3.0 cleanup (cleanup-tailnet 41283b712) rewrites these tests onto Wink"
  },
- "test/mobile-tailnet.test.js": {
-  "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/onboard-page.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/peer-race.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/peer.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
@@ -94,10 +46,6 @@
  "test/person.test.js": {
   "owner": "network",
   "seen": "lead integration 6 Oct 2026: uses the removed tailnet names listener (svc.onRequest); rewritten in the 0.3.0 cleanup"
- },
- "test/project-arg.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/relay.test.js": {
   "owner": "network",
@@ -109,14 +57,6 @@
  },
  "test/stdin-hygiene.test.js": {
   "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/threadsock.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/walk-identity-space.test.js": {
-  "owner": "windows",
   "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/within-hygiene.test.js": {
