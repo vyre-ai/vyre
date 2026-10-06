@@ -230,10 +230,11 @@ export default {
       return { projects: a.projects, cwds: ps.flatMap(p => [p.home, ...(p.workspaces || p.folders || [])]).filter(Boolean) };
     };
 
-    /** Where an agent works: its one project's home, else a folder of its own in VYRE_HOME. */
+    /** Where an agent works: its one project's home, else a folder of its own beside the projects (`~/Vyre/agents/<name>`). Never inside VYRE_HOME: the session sandbox refuses a working folder there. */
     const workdir = async a => {
       if (Array.isArray(a.projects) && a.projects.length === 1) return { project: a.projects[0] };
-      const dir = path.join(root, "agents", a.name);
+      const projectsDir = ctx.config && typeof ctx.config.projectsDir === "string" && ctx.config.projectsDir ? ctx.config.projectsDir : null;
+      const dir = projectsDir ? path.join(path.dirname(projectsDir), "agents", a.name) : path.join(root, "agents", a.name);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return { cwd: dir };
     };
