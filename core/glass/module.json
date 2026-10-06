@@ -112,8 +112,7 @@
         "level": "first-use",
         "trigger": "on-use",
         "since": "0.1.0",
-        "command": "/glass/kit",
-        "docs": "using/glass.md#watch-kits-screen"
+        "command": "/glass/kit"
       },
       {
         "id": "take-over",
@@ -124,8 +123,7 @@
         "level": "first-use",
         "trigger": "on-use",
         "since": "0.1.0",
-        "key": "T",
-        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+        "key": "T"
       },
       {
         "id": "hand-back",
@@ -136,8 +134,7 @@
         "level": "power",
         "trigger": "on-use",
         "since": "0.1.0",
-        "key": "Ctrl+Enter",
-        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+        "key": "Ctrl+Enter"
       },
       {
         "id": "sign-in-private",
@@ -147,8 +144,7 @@
         ],
         "level": "power",
         "trigger": "on-use",
-        "since": "0.1.0",
-        "docs": "using/glass.md#sign-in-to-a-site-in-kits-chrome"
+        "since": "0.1.0"
       },
       {
         "id": "handback-wait",
@@ -160,8 +156,7 @@
         "level": "power",
         "trigger": "on-use",
         "since": "0.1.0",
-        "command": "vyre call computers.handback.set '{\"minutes\":15}'",
-        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+        "command": "vyre call computers.handback.set '{\"minutes\":15}'"
       },
       {
         "id": "box-files",
@@ -173,8 +168,7 @@
         "level": "power",
         "trigger": "on-use",
         "since": "0.1.0",
-        "command": "/glass/box",
-        "docs": "using/glass.md#browse-and-move-files"
+        "command": "/glass/box"
       },
       {
         "id": "upload",
@@ -184,8 +178,7 @@
         ],
         "level": "discovery",
         "trigger": "never-used",
-        "since": "0.1.0",
-        "docs": "using/glass.md#browse-and-move-files"
+        "since": "0.1.0"
       },
       {
         "id": "capsule-glass",
@@ -196,8 +189,7 @@
         "level": "discovery",
         "trigger": "never-used",
         "since": "0.1.0",
-        "command": "glass kit",
-        "docs": "using/glass.md#watch-kits-screen"
+        "command": "glass kit"
       },
       {
         "id": "trash",
@@ -207,8 +199,7 @@
         ],
         "level": "first-use",
         "trigger": "idle",
-        "since": "0.1.0",
-        "docs": "using/glass.md#browse-and-move-files"
+        "since": "0.1.0"
       },
       {
         "id": "rest",
@@ -218,8 +209,7 @@
         ],
         "level": "first-use",
         "trigger": "idle",
-        "since": "0.1.0",
-        "docs": "using/glass.md#watch-kits-screen"
+        "since": "0.1.0"
       }
     ]
   }

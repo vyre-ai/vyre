@@ -51,7 +51,7 @@ test("v1: tool entries in either form, named once, and mapped tools find both fo
   has(edit(m => { m.does.tools.push({ name: "bakery.orders", reach: "asked" }); }), /tool "bakery\.orders" is declared twice/);
   has(edit(m => { m.does.tools.push({ summary: "no name" }); }), /name is required/);
   has(edit(m => { m.does.tools[0].reach = "everyone"; }), /reach must be one of anyone, asked, person, modules, hook/);
-  has(edit(m => { m.does.tools[3].outward = "email"; }), /outward must be one of send, post, pay, delete/);
+  has(edit(m => { m.does.tools[3].outward = "email"; }), /outward must be one of (true, )?send, post, pay, delete/);
   has(edit(m => { m.does.tools[3].cost = "free"; }), /cost must be "paid"/);
   has(edit(m => { m.does.tools[0].summary = "orders \u2014 today"; }), /no em dash or section sign/);
   assert.deepEqual(edit(m => { m.does.tools[0].colour = "red"; }), [], "an unknown key is a warning");

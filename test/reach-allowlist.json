@@ -23,7 +23,7 @@
   },
   "apps.list": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "callers admit a model"
   },
   "apps.route": {
    "module": "apps",
@@ -39,7 +39,7 @@
   },
   "apps.targets": {
    "module": "apps",
-   "default": "open to any caller"
+   "default": "callers admit a model"
   },
   "capsule.act": {
    "module": "capsule",
@@ -59,7 +59,7 @@
   },
   "capsule.status": {
    "module": "capsule",
-   "default": "open to any caller"
+   "default": "callers admit a model"
   },
   "capsule.view": {
    "module": "capsule",

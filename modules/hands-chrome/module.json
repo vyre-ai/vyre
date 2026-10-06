@@ -11,8 +11,8 @@
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "give", "text": "Open Agents, then kit, and press Give kit a computer: kit gets its own Chrome to browse for you.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/glass.md#give-an-agent-a-computer"},
-      {"id": "no-sends", "text": "kit will not press Send, Pay or Delete in its Chrome. Take over in Glass and press it yourself.", "surfaces": ["glass", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"},
+      {"id": "give", "text": "Open Agents, then kit, and press Give kit a computer: kit gets its own Chrome to browse for you.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"},
+      {"id": "no-sends", "text": "kit will not press Send, Pay or Delete in its Chrome. Take over in Glass and press it yourself.", "surfaces": ["glass", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
       {"id": "log", "text": "Each click kit makes in Chrome is logged for Glass with what it did and whether it worked.", "surfaces": ["glass"], "level": "power", "trigger": "idle", "since": "0.1.0"}
     ]
   }

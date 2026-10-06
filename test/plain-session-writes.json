@@ -225,6 +225,14 @@
    "class": "refused",
    "why": "refused in the body for a plain session: memory.heard: this call carries no kernel chain, so personal memory is not read"
   },
+  "memory.identity.lock": {
+   "class": "own",
+   "why": "locks the person's identity memory again: it only takes access away, never gives any"
+  },
+  "memory.identity.unlock.begin": {
+   "class": "held",
+   "why": "only starts an unlock: the person's phone approves it (memory.identity.unlock.finish needs the device); the assistant asks the phone this way when the identity memory is locked"
+  },
   "memory.mute": {
    "class": "refused",
    "why": "refused in the body for a plain session: memory.mute: this call carries no kernel chain, so personal memory is not read"
@@ -236,6 +244,14 @@
   "memory.remember": {
    "class": "refused",
    "why": "refused in the body for a plain session: memory.remember: this call carries no kernel chain, so personal memory is not re"
+  },
+  "memory.space.file": {
+   "class": "own",
+   "why": "files a fact into the Space's memory under the session's own chain, with its source and who filed it; the fact is read as quoted data and only its filer or a person with the right retires it"
+  },
+  "memory.space.retire": {
+   "class": "own",
+   "why": "takes out of use only a fact the caller filed (or one a person with the right retires); the fact stays in the log"
   },
   "memory.write": {
    "class": "refused",

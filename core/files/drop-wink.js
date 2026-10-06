@@ -229,7 +229,7 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     run: async (/** @type {any} */ i) => {
       const next = i.on === true;
       if (next === on) return { on, changed: false };
-      if (!ctx.paths) throw new Error("this vyred has no home to save config in");
+      if (!ctx.paths) throw new Error("this box has no home to save config in");
       config.save({ files: { receive: next } }, ctx.paths.root, ctx.config); cfg.receive = next; on = next;
       if (next) { await ready(); }
       else { if (retry) { clearTimeout(retry); retry = null; } try { await (await home()).call("files.drop.unregister", {}); } catch { /* the server is not reachable: it forgets with the key */ } }

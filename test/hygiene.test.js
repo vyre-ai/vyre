@@ -93,6 +93,8 @@ const KNOWN_OWN_PERSON_SETS = new Set([
   "core/presence/index.js",  // the canonical home PERSON_SURFACES lives in
   "core/daemon/index.js",    // kernel's own dispatch, not a module hand-rolling the concept
   "local/hands-chrome-mac/caller.js", // the standalone Chrome package's sanctioned copy: caller.test.js compares it to core/presence PERSON_SURFACES
+  "core/planner/index.js",   // FOLLOWS: the callers whose time zone follows the device in hand (tailnet and device too), not a person check
+  "core/memory/identity/test-facts.js", // a test fixture's surfaces, not a person check
   "core/harness/rules.js", "core/link/box.js", "core/link/mac.js", "core/files/drive.js",
 ]);
 test("hygiene: no new hand-rolled copy of PERSON_SURFACES (a Set of exactly cli/local/deck/capsule)", () => {

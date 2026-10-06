@@ -27,7 +27,7 @@ export const seams = new Map();
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** The callers that are a person's own device in hand: their zone is where they are. (A shell on a server is the server's zone, which is never used.) */
-const FOLLOWS = new Set(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
+const FOLLOWS = new Set(["cli", "local", "deck", "capsule", "tailnet", "device"]);
 const AGENTS = ["mcp", "module", "harness"];
 /** What an agent may add with no permission (the user's rule): everything but an event, which is an invite. */
 const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note", "task"];

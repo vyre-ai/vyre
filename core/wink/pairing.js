@@ -1270,7 +1270,8 @@ export function createPairing(o) {
       description: "What this module recorded when the owner confirmed a device: { id, kind, owner, confirmed, confirmedBy, confirmKeyId, key, hardware }, for the presence module to decide on a paired session. Only the presence module asks; null for a device the owner never confirmed.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta0 = {}) => {
-        if (!["module:presence", "module:vyred", "module:approvals"].includes(String((meta0 && meta0.caller) || ""))) throw fail("denied", "the device record is for the presence module and the daemon");
+        const recordCallers = ["module:presence", "module:vyred", "module:approvals"];
+        if (!recordCallers.includes(String((meta0 && meta0.caller) || ""))) throw fail("denied", "the device record is for the presence module and the daemon");
         const rec = devices.record(String(input.id));
         // `homeOwner`: this device's person is the one this server's own pairing record names as its owner (PW-1): a confirmed device of another member is a paired device, not the owner's.
         const own = meta.get("owner");

@@ -185,6 +185,11 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/modules/sandbox-ctx.js": {
+   "count": 2,
+   "owner": "lead",
+   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
   }
  }
 }

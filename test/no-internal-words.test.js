@@ -32,7 +32,8 @@ function literals(line) {
 
 test("no internal word (vyred, switchboard, no such tool, as Claude Code does) in any string the Deck draws", () => {
   const bad = [];
-  for (const dir of ["deck"]) for (const f of files(path.join(ROOT, dir))) {
+  // the Deck is removed in 0.2.9 (the app replaces it): a tree without it has nothing here to check
+  for (const dir of ["deck"].filter(d => fs.existsSync(path.join(ROOT, d)))) for (const f of files(path.join(ROOT, dir))) {
     const rel = path.relative(ROOT, f);
     fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
       const t = line.trim();

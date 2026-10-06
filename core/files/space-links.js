@@ -16,7 +16,7 @@ import { MAX_UPLOAD } from "./space-drive.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 const DAY = 86_400_000;
 export const DEFAULT_DAYS = 7, MAX_DAYS = 30;
 /** What may be shared at once: live links, and the copies they hold. An expired or revoked link holds nothing, so it counts for neither. */
