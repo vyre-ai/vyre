@@ -197,9 +197,13 @@ export function ChatScreen(p: ChatScreenProps) {
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const line = [info.record?.title, info.space, allowsMock() ? null : here.where].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
-  const realComposer = useRealComposer(p.sessionId, found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined, viewer, setNote);
+  // Who is in the chat, for the composer's @ list and the model chips: the stream's participants once it has said, else the chat's members from the box (work.chat.get), never the viewer.
+  const roster = faces.filter((f) => f.id !== viewerId && f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) }));
+  const realComposer = useRealComposer(p.sessionId, roster.length ? roster : undefined, viewer, setNote);
   // A chat with several assistants or models: one chip each, to switch that slot's model.
-  const slots = found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }));
+  const slots = found.length
+    ? found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }))
+    : allowsMock() ? [] : here.slots.map((x) => ({ id: x.id, label: x.name, provider: null as string | null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
