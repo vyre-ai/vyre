@@ -23,6 +23,10 @@
   "owner": "sessions",
   "seen": "integrator run 37181895537 (FAIL)"
  },
+ "core/switchboard/switchboard.test.js": {
+  "owner": "chat",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: 55 tests run 367 s, past the per-file limit, and 8 expect the pre-gate answers (denied, open_elsewhere) where the chat gate answers not_found, or a terminal session as a person. Split it in two and move the 8 onto the gate's answers (team/BACKLOG.md 0.3.0)."
+ },
  "core/vyre-core/installer.test.js": {
   "owner": "launch",
   "seen": "lead integration 7 Oct 2026, fails on trunk too: strictProblems flags the temp root's parents as writable by others; on the test boxes the scratch folder sits under a shared /tmp. Passes on a runner with a private temp root."
