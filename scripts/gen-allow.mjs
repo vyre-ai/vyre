@@ -108,7 +108,6 @@ export const OPEN_NOTES = Object.freeze({
   "planner.settings": "reads and sets the planner's zone and escalation timing, the person's own preferences",
   "presence.person.status": "reads whether this request is signed in as the person and until when",
   "projects.add-threads": "picks threads into a project; a thread can be in several projects",
-  "projects.move": "moves a project's folders between homes on the box, leaving a link at each",
   "projects.remove-threads": "removes thread picks from a project; folder threads stay by folder",
   "projects.watchers.add": "adds names of people who hear about a project's needs",
   "projects.watchers.remove": "removes watchers from a project",
