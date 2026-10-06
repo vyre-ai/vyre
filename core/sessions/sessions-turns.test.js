@@ -350,7 +350,7 @@ for (const driver of ["cli", "sdk"]) {
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     const key = "deck-retry-1";
-    const send = () => call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, { root: w.root, caller: "deck", headers: { "idempotency-key": key } });
+    const send = () => w.d.registry.call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, "deck", { idempotencyKey: key });
     const a = await send();
     assert.equal(a.data.sent, true);
     await w.finished(th.id, 2);

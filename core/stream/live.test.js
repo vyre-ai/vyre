@@ -165,8 +165,8 @@ test("live: a queued message taken back is a cancelled frame, and a stop says st
   assert.deepEqual(gone, ["queued", "cancelled"]);
   await w.tool("threads.stop", { thread: id });
   await until(() => live.frames.some(f => f.type === "chat.status" && f.data.stopping === true), "stopping status", 8000);
-  await sleep(20);
-  assert.equal(fold(live.frames).status, "stopped");
+  // the chat's frames follow the thread's events a tick later (the forward runs outside kernel delivery), so wait for the stopped status rather than a fixed sleep
+  await until(() => fold(live.frames).status === "stopped", "the stopped status", 8000);
 });
 
 test("live: a session that began before the stream (an empty log) is seeded from its stored events when a screen opens it", async t => {
