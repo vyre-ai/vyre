@@ -173,6 +173,8 @@ export const OPEN_NOTES = Object.freeze({
  * threads.delete and threads.rewind are not here: they are on ASK_FIRST (destructive), so they get their entry there.
  */
 export const DECLARED = Object.freeze({
+  // the 0.2.9 integration (lead, 6 Oct 2026): one chat, the chat upgrade, project reach and moves; each guard is its reach-anyone reason or its note below
+  ...Object.fromEntries(["onboard.pair", "projects.access.pending", "projects.access.restore", "threads.chat-stop", "threads.chat-switch", "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.history-import", "work.chat.list", "work.chat.move", "work.chat.rename", "work.chat.span", "work.chat.upgrade-move", "work.chat.upgrade-plan", "work.project.move-plan", "work.project.ref"].map(t => [t, "lead-0.2.9"])),
   ...Object.fromEntries(["agents.ask", "threads.archive", "threads.effort", "threads.fork", "threads.interrupt", "threads.model", "threads.send", "threads.send-now", "threads.start", "threads.stop",
     "threads.switch", "threads.thinking", "threads.unarchive", "threads.unwatch", "threads.watch"].map(t => [t, "06c2f3bcc"])),
   ...Object.fromEntries(["learn.add", "memory.curate", "memory.mute", "memory.pin", "team.charter.draft"].map(t => [t, "3b0ea63d2"])),
@@ -197,6 +199,7 @@ export const DECLARED = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "onboard.pair": "pairs a device while the box is being set up: the onboarding listener's own token and the person's surfaces; a cli label such as cli:agent:kit is the person's terminal, never a model (core/onboard/index.js)",
   "recall.turn": "a read of one past session's turns, word for word; callers are READERS and the body holds a model to its own project's sessions (reach() and readableSession in core/recall/index.js), the same guard as recall.search",
   "recall.links": "a read of the turns that touched a file, commit or url; callers are READERS and the body holds a model to its own project's folders (reach() and inFolders in core/recall/index.js), the same guard as recall.search",
   "recall.pointers": "the rollover split of a thread's own windows for Vyre's seed; callers are OWNERS_ONLY (core/recall/index.js), so a cli label such as agent:kit is the cli surface, not a model's session",
