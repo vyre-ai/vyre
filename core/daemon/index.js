@@ -383,6 +383,8 @@ async function startLocked(opts, root, p, release) {
     // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
+    // A module that failed at start only because the store was still starting (a first install makes the Space's database) starts again when the store joins.
+    { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.

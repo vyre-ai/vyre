@@ -819,10 +819,24 @@ export class Registry {
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
+      // A module that failed only because the Space's record store is still starting is started again when the store joins (startStoreWaiting).
+      if (/** @type {any} */ (e) && /** @type {any} */ (e).code === "unavailable") rec.waitsForStore = true; else delete rec.waitsForStore;
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
+    }
+  }
+
+  /** The record store has joined: start again every module that failed because it was away, then the ones that failed for needing one of them. */
+  async startStoreWaiting() {
+    const failed = () => [...this.modules.values()].filter((/** @type {any} */ r) => r.state === "failed");
+    const again = failed().filter((/** @type {any} */ r) => r.waitsForStore);
+    for (const r of again) await this.startOne({ manifest: r.manifest, dir: r.dir });
+    const up = new Set(again.filter((/** @type {any} */ r) => r.state === "running").map((/** @type {any} */ r) => r.manifest.name));
+    for (const r of failed()) {
+      const dep = String(/** @type {any} */ (r).error || "").match(/^requires "([^"]+)", which is not running$/);
+      if (dep && up.has(dep[1])) await this.startOne({ manifest: r.manifest, dir: r.dir });
     }
   }
 

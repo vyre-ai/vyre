@@ -186,7 +186,8 @@ export function createFlowsHost(o) {
       timer = setTimeout(async () => { try { await flows.tick(); } catch (err) { log(`flows ${space}: tick failed (${/** @type {Error} */ (err).message})`); } void arm(); }, wait);
       timer.unref();
     };
-    try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); }
+    const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
+    if (typeof k.store.attached === "function" && !k.store.attached() && typeof k.store.whenReady === "function") k.store.whenReady(recover); else await recover();
     void arm();
 
     const host = Object.freeze({ space, flows, stages, get owner() { return ownerOf(); },
