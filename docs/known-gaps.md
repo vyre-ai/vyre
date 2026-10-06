@@ -16,6 +16,16 @@ Screen Share. Watch and take over your agents' computers and Chrome, on every de
 
 ## Known gaps in 0.2.9
 
+### Switching a chat back to a model it had before
+
+A chat that moves from one model to another and back resumes the first model's own session, which did not hear the turns in between. A model new to the chat gets the recent turns. Fixed in 0.3.0, where every switch carries the chat's decisions, plan and work state.
+
+What to do today: after switching back, tell the model what changed while it was away.
+
+### My Cloud on another server keeps your chats in Personal
+
+Moving your Personal Space to My Cloud carries your memory, records and files. When My Cloud runs on a different server from Personal, your chats stay in the frozen Personal Space, readable there. Carrying them across comes in 0.3.0.
+
 ### Real devices
 
 Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.

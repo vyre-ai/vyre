@@ -5,92 +5,89 @@
 [![ios](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml)
 [![android](https://github.com/vyre-ai/vyre/actions/workflows/android.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/android.yml)
 
-**Your agents live on your server. Reach them from your Mac or your phone.**
+**One place where your team and your AI agents work together, on a server you own.**
 
-Vyre is an open-source, self-hosted home for your AI agents. They run on a server you own and keep working when your laptop is closed. On your Mac you reach them with Vyre Lumen: press Option-Space in any app, ask, and send work to an agent. On your phone, open Vyre from your Home Screen.
+Vyre is an open-source, self-hosted workspace for teams that work with AI agents every day. Your people, your clients' records, your conversations and your agents live in one Space on your server. Agents do real work there: they read the record they are working on, draft, file, schedule and follow up. Every step they take goes through one set of rules, and anything that leaves your server waits for a person to say yes.
 
-Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
+## Why one product
+
+A team that works with agents today spreads that work across a chat app, a CRM, a pile of API keys, an automation tool and a different window for each model. Each one keeps its own copy of who the client is. Agents get context by copy and paste, keys sit in environment files, and nobody can say afterwards which agent did what, or why.
+
+Vyre puts the pieces in one place on purpose:
+
+- **One record of your work.** People, companies, leads, clients, appointments, projects, tasks and every email and meeting are records in your Space, linked both ways. A Contact shows its leads, projects, tasks and messages.
+- **One conversation for people and agents.** A chat holds people, assistants and AI models side by side. Mention a teammate or an agent with @, point to a record with #, and switch the model a reply comes from. Each reply shows which provider wrote it.
+- **One way work gets done.** Flows watch for a new email, a form answer, a stage change or a time, then run their steps: classify with a model, create or update a record, assign a task, send. Agents pick up tasks with the record, its links and its recent history in hand.
+- **One set of rules.** A single permission system in Vyre's kernel decides every call, from a person's phone, an agent's session or a Flow step. The Space's log records each change and each approval.
+
+Each part needs the others. A Flow is useful because the record it changes is the same one your team sees in chat. An agent is safe to hand work to because the kernel holds its sends and keeps your secrets out of its context.
+
+## Deterministic
+
+Agents are probabilistic. What they are allowed to do is not.
+
+- **Flows are declared steps,** not a prompt. A code step runs in a sandbox with time and memory limits. A model step classifies or extracts, with no tools.
+- **Every outside write is safe to repeat.** It carries an idempotency key, is read back, respects the service's rate limit, and after a crash only the missing part is redone.
+- **One yes, for one act.** An act that sends, pays, publishes, shares or deletes is held once. The approval is single use and bound to exactly that act, so it cannot be spent on a different one.
+- **Exact recall.** A person or an assistant in a chat can read a past part of it word for word, including your terminal Claude Code sessions. Memory answers say which session they came from.
+
+## Secure by design
+
+- **Your server, your data.** Records, chats, files, memory and keys stay on the server you run. Your prompts go only to the AI provider you chose.
+- **Encrypted chats.** A chat with a person in it is never stored in the clear. Its key lives on the participants' devices and is lent to the server only while a session runs. A server admin sees ids and ciphertext.
+- **Sealed fields.** A social security number or an API key in a record is held by Vyre's sealing process. An agent sees a placeholder, never the value, and revealing it asks for your presence.
+- **A vault for credentials.** Agents and connectors use a credential without seeing its value.
+- **Your phone is your key.** Face ID or Touch ID is asked for only where it matters: pairing a device, revealing a vault secret, and sending, posting or paying.
+- **Vyre's own code is signed.** The kernel is always on and checks Vyre's modules by signature. A module you add runs in a sandbox and can only post events named for itself. Releases are signed (Ed25519 on the release files, cosign on the server image), and Vyre checks both before it installs one.
+- **No open door.** Your devices reach the server through Vyre's relay, end-to-end encrypted, or through a direct path your router agreed to. The one port the server publishes is a TLS door for its own name, and nothing listens there until the server has a name and a certificate.
+
+## Spaces and your team
+
+A Space is your team's home: its own records, its own Drive with its own key, and its own members. Roles are owner, admin, manager, member and temp, and a temp's access ends by itself. You also have a Personal Space for your own work, and one approval moves it to your own server (My Cloud) with its records, files and sealed values.
+
+## Your models, your accounts
+
+Use the subscriptions you already pay for: Claude, Codex, Grok or OpenRouter. Pick the model for each chat, or switch it mid-conversation: the chat, its folder and its files stay where they are.
+
+## Where you work
+
+- **Your phone.** The Vyre app pairs with your server, holds your chat keys and approves what leaves.
+- **Your Mac.** Vyre Lumen opens with Option-Space (or Control twice) in any app: ask, hand work to an agent, or run a `vyre` command.
+- **Windows.** A tray app with an Alt-Space panel.
+- **A browser.** A browser joins your identity from your phone's code, and the browser can never change who speaks for you.
 
 ## Set up
 
-Open the Vyre app on your phone or Mac, choose your name and create a space. It gives you one line to paste on your server, then pairs the server with a code and three words, and walks you through your AI account, your tools and a Kit.
+You need a server (a Linux machine with Docker, or a Mac that stays on) and an account with at least one AI provider.
 
-- **The server** is a Linux machine with Docker, or a Mac that stays on.
-- **The network** is built in. There is nothing to install and nothing to sign in to.
-- **Your Mac** (Node 22.5 or newer) pairs with your server and gets Vyre Lumen:
+1. Open the Vyre app on your phone and claim your name.
+2. On the server, run the line the app shows:
 
-```
-npm install -g https://vyre.run/box/vyre.tgz
-vyre up
-vyre capsule install
-```
+   ```
+   curl -fsSL vyre.run/i | sh
+   ```
 
-`vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
+3. Pair the server with the app: scan the QR, paste the long code, or type the short code it shows.
 
-Or take the app as a disk image: `Vyre.dmg` (from the capsule-mac run's artifacts until releases carry it), open it and drag Vyre to Applications. It is self-signed: Vyre has no Apple Developer ID and the app is not notarized, so the first time macOS refuses a plain double-click. Right-click Vyre in Applications, choose Open, then Open again; after that it opens normally. Or build the image yourself on a Mac with `sh local/capsule/native/build.sh app && sh scripts/make-dmg.sh`.
+The installer sets up the server and your Space's records database. On our test server the Space was ready about two minutes after the install finished. Step by step: [Install](docs/get-started/install.md).
 
-The line the app shows is `curl -fsSL vyre.run/i | sh`. It prints a QR and a long code; scan it or paste it into the app, then confirm the same three words in the app and the terminal. Step by step: [Install](docs/get-started/install.md).
+## What is not here yet
 
-## On your Mac: Vyre Lumen
-
-Press Option-Space in any app. Ask a question, send work to one of your agents, or run a `vyre` command. Answers show which past session they came from, and Lumen knows which project you are working in.
-
-
-## On your phone
-
-Vyre on your phone is the Vyre app. Scan the code your server or a signed-in computer shows (or paste the long code). Both screens show the same three words, and the phone pairs only after you confirm them.
-
-<picture>
-  <img src="docs/images/readme/wink-confirm.png" alt="The phone's pairing success screen, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
-</picture>
-
-## On Windows
-
-There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, and it updates itself. Its installer, VyreSetup.exe, comes with each release on GitHub.
-
-## Your agents, your accounts
-
-- **Sessions that belong to Vyre, not to one model.** A session keeps its memory and files when you change the model. Choose the provider, account, model and effort from the picker in the composer, or add `@codex` or `@grok` to a single message and the session stays where it is. A line in the thread says "Switched to Grok" when it changes, and each reply carries its provider's own mark.
-- **Images and video.** What a model generates is saved in the project as an artifact, with its provider, prompt and session, and shows up in a Generated folder in Drive. "Use in" hands an image to another model.
-- **Artifacts.** Documents, charts, diagrams and decks run with no scripts. An interactive page says "Runs its own code and can reach the internet" before it runs. In Safari, on a Mac or an iPhone, a page that navigates itself is a known gap that is fixed in 0.2.1: until then open interactive pages only from agents you trust. See [Known gaps](docs/known-gaps.md).
-- **Memory across sessions.** Vyre searches what you and your agents said before and shows the session each answer came from.
-- **Teammates.** Give each project its own named agents with their own duties and notes; they pick up where they left off.
-- **GitHub.** Connect with a short code. Commits carry your identity, and each session works in its own copy of the repo, so parallel sessions don't collide.
-- **Watchers.** Small jobs that watch for something and tell you, scoped to the project that made them.
-- **Agent computers.** An agent that gets its own computer is held to that computer, and only you can resume a paused one.
-- **Vyre for Chrome.** An extension that lets your agents use Chrome in a tab group of their own. It learns how sites work so later runs are faster, which you can see and forget under Memory, and it says plainly what it does not block. See [Learning](docs/using/learning.md).
-- **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
-
-## Updates
-
-Releases are signed (an Ed25519 signature on the release files, and cosign on the server image) and Vyre checks both before it installs one. The stable channel ignores prereleases.
-
-## What stays private
-
-- Your keys, memory and sessions stay on your server.
-- Your prompts go to the provider you choose (Anthropic, OpenAI, xAI or OpenRouter), the same as when you use that provider on its own.
-- Your server publishes no port to the internet. You reach it through Vyre's own built-in network, or through the relay.
-- Vyre's relay at relay.vyre.run carries setup progress and phone pairing. That traffic is end-to-end encrypted, so the relay can see that a server and a device talk, and when, but never what they say.
-
-## Not in 0.2.0
-
-Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safari fix above, faster Chrome routing and parallel tabs, "give it to two" (one question, two models, side by side) and per-provider blocks for each model's plans and diffs. Coming in 0.2.5: Spaces (team spaces and sharing between people), memory rollover, and putting idle sessions to sleep.
+See [Known gaps](docs/known-gaps.md) for what 0.2.9 does not do yet and what to do today.
 
 ## Questions
 
-**What is Vyre?** A daemon and a set of apps that give your AI agents a permanent home on a server you own: Vyre Lumen for your Mac, an app for your phone and one for Windows. It runs your Claude, Codex and Grok agents with your own accounts.
-
-**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
-
 **What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
 
-**Is it secure?** Your server publishes no port, your keys are encrypted at rest, relay traffic is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Releases are signed.
+**Do I need to be technical?** You need to run one line on a server. Everything after that happens in the app.
 
-**How do I add my phone?** Open the Vyre app on the phone, scan or paste the code your server or a signed-in device shows, and confirm the three words.
+**Can my clients' data reach the AI providers?** Only what a step or a session sends. Sealed fields go as placeholders, and you choose the provider.
+
+**Can I add my own tools?** Yes. A module declares its tools and what it may reach, and runs in a sandbox. See [Modules](docs/MODULES.md).
 
 ## Develop
 
-Needs Node 22.5 or newer. No build step, no dependencies.
+Needs Node 22.5 or newer. No build step for the server.
 
 ```
 npm test
@@ -98,8 +95,6 @@ VYRE_HOME=$(mktemp -d) bin/vyre up
 bin/vyre call system.echo '{"text":"hi"}'
 bin/vyre down
 ```
-
-Write a module: [docs/MODULES.md](docs/MODULES.md).
 
 ## License
 
