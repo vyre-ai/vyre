@@ -125,7 +125,7 @@ export function createFlowsHost(o) {
 
     const store = new RecordsFlowStore({ kernel, chain: flowsChain(), space });
     // Define the Flow record types the Space lacks (a new Space has none; an existing home gains `flow_schedule` here), by the owner: an admin act on the Space's own types.
-    {
+    const setupTypes = async () => {
       const { FLOW_TYPES } = await import("../../kernel/flows/store.js");
       const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name));
       // The record types a Kit's non-type parts are stored in (templates, role and view definitions) are defined here by the owner with the Flow types, so installing a Kit later never needs a
@@ -153,7 +153,10 @@ export function createFlowsHost(o) {
         const { migrateParticipants } = await import("../../records/comms/migrate.js");
         await migrateParticipants({ records: gw.records }, owner(), log);
       } catch (e) { log(`flows: communications for ${space} were not brought up to date: ${e && /** @type {Error} */ (e).message}`); }
-    }
+    };
+    // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
+    if (typeof k.store.attached === "function" && !k.store.attached() && typeof k.store.whenReady === "function") k.store.whenReady(setupTypes);
+    else await setupTypes();
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
