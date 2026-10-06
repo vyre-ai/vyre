@@ -1350,3 +1350,22 @@ test("modules: an added module may emit only events named for itself; Vyre's own
     assert.match(validate(m(name, [e])).join("; "), /are Vyre's own/, `${name} -> ${e}`);
   assert.deepEqual(validate(m("notes", ["note.added"])), [], "the singular of an ordinary name still works");
 });
+
+test("modules: a module that failed only because the record store was still starting starts again when it joins; one that failed for another reason stays failed", async t => {
+  const flag = path.join(tempHome(t), "store-ready");
+  const waits = `import fs from "node:fs";
+export default { async start(ctx) {
+  if (!fs.existsSync(${JSON.stringify(flag)})) throw Object.assign(new Error("the record store for this space is not available yet"), { code: "unavailable" });
+  ctx.tool("notes.add", { effect: "read", input: { type: "object", properties: {} }, run: async () => ({ ok: true }) });
+  return { async stop() {} };
+} };`;
+  const broken = `export default { async start() { throw new Error("broken for its own reason"); } };`;
+  const reg = await registry(t, [["notes", good, waits], ["other", { name: "other", version: "0.1.0" }, broken]], { builtIn: true });
+  assert.equal(reg.modules.get("notes").state, "failed");
+  assert.equal(reg.modules.get("other").state, "failed");
+  fs.writeFileSync(flag, "");
+  await reg.startStoreWaiting();
+  assert.equal(reg.modules.get("notes").state, "running");
+  assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { ok: true });
+  assert.equal(reg.modules.get("other").state, "failed", "a module that failed for its own reason is not started again");
+});
