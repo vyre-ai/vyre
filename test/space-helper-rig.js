@@ -1,5 +1,6 @@
 // @ts-check
 // The Space helper tests' rig (fakes for docker and nsenter, the wrapper, the folders), shared by test/space-helper.test.js and test/space-helper-2.test.js: one file ran past the per-file limit.
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
