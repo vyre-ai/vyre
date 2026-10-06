@@ -21,7 +21,8 @@ test("a Kit proposal waits through a restart and installs what was approved; an 
   const chainOf = (/** @type {any} */ x) => x.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const meta = async (/** @type {any} */ x) => ({ token: (await x.kernel.surfaces.open(chainOf(x), {})).token });
   const lib = (await d.registry.call("records.kits.library", {}, "cli", await meta(d))).data;
-  const id = (lib.kits || lib)[0].id;
+  // not the base Kit: a new Space starts with its types already, so installing it adds none
+  const id = (lib.kits || lib).find((/** @type {any} */ k) => k.id !== "base").id;
   const kit = (await d.registry.call("records.kits.get", { id }, "cli", await meta(d))).data;
   const kitObj = kit.kit || kit;
   const p = await d.registry.call("flows.kit.propose", { kit: kitObj }, "cli", await meta(d));

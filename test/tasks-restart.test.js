@@ -69,12 +69,12 @@ test("scrub: a value that moved into a sealed field (or a record that was forgot
   const quoting = await gw.ask.request(me(d), { title: `Call about ${ssn}`, doer: assistant, output: { kind: "decision" }, record: rec.urn });
   const other = await gw.ask.request(me(d), { title: "Nothing sensitive here", doer: assistant, output: { kind: "decision" } });
   const aboutRecord = await gw.ask.request(me(d), { title: "About the forgotten record", doer: assistant, output: { kind: "decision" }, record: rec.urn });
-  const one = d.kernel.tasks.scrubTexts({ values: [ssn] });
+  const one = await d.kernel.tasks.scrubTexts({ values: [ssn] });
   assert.equal(one.cleared, 1, "only the task whose stored text quotes the value");
   const titles = async () => Object.fromEntries((await gw.ask.list(me(d), {})).map((/** @type {any} */ x) => [x.id, x.title]));
   let now = await titles();
   assert.match(now[quoting.id], /removed/); assert.equal(now[other.id], "Nothing sensitive here"); assert.equal(now[aboutRecord.id], "About the forgotten record");
-  assert.equal(d.kernel.tasks.scrubTexts({ record: rec.urn }).cleared, 2, "every task about the forgotten record (the one already scrubbed is counted again, harmlessly)");
+  assert.equal((await d.kernel.tasks.scrubTexts({ record: rec.urn })).cleared, 2, "every task about the forgotten record (the one already scrubbed is counted again, harmlessly)");
   now = await titles();
   assert.match(now[aboutRecord.id], /removed/); assert.equal(now[other.id], "Nothing sensitive here");
   await d.stop();
