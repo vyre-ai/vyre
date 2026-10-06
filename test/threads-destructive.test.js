@@ -39,7 +39,7 @@ test("delete and rewind are held or refused for every model caller, and the thre
     ])) {
       const r = await d.registry.call(tool, tool === "threads.rewind" ? { thread: id, uuid: "00000000-0000-4000-8000-000000000000" } : { thread: id }, caller, meta);
       if (!r.error) ran.push(`${caller} ${tool}`);
-      else assert.ok(["held_unavailable", "denied", "no_such_tool", "person_session_required", "not_declared", "presence_required"].includes(r.error.code), `${caller} ${tool}: ${JSON.stringify(r.error)}`);
+      else assert.ok(["held_unavailable", "denied", "no_such_tool", "person_session_required", "not_declared", "presence_required", "not_found" /* the chat gate: a caller not in the chat sees no thread */].includes(r.error.code), `${caller} ${tool}: ${JSON.stringify(r.error)}`);
     }
   }
   assert.deepEqual(ran, [], "no model caller deleted or rewound");
