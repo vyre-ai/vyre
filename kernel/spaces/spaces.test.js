@@ -74,10 +74,9 @@ test("for(): a Space this home does not host is a remote client with the same ga
   // read as the owner: the chain the home minted decided, not the one passed in
   const members = await r.gateway.grants.members.list(junk);
   assert.deepEqual(members.map(m => m.person), [ME]);
-  // a grants act with the device's presence proof, verified at the home
+  // a role below owner is the owner's authenticated act with no presence proof (grants.member); making an owner stays a presence act (kernel/remote/proof.test.js)
   const m = { person: ALICE, role: "member" };
-  await assert.rejects(() => r.gateway.grants.setRole(junk, m), { code: "needs_presence" });
-  await r.gateway.grants.setRole(junk, m, sign(h.space, "setRole", m));
+  await r.gateway.grants.setRole(junk, m);
   assert.equal((await r.gateway.grants.members.get(junk, ALICE)).role, "member");
   // the owner-op event is there for the spaces module
   assert.ok(h.kernel.log.read({}).some(e => e.type === "member.set" && e.data.owner_change === undefined && e.data.membership.person === ALICE));
