@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule, present, kernelCaller } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller, asOwner } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
@@ -286,6 +286,7 @@ async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
   // The probe stands in for one of Vyre's own modules asking an internal tool, so with it the
   // home's modules load as first party (ADR 0047: an added module reaches only declared reach).
   const d = await start({ root, presence: present, log: () => {}, ...(probe ? { firstPartyRoots: [path.join(root, "modules")] } : {}) });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
@@ -516,6 +517,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
   const again = await start({ root, presence: present, log: () => {} });
+  asOwner(again, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   setDaemon(again); // tempHome's teardown must stop THIS one now, not the d it already stopped
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");

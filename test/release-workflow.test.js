@@ -92,7 +92,7 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   assert.ok(buildJob.length > 100 && !/environment:|secrets\.|APPLE_/.test(buildJob), "the build job holds no environment and no secret");
   assert.ok(buildJob.includes("build.sh app") && buildJob.includes("upload-artifact"), "the build job builds and uploads the unsigned app");
   const packageJob = mac.slice(mac.indexOf("\n  package:\n"), mac.indexOf("\n  collect:\n"));
-  assert.match(packageJob, /needs: build\n/);
+  assert.match(packageJob, /needs: (build|\[build, web\])\n/);
   assert.ok(!/build\.sh|swiftc|xcodebuild|npm /.test(packageJob), "no build tool runs in the job that holds the secrets");
   assert.match(packageJob, /sh scripts\/mac-app-package\.sh/);
   assert.match(mac, /collect:\n[^\n]*\n    needs: package\n/);

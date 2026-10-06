@@ -35,7 +35,7 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, "hooks", "hooks.json"), "utf8")).hooks;
-  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]);
   assert.match(hooks.PostToolUse[0].matcher, /\bBash\b/, "PostToolUse hears Bash too");
   assert.match(hooks.PostToolUseFailure[0].matcher, /\bBash\b/);
   for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
@@ -84,7 +84,10 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
-  assert.deepEqual(await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env), { code: 0, out: "" }, "outside a project the brief is empty");
+  // outside a project the brief carries only the person's time (the time-zone line every session gets), nothing of a project
+  const outside = await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env);
+  assert.equal(outside.code, 0);
+  assert.match(JSON.parse(outside.out).hookSpecificOutput.additionalContext, /^Time: it is [^\n]*$/, "outside a project the brief is only the time");
 });
 
 test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {

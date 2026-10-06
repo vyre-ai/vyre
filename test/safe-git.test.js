@@ -73,6 +73,7 @@ test("safe git: nothing but lib/git-safe.js starts git", () => {
       if (!f.endsWith(".js") || f.endsWith(".test.js")) continue;
       const src = fs.readFileSync(f, "utf8");
       if (path.relative(REPO, f) === "lib/git-safe.js") continue;
+      if (path.relative(REPO, f) === "core/team/team-fixture.js") continue; // a test fixture (left out of the package): it makes a git repo for the team tests to read
       for (const m of src.matchAll(/(?:execFile|execFileSync|spawn|spawnSync|exec|execSync)\(\s*["'`]git\b[^,)]*/g)) bad.push(`${path.relative(REPO, f)}: ${m[0].slice(0, 60)}`);
     }
   };

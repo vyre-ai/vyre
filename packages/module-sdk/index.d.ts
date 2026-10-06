@@ -135,6 +135,8 @@ export interface Manifest {
     providers?: string[];
     /** Watcher preset files it ships (relative .json paths). A preset only describes; it runs no code. */
     watchers?: string[];
+    /** Kit files it ships (relative .json paths): record types and their parts, installed only when the person approves. */
+    kits?: string[];
     /** @planned Harness points, each served by one of this module's tools. pretool only tightens. */
     hooks?: { brief?: ToolName; enrich?: ToolName; pretool?: ToolName; stop?: ToolName };
     /** @deprecated Mark the tool outward instead. Gate sender types: type name to the tool that sends after the Gate approved. */
@@ -344,6 +346,10 @@ export interface ModuleEvents {
   withOrigin<T>(origin: string | undefined, fn: () => T): T | Promise<T>;
   /** Events after an id, oldest first. */
   since(id?: number, opts?: { type?: string; project?: string; limit?: number }): VyreEvent[];
+  /** One thread's own events, oldest first (an indexed read of the log). */
+  ofThread(thread: string, opts?: { types?: string[]; limit?: number; tail?: boolean }): VyreEvent[];
+  /** @internal Built in only: delete every event of a thread (the threads module's alone, when the person deletes it). */
+  eraseThread(thread: string): number;
   /** The id a read is current to, so a view can follow the stream from it with no gap. */
   latestId(): number;
   /** @internal Delete this module's own redundant events of a declared type. */
