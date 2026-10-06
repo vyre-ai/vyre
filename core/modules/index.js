@@ -1226,7 +1226,11 @@ export class Registry {
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
         // pluginagent relays the revoking person to agents.delete WITH that person's own verified facts and proof (the ones its own revoke call arrived with), so the agent's reach grants are taken back in the person's own act
         const relayed = m.name === "pluginagent" && tool === "agents.delete" && opts && opts.relay && typeof opts.relay === "object" ? { ...(opts.relay.kernelFacts ? { kernelFacts: opts.relay.kernelFacts } : {}), ...(opts.relay.kernel_proof ? { kernel_proof: opts.relay.kernel_proof } : {}) } : {};
-        return this.call(tool, input, String(as), { ...(m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed });
+        // agents relays the asking person's words to threads.send WITH that person's own verified facts (the ones their agents.ask arrived with): the chat gate judges the person, and a relay
+        // without them would be refused for every person who asks an agent from a device.
+        const cur = m.name === "agents" && tool === "threads.send" ? currentCall() : null;
+        const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
+        return this.call(tool, input, String(as), { ...(m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
