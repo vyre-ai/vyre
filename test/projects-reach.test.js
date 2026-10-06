@@ -50,13 +50,16 @@ test("an agent reaches a project only by a kernel grant: deny by default, grant,
   assert.deepEqual((await call("projects.access.list", {})).data.grants, []);
 });
 
-test("without the person's proof nothing is granted: a grant is a person's act with the kernel's own proof", { timeout: 180_000 }, async t => {
+test("a grant is the person's own act: a call with no person behind it grants nothing; the person's own signed-in call grants with no extra proof (grants.member)", { timeout: 180_000 }, async t => {
   const { call, home, SI_FACTS } = await boot(t);
   assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: [] })).error);
-  const noProof = await call("projects.access.grant", { project: "northwind", agent: "kit" }, { kernelFacts: SI_FACTS });
-  assert.ok(noProof.error, "no proof, no grant");
+  const nobody = await call("projects.access.grant", { project: "northwind", agent: "kit" }, {});
+  assert.ok(nobody.error, "no person, no grant");
   assert.equal(await granted(call, "northwind", "kit"), false);
+  const person = await call("projects.access.grant", { project: "northwind", agent: "kit" }, { kernelFacts: SI_FACTS });
+  assert.ok(!person.error, JSON.stringify(person));
+  assert.equal(await granted(call, "northwind", "kit"), true);
 });
 
 test("an agent's projects list is kept in step with its grants, '*' is one grant on every project (later ones too), and deleting the agent takes them away", { timeout: 180_000 }, async t => {
