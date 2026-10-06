@@ -49,16 +49,17 @@ test("a person-chain read still never puts a reference in the text", async () =>
   assert.doesNotMatch(ctx.text, /seal_9|seal_7/);
 });
 
-test("a linked record the teammate may not read, or in another Space, is skipped and named", async () => {
+test("a linked record the teammate may not read is skipped and named (a link into another Space cannot be made)", async () => {
   const { rig, research, chain } = await world();
   // The teammate may read projects only (a deeper prefix than the world's blanket read): its first grant is replaced by a narrow one.
   const rig2 = await createRig({ agents: ["research"], defs: [CLIENT, PROJECT, MATTER] });
   await rig2.grantTo(research, ["records.read"], `vyre://${rig2.space}/project/*`);
   const secret = await rig2.create("matter", { name: "Privileged" });
-  const project = await rig2.create("project", { name: "P", other: { urn: secret.urn }, foreign: { urn: "vyre://spc_other/client/abc" } });
+  // a link to another Space's record cannot be made at all (the kernel refuses it at create), so only the unreadable one is here to skip
+  const project = await rig2.create("project", { name: "P", other: { urn: secret.urn } });
   const ctx = await teammateContext(rig2.kernel, rig2.assistant("per_alex", "research"), { project: project.urn, space: rig2.space });
   assert.deepEqual(ctx.urns, [project.urn]);
-  assert.equal(ctx.skipped.length, 2);
+  assert.equal(ctx.skipped.length, 1);
   assert.doesNotMatch(ctx.text, /Privileged/);
   void rig; void chain;
 });
