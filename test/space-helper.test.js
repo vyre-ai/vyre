@@ -320,6 +320,7 @@ test("space helper: a lock whose run is gone is taken over at once, and a fresh 
   const again = r.ask("stop aa\n"); await r.helper();
   assert.equal(r.status(again).state, "ok", JSON.stringify(r.status(again)));
   assert.equal(fs.existsSync(path.join(priv, "lock-aa")), false, "the lock is released at the end of the request");
+  assert.deepEqual(fs.readdirSync(priv).filter(f => f.includes(".dead.")), [], "the renamed-away dead lock is removed, none is left behind");
   // what an earlier install left: a lock with no owner, a claim, a full rate window, an old answer
   fs.mkdirSync(path.join(priv, "lock-bb")); fs.mkdirSync(path.join(priv, "claim"), { recursive: true }); fs.writeFileSync(path.join(priv, "claim", "req-" + "a".repeat(32)), "up bb\n");
   fs.writeFileSync(path.join(priv, "rate-up"), `${Math.floor(Date.now() / 60000)} 1000\n`);
@@ -1002,4 +1003,11 @@ test("space helper: a lock left by a run that is gone does not leave its Space u
   assert.ok(!/was stopped/.test((await again()).out), "a fresh lock with no pid is respected");
   const old = new Date(Date.now() - 3 * 3600 * 1000); fs.utimesSync(lock, old, old);
   assert.match((await again()).out, /the Space harlow was stopped/, "a lock older than two hours does not count");
+});
+
+test("space helper: a dead lock is taken over by renaming it away first (two runs cannot both take it or delete each other's fresh lock)", () => {
+  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "box", "vyre"), "utf8");
+  assert.match(src, /sp_reap_lock\(\) \{ _d="\$1\.dead\.\$\$"; if mv "\$1" "\$_d"/, "the takeover renames the lock to a name of its own run");
+  const handler = src.slice(src.indexOf("lk=$SP_PRIV/lock-$n"), src.indexOf("lk=$SP_PRIV/lock-$n") + 1800);
+  assert.ok(!/rm -rf "\$\{lk:\?\}" 2>\/dev\/null \|\| true; sp_log "took over/.test(handler), "no plain rm -rf of a lock another run may be taking too");
 });
