@@ -169,8 +169,6 @@ test("terms: the index records each mention's page, line and heading anchor", as
   assert.deepEqual(get("env", "VYRE_HOME").mentions.map(m => m.line), [21]);
   assert.deepEqual(get("config", "network.port").mentions, [{ page: "index.md", line: 25, anchor: "it-hangs" }]);
   assert.deepEqual(get("config", "vault.keystore").definedIn, "core/vault/index.js");
-  assert.deepEqual(get("screen", "/projects/:slug").mentions.map(m => m.line), [15]);
-  assert.equal(get("screen", "/now").label, "Now");
   assert.deepEqual(get("concept", "vault").mentions.map(m => m.line), [11]);
   assert.deepEqual(get("event", "vault.unlocked").mentions, []);
 
@@ -179,7 +177,6 @@ test("terms: the index records each mention's page, line and heading anchor", as
   assert.equal(json.counts.tool, 2);
   const md = indexPage(things);
   assert.ok(md.includes("- `vault.get` tool, not explained on any page yet. 2 mentions: index.md [11](../index.md#home), [21](../index.md#twice-1)"), md);
-  assert.ok(md.includes("- `/now` screen, [explained](../using/deck.md#what-is-on-each-view). No mentions."), md);
 });
 
 test("terms: the real tree", async () => {
@@ -220,7 +217,8 @@ test("terms: the committed index is what the code and the pages make, and is det
   assert.equal(fs.readFileSync(path.join(REPO, "docs", INDEX_JSON), "utf8"), a[INDEX_JSON], "run npm run docs:ref");
   assert.equal(fs.readFileSync(path.join(REPO, "docs", INDEX_MD), "utf8"), a[INDEX_MD], "run npm run docs:ref");
   const json = JSON.parse(a[INDEX_JSON]);
-  for (const kind of ["command", "tool", "event", "config", "env", "screen", "concept"]) assert.ok(json.counts[kind] > 0, kind);
+  // no "screen": the Deck is removed in 0.2.9 and its views are no longer listed (scripts/lib/docs/terms.js screens)
+  for (const kind of ["command", "tool", "event", "config", "env", "concept"]) assert.ok(json.counts[kind] > 0, kind);
   const tools = new Set(json.things.filter(t => t.kind === "tool").map(t => t.name));
   for (const t of known(REPO).tools.keys()) assert.ok(tools.has(t), t);
   for (const t of json.things) {

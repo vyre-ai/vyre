@@ -245,7 +245,7 @@ test("bypass: revising, discarding and deleting sends nothing and asks for no pr
   assert.equal((await raw(b.socket, "/v1/tools/threads.answer", { ask: "nope", decision: "allow" }, { "x-vyre-caller": "mcp" })).body.error.code, "denied");
 });
 
-test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the owner can only for the box's own address", async t => {
+test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the tailnet owner cannot either (PW-1: the owner's paired device only)", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", vault: { keystore: "file" }, modules: { disable: ["names", "onboard", "link"] },
     network: { tailscale: true, owner: "me@example.com", address: "https://me.vyre.run" } }));
@@ -265,9 +265,10 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
   // refused: before PW-1 for the wrong address, since PW-1 earlier, because a passkey on the box enrols only from the owner's own paired device
   assert.match(wrong.error.message, /must be for me\.vyre\.run|owner's own paired device/);
-  const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
-  assert.ok(ok.data, JSON.stringify(ok));
-  assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
+  // PW-1: even for the box's own address, a passkey on the box enrols only from the owner's own paired device, never over the tailnet (the tailnet goes in 0.3.0)
+  const tailnet = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  assert.match(String(tailnet.error && tailnet.error.message), /owner's own paired device/, JSON.stringify(tailnet));
+  assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 0);
 });
 
 test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
