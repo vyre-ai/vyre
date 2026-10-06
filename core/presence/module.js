@@ -22,7 +22,7 @@ import { deviceIdOf } from "../../lib/caller.js";
  * @param {(tool: string, input: any) => Promise<any>} call @returns {(caller: string) => Promise<boolean>}
  */
 export const ownerDeviceOf = call => async caller => {
-  const id = deviceIdOf(String(caller || ""));
+  const id = deviceIdOf(caller || "");
   if (!id) return false;
   const r = await call("wink.device.record", { id }).catch(() => null);
   return Boolean(r && r.data && r.data.id === id && r.data.confirmed === true && r.data.homeOwner === true);
