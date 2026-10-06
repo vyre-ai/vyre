@@ -13,6 +13,7 @@ import { STRENGTHS } from "./strengths.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
+import { deviceIdOf } from "../../lib/caller.js";
 
 // A paired phone reaches presence.person.start-paired, pair-challenge and rotate over its relay or tailnet channel: only those labels, never a model, a guest or MCP.
 /**
@@ -21,10 +22,10 @@ import { isServer } from "../config/index.js";
  * @param {(tool: string, input: any) => Promise<any>} call @returns {(caller: string) => Promise<boolean>}
  */
 export const ownerDeviceOf = call => async caller => {
-  const m = /^device:([a-z0-9_-]{4,64})$/.exec(String(caller || ""));
-  if (!m) return false;
-  const r = await call("wink.device.record", { id: m[1] }).catch(() => null);
-  return Boolean(r && r.data && r.data.id === m[1] && r.data.confirmed === true && r.data.homeOwner === true);
+  const id = deviceIdOf(String(caller || ""));
+  if (!id) return false;
+  const r = await call("wink.device.record", { id }).catch(() => null);
+  return Boolean(r && r.data && r.data.id === id && r.data.confirmed === true && r.data.homeOwner === true);
 };
 const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
 const str = { type: "string" };

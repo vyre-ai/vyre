@@ -73,6 +73,7 @@
     "NOTICE",
     "README.md",
     "!**/*.test.js",
+    "!core/team/team-fixture.js",
     "!scripts/boot-check.mjs",
     "!scripts/proof-box.mjs",
     "!**/fixtures/**",

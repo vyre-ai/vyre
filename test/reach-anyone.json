@@ -2021,10 +2021,6 @@
    "module": "work",
    "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   },
-  "work.project.create": {
-   "module": "work",
-   "reason": "a mutating verb, guarded: the record is made under the CALLER's own chain (records.create), and the Drive folder marker under the caller's own chain too (drive.write), so a caller without either cannot make a project"
-  },
   "work.project.move": {
    "module": "work",
    "reason": "a mutating verb, guarded: the kernel's compound move act (one presence proof bound to the plan hash, verified in the source Space's sealing process) is required, and both Spaces' role checks run under the caller's own chain in each; refused as unavailable until that act exists"
