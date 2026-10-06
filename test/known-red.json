@@ -23,9 +23,21 @@
   "owner": "sessions",
   "seen": "integrator run 37181895537 (FAIL)"
  },
+ "core/vyre-core/installer.test.js": {
+  "owner": "launch",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: strictProblems flags the temp root's parents as writable by others; on the test boxes the scratch folder sits under a shared /tmp. Passes on a runner with a private temp root."
+ },
  "kernel/golden/golden.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "test/cc-plugin.test.js": {
+  "owner": "memory",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: the user's own session's memory.remember arrives with no kernel chain (denied) where the test expects a pending fact; the session token stamp in this harness is the open question."
+ },
+ "test/federation-answer.test.js": {
+  "owner": "cleanup",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: a Mac federated over the tailnet; the chat gate refuses its labelled calls. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0."
  },
  "test/federation-send.test.js": {
   "owner": "tailnet",
@@ -54,6 +66,10 @@
  "test/said-hear.test.js": {
   "owner": "cleanup",
   "seen": "lead integration 6 Oct 2026: team.add's said target is keyed by the Project record id since cleanup-team d45d3b8df, and this world has no Project records, so 'add a researcher teammate' records no intent here; check the spoken add on the walk"
+ },
+ "test/setup-cli-names.test.js": {
+  "owner": "network",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: names a real box through the live names directory and waits for the recovery code line; the directory answer differs on the test boxes. Checked again with the relay redeploy."
  },
  "test/stdin-hygiene.test.js": {
   "owner": "launch",
