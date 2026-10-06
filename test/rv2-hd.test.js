@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, asOwner } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { until, FAKE } from "../core/sessions/testing/boot.js";
 
@@ -18,6 +18,7 @@ test("HD-1: onboard tools called by a model (mcp, mcp:thread:t, mcp:agent:a, mod
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 } }));
   const d = await start({ root, presence: present, log: () => {} });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const key = "sk-ant-api03-" + "x".repeat(60);
   const calls = [["onboard.claude", { mode: "api-key", key }], ["onboard.name", { action: "claim", name: "rv2probe", confirm: true }], ["onboard.history", { action: "start" }], ["onboard.finish", {}]];
@@ -39,6 +40,7 @@ test("HD-2: threads.start must ignore undeclared keys: resume must not write int
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "rv2", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {} });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"))); t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const b = await d.registry.call("threads.start", { cwd: work, prompt: "hello from B", surface: "deck" }, "cli");
@@ -59,6 +61,7 @@ test("HD-3: link.call must refuse a model caller before it forwards anything", {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [] }));
   const d = await start({ root, presence: present, log: () => {} });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const listed = (await d.registry.call("tools.list", {}, "cli")).data;
   const r = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "mcp:thread:t1");

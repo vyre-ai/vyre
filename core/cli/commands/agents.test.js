@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import { FakeDriver } from "../../computers/driver/fake.js";
-import { tempHome, present } from "../../../test/helpers.js";
+import { tempHome, present, asOwner } from "../../../test/helpers.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
@@ -52,6 +52,7 @@ async function world(t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], vault: { keystore: "file" },
     computers: { driver: "fake", sweepMs: 0, waitMs: 100 }, modules: { disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, presence: present, log: () => {} });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const tool = (name, input = {}) => call(name, input, { root, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };

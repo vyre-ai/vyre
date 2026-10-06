@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { ASK_FIRST } from "../core/modules/agent-reach.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, asOwner } from "./helpers.js";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
@@ -25,6 +25,7 @@ test("delete and rewind are held or refused for every model caller, and the thre
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on", max_live: 50 } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
   const made = await d.registry.call("threads.start", { cwd: work, prompt: "the person's own thread", surface: "deck" }, "cli");

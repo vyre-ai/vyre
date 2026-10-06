@@ -12,7 +12,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import fs from "node:fs";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, asOwner } from "../../test/helpers.js";
 import { until, FAKE } from "../sessions/testing/boot.js";
 import { connect, wsDuplex } from "./client.js";
 
@@ -65,9 +65,10 @@ async function own(t) {
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false }, files: { roots: [work] }, term: { shell: "/bin/sh" } }));
   daemon = await start({ root, presence: present, log: () => {} });
+  asOwner(daemon, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const finished = id => until(async () => (await tool("threads.get", { thread: id, limit: 500 })).data.events.some(e => e.type === "thread.finished"), "the turn to finish");
-  return { root, work, tool, finished, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); } };
+  return { root, work, tool, finished, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); asOwner(daemon, root); } };
 }
 
 

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present, writeModule } from "../../test/helpers.js";
+import { tempHome, present, writeModule, asOwner } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 
@@ -21,6 +21,7 @@ test("launcherOnly: a session still signs in through the credentials port, and a
   writeModule(path.join(root, "modules"), "zz-thief", { does: { tools: [{ name: "zz-thief.take", reach: "anyone" }] }, needs: { vault: ["claude-setup-token"] } }, `
     export default { async start(ctx) { ctx.tool("zz-thief.take", { run: async () => { try { const v = await ctx.vault.fetch("claude-setup-token"); return { got: Boolean(v) }; } catch (e) { return { refused: String(e.message).slice(0, 120) }; } } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const reg = (name, input, caller = "cli") => d.registry.call(name, input, caller);
   const TOKEN = ["sk", "ant", "oat01", "launcheronly", "a".repeat(24)].join("-"); // assembled, so no secret-shaped literal sits in the file

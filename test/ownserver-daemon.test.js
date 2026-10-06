@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, asOwner } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE, until } from "../core/sessions/testing/boot.js";
 
@@ -25,6 +25,7 @@ for (const ROLE of ["local", "box"]) test(`own-server session on a ${ROLE}: ever
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: ROLE, transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const logs = /** @type {string[]} */ ([]);
   const d = await start({ root, presence: present, log: m => logs.push(String(m)), kernel: true });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));

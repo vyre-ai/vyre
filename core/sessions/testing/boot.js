@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
-import { tempHome, present, writeModule } from "../../../test/helpers.js";
+import { tempHome, present, writeModule, asOwner } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { installed } from "../sdk.js";
 
@@ -70,6 +70,7 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   // The probe and any modules given here stand in for Vyre's own (internal tools, session
   // providers), so the home's modules folder loads as first party (ADR 0047). Test only.
   const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine.
