@@ -73,7 +73,7 @@ export function createPeerDoor(o) {
     const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
     if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
-    const r = await o.registry.call(tool, body, caller, { ...(wire && typeof wire.zone === "string" && zoneFrom(wire.zone, "") ? { zone: zoneFrom(wire.zone, "") } : {}), ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}), ...(approval ? { approval } : {}) });
+    const r = await o.registry.call(tool, body, caller, { ...(wire && typeof wire.zone === "string" && zoneFrom(wire.zone, "") ? { zone: zoneFrom(wire.zone, "") } : {}), ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, peer: { kind: "device", stableId: String(id) }, ...(proof ? { proof, kernel_proof: proof } : {}), ...(approval ? { approval } : {}) });
     if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
     return r ? r.data : null;
   };
