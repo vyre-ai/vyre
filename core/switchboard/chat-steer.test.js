@@ -9,7 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
-import { call, write } from "../daemon/client.js";
+import { call } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, present, asOwner } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -188,7 +188,7 @@ test("edit-retry: back to before the message, the new words sent, one idempotent
   const w = await boot(t);
   const { th, turns, lines } = await threeTurns(w);
   const two = lines().find(l => l.type === "user" && l.uuid === turns[1].uuid);
-  const call1 = () => write("threads.edit-retry", { thread: th.id, message: turns[1].uuid, text: "two, shorter", surface: "deck" }, { root: w.root, caller: "deck", key: "retry-key-1" });
+  const call1 = () => w.d.registry.call("threads.edit-retry", { thread: th.id, message: turns[1].uuid, text: "two, shorter", surface: "deck" }, "deck", { idempotencyKey: "retry-key-1" });
   const r = (await call1()).data;
   assert.equal(r.retried, true);
   assert.equal(r.sent, true);
@@ -205,7 +205,7 @@ test("edit-retry: back to before the message, the new words sent, one idempotent
   assert.equal((await w.events(th.id)).filter(e => e.type === "thread.rewound").length, rewindsBefore);
   assert.deepEqual(await w.said(th.id), ["echo: one", "echo: two", "echo: three", "echo: two, shorter"]);
   // retry: the last typed message, same words.
-  const rt = (await write("threads.retry", { thread: th.id, surface: "deck" }, { root: w.root, caller: "deck", key: "retry-key-2" })).data;
+  const rt = (await w.d.registry.call("threads.retry", { thread: th.id, surface: "deck" }, "deck", { idempotencyKey: "retry-key-2" })).data;
   assert.equal(rt.text, "two, shorter");
   await w.finished(th.id, 5);
   assert.equal((await w.said(th.id)).at(-1), "echo: two, shorter");
@@ -276,7 +276,7 @@ test("C-5: edit-retry whose send would be refused (the keyboard is held elsewher
   const held = (await w.tool("threads.lease", { thread: th.id, surface: `cli:${process.pid}` })).data;
   assert.ok(held, "another surface takes the keyboard");
   for (const [tool, input] of [["threads.edit-retry", { thread: th.id, message: turns[1].uuid, text: "two, shorter", surface: "deck" }], ["threads.retry", { thread: th.id, message: turns[1].uuid, surface: "deck" }]]) {
-    const r = await write(tool, input, { root: w.root, caller: "deck", key: `k-${tool}` });
+    const r = await w.d.registry.call(tool, input, "deck", { idempotencyKey: `k-${tool}` });
     assert.equal(r.error && r.error.code, "lease_held", `${tool}: ${JSON.stringify(r)}`);
     assert.match(r.error.message, /Nothing was changed/);
   }

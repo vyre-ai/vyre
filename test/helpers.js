@@ -203,7 +203,11 @@ async function upFixture(home, fixture, env = process.env) {
 export function asOwner(d, root) {
   const meta = (() => { kernelCaller(d, root); return { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } }; })();
   const orig = d.registry.call.bind(d.registry);
-  d.registry.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => orig(tool, input, caller, m !== undefined ? m : (/^(cli|deck|local|capsule)$/.test(String(caller)) ? meta : undefined));
+  d.registry.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => {
+    const person = /^(cli|deck|local|capsule)$/.test(String(caller));
+    // a call with its own meta but no facts or token (an idempotency key) still arrives as the owner's device
+    return orig(tool, input, caller, m === undefined ? (person ? meta : undefined) : person && !m.kernelFacts && typeof m.token !== "string" ? { ...meta, ...m } : m);
+  };
   return d;
 }
 
