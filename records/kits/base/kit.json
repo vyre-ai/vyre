@@ -53,7 +53,11 @@
           "name": "organization",
           "kind": "link",
           "label": "Organization",
-          "to": "organization"
+          "to": "organization",
+          "inverse": {
+            "name": "contacts",
+            "label": "Contacts"
+          }
         },
         {
           "name": "address",
@@ -90,7 +94,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "leads",
+            "label": "Leads"
+          }
         },
         {
           "name": "source",
@@ -175,7 +183,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "appointments",
+            "label": "Appointments"
+          }
         },
         {
           "name": "kind",
@@ -247,7 +259,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "clients",
+            "label": "Clients"
+          }
         },
         {
           "name": "since",
@@ -293,7 +309,11 @@
           "kind": "link",
           "label": "Contact",
           "required": true,
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "subscriptions",
+            "label": "Subscriptions"
+          }
         },
         {
           "name": "list",
@@ -367,7 +387,11 @@
           "name": "client",
           "kind": "link",
           "label": "Client",
-          "to": "contact"
+          "to": "contact",
+          "inverse": {
+            "name": "projects",
+            "label": "Projects"
+          }
         },
         {
           "name": "owner",
