@@ -559,6 +559,9 @@ verify_up() {
     [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
     sleep 2
   done
+  # The Space helper goes in now, before the wait for modules: the container's entry holds the daemon back until the helper has proved the firewall for this start (core/spawner/space-wall.sh), so
+  # waiting for modules first can never end. A reinstall also finds the helper's record of the old image here, and replaces it with this one (no `sudo vyre space-helper install` by hand).
+  install_space_helper
   # Running is not enough: a box whose modules did not start (a build the kernel does not recognise as signed) answers its socket with nothing behind it. Say so, loudly, with the reason.
   [ "${VYRE_MODULES_TRIES:-60}" != 0 ] || return 0   # a test seam: the tests' stub docker runs no daemon
   j=0; mods=0
@@ -1078,7 +1081,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; install_space_helper; done_step "Vyre is up"; pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is up"; pair_server; fi
     show_words
   fi
   finish
