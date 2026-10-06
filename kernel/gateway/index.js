@@ -8,6 +8,8 @@ import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { roomedAuthorizer } from "../core/room.js";
+import { folderGuard } from "../core/folders.js";
+import { sharedRead } from "./shares.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
@@ -38,7 +40,13 @@ export function createGateway(cfg) {
   const wiring = gs ? { grants: gs.provider, members: gs.members, rules: { match: ({ chain, action, resource }) => gs.rulesFor(chain, action, resource), touches: (chain, action) => gs.rulesTouch(chain, action) }, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
   const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...MEMORY_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
-  const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
+  const roomed = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
+  // A chat's folders are its participants' only (kernel/core/folders.js).
+  const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
+    chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
+    chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
+    sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records }),
+  }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
   records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });

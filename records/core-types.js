@@ -251,4 +251,10 @@ export const CHAT = {
   ],
 };
 
+/** A participant's share of ONE file of a chat's folders with the project (the work module's type, not a core one): a member may read that file and never the folder or another file. The kernel counts it only when its author is in the chat. */
+export const FILE_SHARE = {
+  name: "file-share", label: "Shared file", icon: "IconShare",
+  fields: [text("path", "File path", { required: true })],
+};
+
 export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK].map((t) => Object.freeze(t)));

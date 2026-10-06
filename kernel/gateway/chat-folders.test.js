@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../index.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { FILE_SHARE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada", DAN = "per_dan";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
@@ -37,9 +38,13 @@ async function rig() {
   await g.addActor(owner, kit, { presence: proof("grants.role", { actor: kit }, `vyre://${SPACE}/member/kit`) });
   const bob = dev(BOB, "d-b"), carol = dev(CAROL, "d-c"), ada = dev(ADA, "d-a"), dan = dev(DAN, "d-d");
   const asst = (person, session) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "kit", session });
+  // the work module's `file-share` type, and its service chain that the kernel reads shares with
+  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read"] } } });
+  await k.gateway.records.define(owner, { add_types: [FILE_SHARE] });
+  const share = (/** @type {any} */ who, /** @type {string} */ path) => k.gateway.records.create(who, "file-share", { path });
   const chat = await g.chats.create(bob, { people: [CAROL], assistants: ["kit"] });
   const dir = `Projects/p1/chat/${chat.id}`, made = `Projects/p1/made/${chat.id}`;
-  return { k, drive, D: k.gateway.drive, g, owner, bob, carol, ada, dan, asst, chat, dir, made };
+  return { k, drive, D: k.gateway.drive, g, owner, bob, carol, ada, dan, asst, chat, dir, made, share };
 }
 const enc = s => new TextEncoder().encode(s);
 
@@ -81,22 +86,19 @@ test("a participant who leaves loses the folder at once, and a person added late
   await assert.rejects(() => D.get(carol, `${dir}/note.txt`), { code: "not_found" }, "removed: refused on the next call");
 });
 
-test("Share to project is a kernel grant of drive.read on that one file: a member reads it, never the folder, another file of the chat, or writes", async () => {
-  const { k, g, D, owner, bob, dan, dir } = await rig();
+test("Share to project is a `file-share` record a participant makes: a member reads that one file, never the folder, another file of the chat, or writes; a share by someone outside the chat counts for nothing", async () => {
+  const { D, owner, bob, dan, dir, share } = await rig();
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   await D.put(bob, `${dir}/private.txt`, enc("not shared"));
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "before the share");
-  // the share: a participant's own act (no presence), a grant to the project's readers on exactly this file
-  await assert.rejects(() => g.shareFile(dan, `${dir}/shared.txt`), { code: "not_found" }, "only a participant shares");
-  await assert.rejects(() => g.shareFile(owner, `${dir}/shared.txt`), { code: "not_found" }, "not even the owner, who is not in the chat");
-  const sh = await g.shareFile(bob, `${dir}/shared.txt`);
-  assert.equal(sh.source, "chat:share");
-  assert.equal((await g.shareFile(bob, `${dir}/shared.txt`)).id, sh.id, "sharing twice is one grant");
+  await share(dan, `${dir}/shared.txt`);
+  await share(owner, `${dir}/shared.txt`);
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "a share by someone who is not in the chat opens nothing");
+  await share(bob, `${dir}/shared.txt`);
   assert.equal(new TextDecoder().decode(await D.get(dan, `${dir}/shared.txt`)), "for the project", "a member reads the shared file");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" }, "not the next file");
   await assert.rejects(() => D.put(dan, `${dir}/shared.txt`, enc("x")), { code: "not_found" }, "not write");
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt/../private.txt`), e => ["not_found", "bad_input"].includes(e.code), "not by a path trick");
-  assert.ok(k);
 });
 
 test("a module's own service chain may write a chat's files and never reads them: a tool cannot read for a non-participant through it", async () => {
@@ -107,16 +109,16 @@ test("a module's own service chain may write a chat's files and never reads them
   await assert.rejects(() => D.get(dan, `${dir}/note.txt`), { code: "not_found" });
 });
 
-test("unsharing takes the file back at once, and only a participant or an admin may", async () => {
-  const { g, D, bob, dan, ada, dir } = await rig();
+test("unsharing takes the file back at once: the share record is removed (by whoever Records lets remove it: its author, or an admin)", async () => {
+  const { k, D, bob, dan, ada, dir, share } = await rig();
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
-  await g.shareFile(bob, `${dir}/shared.txt`);
+  const sh = await share(bob, `${dir}/shared.txt`);
   assert.ok(await D.get(dan, `${dir}/shared.txt`));
-  await assert.rejects(() => g.unshareFile(dan, `${dir}/shared.txt`), { code: "not_found" });
-  assert.deepEqual(await g.unshareFile(bob, `${dir}/shared.txt`), { unshared: 1 });
+  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused again");
-  await g.shareFile(bob, `${dir}/shared.txt`);
-  assert.deepEqual(await g.unshareFile(ada, `${dir}/shared.txt`), { unshared: 1 }, "an admin may take a share back");
+  const again = await share(bob, `${dir}/shared.txt`);
+  await k.gateway.records.remove(ada, "file-share", again.id, again.version);
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "an admin may take a share back");
 });
 
 test("the file seam a device sync or a lent request reads through meets the same check, and an agent that is not in the chat is refused even for a participant", async () => {

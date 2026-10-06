@@ -339,6 +339,14 @@
             { "name": "drive", "kind": "text", "label": "Project Drive folder" },
             { "name": "location", "kind": "text", "label": "This chat's Drive folder" }
           ]
+        },
+        {
+          "name": "file-share",
+          "label": "Shared file",
+          "icon": "IconShare",
+          "fields": [
+            { "name": "path", "kind": "text", "label": "File path", "required": true }
+          ]
         }
       ]
     },

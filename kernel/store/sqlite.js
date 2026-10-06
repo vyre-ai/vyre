@@ -179,7 +179,6 @@ export function createSqliteStore(cfg) {
     });
     return parts;
   };
-  const ftsDel = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid >= ? AND rowid < ?") : null;
   const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_ftf (rowid, doc) VALUES (?, ?)") : null;
   const ftsGet = ftsOk ? db.prepare("SELECT doc FROM kernel_ftf WHERE rowid = ?") : null;
   const ftsDelOne = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid = ?") : null;

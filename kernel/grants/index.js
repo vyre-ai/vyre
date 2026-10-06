@@ -14,7 +14,6 @@ import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
-import { chatFolderOf } from "../core/folders.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
 /** The actions the grants calls register with the authorizer. All but `list` are risk `grant`. */
@@ -179,7 +178,6 @@ export function createGrantsStore(cfg) {
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
   // K-3: the seal is the sealing process (or, for a development kernel with no sealing process, a local key). The store holds no key of its own.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
-  const LEGACY_RE = /^(grant|member|actor|offer|invite|chat|rule)\./;
   // Every event this store writes is sealed (one `kernel.mac` per event) and numbered on THIS store's own chain: `gseq` counts its events and `gprev` is the hash of the
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
@@ -317,41 +315,6 @@ export function createGrantsStore(cfg) {
       grants.set(g.id, g);
       await note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
       return g;
-    },
-
-    /**
-     * Share one file of a chat's folders with the project: a participant's own act (no presence: it is their chat and their file), made as a grant of `drive.read` on exactly that file to the Space's
-     * members (the project's readers), so it reads one file, never the folder, another file or a write. Sharing twice is the same grant. @param {any} chain @param {string} path
-     */
-    async shareFile(chain, path) {
-      const who = person(chain);
-      const res = `vyre://${cfg.space}/file/${path}`;
-      const where = chatFolderOf(res, cfg.space);
-      if (!where || where.rest === null) throw new KernelError("bad_input", "only a file in a chat's folders is shared");
-      const c = chats.get(where.chat);
-      if (!c || !c.people.includes(who.id) || !memberOk(who)) throw new KernelError("not_found", "no such file");
-      const have = [...grants.values()].find(g => g.status === "active" && g.source === "chat:share" && g.resource.prefix === res);
-      if (have) return have;
-      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "role", name: "member" }, actions: ["drive.read"], action_set_version: version, resource: { prefix: res }, conditions: {}, source: "chat:share", issuer: { ...who }, reason: "shared to the project from a chat", status: "active", created_at: clock() });
-      grants.set(g.id, g);
-      await note(chain, "grant.created", urn("grant", g.id), { grant: g }, null);
-      return g;
-    },
-    /** Take a share back: a participant of that chat, or an admin. @param {any} chain @param {string} path */
-    async unshareFile(chain, path) {
-      const who = person(chain);
-      const res = `vyre://${cfg.space}/file/${path}`;
-      const where = chatFolderOf(res, cfg.space);
-      const c = where ? chats.get(where.chat) : null;
-      if (!where || !c || !((c.people.includes(who.id) && memberOk(who)) || isAdmin(who))) throw new KernelError("not_found", "no such file");
-      let n = 0;
-      for (const g of [...grants.values()]) {
-        if (g.status !== "active" || g.source !== "chat:share" || g.resource.prefix !== res) continue;
-        const r = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "unshared" });
-        grants.set(r.id, r); n++;
-        await note(chain, "grant.revoked", urn("grant", r.id), { id: r.id, reason: "unshared" }, null);
-      }
-      return { unshared: n };
     },
 
     /** Revoke in place; everything delegated from it goes too. */
