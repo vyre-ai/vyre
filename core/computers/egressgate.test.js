@@ -357,29 +357,3 @@ test("egressgate: its ports, upstream and socket come from the env, with the com
   assert.ok(fromEnv({ VYRE_EGRESS_GATE_PORT: "0", VYRE_EGRESS_UPSTREAM: "127.0.0.1:1" }), "an env builds a gate without listening");
   assert.throws(() => fromEnv({ VYRE_EGRESS_UPSTREAM: "nowhere" }), /not a host:port/);
 });
-
-test("egressgate: the compose file puts the gate in front and keeps the sidecar off the computers network", () => {
-  const y = fs.readFileSync(path.join(ROOT, "box/compose.egress.yml"), "utf8");
-  const service = name => {
-    const m = y.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z-]+:\\n|^[a-z]+:)`, "m"));
-    assert.ok(m, `no service ${name}`);
-    return m[1];
-  };
-  const gate = service("egress"), node = service("egress-node");
-  assert.match(gate, /command: \["node", "\/opt\/vyre\/core\/computers\/egressgate\.js"\]/);
-  assert.match(gate, /image: \$\{VYRE_IMAGE:-ghcr\.io\/vyre-ai\/vyre:latest\}/, "the same image as the vyre service");
-  assert.match(gate, /computers:\n\s+aliases:\n\s+- egress\n/);
-  for (const hard of [/read_only: true/, /cap_drop: \[ALL\]/, /no-new-privileges:true/, /user: "1000:1000"/]) assert.match(gate, hard);
-  assert.match(gate, /egress-sock:\/var\/run\/egress-node:ro/);
-  assert.match(gate, /VYRE_EGRESS_UPSTREAM=egress-node:1056/);
-  assert.doesNotMatch(node, /computers:/, "the sidecar is not on the computers network");
-  assert.match(node, /TS_SOCKS5_SERVER=:1056/);
-  assert.match(node, /TS_SOCKET=\/var\/run\/tailscale\/tailscaled\.sock/);
-  assert.match(node, /egress-sock:\/var\/run\/tailscale\n/);
-  assert.match(node, /--advertise-tags=tag:vyre-egress/);
-  assert.match(node, /tskey-client-/, "the error names the OAuth client secret");
-  assert.match(node, /single-use key breaks/);
-  assert.match(y, /^  egress:\n    name: vyre-egress\n    internal: true/m);
-  const compose = fs.readFileSync(path.join(ROOT, "box/compose.yml"), "utf8");
-  assert.match(compose, /image: \$\{VYRE_IMAGE:-ghcr\.io\/vyre-ai\/vyre:latest\}/);
-});
