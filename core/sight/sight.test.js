@@ -80,7 +80,7 @@ async function world(t, fakes) {
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "sight");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], { firstPartyRoots: [root] }) /* the fakes stand in for shipped modules (hands-desktop emits desktop.acted) */], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); delete /** @type {any} */ (globalThis).__screenCalls; });
   const stepped = () => events.since(0).filter(e => e.type === "sight.stepped");
   return { reg, db, events, stepped };
