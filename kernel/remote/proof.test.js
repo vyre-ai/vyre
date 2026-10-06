@@ -50,9 +50,9 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
   const { owner, signed, g } = await rig();
-  const m = { person: BOB, role: "member" };
+  const m = { person: BOB, role: "owner" }; // a role below owner needs no proof now; making an owner still does
   const p = signed("setRole", m);
-  await assert.rejects(() => g.setRole(owner, { person: BOB, role: "admin" }, proofFrom(p)), { code: "needs_presence" }, "bound to the exact input");
+  await assert.rejects(() => g.setRole(owner, { person: "per_carol", role: "owner" }, proofFrom(p)), { code: "needs_presence" }, "bound to the exact input");
   await g.setRole(owner, m, proofFrom(p));
   await assert.rejects(() => g.setRole(owner, m, proofFrom(p)), { code: "needs_presence" }, "once");
   await assert.rejects(() => g.setRole(owner, m, proofFrom({ proof: p.kernel_proof })), { code: "needs_presence" }, "the legacy meta.proof is not a kernel proof");

@@ -65,7 +65,7 @@ function rig(over = {}) {
     return { ...base, signature: crypto.sign("sha256", proofBytes(base), { key: keys[who], dsaEncoding: "ieee-p1363" }).toString("base64url") };
   };
   const proof = (chain, who, t, over2 = {}) => sign(chain, who, "task.decide", { task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, over2);
-  return { tasks, log, presence, released, state, proof, sign, authorizer, keys };
+  return { tasks, log, presence, released, state, proof, sign, authorizer, keys, members };
 }
 const draftTask = (over = {}) => ({ title: "Welcome email for Jane Doe", doer: actor("agent", "intake"), checker: actor("person", ALICE), output: { kind: "sent" }, record: `vyre://${SPACE}/contact/c1`, ...over });
 const payload = (over = {}) => ({ what: "the welcome email", recipients: [{ address: "jane@example.com", verified: false, record: `vyre://${SPACE}/contact/c1` }], template: { id: `vyre://${SPACE}/template/welcome`, version: 1 }, account: "firm-mail", ...over });
@@ -563,6 +563,24 @@ test("approval on authorize: an approved held-act task allows exactly that act b
   await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
   T += 25 * 3600_000;
   assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
+});
+
+test("AT-1: an approval is spent only while its approver still holds the right: a removed member's yes, or one demoted to temp, does not pass inside the day", async () => {
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "b" }), true, "while alice is a member");
+  r.members.delete(`person:${ALICE}`);
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "b" }), false, "alice was removed: her yes is no longer one");
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, bind: "b" }), false, "and nothing is spent on it");
+  let temp = false;
+  const r2 = rig({ roleOf: () => (temp ? "temp" : "member") });
+  const t2 = await toNeedsCheck(r2);
+  await r2.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r2.proof(alice(), ALICE, t2) });
+  assert.equal(r2.tasks.approvedAct({ id: t2.id, ...act, bind: "b" }), true);
+  temp = true;
+  assert.equal(r2.tasks.approvedAct({ id: t2.id, ...act, bind: "b" }), false, "demoted to a role that cannot decide a task");
 });
 
 test("approval under an always-ask rule: only the named approver's approval stands", async () => {

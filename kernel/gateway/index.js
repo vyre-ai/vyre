@@ -155,8 +155,13 @@ export function createGateway(cfg) {
     let erased = 0, taskTextsCleared = 0;
     if (i.scrub_history !== false) {
       // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
-      if (plain.size && cfg.tasks) taskTextsCleared = (await cfg.tasks.scrubTexts({ values: [...plain], records: touched })).cleared;
-      if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
+      /** @type {{ ids: string[], fields: string[] } | null} */ let clearedTasks = null;
+      if (plain.size && cfg.tasks) { const r = await cfg.tasks.scrubTexts({ values: [...plain], records: touched }); taskTextsCleared = r.cleared; if (r.cleared && Array.isArray(r.ids) && Array.isArray(r.fields)) clearedTasks = { ids: r.ids, fields: r.fields }; }
+      if (typeof cfg.store.scrub === "function") {
+        // The words of a cleared task are on its record, and the record's change log keeps the earlier titles and notes: those entries lose the text fields too (only the tasks that were cleared).
+        if (clearedTasks) await cfg.store.scrub("task", clearedTasks.fields, new Set(clearedTasks.ids));
+        await cfg.store.scrub(i.type, [i.field]);
+      }
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {
         const d = e.data;
@@ -211,7 +216,9 @@ export function createGateway(cfg) {
   const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence, remoteEvidence: cfg.remoteMoveEvidence, verifyReceipt: cfg.verifyMoveReceipt });
 
   return Object.freeze({
-    authorize: authorizer.authorize,
+    // AT-2: `peek` (decide an approved act's check without spending its one use) is the Flows runner's alone, through authorizePeek on the home's own gateway; a module's handle gets this one, which drops it.
+    authorize: (/** @type {any} */ i) => { if (i && typeof i === "object" && "peek" in i) { const { peek: _p, ...rest } = i; return authorizer.authorize(rest); } return authorizer.authorize(i); },
+    authorizePeek: (/** @type {any} */ i) => authorizer.authorize({ ...i, peek: true }),
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
     upgrade, // Personal to My Cloud: start (approved once), finish, movedTo (kernel/gateway/upgrade.js)

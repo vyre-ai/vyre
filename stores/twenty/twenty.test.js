@@ -237,3 +237,23 @@ test("twenty: an empty `in` list matches nothing and is never sent to Twenty as 
   assert.deepEqual((await b.store.query("lead", { filter: { field: "refs", op: "is_null" }, page: { limit: 5 } })).rows, []);
   assert.ok(!JSON.stringify(fake.requests).includes('"in":[]'), "no empty list went to Twenty");
 });
+
+test("scrub with an id set forgets a field's history for those records only: an unrelated record keeps its change log and its snapshot", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  const a = mintUuid(), other = mintUuid();
+  await b.store.create("contact", a, { name: "Quoting the value 123-45-6789" });
+  await b.store.create("contact", other, { name: "Unrelated" });
+  await b.store.update("contact", a, { name: "Quoting it again 123-45-6789" }, 1);
+  await b.store.update("contact", other, { name: "Still unrelated" }, 1);
+  const named = async (id) => (await b.store.changes(null, 1000)).entries.filter((e) => e.id === id).some((e) => (e.before && "name" in e.before) || (e.after && "name" in e.after));
+  assert.equal(await named(a), true, "the history holds the field before the scrub");
+  await b.store.scrub("contact", ["name"], new Set([a]));
+  assert.equal(await named(a), false, "the scrubbed record's log entries lost the field");
+  assert.equal(await named(other), true, "an unrelated record keeps its title history");
+  const key = (id) => b.store.snaps.get("contact", id);
+  assert.equal(key(a) && key(a).data && "name" in key(a).data, false, "the scrubbed record's snapshot lost the field");
+  assert.equal(key(other).data.name, "Still unrelated", "an unrelated record keeps its snapshot");
+  // without a set the whole type is scrubbed, as a late seal of the type's own field needs
+  await b.store.scrub("contact", ["name"]);
+  assert.equal(await named(other), false);
+});

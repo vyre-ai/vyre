@@ -272,6 +272,19 @@ test("module: apps.setup answers only the surfaces a person drives", async t => 
 });
 
 
+test("module: apps.list and apps.targets (what is installed, what is in the person's notes) are refused to a guest, an anonymous or an unknown caller", async t => {
+  const home = tempHome(t);
+  const f = fakeExec(() => ({}));
+  const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
+  for (const caller of ["anonymous", "tailnet-guest:juno", "unknown"]) {
+    for (const [tool, input] of [["apps.list", {}], ["apps.targets", { app: "Notes" }]]) {
+      const r = await reg.call(tool, input, caller);
+      assert.equal(r.error && r.error.code, "denied", `${caller} ran ${tool}`);
+    }
+  }
+  for (const caller of ["cli", "capsule", "mcp"]) assert.ok(!(await reg.call("apps.list", {}, caller)).error, caller);
+});
+
 /** A stand-in for the box's planner module (ADR 0025): planner.add keeps what it is given. */
 function fakePlanner(/** @type {string} */ root, /** @type {string} */ answer = "{ id: 'itm_1', kind: i.kind || 'note', title: 'call juno' }") {
   return writeModule(root, "planner", { roles: ["local"], does: { tools: ["planner.add"] } }, `

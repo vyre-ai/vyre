@@ -780,11 +780,10 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
   const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
   const space = s.space;
   const KIT = "per_" + "k".repeat(26);
-  // no proof: the kernel says the change needs the person's approval, in the module's words
-  const bare = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
-  assert.equal(bare.error?.code, "needs_presence", JSON.stringify(bare.error));
-  // with the kernel's proof it goes through, and the list is the kernel's
-  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "member" }) });
+  // making an owner with no proof: the kernel says the change needs the person's approval, in the module's words; a role below owner needs none (user ruling 5 Oct)
+  const bare = await d.call("spaces.members.add", { space, person: "per_" + "z".repeat(26), role: "owner" }, "cli", { token });
+  assert.ok(["needs_presence", "presence_required"].includes(bare.error?.code), JSON.stringify(bare.error)); // the registry asks first for an owner, the kernel would otherwise
+  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
   assert.ok(!added.error, JSON.stringify(added.error));
   const listed = await d.ok("spaces.members.list", { space }, "cli", { token });
   assert.deepEqual(listed.members.map(m => [m.person, m.role]).sort(), [[alex.id, "owner"], [KIT, "member"]].sort());

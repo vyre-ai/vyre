@@ -1257,7 +1257,10 @@ export function createPairing(o) {
       input: obj({ id: str }, ["id"]),
       run: async (input, meta0 = {}) => {
         if (!["module:presence", "module:vyred", "module:approvals"].includes(String((meta0 && meta0.caller) || ""))) throw fail("denied", "the device record is for the presence module and the daemon");
-        return devices.record(String(input.id));
+        const rec = devices.record(String(input.id));
+        // `homeOwner`: this device's person is the one this server's own pairing record names as its owner (PW-1): a confirmed device of another member is a paired device, not the owner's.
+        const own = meta.get("owner");
+        return rec ? { ...rec, homeOwner: Boolean(own && typeof own.identity === "string" && own.identity === rec.owner) } : rec;
       },
     });
     ctx.tool("wink.server.probe", {

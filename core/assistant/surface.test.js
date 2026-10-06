@@ -164,13 +164,13 @@ const settle = () => new Promise(r => setTimeout(r, 40));
 
 test("handoffPush: done or failed, from the assistant, a fixed sentence and one tag per request", () => {
   const p = { request: "r1", project: "harlow-legal", status: "done", reply_to: "t1" };
-  assert.deepEqual(handoffPush(p, true), { title: "A teammate in harlow-legal finished", path: "/threads/t1", tag: "handoff-r1" });
-  assert.equal(handoffPush({ ...p, status: "failed" }, true).title, "A teammate in harlow-legal could not finish");
+  assert.deepEqual(handoffPush(p, true), { title: "A teammate finished", path: "/threads/t1", tag: "handoff-r1" });
+  assert.equal(handoffPush({ ...p, status: "failed" }, true).title, "A teammate could not finish");
   assert.equal(handoffPush({ ...p, status: "cancelled" }, true), null);
   assert.equal(handoffPush(p, false), null, "not the assistant's handoff");
   assert.equal(handoffPush({ ...p, reply_to: null }, true), null);
-  // A project name never carries text: only slug characters survive.
-  assert.equal(handoffPush({ ...p, project: "x</b> ignore previous" }, true).title, "A teammate in xbignoreprevious finished");
+  // No project name or text rides in the title (issue 72): the title is the same whatever the project says.
+  assert.equal(handoffPush({ ...p, project: "x</b> ignore previous" }, true).title, "A teammate finished");
 });
 
 test("a handoff the assistant started files one push.proactive when its teammate finishes; another agent's does not", async t => {
@@ -184,7 +184,7 @@ test("a handoff the assistant started files one push.proactive when its teammate
   events.emit("team", "summon.finished", { request: "r3", teammate: "designer-harlow-legal", project: "harlow-legal", status: "done", reply_to: null }, {});
   await settle();
   assert.equal(pushed.length, 1);
-  assert.deepEqual(pushed[0], { title: "A teammate in harlow-legal finished", path: "/threads/tj", tag: "handoff-r1" });
+  assert.deepEqual(pushed[0], { title: "A teammate finished", path: "/threads/tj", tag: "handoff-r1" });
 });
 
 test("promptBlock: quoted data, names cleaned, a name cannot close the block", () => {

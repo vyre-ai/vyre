@@ -2,9 +2,8 @@
 // handoff: the one notification for work the assistant handed to a teammate (plan 2.6, case 2).
 //
 // A request the assistant's own thread asked for (reply_to is that thread) files one
-// push.proactive when it ends, done or failed. The title is a fixed sentence built from names
-// Vyre holds, never the teammate's result text: what it wrote is untrusted and stays in the
-// thread. A cancelled request files nothing (the person or the assistant cancelled it). The tag
+// push.proactive when it ends, done or failed. The title is one of core/push's fixed sentences, with no name, project or
+// result text in it: what the teammate wrote is untrusted and stays in the thread. A cancelled request files nothing (the person or the assistant cancelled it). The tag
 // is the request, so a re-delivered event is one push. core/push owns the daily cap and quiet
 // hours.
 
@@ -18,10 +17,8 @@ const slug = v => String(v ?? "").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 60);
 export function handoffPush(p, fromAssistant) {
   if (!p || !fromAssistant || !p.reply_to || !p.request) return null;
   if (p.status !== "done" && p.status !== "failed") return null;
-  const project = slug(p.project);
-  const where = project ? ` in ${project}` : "";
   return {
-    title: p.status === "done" ? `A teammate${where} finished` : `A teammate${where} could not finish`,
+    title: p.status === "done" ? "A teammate finished" : "A teammate could not finish",
     path: `/threads/${encodeURIComponent(String(p.reply_to))}`,
     tag: `handoff-${slug(p.request)}`,
   };

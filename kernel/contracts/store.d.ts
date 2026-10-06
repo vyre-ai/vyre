@@ -118,7 +118,7 @@ export interface Store {
   types(): Promise<readonly TypeDefinition[]>;
   /** The field names and kinds of a type, or null: the gateway reads which fields are sealed from here and refuses model queries on them. */
   /** Optional. Forget the values these fields held everywhere the store kept them (its change log, snapshots, any history of its own): a field was sealed. */
-  scrub?(type: string, fields: readonly string[]): Promise<void>;
+  scrub?(type: string, fields: readonly string[], ids?: ReadonlySet<string>): Promise<void>;
   describe(type: string): Promise<{ readonly name: string; readonly fields: readonly { readonly name: string; readonly kind: FieldKind }[] } | null>;
   get(type: string, id: RecordId, opts?: { readonly include_deleted?: boolean }): Promise<StoredRecord | null>;
   query(type: string, spec: QuerySpec): Promise<Page<StoredRecord>>;

@@ -3,6 +3,13 @@
 // Every entry names one tool and gives its own reason: what the tool does, so a reader can see why a person's assistant may call it. PERSON_ONLY tools never appear.
 //   node scripts/gen-allow.mjs           write kernel/golden/allow.json
 //   node scripts/gen-allow.mjs --check   exit 1 when the committed file differs from the generator's output
+//
+// HOW DEVBOX REGENERATES (golden is a generated file; nobody hand-edits a row, and a hand-added row is replaced by the next regeneration): in each batch gate, on a test box after `npm ci` at the root,
+//   1. node scripts/gen-allow.mjs                  rewrites kernel/golden/allow.json (OPEN, ASK_FIRST, DECLARED, flows and memory notes) and kernel/golden/presence.json (ruled presence removals); it throws, naming the tool,
+//                                                  when a tool is classified with no note: add the note here (OPEN_NOTES, DECLARED_NOTES, FLOWS_NOTES, MEMORY_NOTES), never a hand-written row
+//   2. node kernel/golden/index.js --write         re-records kernel/golden/golden.json from the code (about 7 minutes). It REFUSES, and says which cells, when a refusal turned into a run (a weakening: name it in
+//                                                  the lists above or PRESENCE_RULINGS) or an added tool runs for a model, guest or MCP caller (classify it in core/modules/agent-reach.js or declare it here with its commit)
+//   3. commit the three files together with the code that moved them; kernel/golden/allow.test.js and golden.test.js must then pass.
 // A hand-written entry is not allowed: to name an exception, add the tool to a list here with a reason, or classify it in agent-reach.js.
 import fs from "node:fs";
 import path from "node:path";
@@ -12,13 +19,18 @@ import { toolEntries } from "../packages/module-sdk/manifest.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const ALLOW_FILE = path.join(REPO, "kernel", "golden", "allow.json");
+export const PRESENCE_FILE = path.join(REPO, "kernel", "golden", "presence.json");
 
 const RULING = "user ruling 4 Oct 2026: an assistant can do what its person can";
 const SAFE = "open to the person's assistant, safe only for a daemon-stamped session claim (L-1)";
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
+  "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "spaces.identity.devices": "lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger",
+  "pluginagent.pending": "lists what Claude Code on a computer is waiting to be let do: a read, nothing is granted",
+  "presence.person.locked": "lists the paired devices locked after wrong sign-in answers and when each lock ends: a read for the Devices list",
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
@@ -154,6 +166,52 @@ export const OPEN_NOTES = Object.freeze({
   "work.team.add": "adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen",
 });
 
+/**
+ * The tools a manifest declares reach `anyone` (or leaves open with `effect: "read"`) that opened to a model, a module or a guest cell of the golden set on 4 Oct 2026, with the commit
+ * that did it. Each one's guard is the reason test/reach-anyone.json already holds for it (one source); a tool the reach file has no line for says its own in DECLARED_NOTES.
+ * threads.delete and threads.rewind are not here: they are on ASK_FIRST (destructive), so they get their entry there.
+ */
+export const DECLARED = Object.freeze({
+  ...Object.fromEntries(["agents.ask", "threads.archive", "threads.effort", "threads.fork", "threads.interrupt", "threads.model", "threads.send", "threads.send-now", "threads.start", "threads.stop",
+    "threads.switch", "threads.thinking", "threads.unarchive", "threads.unwatch", "threads.watch"].map(t => [t, "06c2f3bcc"])),
+  ...Object.fromEntries(["learn.add", "memory.curate", "memory.mute", "memory.pin", "team.charter.draft"].map(t => [t, "3b0ea63d2"])),
+  ...Object.fromEntries(["apps.list", "apps.send", "apps.targets", "capsule.status", "hands.act", "hands.commit", "hands.find", "hands.observe", "hands.stop",
+    "chrome.act", "chrome.api", "chrome.approve", "chrome.batch", "chrome.click", "chrome.console", "chrome.eval", "chrome.fill", "chrome.frames", "chrome.ghl", "chrome.inspect", "chrome.login",
+    "chrome.net", "chrome.open", "chrome.parallel", "chrome.plan", "chrome.point", "chrome.recipe", "chrome.screenshot", "chrome.site", "chrome.snapshot", "chrome.sources", "chrome.state",
+    "chrome.status", "chrome.stop", "chrome.summary", "chrome.tabs", "chrome.type", "chrome.wait"].map(t => [t, "cb69aea6d"])),
+  ...Object.fromEntries(["threads.release", "github.accounts"].map(t => [t, "3c2ce3bcf"])),
+  "vault.revoke": "59980bf43",
+  "pluginagent.ask": "2bbe50159",
+  "pluginagent.status": "2bbe50159",
+  "link.pending": "235da322d",
+  "harness.end": "c5e244c97",
+  "threads.rename": "f990f0d36",
+  "work.project.rename": "f990f0d36",
+  "work.session.rename": "f990f0d36",
+  "presence.remove": "235da322d",
+  "planner.bin": "49f105dbe",
+  "recall.links": "e8a4645fd",
+  "recall.pointers": "e8a4645fd",
+  "recall.turn": "e8a4645fd",
+});
+
+/** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
+export const DECLARED_NOTES = Object.freeze({
+  "recall.turn": "a read of one past session's turns, word for word; callers are READERS and the body holds a model to its own project's sessions (reach() and readableSession in core/recall/index.js), the same guard as recall.search",
+  "recall.links": "a read of the turns that touched a file, commit or url; callers are READERS and the body holds a model to its own project's folders (reach() and inFolders in core/recall/index.js), the same guard as recall.search",
+  "recall.pointers": "the rollover split of a thread's own windows for Vyre's seed; callers are OWNERS_ONLY (core/recall/index.js), so a cli label such as agent:kit is the cli surface, not a model's session",
+  "apps.list": "a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
+  "apps.targets": "a read of the notes and lists inside one app; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)",
+  "apps.send": "sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module",
+  "capsule.status": "a read of whether the Capsule can run on this machine: build and autostart, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/capsule/index.js)",
+  "learn.add": "a model's lesson is proposed and never made active; the person accepts it",
+  "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
+  "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
+  "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+});
+
+const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;
+
 /** What each flows tool does, in its own words (the descriptions in core/flows/index.js). */
 export const FLOWS_NOTES = Object.freeze({
   "flows.propose": "proposes a Flow for the person to approve: nothing runs, nothing is installed, until a person approves it",
@@ -172,9 +230,33 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.kit.card": "the install card for a Kit, a read",
   "flows.kit.propose": "proposes a Kit for approval, and installing waits for a person",
   "flows.kit.list": "lists the Kits of a Space",
+  "flows.kit.diff": "reads what updating an installed Kit to a version would change: parts added, changed and removed, and the risks; nothing is changed",
+  "flows.kit.library": "lists the Kits this build ships before anything is installed: public text, no data",
+  "flows.kit.library.get": "reads one shipped Kit in the form the card, diff and propose tools take: public text, no data",
+  "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
 });
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";
+
+const MEMORY_REASON = "the memory module's own guard decides, not an assistant's say-so: the kernel's chain (core/memory/kernel-gate.js, personalAccess) and the kernel's memory grants decide, and a plain mcp, harness or guest call without a verified person or session is refused inside the tool";
+/** The reach `anyone` memory tools a person's assistant may call, each with what it does and who decides. Everything else in the memory manifest is person only (agent-reach.js) or refused to a model by its callers list. */
+export const MEMORY_NOTES = Object.freeze({
+  "memory.follow": "follows a project or a room so its memory is brought in for the person; it only widens what the person's own memory shows them",
+  "memory.markers": "reads the person's markers in a room, the places they marked in a conversation",
+  "memory.identity.status": "says whether the person's identity memory is sealed here, unlocked, and which servers hold the person's grant: no fact and no key",
+  "memory.identity.unlock.begin": "asks the person's phone to unlock the person's private memory for this server: nothing is readable until the phone answers, and only for a server the person granted",
+  "memory.identity.lock": "locks the person's private memory now, which only takes access away: the latest facts are sealed and the rows leave the process",
+  "memory.space.file": "files a fact in the Space's memory under the caller's own chain: the kernel's memory.file grant decides, and the fact's source must be one the filer may read",
+  "memory.space.recall": "recalls the Space's facts the caller's chain may read: the kernel's memory.read grant is asked again for each fact",
+  "memory.space.retire": "retires a Space fact under the caller's own chain: the kernel's memory.retire grant decides, the filer or a person with the right",
+});
+
+/** The memory tools allowed to a model, from MEMORY_NOTES, checked against the manifest. */
+export function memoryAnyone() {
+  const m = JSON.parse(fs.readFileSync(path.join(REPO, "core", "memory", "module.json"), "utf8"));
+  const have = new Set(toolEntries(m).map(e => e.name));
+  return Object.keys(MEMORY_NOTES).filter(t => have.has(t)).sort();
+}
 
 /** The reach `anyone` tools of the flows manifest, which are not in agent-reach.js because they are not reach person. */
 export function flowsAnyone() {
@@ -194,27 +276,63 @@ export function generate() {
     const note = /** @type {Record<string, string>} */ (OPEN_NOTES)[tool];
     out.push({ tool, reason: `${RULING}; open to the person's assistant but held for a one-tap task (${why})${note ? `: ${note}` : ""}` });
   }
+  const reasons = DECLARED_REASONS();
+  for (const [tool, commit] of Object.entries(DECLARED)) {
+    const guard = /** @type {Record<string, string>} */ (DECLARED_NOTES)[tool] || (reasons[tool] && reasons[tool].reason);
+    if (!guard) throw new Error(`gen-allow: ${tool} is in DECLARED with no guard in DECLARED_NOTES or test/reach-anyone.json`);
+    out.push({ tool, reason: `${RULING}; ${tool} opened to a model or a module in ${commit} (4 Oct 2026); the body decides: ${guard}` });
+  }
   for (const tool of flowsAnyone()) {
     const note = /** @type {Record<string, string>} */ (FLOWS_NOTES)[tool];
     if (!note) throw new Error(`gen-allow: ${tool} is reach anyone in the flows manifest with no line in FLOWS_NOTES`);
     out.push({ tool, reason: `${RULING}; ${note}; ${FLOWS_REASON}` });
   }
+  for (const tool of memoryAnyone()) out.push({ tool, reason: `${RULING}; ${MEMORY_NOTES[tool]}; ${MEMORY_REASON}` });
   for (const e of out) if (PERSON_ONLY.has(e.tool)) throw new Error(`gen-allow: ${e.tool} is person only and must not be allowed`);
   const seen = new Set();
   for (const e of out) { if (seen.has(e.tool)) throw new Error(`gen-allow: ${e.tool} is listed twice`); seen.add(e.tool); }
   return out.sort((a, b) => (a.tool < b.tool ? -1 : 1));
 }
 
-export const render = (/** @type {{ tool: string, reason: string }[]} */ entries) => JSON.stringify(entries, null, 1) + "\n";
+export const render = (/** @type {any[]} */ entries) => JSON.stringify(entries, null, 1) + "\n";
+
+/**
+ * A PRESENCE the user ruled away from a tool (never a way to open a tool to a model: that is OPEN, ASK_FIRST and DECLARED above). The golden refresh refuses a cell that moves from refused to run; when the move is a ruled
+ * removal of a fresh-proof requirement from a tool a PERSON does (a person-only tool, which allow.json never lists), it is named here: the tool, the one refusal it was (`was`, always presence_required), the person
+ * callers it applies to (never a model, guest, MCP or harness caller), and the ruling that did it. kernel/golden/presence.json is generated from this list and read by the refresh beside allow.json.
+ */
+export const PRESENCE_RULINGS = Object.freeze({
+  "spaces.host-here": Object.freeze({
+    ruling: "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership",
+    commit: "11391dc9d",
+    was: "presence_required",
+    callers: Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof",
+  }),
+});
+
+/** @returns {{ tool: string, was: string, callers: string[], ruling: string, reason: string }[]} */
+export function generatePresence() {
+  const RISKY = /agent|^tailnet-guest|^mcp|^harness/;
+  return Object.entries(PRESENCE_RULINGS).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([tool, r]) => {
+    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
+    if (!/CHAT\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a presence removal names its CHAT.md ruling`);
+    if (!r.callers.length || r.callers.some(c => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a presence removal names person callers only, never a model, guest, MCP or harness caller`);
+    return { tool, was: r.was, callers: [...r.callers], ruling: r.ruling, reason: `${r.ruling}; ${tool} changed in ${r.commit}: ${r.note}` };
+  });
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const text = render(generate());
+  const text = render(generate()), presence = render(generatePresence());
   if (process.argv.includes("--check")) {
-    let have = "";
+    let have = "", havePresence = "";
     try { have = fs.readFileSync(ALLOW_FILE, "utf8"); } catch { /* none */ }
+    try { havePresence = fs.readFileSync(PRESENCE_FILE, "utf8"); } catch { /* none */ }
     if (have !== text) { console.error("kernel/golden/allow.json differs from the generator's output: run npm run golden:allow"); process.exit(1); }
+    if (havePresence !== presence) { console.error("kernel/golden/presence.json differs from the generator's output: run npm run golden:allow"); process.exit(1); }
   } else {
     fs.writeFileSync(ALLOW_FILE, text);
-    console.log(`wrote ${ALLOW_FILE} (${generate().length} entries)`);
+    fs.writeFileSync(PRESENCE_FILE, presence);
+    console.log(`wrote ${ALLOW_FILE} (${generate().length} entries) and ${PRESENCE_FILE} (${generatePresence().length} entries)`);
   }
 }

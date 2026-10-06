@@ -407,9 +407,9 @@ export function createSqliteStore(cfg) {
       /**
        * A field was sealed in place: the values it held must not survive in the change log (before and after of every entry of the type), nor in the file's free pages or the write-ahead log
        * (`secure_delete` zeroes what an UPDATE frees, a VACUUM rewrites the file, and the log is truncated), nor in the full-text index (rebuilt without the field).
-       * @param {string} type @param {readonly string[]} fields
+       * @param {string} type @param {readonly string[]} fields @param {ReadonlySet<string>} [ids] only the entries of these records (a late seal clears the words of the tasks that quoted a value: their old titles live in the change log)
        */
-      scrub: (type, fields) => {
+      scrub: (type, fields, ids) => {
         if (!fields.length) return;
         const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
         db.exec("PRAGMA secure_delete = ON");
@@ -424,7 +424,7 @@ export function createSqliteStore(cfg) {
               for (const r of rows) {
                 from = r.seq;
                 const e = JSON.parse(r.entry);
-                if (e.type !== type) continue;
+                if (e.type !== type || (ids && !ids.has(e.id))) continue;
                 let hit = false;
                 for (const f of fields) for (const side of ["before", "after"]) if (e[side] && typeof e[side] === "object" && Object.hasOwn(e[side], f)) { delete e[side][f]; hit = true; }
                 if (hit) upd.run(JSON.stringify(e), r.seq);
@@ -519,7 +519,7 @@ export function createSqliteStore(cfg) {
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
   // The memory store of this tree may not carry `scrub` (it arrives with records' merge); the store the gateway calls always does, and it forgets in memory and on disk.
-  const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields) => { /** @type {any} */ (persistRef).scrub(type, fields); });
+  const scrub = /** @type {any} */ (store).scrub || (async (/** @type {string} */ type, /** @type {readonly string[]} */ fields, /** @type {ReadonlySet<string> | undefined} */ ids) => { /** @type {any} */ (persistRef).scrub(type, fields, ids); });
   // `create(type, id, data, { attrs, urn })`: the record's kernel attributes are written with it, in the same unit when one is open, so a record never exists without them
   const create = async (/** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ data, /** @type {any} */ opts) => { const r = await store.create(type, id, data); if (opts && opts.attrs && typeof opts.urn === "string") meta.set(opts.urn, opts.attrs); return r; };
   return { ...store, create, scrub, meta, features: () => ({ ...store.features(), attr_filter: true }), /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, search_fast: counts.fast, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
