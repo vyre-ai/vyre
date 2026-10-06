@@ -15,6 +15,8 @@ import { asOwner, tempHome, present } from "../../../../test/helpers.js";
 import { FAKE, until } from "../../../../core/sessions/testing/boot.js";
 import { membersFrom, slotNames } from "./members.js";
 import { modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import crypto from "node:crypto";
+import { createRing, holdersOf } from "../../../../lib/chat-keys.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -38,7 +40,11 @@ test("group chat on a real daemon: @ lists the chat's members and agents, # list
 
   // the person's own: an agent, a chat with it, and records of a type with a sealed field
   await data("agents.create", { name: "kit", kind: "assistant", instructions: "Kit keeps the intake tidy." });
-  const made = await data("work.chat.create", { title: "Intake" });
+  // the app starts a chat with a ring its device made (a chat with a person in it is never in the clear): a device's agree point, its ring, then the start
+  const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
+  const chatId = `chat_${crypto.randomUUID()}`;
+  const ring = createRing(chatId, holdersOf([{ device: "dev_test", agree: dev.getPublicKey().toString("base64url") }]));
+  const made = await data("work.chat.create", { title: "Intake", id: chatId, ring: ring.doc });
   const chat = String(made.id ?? made.chat?.id ?? made.chat);
   assert.match(chat, /^chat_/);
   await data("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "ssn", kind: "sealed", label: "SSN" }] }] } });
