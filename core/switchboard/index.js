@@ -631,7 +631,7 @@ export class Switchboard {
     const live = this.sessions.live(this.ours());
     return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
       const t = /** @type {any} */ (this.record(String(r.id)));
-      const said = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.text' ORDER BY id DESC LIMIT 8").all(t.id)).map(e => { try { return JSON.parse(String(e.payload)); } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
+      const said = /** @type {any[]} */ (this.deps.ofThread(t.id, { types: ["thread.text"], limit: 8, tail: true })).reverse().map(e => { try { return typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload; } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
       return { thread: t.id, name: t.name, agent: t.agent, slot: t.agent ? `agent:${t.agent}` : (t.slot || null), provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
     });
   }
@@ -4525,7 +4525,7 @@ export default {
       run: async (i, m) => {
         workOnly(m, "reading a chat's runs");
         const runs = /** @type {any[]} */ (sb.db.prepare("SELECT * FROM threads_runs WHERE chat = ?").all(String(i.chat)));
-        const events = runs.flatMap(r => /** @type {any[]} */ (sb.db.prepare("SELECT at, type, source, project, thread, payload FROM events WHERE thread = ? ORDER BY id LIMIT 50000").all(String(r.id))));
+        const events = runs.flatMap(r => /** @type {any[]} */ (sb.deps.ofThread(String(r.id), { limit: 50000 })).map(e => ({ at: e.at, type: e.type, source: e.source || "threads", project: e.project ?? null, thread: String(r.id), payload: typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload ?? {}) })));
         return { runs, events };
       },
     });
@@ -4548,7 +4548,8 @@ export default {
           if (!e || typeof e.thread !== "string") continue;
           const run = /** @type {any} */ (sb.db.prepare("SELECT chat, stopped_reason FROM threads_runs WHERE id = ?").get(e.thread));
           if (!run || String(run.chat) !== String(i.chat) || run.stopped_reason !== "carried") continue;
-          sb.db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)").run(e.at, e.type, e.source, e.project ?? null, e.thread, e.payload); events++;
+          let payload = {}; try { payload = typeof e.payload === "string" ? JSON.parse(e.payload) : (e.payload || {}); } catch { continue; }
+          try { sb.deps.emit(String(e.type), payload, { thread: e.thread, ...(e.project ? { project: e.project } : {}), ...(Number.isFinite(Number(e.at)) ? { at: Number(e.at) } : {}) }); events++; } catch { /* an event the bus refuses is not carried */ }
         }
         return { runs, events };
       },
