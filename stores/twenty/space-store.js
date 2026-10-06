@@ -208,7 +208,7 @@ export function createStoreFor(cfg) {
     // server goes on with the waiting store and the setup finishes in the background, so a slow store never keeps the server's socket closed.
     const opening = open(space, meta);
     /** @type {any} */ let slow = null;
-    const late = new Promise((r) => { slow = setTimeout(() => r(LATE), cfg.startWaitMs ?? 20_000); slow.unref?.(); });
+    const late = new Promise((r) => { slow = setTimeout(() => r(LATE), cfg.startWaitMs ?? 20_000); });
     try {
       const got = await Promise.race([opening, late]);
       clearTimeout(slow);
