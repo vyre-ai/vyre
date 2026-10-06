@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SCRATCH } from "./scratch.mjs";
+import { TWENTY_TESTED_REF, composeFile } from "../stores/twenty/provision.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
@@ -64,7 +65,7 @@ if (a[0] === "network") {
 if (a[0] === "compose") {
   const n = nameOf(a[a.indexOf("--project-name") + 1]);
   const sub = a[a.indexOf("-f") + 2];
-  if (sub === "create") { if (has("create-fails")) process.exit(1); fs.writeFileSync(F + "/net-" + n, "1"); process.exit(0); }
+  if (sub === "create") { if (has("create-fails")) process.exit(1); fs.writeFileSync(F + "/net-" + n, "1"); try { fs.copyFileSync(a[a.indexOf("-f") + 1], F + "/compose-at-create-" + n); fs.copyFileSync(a[a.indexOf("--env-file") + 1], F + "/env-at-create-" + n); } catch {} process.exit(0); }
   if (sub === "up") { fs.writeFileSync(F + "/db-volume-" + n, "1"); if (has("up-fails")) process.exit(1); fs.writeFileSync(F + "/running-" + n, "1"); process.exit(0); }
   if (sub === "exec") { if (has("exec-fails")) process.exit(1); out(has("core-empty-" + n) ? "" : "core.\\"user\\""); }
   if (sub === "stop") { fs.rmSync(F + "/running-" + n, { force: true }); process.exit(0); }
@@ -80,9 +81,13 @@ if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-
   if (cmd.includes("-links +1")) out(has("post-dirty") ? "/srv/x" : "");
   out(rd("vol-content"));
 }
+if (a[0] === "create") { fs.appendFileSync(F + "/created", "1\\n"); out("ctr-golden"); }
+if (a[0] === "cp") { const src = a[1].replace(/^[^:]*:/, ""); if (has("cp-fails")) process.exit(1); fs.copyFileSync(src, a[2]); process.exit(0); }
+if (a[0] === "rm") process.exit(0);
 if (a[0] === "run") {
   const i = a.indexOf("-e");
-  let t = cp.execFileSync("node", ["-e", a[i + 1].replace("/opt/vyre", REPO), a[i + 2], a[i + 3]], { encoding: "utf8" });
+  let t = cp.execFileSync("node", ["-e", a[i + 1].replace("/opt/vyre", REPO), ...a.slice(i + 2)], { encoding: "utf8", env: { ...process.env, ...(has("golden-dir") ? { VYRE_TWENTY_GOLDEN_DIR: rd("golden-dir") } : {}) } });
+  if (has("bad-restore")) t = t.replace("$" + "{GOLDEN_DUMP:-./golden.dump}", "/etc/shadow");
   if (has("bad-compose")) t = t.replace("  server:\\n", "  server:\\n    privileged: true\\n");
   if (has("bad-image")) t = t.replace("redis:7", "redis:evil");
   process.stdout.write(t);
@@ -887,4 +892,114 @@ test("space helper #90: a Space with its mark is never touched, a Space with dat
   const e = r.ask("up harlow\n"); await r.helper();
   assert.ok(!fs.existsSync(path.join(r.F, "purged")), "a Space that cannot be looked at is not purged");
   void e;
+});
+
+/** A saved database for the pinned Twenty image, as the vyre image carries it: the fake `docker run` of the generator reads it from this folder. */
+const goldenIn = (/** @type {ReturnType<typeof rig>} */ r) => {
+  const g = path.join(r.F, "golden-src"); fs.mkdirSync(g, { recursive: true });
+  const tag = TWENTY_TESTED_REF.split("@")[0].split(":").pop();
+  fs.writeFileSync(path.join(g, `${tag}.dump`), "PGDMP-fake");
+  fs.writeFileSync(path.join(g, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: crypto.createHash("sha256").update("PGDMP-fake").digest("hex") }));
+  r.flag("golden-dir", g);
+  return g;
+};
+
+test("space helper golden: a NEW Space starts from the saved database in the image; the dump is taken out once, read-only, and every Space's restore reads it from there; the password stays root's and the daemon's", opts, async t => {
+  const r = rig(t); await r.prime(); goldenIn(r);
+  const id = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(id).state, "ok", JSON.stringify(r.status(id)));
+  const priv = path.join(r.SP, "private"), d = path.join(priv, "spaces", "harlow");
+  assert.equal(fs.statSync(path.join(priv, "golden", "golden.dump")).mode & 0o777, 0o444, "one read-only copy for every Space");
+  const envAtCreate = fs.readFileSync(path.join(r.F, "env-at-create-harlow"), "utf8");
+  const pw = /ADMIN_PASSWORD=([0-9a-f]{64})/.exec(envAtCreate)?.[1];
+  assert.ok(pw && envAtCreate.includes(`GOLDEN_DUMP=${path.join(priv, "golden", "golden.dump")}`), "the first start's secrets carry the password and the dump path: " + envAtCreate.replace(/=[0-9a-f]{64}/g, "=<secret>"));
+  const sec = fs.readFileSync(path.join(d, "secrets.env"), "utf8");
+  assert.ok(!/ADMIN_PASSWORD|GOLDEN_DUMP/.test(sec), "and once the restore is over they are gone from root's copy: " + sec.replace(/=[0-9a-f]{64}/g, "=<secret>"));
+  assert.match(sec, /^PG_PASSWORD=[0-9a-f]{64}\nREDIS_PASSWORD=[0-9a-f]{64}\nAPP_SECRET=[0-9a-f]{64}\nENCRYPTION_KEY=[0-9a-f]{64}\n$/, "the Space's own secrets are untouched");
+  const adm = path.join(r.SP, "status", "admin-harlow");
+  assert.equal(fs.readFileSync(adm, "utf8").trim(), pw, "the daemon can read the one password it signs in with");
+  assert.equal(fs.statSync(adm).mode & 0o777, 0o600, "and only the daemon's uid can");
+  const atCreate = fs.readFileSync(path.join(r.F, "compose-at-create-harlow"), "utf8");
+  assert.match(atCreate, /\n  restore:\n/, "the first start restores the saved database");
+  assert.match(atCreate, /^      - \$\{GOLDEN_DUMP:-\.\/golden\.dump\}:\/golden\.dump:ro$/m);
+  assert.ok(!/ports:/.test(atCreate), "and still publishes no port");
+  const after = fs.readFileSync(path.join(d, "compose.yml"), "utf8");
+  assert.ok(!/restore/.test(after), "after it the compose file has no restore step");
+  assert.match(after, /DISABLE_DB_MIGRATIONS: "true"/, "and the server skips its migration steps");
+  assert.ok(fs.existsSync(path.join(d, "migrated")) && !fs.existsSync(path.join(d, "golden")));
+  // a second Space reuses the one dump: the image is asked and copied from once
+  const id2 = r.ask("up northwind\n"); await r.helper();
+  assert.equal(r.status(id2).state, "ok", JSON.stringify(r.status(id2)));
+  assert.equal(fs.readFileSync(path.join(r.F, "created"), "utf8").trim().split("\n").length, 1, "the dump was taken out of the image once");
+  assert.notEqual(/ADMIN_PASSWORD=([0-9a-f]{64})/.exec(fs.readFileSync(path.join(r.F, "env-at-create-northwind"), "utf8"))?.[1], pw, "each Space has its own password");
+  // the same up again is a plain up: no second password, no restore
+  const id3 = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(id3).state, "ok");
+  assert.equal(fs.readFileSync(path.join(d, "secrets.env"), "utf8"), sec, "an existing Space is not given a new password or a restore");
+});
+
+test("space helper golden: an image with no saved database, or a copy that fails, is the slow path: a plain compose file and no password", opts, async t => {
+  const r = rig(t); await r.prime();
+  const a = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(a).state, "ok");
+  const d = path.join(r.SP, "private", "spaces", "harlow");
+  assert.ok(!/restore|golden/i.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8")) && !/ADMIN_PASSWORD/.test(fs.readFileSync(path.join(d, "secrets.env"), "utf8")));
+  assert.ok(!fs.existsSync(path.join(r.SP, "status", "admin-harlow")) && !fs.existsSync(path.join(d, "golden")));
+  assert.ok(!/DISABLE_DB_MIGRATIONS/.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8").split("\n  worker:")[0]), "the server migrates as before");
+  goldenIn(r); r.flag("cp-fails");
+  const b = r.ask("up northwind\n"); await r.helper();
+  assert.equal(r.status(b).state, "ok", "a failed copy does not stop the Space coming up: " + JSON.stringify(r.status(b)));
+  assert.ok(!fs.existsSync(path.join(r.SP, "status", "admin-northwind")) && !fs.existsSync(path.join(r.SP, "private", "spaces", "northwind", "golden")));
+});
+
+test("space helper golden: the lint allows the restore step's one mount and nothing else; a mount of another path is refused and nothing is started", opts, async t => {
+  const r = rig(t); await r.prime(); goldenIn(r); r.flag("bad-restore");
+  const a = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(a).state, "failed");
+  assert.match(r.status(a).message, /refused: lint: a volume entry/);
+  assert.ok(!/ create/.test(r.calls()), "compose never ran: " + r.calls());
+});
+
+test("space helper golden: the admin password file is removed after ten minutes", opts, async t => {
+  const r = rig(t); await r.prime(); goldenIn(r);
+  const a = r.ask("up harlow\n"); await r.helper();
+  const adm = path.join(r.SP, "status", "admin-harlow");
+  assert.ok(fs.existsSync(adm));
+  const old = new Date(Date.now() - 11 * 60 * 1000); fs.utimesSync(adm, old, old);
+  await r.helper();
+  assert.ok(!fs.existsSync(adm), "a password nobody read does not stay");
+  void a;
+});
+
+test("space helper: a Space that a request is bringing up is left alone by the watcher's reattach (its server is not running yet while a restore comes first); without the lock it is stopped as before", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  r.flag("ctr-pid", "9393"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
+  const lock = path.join(r.SP, "private", "lock-harlow"); fs.mkdirSync(lock);
+  const held = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
+  assert.ok(!/was stopped/.test(held.out), held.out);
+  assert.ok(fs.existsSync(path.join(r.F, "running-harlow")), "still running: the request that holds the lock proves it");
+  fs.rmdirSync(lock);
+  const free = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
+  assert.match(free.out, /the Space harlow was stopped/);
+});
+
+test("space helper: a lock left by a run that is gone does not leave its Space unwatched; a lock whose run is alive, or one with no run named that is fresh, still does", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  const lock = path.join(r.SP, "private", "lock-harlow");
+  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective"); fs.writeFileSync(path.join(r.F, "running-harlow"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"])); };
+  // a live run (this test's own process) holds it: left alone
+  fs.mkdirSync(lock); fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+  assert.ok(!/was stopped/.test((await again()).out), "a live run's lock is respected");
+  // a run that is gone (a pid nothing has): the Space is watched again, and stopped when it cannot be proved
+  fs.writeFileSync(path.join(lock, "pid"), "2147483646");
+  assert.match((await again()).out, /the Space harlow was stopped/, "a dead run's lock does not count");
+  // no run named: fresh counts, two hours old does not
+  fs.rmSync(path.join(lock, "pid"));
+  assert.ok(!/was stopped/.test((await again()).out), "a fresh lock with no pid is respected");
+  const old = new Date(Date.now() - 3 * 3600 * 1000); fs.utimesSync(lock, old, old);
+  assert.match((await again()).out, /the Space harlow was stopped/, "a lock older than two hours does not count");
 });

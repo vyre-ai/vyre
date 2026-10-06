@@ -55,6 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      # The saved Twenty database a new Space starts from rides in the image (about 1 MB): built before the pack, cached on the Twenty ref and the core types.
+      - uses: ./.github/actions/twenty-golden
       # The context a deploy builds from: install-box.sh unpacks the npm pack tarball into src/
       # and compose.build.yml builds that, so a file missing from package.json "files" fails here.
       - name: Pack like a deploy
@@ -77,6 +79,10 @@ jobs:
           push: false
           cache-from: type=gha,scope=box-image
           cache-to: type=gha,scope=box-image,mode=max
+      # A fresh Space starts from the saved database in the image (stores/twenty/provision.js findGolden: the exact Twenty image, the recorded hash). An image without it migrates Twenty from empty on the
+      # first start, which takes minutes and has failed on small servers (#91): so the image is not accepted without it.
+      - name: The image carries the saved Twenty database
+        run: docker run --rm --entrypoint node vyre-box:ci -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: Account homes exist, are private, and vyre can walk into them
         run: |
           docker run --rm --entrypoint sh "$IMAGE" -c 'set -e

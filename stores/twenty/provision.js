@@ -116,7 +116,7 @@ ${envBlock(o.golden || o.migrated ? ['DISABLE_DB_MIGRATIONS: "true"'] : [], mem?
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }${o.golden ? "\n      restore: { condition: service_completed_successfully }" : ""}
-    healthcheck: { test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80 }
+    healthcheck: { test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80, start_period: 900s }
   worker:
     image: \${TWENTY_IMAGE_REF:-${image}}
     restart: unless-stopped
@@ -139,9 +139,10 @@ ${o.golden ? `  restore:
     image: ${POSTGRES_IMAGE}
     restart: "no"
     networks: [store]
-    volumes: [./golden.dump:/golden.dump:ro]
+    volumes:
+      - \${GOLDEN_DUMP:-./golden.dump}:/golden.dump:ro
     environment: { PGPASSWORD: "\${PG_PASSWORD}", ADMIN_PASSWORD: "\${ADMIN_PASSWORD}" }
-    entrypoint: ["sh", "-c", "set -e; pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error /golden.dump; psql -h db -U postgres -d default -v ON_ERROR_STOP=1 <<'SQL'\\n\\\\set pw \`printenv ADMIN_PASSWORD\`\\nDELETE FROM core.\\"signingKey\\";\\nUPDATE core.workspace SET \\"isPasswordAuthEnabled\\" = true;\\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\\nUPDATE core.\\"user\\" SET \\"passwordHash\\" = crypt(:'pw', gen_salt('bf', 10));\\nDROP EXTENSION pgcrypto;\\nSQL"]
+    entrypoint: ["sh", "-c", "set -e; if [ -n \\"$$(psql -h db -U postgres -d default -tAc \\"select to_regclass('public.vyre_golden')\\")\\" ]; then exit 0; fi; pg_restore -h db -U postgres -d default --clean --if-exists --no-owner --no-acl --exit-on-error /golden.dump; psql -h db -U postgres -d default -v ON_ERROR_STOP=1 <<'SQL'\\n\\\\set pw \`printenv ADMIN_PASSWORD\`\\n-- nothing the saved database holds may be shared by two Spaces: its signing key, tokens, sessions, keys, invite hash and app secret go; the saved user gets this Space's own password\\nDELETE FROM core.\\"signingKey\\";\\nDELETE FROM core.\\"appToken\\";\\nDELETE FROM core.\\"userSession\\";\\nDELETE FROM core.\\"roleTarget\\" WHERE \\"apiKeyId\\" IS NOT NULL;\\nDELETE FROM core.\\"apiKey\\";\\nUPDATE core.\\"applicationRegistration\\" SET \\"oAuthClientSecretHash\\" = encode(sha256(gen_random_uuid()::text::bytea), 'hex');\\nUPDATE core.workspace SET \\"isPasswordAuthEnabled\\" = true, \\"inviteHash\\" = gen_random_uuid()::text;\\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\\nUPDATE core.\\"user\\" SET \\"passwordHash\\" = crypt(:'pw', gen_salt('bf', 10));\\nDROP EXTENSION pgcrypto;\\n-- the mark that this restore finished: a start that finds it does nothing, a start that finds a half restore (no mark) restores over it\\nCREATE TABLE public.vyre_golden (at timestamptz NOT NULL DEFAULT now());\\nINSERT INTO public.vyre_golden DEFAULT VALUES;\\nSQL"]
     depends_on:
       db: { condition: service_healthy }
 ` : ""}  redis:
@@ -216,7 +217,7 @@ export function spaceDir(home, space) { need(space); return path.join(home, "spa
  * @typedef {{ home: string, space: string, runner?: Runner, image?: string, gatewayContainer?: string | null,
  *   reach?: "alias" | "ip" | "loopback", publish?: "loopback", pickPort?: () => Promise<number>, memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void,
  *   golden?: false | { dump: string, meta: GoldenMeta } }} ProvisionOptions
- * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, state?: Record<string, any> }} GoldenMeta
+ * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, sha256: string, state?: Record<string, any> }} GoldenMeta
  * @typedef {{ space: string, dir: string, url: string, origin: string, keyFile: string, workspaceId: string, network: string,
  *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string, port?: number }} Provisioned
  */
@@ -252,15 +253,15 @@ export async function provisionSpace(o) {
   const port = loopback ? await (o.pickPort ?? pickLoopbackPort)() : 0;
   // A saved, already migrated database for this image (built by stores/twenty/live/build-golden.mjs): the Space starts from it, which skips the server's first-boot migrations and the first define of the
   // core types. The saved user's password is replaced in the restore step by this Space's own, so nothing shared stays valid.
+  // On a server the compose file that runs is root's own (the Space helper regenerates and lints it): the dump is root's to take out of the image and the password root's to make and hand back, so
+  // here, with a runner that can ask for it (`adminPassword`), none of that is written. Whether root used the saved database is known only once the Space is up: if it did not, this is a plain Space.
   const golden = o.golden === false ? null : o.golden ?? findGolden({ image });
+  const viaHelper = typeof /** @type {any} */ (runner).adminPassword === "function";
+  const localGolden = Boolean(golden) && !viaHelper;
   const adminPass = secret(24);
-  writePrivate(path.join(dir, ".env"), `TWENTY_IMAGE_REF=${image}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n${golden ? `ADMIN_PASSWORD=${adminPass}\n` : ""}${loopback ? `TWENTY_HOST_PORT=${port}\n` : ""}`);
-  if (golden) {
-    fs.copyFileSync(golden.dump, path.join(dir, "golden.dump")); fs.chmodSync(path.join(dir, "golden.dump"), 0o600);
-    // what the store knows of the saved types (its own plans, which types have their mirror columns): the new Space starts knowing it, so its first define finds nothing to do
-    for (const [f, v] of Object.entries(golden.meta.state ?? {})) if (/^[a-z-]+\.json$/.test(f)) writePrivate(path.join(dir, "state", f), JSON.stringify(v));
-  }
-  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory, ...(golden ? { golden: true } : {}), ...(loopback ? { publish: "loopback" } : {}) }));
+  writePrivate(path.join(dir, ".env"), `TWENTY_IMAGE_REF=${image}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n${localGolden ? `ADMIN_PASSWORD=${adminPass}\n` : ""}${loopback ? `TWENTY_HOST_PORT=${port}\n` : ""}`);
+  if (localGolden && golden) { fs.copyFileSync(golden.dump, path.join(dir, "golden.dump")); fs.chmodSync(path.join(dir, "golden.dump"), 0o600); }
+  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory, ...(localGolden ? { golden: true } : {}), ...(loopback ? { publish: "loopback" } : {}) }));
   if (loopback) writePrivate(path.join(dir, "reach.json"), JSON.stringify({ host: "127.0.0.1", port, at: new Date().toISOString() }));
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
@@ -268,17 +269,24 @@ export async function provisionSpace(o) {
   const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
   await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
   await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
-  await phase(golden ? "start Records (saved database, first healthy answer)" : "start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
+  await phase(localGolden ? "start Records (saved database, first healthy answer)" : "start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
   if (o.gatewayContainer) await runner.exec("docker", ["network", "connect", "--alias", n.gatewayAlias, n.network, o.gatewayContainer]).catch((e) => { if (!/already exists/i.test(String(e.message))) throw e; });
   const url = await reachUrl(o, runner, n, origin);
   await waitHealthy(runner, url);
   log("creating the service user, workspace and key");
-  const adminEmail = golden ? golden.meta.email : `service@${o.space}.vyre.invalid`;
-  writePrivate(path.join(dir, "admin.secret"), JSON.stringify({ email: adminEmail, password: adminPass }));
-  const r = golden
-    ? await phase("workspace and key (from the saved database)", () => adoptGolden({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }))
-    : await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }));
-  if (golden) {
+  // The password this Space's saved user has: this side made it (a runner that runs compose itself), or root did and left it for this uid alone (a server). None left: root did not use the saved database.
+  let usedGolden = localGolden, adminPassword = adminPass;
+  if (golden && viaHelper) { const hp = await /** @type {any} */ (runner).adminPassword(); if (typeof hp === "string" && hp) { usedGolden = true; adminPassword = hp; } else log("the server started this Space without the saved database"); }
+  const adminEmail = usedGolden && golden ? golden.meta.email : `service@${o.space}.vyre.invalid`;
+  if (usedGolden && golden) {
+    // what the store knows of the saved types (its own plans, which types have their mirror columns): the new Space starts knowing it, so its first define finds nothing to do
+    for (const [f, v] of Object.entries(golden.meta.state ?? {})) if (/^[a-z-]+\.json$/.test(f)) writePrivate(path.join(dir, "state", f), JSON.stringify(v));
+  }
+  writePrivate(path.join(dir, "admin.secret"), JSON.stringify({ email: adminEmail, password: adminPassword }));
+  const r = usedGolden
+    ? await phase("workspace and key (from the saved database)", () => adoptGolden({ runner, url, origin, email: adminEmail, password: adminPassword, displayName: o.space }))
+    : await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPassword, displayName: o.space }));
+  if (localGolden) {
     // the restore step belongs to the first start only: the dump goes, and the compose file no longer names it
     fs.rmSync(path.join(dir, "golden.dump"), { force: true });
     writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory, migrated: true, ...(loopback ? { publish: "loopback" } : {}) }));
@@ -290,7 +298,7 @@ export async function provisionSpace(o) {
 }
 
 /**
- * Where a saved database for an image is kept: `<tag>.dump` (pg_dump custom format, no owners) and `<tag>.json` ({ image, email, workspaceId, builtAt }) in one folder. The folders looked in,
+ * Where a saved database for an image is kept: `<tag>.dump` (pg_dump custom format, no owners) and `<tag>.json` ({ image, email, workspaceId, builtAt, sha256 of the dump }) in one folder. The folders looked in,
  * in order: VYRE_TWENTY_GOLDEN_DIR, then stores/twenty/golden in this checkout. The file is only used when its image is exactly the one the Space will run.
  * @param {{ image: string, dirs?: string[] }} o @returns {{ dump: string, meta: GoldenMeta } | null}
  */
@@ -301,11 +309,19 @@ export function findGolden(o) {
     try {
       const meta = JSON.parse(fs.readFileSync(path.join(d, `${tag}.json`), "utf8"));
       const dump = path.join(d, `${tag}.dump`);
-      if (meta && meta.image === o.image && typeof meta.email === "string" && fs.statSync(dump).size > 0) return { dump, meta };
+      // Used only when it is for exactly this image (tag and digest) AND the dump is the file the build hashed: a dump that was changed, cut short or swapped is not a saved database.
+      if (meta && meta.image === o.image && typeof meta.email === "string" && /^[0-9a-f]{64}$/.test(String(meta.sha256)) && sha256File(dump) === meta.sha256) return { dump, meta };
     } catch { /* not here */ }
   }
   return null;
 }
+
+/** The table the Space helper asks for to know a Space's database was migrated (box/vyre sp_schema: `select to_regclass($$core."user"$$)`). The golden build checks the pinned image still has it. */
+export const CORE_USER_TABLE = 'core."user"';
+export const CORE_USER_PROBE = `select to_regclass($$${CORE_USER_TABLE}$$)`;
+
+/** The sha256 of a file, hex. @param {string} f */
+const sha256File = (f) => crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");
 
 /**
  * A Space started from the saved database already has its user and workspace, and the restore step has put this Space's own password on the user: sign in with it, make this Space's API key and name the
@@ -329,7 +345,7 @@ export async function adoptGolden(o) {
   const exp = new Date(Date.now() + 365 * 864e5).toISOString();
   const ak = await gq(`mutation Adopt_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
   const tok = await gq(`mutation Adopt_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
-  await gq(`mutation Adopt_name { updateWorkspace(data: { displayName: ${q(o.displayName)}, isPasswordAuthEnabled: false }) { id } }`, access).catch(() => {});
+  await gq(`mutation Adopt_name { updateWorkspace(data: { displayName: ${q(o.displayName)} }) { id } }`, access).catch(() => {});
   return { workspaceId: me.currentWorkspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
 }
 
@@ -398,7 +414,7 @@ export async function bootstrap(o) {
   const exp = new Date(Date.now() + 365 * 864e5).toISOString();
   const ak = await gq(`mutation Boot_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
   const tok = await gq(`mutation Boot_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
-  await gq("mutation Boot_close { updateWorkspace(data: { isPasswordAuthEnabled: false }) { id } }", access).catch(() => {});
+  // Password sign-in stays on: key rotation signs in as this user (an API key cannot make a key or change the workspace, measured on a real Twenty), and Twenty is reachable only from the Space's own network.
   return { workspaceId: nw.workspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
 }
 

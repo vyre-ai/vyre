@@ -46,8 +46,8 @@ export class FakeTwenty {
     if (req.url === "/client-config") return send(200, { appVersion: this.version });
     const { query, variables } = JSON.parse(body || "{}");
     const op = /^\s*(?:query|mutation)\s+(\w+)/.exec(query)?.[1] ?? "";
-    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && req.headers.authorization !== `Bearer ${this.key}` && !(this.validKeys ?? new Set()).has(String(req.headers.authorization).slice(7))) return send(401, { errors: [{ message: "Unauthorized" }] });
-    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
+    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && !op.startsWith("Adopt_") && req.headers.authorization !== `Bearer ${this.key}` && !(this.validKeys ?? new Set()).has(String(req.headers.authorization).slice(7))) return send(401, { errors: [{ message: "Unauthorized" }] });
+    if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && !op.startsWith("Adopt_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     this.requests.push({ op, variables });
     try {
       const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables, query) : (() => { throw new GqlError("not found"); })();
@@ -59,7 +59,7 @@ export class FakeTwenty {
   }
 
   #metadata(op, v, query = "") {
-    if (op.startsWith("Boot_") || op.startsWith("Rot_")) return this.#boot(op, query);
+    if (op.startsWith("Boot_") || op.startsWith("Rot_") || op.startsWith("Adopt_")) return this.#boot(op, query);
     switch (op) {
       case "Cols": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, fields: { edges: [...o.fields.values()].map((f) => ({ node: { name: f.name } })) } } })) } };
       case "AuditProbe": return { __type: { inputFields: [{ name: "nameSingular" }, { name: "isAuditLogged" }] } };
@@ -147,6 +147,13 @@ export class FakeTwenty {
       case "Boot_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };
       case "Boot_key": return { createApiKey: { id: "key-1" } };
       case "Boot_token": return { generateApiKeyToken: { token: this.key } };
+      case "Adopt_loginToken": this.adopted = { query }; return { getLoginTokenFromCredentials: { loginToken: { token: "login" } } };
+      case "Adopt_login": return { getAuthTokensFromLoginToken: { tokens: { accessOrWorkspaceAgnosticToken: { token: "access" } } } };
+      case "Adopt_ws": return { currentWorkspace: { id: this.workspaceId } };
+      case "Adopt_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };
+      case "Adopt_key": return { createApiKey: { id: "key-adopt" } };
+      case "Adopt_token": return { generateApiKeyToken: { token: this.key } };
+      case "Adopt_name": return { updateWorkspace: { id: this.workspaceId } };
       case "Rot_loginToken": return { getLoginTokenFromCredentials: { loginToken: { token: "login" } } };
       case "Rot_login": return { getAuthTokensFromLoginToken: { tokens: { accessOrWorkspaceAgnosticToken: { token: "access" } } } };
       case "Rot_roles": return { getRoles: [{ id: "role-member", label: "Member" }, { id: "role-admin", label: "Admin" }] };

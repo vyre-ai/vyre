@@ -2,6 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { TWENTY_TESTED_REF, isPinnedRef, composeFile, findGolden, tagOfRef, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG, autoProfile, memoryOf, MEMORY_PROFILES } from "./provision.js";
@@ -47,8 +48,8 @@ function fakeRunner(fake, calls) {
 test("provisioning brings Twenty up, creates the service key headlessly, and keeps secrets private", async () => {
   const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];
   const p = await provisionSpace({ home, space: "harlow", runner: fakeRunner(fake, calls), gatewayContainer: "vyre-vyre-1" });
-  assert.deepEqual(fake.boot.calls, ["Boot_signUp", "Boot_workspace", "Boot_login", "Boot_activate", "Boot_roles", "Boot_key", "Boot_token", "Boot_close"]);
-  assert.equal(fake.boot.closed, true, "password login is closed on the workspace");
+  assert.deepEqual(fake.boot.calls, ["Boot_signUp", "Boot_workspace", "Boot_login", "Boot_activate", "Boot_roles", "Boot_key", "Boot_token"]);
+  assert.notEqual(fake.boot.closed, true, "password sign-in stays on: key rotation signs in with it");
   assert.ok(calls.some((c) => /compose .* up -d --wait/.test(c)));
   assert.ok(calls.some((c) => c.includes("network connect --alias vyre-harlow vyre-harlow-twenty_store vyre-vyre-1")));
   assert.equal(fs.readFileSync(p.keyFile, "utf8"), fake.key);
@@ -223,8 +224,11 @@ test("a Space made from the saved database: its compose file restores it once, s
   const g = composeFile({ space: "harlow", golden: true });
   assert.match(g, /\n  restore:\n/);
   assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
-  assert.match(g, /\.\/golden\.dump:\/golden\.dump:ro/);
-  assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
+  assert.match(g, /\$\{GOLDEN_DUMP:-\.\/golden\.dump\}:\/golden\.dump:ro/);
+  assert.match(g, /pg_restore -h db -U postgres -d default --clean --if-exists --no-owner --no-acl --exit-on-error/);
+  for (const reset of [/DELETE FROM core\.\\"appToken\\";/, /DELETE FROM core\.\\"userSession\\";/, /DELETE FROM core\.\\"apiKey\\";/, /\\"oAuthClientSecretHash\\" = encode\(sha256\(gen_random_uuid\(\)/, /\\"inviteHash\\" = gen_random_uuid\(\)/]) assert.match(g, reset, "nothing shared stays: " + reset);
+  assert.match(g, /to_regclass\('public\.vyre_golden'\)/, "a finished restore is skipped");
+  assert.match(g, /pg_restore .* --clean --if-exists /, "and a half one is restored over");
   assert.match(g, /printenv ADMIN_PASSWORD/, "the new password comes from the Space's own env file, never from the saved file");
   assert.ok(!/-c .*ADMIN_PASSWORD|\$\$?ADMIN_PASSWORD/.test(g), "and is read inside psql from its environment, never put on a command line that a process list shows");
   assert.match(g, /DELETE FROM core\.\\"signingKey\\"/, "the saved signing key is dropped: it is sealed with another Space's secrets");
@@ -242,7 +246,8 @@ test("findGolden returns a saved database only for exactly the image the Space w
   const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
   assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "none saved");
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
-  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t", state: { "types.json": [] } }));
+  const sha = (/** @type {string} */ t) => crypto.createHash("sha256").update(t).digest("hex");
+  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: sha("x"), state: { "types.json": [] } }));
   const g = findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] });
   assert.equal(g?.dump, path.join(dir, `${tag}.dump`));
   assert.equal(g?.meta.email, "service@x.vyre.invalid");
@@ -250,4 +255,55 @@ test("findGolden returns a saved database only for exactly the image the Space w
   assert.equal(findGolden({ image: other, dirs: [dir] }), null, "a different image (same tag, another digest) is not used");
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "");
   assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "an empty dump is not a saved database");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "y");
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "a dump that is not the file the build hashed is not used");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
+  assert.ok(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), "the hashed dump is");
+  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t" }));
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "a saved database with no recorded hash is not used");
+});
+
+test("no compose file publishes a Twenty port: not a plain Space, not one made from the saved database, and a Mac server's proxy publishes on 127.0.0.1 only and never from the server", () => {
+  for (const o of [{}, { golden: true }, { migrated: true }, { memory: "small" }]) {
+    const y = composeFile({ space: "harlow", ...o });
+    assert.ok(!/^\s*ports:/m.test(y), `no ports for ${JSON.stringify(o)}`);
+    assert.match(y, /networks:\n  store:\n    internal: true/, "the network stays internal");
+  }
+  const mac = composeFile({ space: "harlow", publish: "loopback", golden: true });
+  assert.deepEqual([...mac.matchAll(/^\s+- "([^"]+:3000)"$/gm)].map(m => m[1]), ["127.0.0.1:${TWENTY_HOST_PORT:?}:3000"], "one published port, on the loopback only");
+  const server = mac.slice(mac.indexOf("\n  server:"), mac.indexOf("\n  worker:"));
+  assert.ok(!/ports:/.test(server) && !/\n    ports/.test(mac.slice(mac.indexOf("\n  worker:"), mac.indexOf("\n  proxy:") === -1 ? undefined : mac.indexOf("\n  proxy:"))), "Twenty's own containers publish nothing; only the proxy does");
+});
+
+test("on a server the saved database is root's: nothing is written for it here, the password root left is the one signed in with, and with none left the Space is a plain one", async () => {
+  const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
+  const golden = findGolden({ image: TWENTY_TESTED_REF, dirs: [(() => { fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: crypto.createHash("sha256").update("x").digest("hex"), state: { "types.json": [{ "def": { name: "contact", fields: [] }, "plural": "contacts" }] } })); return dir; })()] });
+  assert.ok(golden);
+  // root used the saved database and left the password: the Space adopts the saved user
+  const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];
+  const runner = { ...fakeRunner(fake, calls), adminPassword: async () => "ab".repeat(32) };
+  const p = await provisionSpace({ home, space: "harlow", runner, golden });
+  const d = spaceDir(home, "harlow");
+  assert.ok(fake.adopted && !fake.boot.calls.some((c) => c.startsWith("Boot_")), "the saved user signed in; no sign-up");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d, "admin.secret"), "utf8")), { email: "service@golden.vyre.invalid", password: "ab".repeat(32) });
+  assert.ok(!fs.existsSync(path.join(d, "golden.dump")) && !/restore|ADMIN_PASSWORD/.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8") + fs.readFileSync(path.join(d, ".env"), "utf8")), "no dump, no restore step and no password written on this side");
+  assert.ok(fs.existsSync(path.join(d, "state", "types.json")), "the store starts knowing the saved types");
+  assert.equal(fs.readFileSync(p.keyFile, "utf8"), fake.key);
+  // root left nothing: it did not use the saved database, so this is a plain Space
+  const fake2 = await new FakeTwenty().start(); const home2 = tmp();
+  await provisionSpace({ home: home2, space: "northwind", runner: { ...fakeRunner(fake2, []), adminPassword: async () => null }, golden });
+  assert.deepEqual(fake2.boot.calls.slice(0, 3), ["Boot_signUp", "Boot_workspace", "Boot_login"], "a plain bootstrap");
+  assert.ok(!fs.existsSync(path.join(spaceDir(home2, "northwind"), "state", "types.json")), "and no saved types are claimed");
+  await fake.stop(); await fake2.stop();
+});
+
+test("the server's health check has a start period longer than a first migration, so `up --wait` does not give up on a slow server and leave a half-migrated database (#91)", () => {
+  for (const o of [{}, { golden: true }, { migrated: true }, { memory: "tiny" }]) {
+    const y = composeFile({ space: "harlow", ...o });
+    const server = y.slice(y.indexOf("\n  server:"), y.indexOf("\n  worker:"));
+    const m = /healthcheck: \{[^}]*retries: (\d+), start_period: (\d+)s \}/.exec(server);
+    assert.ok(m, `a server health check with a start period for ${JSON.stringify(o)}`);
+    assert.ok(Number(m[2]) >= 600, `the start period (${m[2]} s) covers a migration of an empty database on a small server`);
+  }
 });

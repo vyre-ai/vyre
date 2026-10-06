@@ -110,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows .github/actions scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -157,6 +157,9 @@ jobs:
           name: signing-diff
           path: signing-diff/signing-diff.txt
           retention-days: 14
+      # The saved Twenty database a new Space starts from rides in the release: built here, before the pack, pinned to the Twenty image's digest and hashed (stores/twenty/provision.js findGolden refuses a dump whose
+      # hash is not the one the build recorded). Without it a first Space migrates Twenty from an empty database, which takes minutes and has failed on small servers.
+      - uses: ./.github/actions/twenty-golden
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh
@@ -245,6 +248,9 @@ jobs:
           outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.COMPUTER_IMAGE) || 'type=docker,name=vyre-computer:dry' }}
           cache-from: type=gha,scope=release-computer-${{ matrix.arch }}
           cache-to: type=gha,scope=release-computer-${{ matrix.arch }},mode=max
+      - name: The box image carries the saved Twenty database (a fresh Space must not migrate Twenty from empty, #91)
+        if: needs.prepare.outputs.publish != 'true'
+        run: docker run --rm --entrypoint node vyre-box:dry -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: A dry run boots the box image it built
         if: needs.prepare.outputs.publish != 'true'
         run: |

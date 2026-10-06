@@ -14,7 +14,7 @@ const t0 = Date.now();
 const lap = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`);
 const golden = findGolden({ image: process.env.TWENTY_IMAGE_REF || TWENTY_TESTED_REF, ...(dirArg ? { dirs: [dirArg] } : {}) });
 if (!golden) { console.log("no saved database for this image"); process.exit(2); }
-const p = await provisionSpace({ home, space, reach: "ip", runner: realRunner(), golden, log: lap });
+const p = await provisionSpace({ home, space, reach: "ip", runner: realRunner(), golden, ...(process.env.MEM ? { memory: process.env.MEM } : {}), log: lap }); // MEM=tiny|small: the memory profile (tiny is the 4 GB server's)
 lap("Space ready (provisioned from the saved database)");
 const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: path.join(spaceDir(home, space), "state"), webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
 await defineCore(store, lap);
