@@ -53,7 +53,8 @@ async function restartable(t) {
   asOwner(daemon, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  // through the registry as the owner's device (asOwner): over ssh the socket's "cli" is no person (its ancestry is not measured), and the chat gate refuses it
+  const tool = (name, input, caller = "cli") => daemon.registry.call(name, input, caller);
   return { root, work, tool, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); asOwner(daemon, root); return daemon; } };
 }
 
