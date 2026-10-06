@@ -84,7 +84,7 @@ test("model slot: opened by the person in a chat, the chain is the person's plus
 test("MS-1: a model slot opened for chat A reads chat A and no other, even when its person is in both", async () => {
   const { k, bob, C } = await rig();
   const a = await C.create(bob, { people: [CAROL] }), b = await C.create(bob, { people: [CAROL] });
-  const t = await k.surfaces.open(bob, { chat: a.id, agent: "model:anthropic/claude-sonnet-5-5#1" });
+  const t = await k.surfaces.open(bob, { chat: a.id, agent: "model:anthropic/claude-sonnet-5-5#1", slot_open: true });
   const slot = await k.surfaces.chainFor(t.token);
   assert.equal(C.read(slot, a.id).id, a.id, "its own chat");
   assert.throws(() => C.read(slot, b.id), { code: "not_found" }, "the other chat, though bob is in both");
