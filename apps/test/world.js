@@ -148,6 +148,7 @@ const TEST = {
       why: "A reply to a client waits for you.", content: { subject: "Intake form, next steps", body: "Hi Dana,\n\nThe intake form is ready for a last look. Two fields changed since Friday.\n\nAlex" } };
     return d.registry.call("gate.request", item, agentCaller(body));
   },
+  "/__test/asks": async () => d.registry.call("threads.asks", {}, "cli"),
   "/__test/ask": async () => {
     const cwd = path.join(w.work, "harlow-site");
     const file = path.join(cwd, `notes-${Date.now()}.txt`);

@@ -108,7 +108,8 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   assert.ok((await w.tool("gate.held")).body.data.some(x => x.id === hold.body.data.id));
   const ask = await w.post("/__test/ask");
   assert.equal(ask.status, 200, JSON.stringify(ask.body));
-  const asks = await w.tool("threads.asks");
+  // read as the owner's paired device: this world's phone is a tailnet login, which the chat gate does not count as a person (the tailnet goes in 0.3.0; a Wink-paired phone is test/wink-paired.test.js)
+  const asks = await w.post("/__test/asks");
   assert.ok(asks.body.data.some(a => a.id === ask.body.data.ask), JSON.stringify(asks.body));
 
   w.proc.kill("SIGTERM");
