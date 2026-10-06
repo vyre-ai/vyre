@@ -29,6 +29,7 @@ test("a typed code is joined over the relay, the ack is shown, and the shell kee
   assert.equal(calls.join[0].pairOptions.about.kind, "app");
   assert.equal(calls.invoke[0][0], "finish_typed_pair");
   assert.equal(calls.invoke[0][1].address, "https://alex.vyre.run");
+  assert.equal(calls.invoke[0][1].handle, null, "no handle when the record had none");
   assert.equal(calls.invoke[0][1].link.name, "alex");
 });
 
@@ -61,6 +62,18 @@ test("the first-run page types a code, draws no QR, and the shell has the comman
   assert.match(rs, /async fn finish_typed_pair\(/);
   assert.match(rs, /generate_handler!\[[^\]]*finish_typed_pair/);
   assert.match(readFileSync(new URL("../app/build.rs", import.meta.url), "utf8"), /"finish_typed_pair"/);
-  assert.match(readFileSync(new URL("../app/capabilities/first-run.json", import.meta.url), "utf8"), /allow-finish-typed-pair/);
-  assert.match(rs, /Pinned::parse\(&address\)/, "the address is parsed by the same pin the shell uses");
+  const caps = JSON.parse(readFileSync(new URL("../app/capabilities/first-run.json", import.meta.url), "utf8"));
+  assert.ok(caps.permissions.includes("allow-finish-typed-pair"));
+  // every permission a capability names is a command the build declares (a stale one fails the Tauri build, as allow-cancel-pair did)
+  const declared = [...readFileSync(new URL("../app/build.rs", import.meta.url), "utf8").matchAll(/"([a-z_]+)"/g)].map((m) => "allow-" + m[1].replace(/_/g, "-"));
+  for (const perm of caps.permissions.filter((x) => x.startsWith("allow-"))) assert.ok(declared.includes(perm), `${perm} is declared in build.rs`);
+  assert.match(rs, /shell::pin_from_offer\(handle\.as_deref\(\), address\.as_deref\(\)\)/, "the address and handle go through the shell's pin rules");
+  for (const gone of ["begin_pair", "offer_pair", "confirm_pair", "pair_status", "finish_pair\\b", "pending_pair"]) assert.doesNotMatch(rs, new RegExp(gone), `${gone} is deleted`);
+  assert.doesNotMatch(readFileSync(new URL("../app/build.rs", import.meta.url), "utf8"), /begin_pair|confirm_pair/);
+});
+
+test("a record with only a handle is kept too (the shell turns it into its vyre.run address)", async () => {
+  const { deps, calls } = fakeDeps({ joinWithCode: async () => ({ ok: true, paired: { relay: "wss://relay.example", route: "r", box: "b", device: "d", name: "alex", handle: "alex" } }) });
+  assert.deepEqual(await startTypedPairing({ input: "x" }, deps), { ok: true });
+  assert.deepEqual([calls.invoke[0][1].address, calls.invoke[0][1].handle], [null, "alex"]);
 });

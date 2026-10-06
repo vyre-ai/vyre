@@ -38,7 +38,8 @@ export function WinkScan({ onEvent, style }: { onEvent: (e: WinkScanEvent) => vo
       overScrollMode="never"
       setSupportMultipleWindows={false}
       allowFileAccess={false}
-      onShouldStartLoadWithRequest={(r) => r.url === "about:blank" || r.url.startsWith("https://vyre.run/")}
+      // the page is inline and never navigates: only its own base URL (the first load) and about:blank pass, so nothing else can be loaded under the camera grant (reviewer-3, LOW)
+      onShouldStartLoadWithRequest={(r) => r.url === "about:blank" || r.url === "https://vyre.run/"}
     />
   );
 }

@@ -139,7 +139,7 @@ final class FakeVyred: @unchecked Sendable {
         let path = String(target.split(separator: "?", maxSplits: 1).first ?? "")
         let query = target.contains("?") ? String(target.split(separator: "?", maxSplits: 1)[1]) : ""
         if method == "GET" && path == "/v1/events/stream" { return stream(c, query) }
-        if method == "GET" && path == "/v1/link/events" { return boxStream(c, query) }
+        if method == "GET" && (path == "/v1/wink/server-events" || path == "/v1/link/events") { return boxStream(c, query) }
         var extra: [String: String] = [:]
         var answer: Any
         if method == "POST", path.hasPrefix("/v1/tools/"), let h = head?.headers {
@@ -251,7 +251,7 @@ final class FakeVyred: @unchecked Sendable {
         return lastId
     }
 
-    // MARK: the box's events, as a paired Mac's vyred proxies them at /v1/link/events
+    // MARK: the box's events, as a paired Mac's vyred proxies them at /v1/wink/server-events
 
     private var boxStreams: [(fd: Int32, type: String)] = []
     private(set) var boxStreamQueries: [String] = []

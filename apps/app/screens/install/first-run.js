@@ -44,6 +44,8 @@ export const MY_CLOUD = {
   ready: "My server shows a code",
   share: "Set up My Cloud on a computer or a server: https://vyre.run",
   codeTitle: "Type the code your server shows",
+  // The Windows app is a client only in 0.2.9 (the user): no home here, whatever the setup path says. The words are the ones vyred itself gives on Windows (core/daemon/host-guard.js).
+  windows: "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.",
 };
 
 /** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */

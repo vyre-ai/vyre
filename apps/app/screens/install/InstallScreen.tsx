@@ -12,7 +12,7 @@ import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "..
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
-import { shell } from "../../src/shell/shell";
+import { isWindowsShell, shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
 import { afterQuestion, codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
@@ -264,6 +264,10 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const last = made[made.length - 1];
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
+  // "Set up My Cloud" on a Mac that can be the server: the person sees what it means, confirms, and only then does the Mac set itself up (at the end of this flow, never on a press elsewhere).
+  const [macSure, setMacSure] = useState(false);
+  const [macOther, setMacOther] = useState(false);
+  const makeMacServer = shell()?.identity?.makeServer;
   let body: React.ReactNode = null;
   if (step === "welcome") {
     body = (
@@ -294,6 +298,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           </>
         ) : (
           <>
+            {isWindowsShell() ? <Banner tone="warn">{MY_CLOUD.windows}</Banner> : null}
             <Text tone="muted">{MY_CLOUD.lineComputer}</Text>
             <CopyLine text={installLine(shell()?.version)} />
           </>

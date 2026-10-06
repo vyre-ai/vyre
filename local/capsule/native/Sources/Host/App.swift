@@ -26,7 +26,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let viewCommands: ViewCommandsProvider
     var viewSub: VyredSubscription?
     var loosenedSub: VyredSubscription?
-    /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
+    /// The box's alarms and reminders ringing here, from /v1/wink/server-events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring
@@ -79,6 +79,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         VyreAppWindow.shared.presence = presence
         VyreAppWindow.shared.identity = MacIdentity(store: KeychainSeedStore(home: home))
         VyreAppWindow.shared.enclave = MacEnclave(store: KeychainEnclaveStore(home: home))
+        VyreAppWindow.shared.agreement = MacAgree(store: KeychainAgreeStore(home: home))
         VyreAppWindow.shared.makeServer = { [weak self] in self?.firstRun.makeThisMacServer() }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.

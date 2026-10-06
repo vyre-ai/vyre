@@ -85,3 +85,13 @@ test("lowS: every signature comes out with s in the low half and still verifies;
   assert.ok(flipped > 5 && flipped < 55, "both halves seen");
   assert.throws(() => lowS(new Uint8Array(70)));
 });
+
+test("what a phone's attestation vouches for: the entry's key and the chip key together (iPhone), the entry's key alone as the Keystore challenge (Android)", async () => {
+  const { entryClientData, entryAndroidChallenge } = await import("./presence-proof.js");
+  const { enrolClientData } = await import("../../../../kernel/seal/appattest.js");
+  const sha = (s) => crypto.createHash("sha256").update(s).digest();
+  assert.deepEqual(Buffer.from(entryClientData("EDPUB", "SPKIB64")), sha("vyre-enrol\nentry:EDPUB\nSPKIB64"));
+  assert.deepEqual(Buffer.from(entryClientData("EDPUB", "SPKIB64")), Buffer.from(enrolClientData("entry:EDPUB", "SPKIB64")), "the kernel verifier reads the same bytes");
+  assert.deepEqual(Buffer.from(entryAndroidChallenge("EDPUB")), sha("vyre-enrol\nentry:EDPUB\n"));
+  assert.notDeepEqual(Buffer.from(entryClientData("OTHER", "SPKIB64")), Buffer.from(entryClientData("EDPUB", "SPKIB64")));
+});

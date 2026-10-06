@@ -79,3 +79,32 @@ test("a pairing that cannot be kept does not undo the name", async () => {
   assert.equal((await addDeviceCore(d, { deviceLabel: "p" })).name, "juniper");
   assert.equal(saved.length, 1);
 });
+
+test("this device's agreement point rides in the key it offers, and a device with no agreement key offers none", async () => {
+  const seen = [];
+  const { d } = stubs({ agree: async () => "AGREEPOINT", pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(d, { deviceLabel: "walk phone" });
+  assert.deepEqual(seen[0], { publicKey: "pub", agree: "AGREEPOINT" });
+  const none = stubs({ agree: async () => { throw new Error("no key"); }, pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(none.d, { deviceLabel: "walk phone" });
+  assert.deepEqual(seen[1], { publicKey: "pub" });
+});
+
+test("a phone's chip key and its attestation ride in the key it offers, made after the entry's own key; no attestation means none is offered", async () => {
+  const order = [], seen = [];
+  const { d } = stubs({
+    makeKey: async () => { order.push("key"); return KEY; },
+    enclave: async (k) => { order.push("enclave:" + k.publicKey); return "ENCLAVEPT"; },
+    attest: async (k, e) => { order.push("attest:" + e); return "ATTESTBLOB"; },
+    pair: async (o) => { seen.push(o.key); return PAIRED; },
+  });
+  await addDeviceCore(d, { deviceLabel: "Phone" });
+  assert.deepEqual(order, ["key", "enclave:pub", "attest:ENCLAVEPT"]);
+  assert.deepEqual(seen[0], { publicKey: "pub", enclave: "ENCLAVEPT", attest: "ATTESTBLOB" });
+  const none = stubs({ enclave: async () => "ENCLAVEPT", attest: async () => null, pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(none.d, { deviceLabel: "Phone" });
+  assert.deepEqual(seen[1], { publicKey: "pub", enclave: "ENCLAVEPT" });
+  const noEnclave = stubs({ enclave: async () => { throw new Error("no biometrics"); }, attest: async () => "NEVER", pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(noEnclave.d, { deviceLabel: "Phone" });
+  assert.deepEqual(seen[2], { publicKey: "pub" }, "no chip key, nothing to attest");
+});

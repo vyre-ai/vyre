@@ -220,7 +220,9 @@ struct HTTPHead {
 
 enum VyHTTP {
     static func requestBytes(_ method: String, _ path: String, body: Data?, accept: String = "application/json", headers: [String: String] = [:]) -> Data {
-        var s = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nAccept: \(accept)\r\nx-vyre-caller: capsule\r\n"
+        // Every call says which zone this Mac is in (the IANA name, read each time so a trip is followed), so vyred reads times in it and hands it to a model call's time line (lib/time).
+        let zone = TimeZone.autoupdatingCurrent.identifier.filter { $0.isLetter || $0.isNumber || "/_+-".contains($0) }
+        var s = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nAccept: \(accept)\r\nx-vyre-caller: capsule\r\nx-vyre-zone: \(zone)\r\n"
         // Extra headers (x-vyre-presence), with anything that could end a header line taken out.
         for (k, v) in headers.sorted(by: { $0.key < $1.key }) {
             s += "\(k.filter { $0.isLetter || $0.isNumber || $0 == "-" }): \(v.filter { $0 != "\r" && $0 != "\n" })\r\n"
@@ -392,7 +394,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     public let box = BoxLink()
     public func has(_ tool: String) -> Bool {
         lock.lock()
-        let local = tools.contains(tool), linkCall = tools.contains("link.call")
+        let local = tools.contains(tool), linkCall = tools.contains(WinkServer.call) || tools.contains(WinkServer.legacyCall)
         lock.unlock()
         return local || (linkCall && box.offers(tool))
     }
@@ -509,7 +511,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     /// A tool with no draft answers plain JSON, which reads as any other call.
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval,
                      onDraft: @escaping @Sendable (_ id: String, _ text: String) -> Void) async -> VyredResult {
-        // A paired Mac's memory is the server's: link.call carries no live draft, so it asks plain (the server's memory.thinking events
+        // A paired Mac's memory is the server's: wink.server.call carries no live draft, so it asks plain (the server's memory.thinking events
         // still draw the stage line, on the same id).
         if box.routes(tool, input) {
             var plain = input

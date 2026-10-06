@@ -7,6 +7,8 @@
 //   not_listed     the pairing finished but the directory's list does not hold this device (yet)
 //   exists         this device already holds a name
 
+import { agreePublic } from "./agree";
+import { shellKeyHeld } from "./mac-key.ts";
 import * as C from "../../../../kernel/identity/chain.js";
 import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
 import { joinFromPhone } from "@vyre/relay-client/browserjoin.js";
@@ -17,6 +19,7 @@ import { afterPaired } from "../real/pairing";
 import { relayUrl } from "../api/relay-url";
 import { addDeviceCore } from "./add-device-core.js";
 import { generateDeviceKey } from "./keys.js";
+import { entryAttest, entryEnclave } from "../keys";
 import { loadIdentity, saveIdentity } from "./store.ts";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
@@ -45,6 +48,10 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
   return addDeviceCore({
     held: async () => Boolean(await loadIdentity().catch(() => null)),
     makeKey: async () => (key = await generateDeviceKey()),
+    enclave: (k) => entryEnclave(k.publicKey),
+    attest: (k) => entryAttest(k.publicKey),
+    agree: () => agreePublic(),
+    pageHeld: () => shellKeyHeld(),
     pair: async ({ key: k, onWords, onAck, signal }) => (Platform.OS === "web" && o.payload !== undefined ? joinFromBrowser(o, k, onWords, signal) : pair({
       // The key this device signs its paired session with is the presence key reported here, never the identity key (platform-3).
       ...(await presenceKey() ? { presenceKey: await presenceKey() } : {}),

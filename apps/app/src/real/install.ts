@@ -3,7 +3,8 @@
 import { said, tool } from "./box";
 import { Platform } from "react-native";
 import { RC, claimBlocked } from "../../screens/shell/rc";
-import { macDeviceKey, macEnclavePublic, macKeyAvailable } from "../identity/mac-key.ts";
+import { macDeviceKey, macEnclavePublic, macKeyAvailable, shellKeyHeld } from "../identity/mac-key.ts";
+import { agreePublic } from "../identity/agree.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
@@ -59,9 +60,11 @@ export async function createIdentity(name: string, deviceLabel: string, password
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
   const claim = Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
   if (macKeyAvailable()) enclave = (await macEnclavePublic(true)) ?? undefined; // none on a Mac with no Secure Enclave: its entry signs alone
+  // This device's agreement key (its public point goes in the entry as `agree`): none in a plain browser.
+  const agreeKey = (await agreePublic(true)) ?? undefined;
   try {
     const made = await claim({
-      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}),
+      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...((await shellKeyHeld()) ? { held: true } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

@@ -146,9 +146,9 @@ final class AgentRows: ResultProvider, @unchecked Sendable {
 }
 
 extension CapsuleModel {
-    /// The paired box's address, for Glass: from link.status and nothing else, never a guess.
+    /// The paired box's address, for memory links and Glass: from the pairing (wink.server.home) and nothing else, never a guess.
     func loadBox() async {
-        catalog.box = await Glass.address(vyred, has: vyred.has("link.status"))
+        catalog.box = vyred.box.boxAddress
     }
 }
 

@@ -1,13 +1,16 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Card, Chip, Divider, EmptyState, Row, markRef } from "@vyre/ui";
+import { Avatar, Card, Chip, Divider, EmptyState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useDevices } from "./state";
+import { WINDOWS_LATER, isWindowsShell } from "../../src/shell/shell";
 
 /** Share a computer: pick the computer, then its page holds the card with two yeses. */
 export function WinkLend() {
   const router = useRouter();
   const computers = useDevices((s) => s.items).filter((i) => i.device === "computer");
+  // The Windows app is a client for now: lending its computer is a later update.
+  if (isWindowsShell()) return <Page title="Share a computer" back="/u/wink"><Text tone="muted">{WINDOWS_LATER}</Text></Page>;
   return (
     <Page title="Share a computer" sub="Lend a computer to a space. The space allows it and you allow it." back="/u/wink">
       <Card flush>

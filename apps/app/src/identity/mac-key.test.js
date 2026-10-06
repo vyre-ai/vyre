@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign as nodeSign, verify } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { b64u } from "../../../../kernel/identity/chain.js";
-import { macDeviceKey, macEnclavePublic, macEnclaveSign, macKeyAvailable, macSignListChange, MAC_KEPT } from "./mac-key.ts";
+import { macDeviceKey, macEnclavePublic, macEnclaveSign, macKeyAvailable, macSignListChange, shellKeyHeld, MAC_KEPT } from "./mac-key.ts";
 
 /** A stand-in for Host/MacIdentity.swift: the seed lives here, in the shell, and only the public key and signatures cross. */
 function fakeShell() {
@@ -102,4 +102,16 @@ test("a list change from a Mac with an enclave key carries both signatures; with
   assert.ok(verify("sha256", msg, { key: e.pair.publicKey, dsaEncoding: "ieee-p1363" }, both.esig));
   const g = fakeShell(); installShell(g); await macDeviceKey(true); withEnclave(g, { yes: false });
   await assert.rejects(macSignListChange(msg, "Approve"), /Not approved/);
+});
+
+test("a key a page's script can reach is held as a web key: no enclave key, or any Windows key until the Hello prompt is shown", async (t) => {
+  delete globalThis.window; t.after(() => delete globalThis.window);
+  assert.equal(await shellKeyHeld(), false, "no shell: nothing to hold");
+  const mac = fakeShell(); installShell(mac);
+  assert.equal(await shellKeyHeld(), true, "a Mac with no enclave key");
+  withEnclave(mac);
+  assert.equal(await shellKeyHeld(), false, "a Mac whose Secure Enclave asks the person for each list change");
+  const win = fakeShell(); withEnclave(win);
+  globalThis.window = { __vyreShell: { kind: "windows", ...win } };
+  assert.equal(await shellKeyHeld(), true, "Windows, even with a TPM key, until a Hello prompt per signature is shown");
 });

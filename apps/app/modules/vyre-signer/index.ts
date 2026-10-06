@@ -6,7 +6,7 @@ import { requireNativeModule } from "expo";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
-import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
+import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData, entryClientData, entryAndroidChallenge } from "./presence-proof.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -45,11 +45,15 @@ export type SignerInfo = {
 };
 
 type Native = {
-  ensureKey(alias: string, options: { biometric: boolean }): Promise<{ x: string; y: string }>;
+  ensureKey(alias: string, options: { biometric: boolean; attestChallenge?: string }): Promise<{ x: string; y: string }>;
+  /** Android: the Keystore key's certificate chain (standard base64 DER, leaf first); the attestation extension holds the challenge the key was made with. */
+  attestationChain?(alias: string): Promise<string[]>;
   sign(alias: string, message: string, options: { prompt?: string }): Promise<string>;
   deleteKey(alias: string): Promise<boolean>;
   info(): SignerInfo;
   randomBytes(n: number): string;
+  agreePublic?(create: boolean): Promise<string>;
+  agree?(epk: string): Promise<string>;
   appAttestSupported?(): Promise<boolean>;
   appAttestGenerateKey?(): Promise<string>;
   appAttestAttest?(keyId: string, clientDataHash: string): Promise<string>;
@@ -59,8 +63,8 @@ type Native = {
 const native = requireNativeModule<Native>("VyreSigner");
 
 /** Make the key under `alias` if it is missing; its public point as base64url x and y (32 bytes each). */
-export function ensureKey(alias: Alias, options: { biometric?: boolean } = {}): Promise<{ x: string; y: string }> {
-  return native.ensureKey(alias, { biometric: options.biometric ?? alias === HUMAN });
+export function ensureKey(alias: Alias, options: { biometric?: boolean; attestChallenge?: string } = {}): Promise<{ x: string; y: string }> {
+  return native.ensureKey(alias, { biometric: options.biometric ?? alias === HUMAN, ...(options.attestChallenge ? { attestChallenge: options.attestChallenge } : {}) });
 }
 
 /** ES256 over the UTF-8 message: the DER signature as base64url. `prompt` titles the biometric prompt. */
@@ -77,6 +81,19 @@ export function info(): SignerInfo {
   return native.info();
 }
 
+/**
+ * This phone's agreement key: ECDH on P-256, in the Secure Enclave or the Android Keystore (Android 12 and later), no prompt per use. `agreePublic` is its raw uncompressed point (65 bytes,
+ * base64url), made on first use with `create`; `agree(epk)` is the 32-byte shared secret with a peer's point. A phone that cannot hold one rejects, and its identity entry carries no `agree`.
+ */
+export function agreePublic(create: boolean): Promise<string> {
+  if (!native.agreePublic) return Promise.reject(Object.assign(new Error("this build has no agreement key"), { code: "ERR_NO_AGREE" }));
+  return native.agreePublic(create);
+}
+export function agree(epk: string): Promise<string> {
+  if (!native.agree) return Promise.reject(Object.assign(new Error("this build has no agreement key"), { code: "ERR_NO_AGREE" }));
+  return native.agree(epk);
+}
+
 /** `n` bytes from the platform's secure random source, as base64url (Hermes has no getRandomValues). */
 export function randomBytes(n: number): string {
   return native.randomBytes(n);
@@ -88,7 +105,7 @@ export function randomBytes(n: number): string {
 // biometryCurrentSet: Face ID on every signature). Bytes are platform's (kernel/seal/wire.js): see presence-proof.js. On Android the same proof is signed by the Keystore key (vyre.human, TEE or StrongBox, BiometricPrompt per use) with signer class "strongbox" (the kernel contract's Android class; unattested in RC1).
 
 export type PresenceCard = { op: string; space: string; fields: Record<string, unknown>; payload_hash: string; prompt: string; person?: string };
-export type PresenceProof = { signer: "secure_enclave" | "strongbox"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
+export type PresenceProof = { signer: "secure_enclave" | "strongbox" | "tpm"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
 
 const APPATTEST_KEY = "vyre.appattest.keyid";
 const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -174,12 +191,40 @@ export function keyStorage(): { identity: "keychain" | "none"; presence: "secure
 }
 
 /** The Secure Enclave key's public point, raw uncompressed (65 bytes, leading 0x04), base64url: the `enclave` field of this phone's device entry on the identity chain (NK-2). */
-export async function enclavePublic(): Promise<string> {
+export async function enclavePublic(entryPub?: string): Promise<string> {
   iosOnly();
-  const { x, y } = await ensureKey(HUMAN, { biometric: true });
+  // Android attests a key only as it is made: when the entry's own key is known first, the key is made with the challenge that binds the two (entryAndroidChallenge). A key that already exists keeps the
+  // challenge it was made with; its attestation then names no entry and the verifier leaves the entry held.
+  const attestChallenge = Platform.OS === "android" && entryPub ? b64url(entryAndroidChallenge(entryPub)) : undefined;
+  const { x, y } = await ensureKey(HUMAN, { biometric: true, ...(attestChallenge ? { attestChallenge } : {}) });
   const pt = new Uint8Array(65);
   pt[0] = 4; pt.set(fromB64url(x), 1); pt.set(fromB64url(y), 33);
   return b64url(pt);
+}
+
+/**
+ * The proof that this phone's chip key is in the OS key store, for the entry whose Ed25519 key is `entryPub`: base64url of JSON `{ format, keyId?, attestation }` (platform-3's `attest` field).
+ * iPhone: an App Attest key attests SHA-256("vyre-enrol\nentry:" + entryPub + "\n" + the chip key's SPKI base64), `attestation` the CBOR object (base64url), `keyId` the App Attest key id.
+ * Android: the Keystore certificate chain of the chip key (base64 DER, leaf first), made with the challenge entryAndroidChallenge(entryPub). Null where there is nothing to attest (a simulator, a build
+ * without the App Attest entitlement, a phone with no hardware attestation): the entry stays held.
+ */
+export async function entryAttestation(entryPub: string): Promise<string | null> {
+  iosOnly();
+  const json = (o: unknown) => b64url(new TextEncoder().encode(JSON.stringify(o)));
+  if (Platform.OS === "android") {
+    if (!native.attestationChain) return null;
+    try { const chain = await native.attestationChain(HUMAN); return chain.length ? json({ format: "android-key", attestation: chain }) : null; } catch { return null; }
+  }
+  if (!(await appAttestSupported())) return null;
+  const k = await presenceKey();
+  let keyId: string;
+  try { keyId = await native.appAttestGenerateKey!(); } catch (e) {
+    const m = String((e as { code?: string; message?: string })?.code ?? "") + " " + String((e as Error)?.message ?? "");
+    if (/ERR_APPATTEST|entitlement|not supported|DCError|serverUnavailable|featureUnsupported/i.test(m)) return null;
+    throw e;
+  }
+  const attestation = await native.appAttestAttest!(keyId, b64url(entryClientData(entryPub, k.spki)));
+  return json({ format: "apple-appattest", keyId, attestation });
 }
 
 /** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig` (NE-1). */

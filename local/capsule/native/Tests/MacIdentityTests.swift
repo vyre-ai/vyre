@@ -48,3 +48,16 @@ let macIdentitySuite = Suite("mac identity") { t in
         }
     }
 }
+
+// capsule-suite: zoneHeaderSuite
+// Every call from Lumen says which time zone this Mac is in (x-vyre-zone), in the IANA name, so vyred reads times in it and a model call's time line carries it.
+let zoneHeaderSuite = Suite("zone header") { t in
+    t.test("a request carries this Mac's IANA zone, and nothing that could end a header line") {
+        let head = String(decoding: VyHTTP.requestBytes("GET", "/v1/health", body: nil), as: UTF8.self)
+        let line = head.components(separatedBy: "\r\n").first { $0.hasPrefix("x-vyre-zone: ") }
+        t.ok(line != nil, "the header is there")
+        let zone = String((line ?? "").dropFirst("x-vyre-zone: ".count))
+        t.ok(!zone.isEmpty && zone.allSatisfy { $0.isLetter || $0.isNumber || "/_+-".contains($0) }, "a plain zone name: \(zone)")
+        t.eq(zone, TimeZone.autoupdatingCurrent.identifier)
+    }
+}

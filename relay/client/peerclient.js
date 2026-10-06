@@ -93,7 +93,9 @@ export function peerClient(stream, o = {}) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { calls.delete(id); reject(err("timeout", `no answer to ${tool}`)); }, opt.timeoutMs ?? o.timeoutMs ?? 30_000);
         calls.set(id, { resolve, reject, timer });
-        send(T.call, id, enc.encode(JSON.stringify({ tool, input })));
+        // The device's IANA time zone rides with every call, so the server reads this person's times in it (lib/time; the same as the x-vyre-zone header on a direct call). Read each time: it follows a trip.
+        const zone = deviceZone();
+        send(T.call, id, enc.encode(JSON.stringify(zone ? { tool, input, zone } : { tool, input })));
       });
     },
     close() { finish("done"); try { stream.end(); } catch { /* gone */ } },
@@ -114,6 +116,11 @@ export function peerClient(stream, o = {}) {
     },
   };
   return api;
+}
+
+/** This device's IANA time zone, or null when the runtime does not say. */
+function deviceZone() {
+  try { const z = Intl.DateTimeFormat().resolvedOptions().timeZone; return typeof z === "string" && z ? z : null; } catch { return null; }
 }
 
 /**

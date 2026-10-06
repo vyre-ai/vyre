@@ -6,6 +6,8 @@
 //! panel, a WebView2 on the person's own server with no capability, a navigation allowlist and
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
+mod ncrypt;
+
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -54,34 +56,39 @@ fn taskbar_is_light() -> bool {
 #[cfg(not(windows))]
 fn taskbar_is_light() -> bool { false }
 
-const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { value: Object.freeze({ platform: "windows" }), writable: false, configurable: false });"#;
+/// What the main panel (the person's own server's page) is told about this shell, as frozen data and four calls. The calls are the identity key's (identity_public, identity_sign) and the TPM
+/// key's (enclave_public, enclave_sign): the page gets public keys and signatures, never a seed. They are the same shape as the Mac app's window.__vyreShell.identity, so the page runs one way.
+/// Only these four commands are permitted to the panel (capabilities/main-identity.json), and each refuses unless it is called from the pinned origin (`from_pinned`).
+fn shell_signal(version: &str) -> String {
+    let v = serde_json::to_string(version).unwrap_or_else(|_| "\"\"".into());
+    format!(r#"(function () {{
+  Object.defineProperty(window, "__VYRE_SHELL__", {{ value: Object.freeze({{ platform: "windows" }}), writable: false, configurable: false }});
+  var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (!inv) return;
+  var identity = Object.freeze({{
+    public: function (create) {{ return inv("identity_public", {{ create: !!create }}); }},
+    sign: function (message) {{ return inv("identity_sign", {{ message: message }}); }},
+    enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
+    enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }},
+    agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
+    agree: function (epk) {{ return inv("agree_secret", {{ epk: epk }}); }}
+  }});
+  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: false, version: {v}, identity: identity }}), writable: false, configurable: false }});
+}})();"#)
+}
 
 struct Live {
     hotkey: Mutex<String>,
-    /// The seed for the pairing the person started: 16 CSPRNG bytes, memory only, five minutes.
-    /// The person's Deck turns it into a Wink ticket, so nothing travels back to this computer.
-    seed: Mutex<Option<(String, std::time::Instant)>>,
-    /// An offer resolved by the bundled page and awaiting the person's Pair.
-    pending: Mutex<Option<PendingOut>>,
-    /// The person pressed Pair on the confirm window; the bundled page may now run the handshake.
-    confirmed: Mutex<bool>,
 }
 
-#[derive(Serialize, Clone)]
-struct PendingOut {
-    name: String,
-    fingerprint: String,
-    /// The host the panel will load. Always shown, since the name is the box's own free text.
-    host: String,
-    /// True when the host is not on vyre.run; the confirm page shows it as its own line.
-    own_domain: bool,
-    #[serde(skip)]
-    address: String,
-}
+/// The short typed code (WINK-NNPP-PPPP) ships in release builds (the user's ruling of 5 Oct; the lead corrected an earlier reading). It is on unless a build sets VYRE_TYPED_CODE=0 at compile time,
+/// which hides the bundled first-run page's typed path and makes `finish_typed_pair` refuse.
+const TYPED_CODE: bool = !matches!(option_env!("VYRE_TYPED_CODE"), Some("0"));
 
 #[derive(Serialize)]
 struct StateOut {
     paired: bool,
+    typed_code: bool,
     address: Option<String>,
     hotkey: String,
 }
@@ -133,7 +140,7 @@ fn show_panel(app: &AppHandle, path: &str) {
     let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(pin.url_for(path).parse().expect("pinned url")))
         .title(APP_NAME)
         .inner_size(560.0, 720.0)
-        .initialization_script(SHELL_SIGNAL)
+        .initialization_script(shell_signal(&app.package_info().version.to_string()))
         .on_navigation(move |url| {
             if nav_pin.allows(url.as_str()) { return true; }
             open_external(&nav_app, url.as_str());
@@ -187,7 +194,7 @@ fn bind_hotkey(app: &AppHandle) -> String {
 #[tauri::command]
 fn get_state(app: AppHandle, live: State<Live>) -> StateOut {
     let pin = pinned(&app);
-    StateOut { paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
+    StateOut { typed_code: TYPED_CODE, paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
 }
 
 // Commands that build a window are async: a synchronous command runs on the main thread, and creating a
@@ -318,78 +325,14 @@ fn unmount_drive(letter: String) -> Result<(), String> {
     net_use(&drive::unmap_args(&letter.to_ascii_uppercase())).map(|_| ())
 }
 
-const SEED_LIFE: std::time::Duration = std::time::Duration::from_secs(300);
-
-/// Start "Add this computer": a fresh 16-byte seed, shown to the person (QR or words), never put
-/// in a link or a log. Replaces any earlier seed.
-#[tauri::command]
-fn begin_pair(live: State<Live>) -> String {
-    use base64::Engine;
-    use rand::RngCore;
-    let mut b = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut b);
-    let seed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
-    *live.seed.lock().unwrap() = Some((seed.clone(), std::time::Instant::now()));
-    *live.pending.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    seed
-}
-
-/// The bundled page resolved the ticket for our seed and hands over what the sealed record says.
-/// Refused unless a live seed exists and no offer is already waiting.
-#[tauri::command]
-async fn offer_pair(app: AppHandle, live: State<'_, Live>, name: String, fingerprint: String, handle: Option<String>, address: Option<String>) -> Result<(), String> {
-    match live.seed.lock().unwrap().as_ref() {
-        Some((_, at)) if at.elapsed() <= SEED_LIFE => {}
-        _ => return Err("This pairing ran out of time. Start again.".into()),
-    }
-    if live.pending.lock().unwrap().is_some() { return Err("A pairing is already waiting for your answer.".into()); }
-    let pin = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "That server's address does not check out.")?;
-    let host = pin.address.trim_start_matches("https://").to_string();
-    let clean = |s: &str, max: usize| s.chars().filter(|c| !c.is_control()).take(max).collect::<String>();
-    *live.pending.lock().unwrap() = Some(PendingOut { name: clean(&name, 64), fingerprint: clean(&fingerprint, 16), host, own_domain: pin.own_domain, address: pin.address });
-    let _ = WebviewWindowBuilder::new(&app, "confirm", WebviewUrl::App("confirm.html".into()))
-        .title(APP_NAME).inner_size(480.0, 340.0).resizable(false).build();
-    Ok(())
-}
-
-#[tauri::command]
-fn pending_pair(live: State<Live>) -> Option<PendingOut> { live.pending.lock().unwrap().clone() }
-
-#[tauri::command]
-fn cancel_pair(app: AppHandle, live: State<Live>) {
-    *live.pending.lock().unwrap() = None;
-    *live.seed.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
-}
-
-/// The person pressed Pair: nothing is pinned yet. The bundled page sees "confirmed", runs the
-/// handshake, and only a finished handshake pins (finish_pair).
-#[tauri::command]
-fn confirm_pair(app: AppHandle, live: State<Live>) -> Result<(), String> {
-    if live.pending.lock().unwrap().is_none() { return Err("Nothing to pair.".into()); }
-    *live.confirmed.lock().unwrap() = true;
-    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
-    Ok(())
-}
-
-/// "waiting" (no answer yet), "confirmed", or "cancelled" (the person said no, or it ran out).
-#[tauri::command]
-fn pair_status(live: State<Live>) -> &'static str {
-    let live_seed = matches!(live.seed.lock().unwrap().as_ref(), Some((_, at)) if at.elapsed() <= SEED_LIFE);
-    if *live.confirmed.lock().unwrap() { "confirmed" }
-    else if live.pending.lock().unwrap().is_some() && live_seed { "waiting" }
-    else { "cancelled" }
-}
-
-/// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
-/// which holds no secret), close the pairing page and open the panel.
 /// A pairing made with the typed code another device showed (relay/client/join.js, the ack typed back there is the person's yes): keep it as the device-first pairing does, pinned to the
-/// box's own address. Only the bundled first-run page may call this; the address must be a server address the shell would pin anyway.
+/// box's own address. Only the bundled first-run page may call this; the address is checked by `pin_from_offer`.
 #[tauri::command]
-async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: String) -> Result<(), String> {
-    let pin = Pinned::parse(&address).ok_or("The pairing gave no address this app can open.")?;
+async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Option<String>, handle: Option<String>) -> Result<(), String> {
+    if !TYPED_CODE { return Err("Pairing by a typed code is off in this build. Open your Vyre by its address and pair there.".into()); }
+    // The address the pairing named, held to the rules for what the shell may pin (shell::pin_from_offer): on vyre.run it must be exactly the box's own handle's address.
+    let choice = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "The pairing gave no address this app can open.")?;
+    let pin = Pinned::parse(&choice.address).ok_or("The pairing gave no address this app can open.")?;
     if !link.is_object() { return Err("The pairing was not complete.".into()); }
     let path = record_path(&app).ok_or("No place to save on this computer.")?;
     std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
@@ -400,19 +343,105 @@ async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Str
     Ok(())
 }
 
-#[tauri::command]
-async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Value) -> Result<(), String> {
-    if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
-    let p = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
-    *live.seed.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    let path = record_path(&app).ok_or("No place to save on this computer.")?;
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
-    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
-    ensure_link_window(&app);
-    show_panel(&app, "/quick");
+/// The identity key's and the TPM key's commands are the main panel's only ones, and only from the pinned origin: the capability lets the panel call them, and this refuses any other page
+/// (a navigation that slipped past, a frame) before a key is touched.
+fn from_pinned(app: &AppHandle, webview: &tauri::Webview, request: &tauri::ipc::Request<'_>) -> Result<(), String> {
+    if webview.label() != "main" { return Err("Not allowed here.".into()); }
+    let Some(pin) = pinned(app) else { return Err("Not allowed here.".into()) };
+    // The top-level page is the pinned one...
+    let url = webview.url().map_err(|_| "Not allowed here.".to_string())?;
+    if !pin.allows(url.as_str()) { return Err("Not allowed here.".into()); }
+    // ...and so is the frame that made THIS call: the capability admits any https frame, so a cross-origin iframe inside the pinned page would pass the check above. Its call carries its own Origin.
+    let origin = request.headers().get("origin").and_then(|v| v.to_str().ok());
+    if !pin.is_origin(origin) { return Err("Not allowed here.".into()); }
     Ok(())
+}
+
+fn identity_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_data_dir().map(|d| d.join("identity.key")).map_err(|e| e.to_string())
+}
+
+static IDENTITY_LOCK: Mutex<()> = Mutex::new(());
+
+/// The Ed25519 identity seed, DPAPI-protected on this computer; made once with `create`. It never leaves Rust.
+fn identity_seed(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
+    let _guard = IDENTITY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = identity_path(app)?;
+    if path.exists() {
+        let raw = protect(&std::fs::read(&path).map_err(|e| e.to_string())?, false)?;
+        return raw.try_into().map_err(|_| "The identity key file is damaged.".to_string());
+    }
+    if !create { return Err("There is no key on this computer.".into()); }
+    use rand::RngCore;
+    let mut k = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut k);
+    let dir = path.parent().unwrap();
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("identity.key.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(k)
+}
+
+fn unb64u(s: &str) -> Result<Vec<u8>, String> { use base64::Engine; base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s.trim_end_matches('=')).map_err(|_| "That is not a message to sign.".to_string()) }
+
+#[tauri::command]
+fn identity_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    Ok(b64u(&vyre_capsule_win::identity::public_key(&identity_seed(&app, create)?)))
+}
+
+#[tauri::command]
+fn identity_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    let m = unb64u(&message)?;
+    if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
+    Ok(b64u(&vyre_capsule_win::identity::sign(&identity_seed(&app, false)?, &m)))
+}
+
+#[tauri::command]
+fn enclave_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    Ok(b64u(&ncrypt::public_point(create)?))
+}
+
+/// The shell's own yes or no, in a Windows message box the page cannot draw over, with the words the shell wrote from the bytes.
+#[cfg(windows)]
+fn confirm_native(said: &str) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONQUESTION, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO};
+    let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let text = w(&format!("{}\n\nSign this with your computer's key?", said));
+    let title = w("Vyre");
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND) == IDYES }
+}
+#[cfg(not(windows))]
+fn confirm_native(_said: &str) -> bool { false }
+
+/// The TPM key signs only after Windows has asked the person (Windows Hello). `prompt` is the words the page gave for it; Windows shows its own.
+#[tauri::command]
+fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    // KP-3: the page's `prompt` is never shown. The shell reads the bytes, says what they are in its own window, and signs nothing it cannot read. (Yes-moment proofs are not read here, so they are not signed.)
+    let _ = prompt;
+    let m = unb64u(&message)?;
+    if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
+    let said = vyre_capsule_win::identity::chain_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
+    if !confirm_native(&said) { return Err("Not approved. Nothing was changed.".into()); }
+    Ok(b64u(&ncrypt::sign(&m)?))
+}
+
+/// The agreement key (ECDH, no prompt per use): its public point, and the shared secret with a peer's point. The key stays in the TPM or the user's key store.
+#[tauri::command]
+fn agree_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    Ok(b64u(&ncrypt::agree_public(create)?))
+}
+
+#[tauri::command]
+fn agree_secret(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, epk: String) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
+    let p = unb64u(&epk)?;
+    Ok(b64u(&ncrypt::agree_secret(&p)?))
 }
 
 /// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
@@ -543,10 +572,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, finish_typed_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
-            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
+            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
