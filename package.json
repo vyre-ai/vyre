@@ -1,7 +1,7 @@
 {
   "name": "vyre",
-  "version": "0.2.2",
-  "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
+  "version": "0.2.9",
+  "description": "Your team and your AI agents, working together on a server you own. Open source, self-hosted, any model.",
   "type": "module",
   "bin": {
     "vyre": "bin/vyre",

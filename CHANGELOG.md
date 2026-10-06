@@ -3,6 +3,20 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+
+## 0.2.9 (7 Oct 2026)
+- fix(store): a Space store still starting past 20 s leaves the Space a waiting store and finishes in the background, so a first install no longer deadlocks on the root helper.
+- fix(flows): the Flow types and recover wait for a store that is still starting, instead of stopping vyred at boot.
+- fix(modules): a module that failed only because the store was still starting starts again when it joins (startStoreWaiting); a started module clears its earlier error.
+- fix(storage): the sealed Drive keeps the Drive's pool, so paired drives join the Space's pool again.
+- fix(agents): agents.ask relays the asker's verified facts to threads.send and threads.release, so the chat gate admits a person's ask and gives the keyboard back.
+- fix(peer-door): a paired device's call carries its verified peer, so an approval card names the device.
+- fix(threads): a session socket that finishes opening after vyred began stopping is closed at once.
+- fix(upgrade): the chats port steps aside when My Cloud is on another server; the upgrade goes on.
+- fix(box): uninstall stops every Space's containers, keeping their data; the encrypted swap's mkswap and swapon in an if.
+- feat(brand): the halftone V with a folded corner (scripts/gen-mark.mjs) is the app icon, the splash (expo-splash-screen, added for the splash) and every favicon.
+- docs: the README tells Vyre as one product, with a panel film and an app tour (docs/images/readme); known gaps gain the model switch-back and a remote My Cloud's chats.
+- test: the integration's test fixes (chat gate callers, the kernel log, the Deck screens, PW-1, split space-helper) and the known-red list with reasons.
 - refactor(app): the Team tab, the Teammates tab and the Assign picker key teammates by the Project record's id, as the team.* tools now take it (cleanup's work/cleanup-team d45d3b8df; the box refuses a short name). A project with no slug has a team; projectSlug is gone; the Assistants page names each project through work.project.ref. Needs that branch on the box side: team.list, team.add, team.retire and the other team.* tools with a `project` input now want the id or the vyre:// address; team.default.get and team.default.set take the id too.
 
 - feat(records,comms): plan item 6's relation. `communication.contacts` is a many-to-many link to Contact with the named reverse "Communications" on the Contact (windows' relations, from work/hub-kernel-on). The Log communications Flow adds each matched or made contact to it with one `update` step beside the Participant, by address, so a contact's page lists every email and meeting; a stranger with no contact adds nothing, and logging the same item twice does not double the links. Tested in records/comms/log-flow.test.js.
