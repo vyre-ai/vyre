@@ -758,7 +758,7 @@ test("updater install --dir: a box that is not in /srv/vyre hands root its folde
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/request:\/run\/vyre-update\n/);
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status:\/run\/vyre-update-state:ro\n/);
-  assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status\/release:\/opt\/vyre\/deck\/release:ro\n/, "the served release files are on the host, read-only");
+  assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status\/release:\/opt\/vyre\/web\/release:ro\n/, "the served release files are on the host, read-only");
   assert.ok(!/vyre-update\}\/private/.test(COMPOSE), "the private folder (floor, lock, backup keys) is never mounted");
   assert.ok(!/docker\.sock/.test(COMPOSE.split("docker-api:")[0]), "still no socket in the vyre service");
 });

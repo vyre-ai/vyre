@@ -1502,7 +1502,7 @@ sp_swap() {
   if [ ! -e "$SP_DM/$SP_SWAP_MAP" ]; then
     cryptsetup open --type plain --cipher aes-xts-plain64 --key-size 512 --key-file /dev/urandom --keyfile-size 64 "$loop" "$SP_SWAP_MAP" >/dev/null 2>&1 || { sp_log "swap: cryptsetup failed"; sp_swap_undo "$loop"; return 0; }
   fi
-  mkswap "$SP_DM/$SP_SWAP_MAP" >/dev/null 2>&1 && swapon "$SP_DM/$SP_SWAP_MAP" 2>/dev/null || { sp_log "swap: mkswap or swapon failed"; sp_swap_undo "$loop"; return 0; }
+  if ! { mkswap "$SP_DM/$SP_SWAP_MAP" >/dev/null 2>&1 && swapon "$SP_DM/$SP_SWAP_MAP" 2>/dev/null; }; then sp_log "swap: mkswap or swapon failed"; sp_swap_undo "$loop"; return 0; fi
   grep -qF "$SP_SWAP_MAP" "$SP_CRYPTTAB" 2>/dev/null || printf '%s %s /dev/urandom swap,cipher=aes-xts-plain64,size=512\n' "$SP_SWAP_MAP" "$SP_SWAPFILE" >>"$SP_CRYPTTAB" 2>/dev/null || true
   grep -qF "$SP_DM/$SP_SWAP_MAP" "$SP_FSTAB" 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_DM/$SP_SWAP_MAP" >>"$SP_FSTAB" 2>/dev/null || true
   sp_log "swap: turned on 2 GB of encrypted swap (a random key every boot) at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
