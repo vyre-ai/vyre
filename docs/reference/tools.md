@@ -1931,7 +1931,7 @@ Share one version of a file in the Space's Drive with a link that reads it until
   - `days` integer
   - `space` string
   - `version` integer
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
 
 ### `files.drive.link.list`
@@ -1939,7 +1939,7 @@ Share one version of a file in the Space's Drive with a link that reads it until
 The shared links made on this box, newest first, with when each expires, how often it was opened and whether it still works. Never the file's bytes.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.drive.link.revoke`
 
@@ -1947,7 +1947,7 @@ Stop a shared link now and delete the copy it served: { code }. Taking access aw
 
 - Input:
   - `code` string, required
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.drive.list`
 

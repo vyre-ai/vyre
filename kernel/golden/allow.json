@@ -568,10 +568,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): picks threads into a project; a thread can be in several projects"
  },
  {
-  "tool": "projects.move",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): moves a project's folders between homes on the box, leaving a link at each"
- },
- {
   "tool": "projects.remove-threads",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): removes thread picks from a project; folder threads stay by folder"
  },
