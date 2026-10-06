@@ -103,6 +103,10 @@
   "owner": "network",
   "seen": "lead integration 6 Oct 2026: two cases read the removed tailnet node and vyre-core paths; rewritten in the 0.3.0 cleanup"
  },
+ "test/said-hear.test.js": {
+  "owner": "cleanup",
+  "seen": "lead integration 6 Oct 2026: team.add's said target is keyed by the Project record id since cleanup-team d45d3b8df, and this world has no Project records, so 'add a researcher teammate' records no intent here; check the spoken add on the walk"
+ },
  "test/stdin-hygiene.test.js": {
   "owner": "launch",
   "seen": "integrator run 37181895537 (FAIL)"
