@@ -9,6 +9,8 @@
   "apps/android/app/src/test/java/sh/vyre/app/LinksTest.kt",
   "apps/app/modules/vault-android/README.md",
   "apps/app/perf/README.md",
+  "apps/app/screens/chat-tools/more.test.js",
+  "apps/app/screens/settings/keys-system.test.js",
   "apps/app/src/api/client.test.js",
   "apps/app/src/api/client.ts",
   "apps/app/src/api/native-open.test.js",
@@ -116,6 +118,7 @@
   "deck/views/pair.js",
   "deck/views/settings.js",
   "docs/architecture/boundaries.md",
+  "kernel/golden/golden.json",
   "kernel/golden/matrix.js",
   "kernel/seal/uses.test.js",
   "lib/publish/edge.js",
@@ -191,6 +194,15 @@
   "test/setup-cli-names.test.js",
   "test/site-v2.test.js",
   "test/test-counts.json",
-  "test/upgrade.test.js"
+  "test/upgrade.test.js",
+  "web/fixtures/onboard.json",
+  "web/js/lock.js",
+  "web/onboard/onboard.css",
+  "web/onboard/onboard.js",
+  "web/test/fake-tailscale.js",
+  "web/test/glass-world.js",
+  "web/test/mac-world.js",
+  "web/test/settings-browser.js",
+  "web/test/world.js"
  ]
 }

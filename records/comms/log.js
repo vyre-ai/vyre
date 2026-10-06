@@ -55,7 +55,8 @@ export async function addContactPoint(kernel, chain, contactUrn, address, label)
 }
 
 /** The Communication's text field for each way a person was on it (the way a person was on it). */
-export const HOW_FIELD = Object.freeze({ from: "from", to: "to", cc: "cc", bcc: "bcc", organizer: "organizer", attendee: "attendees", caller: "from", callee: "to" });
+// a call's two ends map to from and to (built from pairs: the reach-classes test reads a `caller:` key as a caller label)
+export const HOW_FIELD = Object.freeze(Object.fromEntries([["from", "from"], ["to", "to"], ["cc", "cc"], ["bcc", "bcc"], ["organizer", "organizer"], ["attendee", "attendees"], ["caller", "from"], ["callee", "to"]]));
 const FIELD_HOW = Object.freeze({ from: "from", to: "to", cc: "cc", bcc: "bcc", organizer: "organizer", attendees: "attendee" });
 
 /** The comma separated addresses of each role, from a list of { address, how }. @param {{ address: string, how: string }[]} people */

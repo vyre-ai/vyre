@@ -9,6 +9,17 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["runner.places", "where the person's own chats run (the lent computer of each): the person's own view"],
+  ["stream.typing", "says the person is typing in a chat they are in: the person's own surface"],
+  ["stream.catchup", "what the person missed in a chat they are in: the person's own surface reads it"],
+  ["threads.roll", "rolls the person's own session over to a fresh window: the person's own act"],
+  ["threads.rolls", "lists the person's own session rollovers: the person's own view"],
+  ["threads.roll-session", "rolls a Claude Code session in the person's own terminal: a person's surface only"],
+  ["system.modules", "lists the modules on the person's own box and their state: the person's own view"],
+  ["work.chat.keys.begin", "the person's device lends a chat's key to this server: the person's own device act"],
+  ["work.chat.keys.finish", "finishes the person's device lending a chat's key: the person's own device act"],
+  ["work.chat.keys.lock", "the person locks a chat's key on this server again: the person's own act"],
+  ["work.chat.keys.status", "whether a chat's key is unlocked here: the person's own view"],
   ["spaces.upgrade.plan", "part of the person's own move of their Personal space to My Cloud: the person's own act, with their presence"],
   ["spaces.upgrade.run", "moves the person's whole Personal space to My Cloud and freezes it: needs the person's presence, the person's own act"],
   ["spaces.upgrade.receipt", "part of the person's own move to My Cloud: the device asks it with the person's own chain"],

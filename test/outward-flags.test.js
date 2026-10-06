@@ -13,6 +13,10 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
+  "files.drop.push": "the daemon hands a sealed file to the person's own paired device (VyreDrop): module-only, nothing leaves the person's devices",
+  "names.directory.publish": "publishes the Space's own signed directory record (its name and keys) through the names module: infrastructure, no content of the person's",
+  "wink.home.call": "a call from this home to another home of the same person's (the project move door): stays inside the person's own homes",
+  "wink.device.call": "a call to one of the person's own paired devices: stays inside the person's own devices",
   "bridges.merge.links": "a device reads its own Space links and merges them itself; nothing is sent",
   "computers.checkout": "gives an agent a screen on your own computer",
   "files.send": "Taildrop from your Mac to your own box",
