@@ -35,7 +35,7 @@ test("launcherOnly: a session still signs in through the credentials port, and a
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const r = await reg("threads.start", { cwd: work, prompt: "hello", surface: "deck" });
   assert.ok(r.data, JSON.stringify(r));
-  await until(async () => (await reg("threads.get", { thread: r.data.id, limit: 100 })).data.events.some(e => e.type === "thread.finished"), "the turn");
+  await until(async () => /* a run's chat is set as it starts: until then threads.get answers not_found */ ((await reg("threads.get", { thread: r.data.id, limit: 100 })).data?.events ?? []).some(e => e.type === "thread.finished"), "the turn");
   const launches = fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l));
   assert.equal(launches.at(-1).auth, "subscription", "it signed in with the setup token");
   assert.ok(!fs.readFileSync(log, "utf8").includes(TOKEN), "the token is in no log line or argument");
