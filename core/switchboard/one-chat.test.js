@@ -514,7 +514,10 @@ test("a chat's history leaves one device and comes back on another: its logged f
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const A = await boot();
   const owner = kernelCaller(A.d, A.root);
-  const chat = (await owner("work.chat.create", { title: "Moving" })).data.chat;
+  // the app starts a chat with a ring its device made (a chat with a person in it is never in the clear)
+  const made = await owner("work.chat.create", { title: "Moving", ...(({ id, ring }) => ({ id, ring }))(sealed()) });
+  assert.ok(made.data, JSON.stringify(made.error));
+  const chat = made.data.chat;
   assert.ok((await owner("stream.send", { chat, text: "hello there" })).data);
   const logsA = A.d.registry.modules.get("stream").handle.logs;
   await until(async () => logsA.get(chat).read(0).some(f => f.type === "chat.text-done"), "the reply", 60_000);
