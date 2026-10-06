@@ -81,5 +81,5 @@ test("sealed drive: share wraps the file key to the project's ring (no copy); un
 test("sealed drive: it keeps the Drive's pool and path check, so wink storage can join paired drives to the Space's pool", t => {
   const w = world(t);
   assert.equal(w.sd.pool, w.pool, "the pool under the sealed Drive is the Drive's own");
-  assert.equal(w.sd.path("a//b"), w.drive.path("a//b"));
+  assert.equal(w.sd.path("Projects/p1/notes.md"), w.drive.path("Projects/p1/notes.md"));
 });
