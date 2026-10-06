@@ -21,9 +21,8 @@
 //     time, core/relay/index.js's `admit()`), for a "Receive a move from <name>" line.
 //   openPeer(ctx) -> (node) -> { call(tool, input) }
 //     A live, source-initiated connection to `node` (the shape ownedNode returned), carried over
-//     the owner's own tailnet — never the relay's bridge (ADR 0046, "the relay introduces,
-//     Tailscale carries"). Needs the target device to have ALSO reported its tailnet node
-//     (relay.devices.path's node_id/node_name, already built, no dependency on ADR 0046 landing);
+//     the owner's own device link — never the relay's bridge. Needs the target device to have ALSO reported its node
+//     (relay.devices.path's node_id/node_name);
 //     refuses with `not_reachable` when it has not, same as federation's own default seam.
 //   selfIdentity(ctx) -> () -> { nickname?: string }
 //     Cosmetic only, narrowed to match federation's own current call site (df782ec0): the

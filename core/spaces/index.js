@@ -743,7 +743,7 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["server", "cancel"] } }, ["name", "home"]), async (i, meta) => {
+      obj({ name: str, displayName: str, home: HOME, storeChoice: { type: "string", enum: ["server", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
@@ -806,7 +806,7 @@ export default {
         else spaces.patch(spaceId, { status: "running" }, now());
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         /** @type {any} */ let view;
-        try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
+        try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
         if ((KS || remoteServer) && view && view.status === "failed") await retireHosted(spaceId, meta);
         // The home's route goes into the space's directory record so another person's device can find the home from an invite link (the flow's own pointHome ran before the server-hosted record existed on every path).
         if (remoteServer && view && view.status !== "failed") { try { await deps.names.pointHome({ name: `${label}.vyre.run`.replace(/\.vyre\.run$/, ""), spaceId, home: { kind: "server" } }); } catch { /* the record is republished by spaces.identity.republish */ } }

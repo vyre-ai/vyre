@@ -14,26 +14,20 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const SCRIPT = path.join(REPO, "scripts", "install-box.sh");
 const WRAPPER = path.join(REPO, "box", "vyre");
 const BASE = { user: "alex", group: "alex", home: "/home/alex", node: "/usr/bin/node", pkg: "/usr/lib/node_modules/vyre" };
-const NOTHING = { tailscale: { installed: false, device: false, operator: null }, systemd: true };
-const READY = { tailscale: { installed: true, device: true, operator: null }, systemd: true };
+const NOTHING = { systemd: true };
 const lines = steps => steps.map(describe);
 
-test("system: unit files carry the decided lines", () => {
+test("system: the unit file carries the decided lines, and there is no socket unit", () => {
   const u = units(BASE);
-  for (const l of ["Description=Vyre tailnet listener", "After=tailscaled.service", "Wants=tailscaled.service", "ListenStream=443",
-    "BindToDevice=tailscale0", "FileDescriptorName=tailnet", "NoDelay=true", "WantedBy=sockets.target"]) {
-    assert.ok(u["vyre.socket"].split("\n").includes(l), `socket: ${l}`);
-  }
-  for (const l of ["Description=Vyre", "After=network-online.target tailscaled.service vyre.socket", "Wants=network-online.target",
+  assert.deepEqual(Object.keys(u), ["vyre.service"]);
+  for (const l of ["Description=Vyre", "After=network-online.target", "Wants=network-online.target",
     "Type=simple", "User=alex", "Group=alex", "Environment=VYRE_SUPERVISOR=systemd", "Environment=VYRE_HOME=/home/alex/.vyre",
     "EnvironmentFile=-/home/alex/.vyre/env", "WorkingDirectory=/home/alex",
     "ExecStart=/usr/bin/node /usr/lib/node_modules/vyre/core/daemon/main.js", "Restart=always", "RestartSec=2",
     "NoNewPrivileges=yes", "LimitNOFILE=65536", "WantedBy=multi-user.target"]) {
     assert.ok(u["vyre.service"].split("\n").includes(l), `service: ${l}`);
   }
-  const custom = units({ ...BASE, port: 8443, device: "ts1" });
-  assert.match(custom["vyre.socket"], /^ListenStream=8443$/m);
-  assert.match(custom["vyre.socket"], /^BindToDevice=ts1$/m);
+  assert.ok(!/tailscale|tailnet|socket/i.test(u["vyre.service"]), "the unit names no other product and waits for no socket");
 });
 
 test("system: refuses root and values that would break a unit file", () => {
@@ -42,49 +36,34 @@ test("system: refuses root and values that would break a unit file", () => {
   assert.throws(() => units({ ...BASE, pkg: "/x/%h" }), /absolute path/);
   assert.throws(() => units({ ...BASE, node: "node" }), /absolute path/);
   assert.throws(() => units({ ...BASE, user: "alex\nUser=root" }), /not a user name/);
-  assert.throws(() => units({ ...BASE, port: 0 }), /not a port/);
 });
 
 test("system: plan with nothing installed yet", () => {
   const steps = installPlan({ ...BASE, ...NOTHING, etc: "/etc/systemd/system" });
-  assert.deepEqual(lines(steps).map(l => l.split("  #")[0].split(": ")[0]), [
+  assert.deepEqual(lines(steps).map(l => l.split("  #")[0]), [
     "mkdir /home/alex/.vyre (0700, owner alex:alex)",
     "write /etc/systemd/system/vyre.service (0644)",
-    "write /etc/systemd/system/vyre.socket (0644)",
     "run systemctl daemon-reload",
-    "note",
     "run systemctl enable vyre.service",
     "run systemctl restart vyre.service",
   ]);
-  assert.match(/** @type {any} */ (steps[4]).text, /tailnet listener is not enabled.*next run after Tailscale is installed/);
 });
 
-test("system: plan with Tailscale up sets the operator and enables the socket", () => {
-  const argv = installPlan({ ...BASE, ...READY }).filter(s => s.do === "run").map(s => /** @type {any} */ (s).argv.join(" "));
-  assert.deepEqual(argv, ["systemctl daemon-reload", "tailscale set --operator=alex", "systemctl enable --now vyre.socket",
-    "systemctl enable vyre.service", "systemctl restart vyre.service"]);
-});
-
-test("system: plan is idempotent once units match and operator is set", () => {
+test("system: plan is idempotent once the unit matches", () => {
   const u = units(BASE);
-  const steps = installPlan({ ...BASE, ...READY, tailscale: { ...READY.tailscale, operator: "alex" },
-    hasUnit: { service: u["vyre.service"], socket: u["vyre.socket"] } });
+  const steps = installPlan({ ...BASE, ...NOTHING, hasUnit: { service: u["vyre.service"] } });
   assert.ok(!steps.some(s => s.do === "write"));
-  assert.deepEqual(steps.filter(s => s.do === "run").map(s => /** @type {any} */ (s).argv.join(" ")),
-    ["systemctl enable --now vyre.socket", "systemctl start vyre.service"]);
+  assert.deepEqual(steps.filter(s => s.do === "run").map(s => /** @type {any} */ (s).argv.join(" ")), ["systemctl start vyre.service"]);
 });
 
-test("system: a changed socket unit is rewritten, reloaded and restarted", () => {
-  const u = units(BASE);
-  const steps = installPlan({ ...BASE, ...READY, port: 8443, tailscale: { ...READY.tailscale, operator: "alex" },
-    hasUnit: { service: u["vyre.service"], socket: u["vyre.socket"] } });
-  assert.deepEqual(steps.filter(s => s.do === "write").map(s => path.basename(/** @type {any} */ (s).path)), ["vyre.socket"]);
-  assert.deepEqual(steps.filter(s => s.do === "run").map(s => /** @type {any} */ (s).argv.join(" ")), ["systemctl daemon-reload",
-    "systemctl enable --now vyre.socket", "systemctl restart vyre.socket", "systemctl enable vyre.service", "systemctl restart vyre.service"]);
+test("system: a changed service unit is rewritten, reloaded and restarted", () => {
+  const steps = installPlan({ ...BASE, ...NOTHING, hasUnit: { service: "an older unit" } });
+  assert.deepEqual(steps.filter(s => s.do === "write").map(s => path.basename(/** @type {any} */ (s).path)), ["vyre.service"]);
+  assert.deepEqual(steps.filter(s => s.do === "run").map(s => /** @type {any} */ (s).argv.join(" ")), ["systemctl daemon-reload", "systemctl enable vyre.service", "systemctl restart vyre.service"]);
 });
 
 test("system: no systemd means a note and nothing else", () => {
-  const steps = installPlan({ ...BASE, ...NOTHING, systemd: false });
+  const steps = installPlan({ ...BASE, systemd: false });
   assert.equal(steps.length, 1);
   assert.equal(steps[0].do, "note");
   assert.match(/** @type {any} */ (steps[0]).text, /systemd is required.*vyre daemon/);
@@ -93,9 +72,8 @@ test("system: no systemd means a note and nothing else", () => {
 test("system: uninstall keeps ~/.vyre unless purged", () => {
   const plain = uninstallPlan({ home: "/home/alex" });
   assert.deepEqual(lines(plain).filter(l => !l.startsWith("note")).map(l => l.split("  #")[0]), [
-    "run systemctl disable --now vyre.service vyre.socket",
+    "run systemctl disable --now vyre.service",
     "remove /etc/systemd/system/vyre.service",
-    "remove /etc/systemd/system/vyre.socket",
     "run systemctl daemon-reload",
   ]);
   assert.match(lines(plain).join("\n"), /vyre name release/);
@@ -112,7 +90,7 @@ test("system: apply is a dry run by default and changes nothing", async t => {
   const etc = path.join(tempHome(t), "etc");
   const home = path.join(path.dirname(etc), "home");
   const calls = [], out = [];
-  const steps = installPlan({ ...BASE, home, ...READY, etc });
+  const steps = installPlan({ ...BASE, home, ...NOTHING, etc });
   const r = await apply(steps, { out: l => out.push(l), exec: argv => calls.push(argv) });
   assert.equal(calls.length, 0);
   assert.ok(!fs.existsSync(etc) && !fs.existsSync(home));
@@ -125,39 +103,30 @@ test("system: apply for real writes into the given root and runs argv", async t 
   const base = tempHome(t);
   const etc = path.join(base, "etc"), home = path.join(base, "home");
   const calls = [];
-  await apply(installPlan({ ...BASE, home, ...READY, etc }), { dryRun: false, out: () => {}, exec: argv => { calls.push(argv); return ""; } });
+  await apply(installPlan({ ...BASE, home, ...NOTHING, etc }), { dryRun: false, out: () => {}, exec: argv => { calls.push(argv); return ""; } });
   assert.equal(fs.readFileSync(path.join(etc, "vyre.service"), "utf8"), units({ ...BASE, home })["vyre.service"]);
-  assert.equal(fs.statSync(path.join(etc, "vyre.socket")).mode & 0o777, 0o644);
   assert.equal(fs.statSync(path.join(home, ".vyre")).mode & 0o777, 0o700);
-  assert.deepEqual(fs.readdirSync(etc).sort(), ["vyre.service", "vyre.socket"], "no temp files");
+  assert.deepEqual(fs.readdirSync(etc).sort(), ["vyre.service"], "no temp files");
   assert.deepEqual(calls[0], ["chown", "alex:alex", path.join(home, ".vyre")]);
-  assert.deepEqual(calls.slice(1).map(a => a.join(" ")), ["systemctl daemon-reload", "tailscale set --operator=alex",
-    "systemctl enable --now vyre.socket", "systemctl enable vyre.service", "systemctl restart vyre.service"]);
+  assert.deepEqual(calls.slice(1).map(a => a.join(" ")), ["systemctl daemon-reload", "systemctl enable vyre.service", "systemctl restart vyre.service"]);
 
   // Uninstall: an optional step that fails does not stop the rest.
   const r = await apply(uninstallPlan({ home, etc, purge: true }), { dryRun: false, out: () => {},
     exec: argv => { if (argv[1] === "disable") throw new Error("Unit vyre.service not loaded."); } });
-  assert.deepEqual(r.failed, ["systemctl disable --now vyre.service vyre.socket"]);
+  assert.deepEqual(r.failed, ["systemctl disable --now vyre.service"]);
   assert.deepEqual(fs.readdirSync(etc), []);
   assert.ok(!fs.existsSync(path.join(home, ".vyre")));
 });
 
-test("system: detect reads units, the device and the operator through injected probes", () => {
-  const files = { "/run/systemd/system": true, "/sys/class/net/tailscale0": true };
+test("system: detect reads systemd and the unit through an injected file system", () => {
+  const files = { "/run/systemd/system": true };
   const fakeFs = /** @type {any} */ ({
     existsSync: p => !!files[p],
     readFileSync: p => { if (p === "/etc/systemd/system/vyre.service") return "unit"; throw Object.assign(new Error("no"), { code: "ENOENT" }); },
   });
-  const d = detect({ fs: fakeFs, exec: argv => argv[1] === "debug" ? JSON.stringify({ OperatorUser: "alex" }) : "1.80.0" });
-  assert.deepEqual(d, { systemd: true, tailscale: { installed: true, device: true, operator: "alex" }, units: { service: "unit", socket: undefined } });
-
-  const none = detect({ fs: /** @type {any} */ ({ existsSync: () => false, readFileSync: () => { throw new Error("no"); } }),
-    exec: () => { throw new Error("not found"); } });
-  assert.deepEqual(none.tailscale, { installed: false, device: false, operator: null });
-  assert.equal(none.systemd, false);
-
-  const garbled = detect({ fs: fakeFs, exec: argv => argv[1] === "debug" ? "not json" : "" });
-  assert.equal(garbled.tailscale.operator, null);
+  assert.deepEqual(detect({ fs: fakeFs }), { systemd: true, units: { service: "unit" } });
+  const none = detect({ fs: /** @type {any} */ ({ existsSync: () => false, readFileSync: () => { throw new Error("no"); } }) });
+  assert.deepEqual(none, { systemd: false, units: { service: undefined } });
 });
 
 // --- the installer script, run against stub commands ---
@@ -170,7 +139,7 @@ function stubs(dir, log, site, extra = {}) {
     docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
   "ps -q") echo vyrecontainer ;;
-  "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
+  "volume ls") echo vyre_vyre-home; echo vyre_vyre-work ;;
 esac
 # The update's signature check runs Node in the image: docker run ... --entrypoint node IMAGE -e CODE KEY SIG.
 if [ "$1" = run ]; then shift; while [ $# -gt 0 ] && [ "$1" != --entrypoint ]; do shift; done; shift 3; exec ${process.execPath} "$@"; fi
@@ -556,13 +525,11 @@ esac
 exit 0` };
 
 const E = "\u001b";
-const ONBOARDING = [
-  "", `  vyred ${E}[32mrunning${E}[0m ${E}[2m· 0.3.0 · box${E}[0m`, "",
-  `  Open this link to set up Vyre ${E}[2m(it works once, for an hour)${E}[0m:`, "",
-  `    ${E}[32mhttp://127.0.0.1:7300/onboard?t=abc123${E}[0m`, "",
-  "  This box is headless. On your own computer, run this first, then open the link there:",
-  "    ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4", "",
+const UNPAIRED = [
+  "", `  vyred ${E}[32mrunning${E}[0m ${E}[2m· 0.3.0 · box${E}[0m`,
+  `  not paired yet. Pair this server from your Vyre app: run ${E}[32mvyre call wink.server.code '{"qr":true}'${E}[0m here, then scan the QR or paste the long code.`, "",
 ].join("\n");
+const PAIR_LINE = `VYRE_PAIR=vyre call wink.server.code '{"qr":true}'\n`;
 
 function linkBox(t, printed) {
   const box = setup(t, UP_PRINTS);
@@ -573,34 +540,34 @@ function linkBox(t, printed) {
   return { ...box, env: { ...box.env, VYRE_TEST_UP: up } };
 }
 
-test("box/vyre: up --print-link prints only VYRE_LINK and VYRE_SSH", t => {
-  const box = linkBox(t, ONBOARDING);
+test("box/vyre: up --print-link prints only how to pair an unpaired server (no link: there is no setup page)", t => {
+  const box = linkBox(t, UNPAIRED);
   for (const [args, env] of [[["up", "--print-link"], {}], [["up"], { VYRE_LINK_ONLY: "1" }]]) {
     const r = spawnSync("sh", [WRAPPER, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...box.env, ...env } });
     assert.equal(r.status, 0, r.stderr);
-    assert.equal(r.stdout, "VYRE_LINK=http://127.0.0.1:7300/onboard?t=abc123\nVYRE_SSH=ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4\n");
+    assert.equal(r.stdout, PAIR_LINE);
   }
 });
 
-test("box/vyre: up --print-link after onboarding gives the address, and fails with no link", t => {
-  const done = linkBox(t, `  vyred is already running · 0.3.0 · box\n  your address: ${E}[32mhttps://alex.vyre.run${E}[0m\n`);
+test("box/vyre: up --print-link on a paired server names its space, and fails only when vyre up said neither", t => {
+  const done = linkBox(t, `  vyred is already running · 0.3.0 · box\n  paired to ${E}[32malex${E}[0m${E}[2m · by Alex's phone${E}[0m\n`);
   const r = spawnSync("sh", [WRAPPER, "up", "--print-link"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: done.env });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, "VYRE_LINK=https://alex.vyre.run\n");
+  assert.equal(r.stdout, "VYRE_PAIRED=alex\n");
 
-  const none = linkBox(t, "  onboarding is not available: something broke\n");
+  const none = linkBox(t, "  pairing is not available on this server: something broke\n");
   const bad = spawnSync("sh", [WRAPPER, "up", "--print-link"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: none.env });
   assert.equal(bad.status, 1);
   assert.equal(bad.stdout, "");
-  assert.match(bad.stderr, /something broke[\s\S]*vyre up printed no link/);
+  assert.match(bad.stderr, /something broke[\s\S]*neither paired nor how to pair/);
 });
 
 test("install-box.sh: --print-link ends with only the machine-readable lines on stdout", t => {
   const up = path.join(tempHome(t), "up.txt");
-  fs.writeFileSync(up, ONBOARDING);
+  fs.writeFileSync(up, UNPAIRED);
   const r = runScript(t, ["--yes", "--print-link", "--from", REPO], UP_PRINTS, () => {}, { VYRE_TEST_UP: up });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, "VYRE_LINK=http://127.0.0.1:7300/onboard?t=abc123\nVYRE_SSH=ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4\n");
+  assert.equal(r.stdout, PAIR_LINE);
   assert.match(r.stderr, /the stack goes in/);
   assert.ok(r.calls.includes("docker compose exec -T -e SSH_CONNECTION= -e VYRE_HOST_USER=alex vyre vyre up"), r.calls.join("\n"));
 });

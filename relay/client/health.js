@@ -4,9 +4,9 @@
 //
 //   { reach: "direct"|"relay"|"none", why, fix?: { action, label }, since, tailnet?: { path, latencyMs } }
 //
-// "direct" is the tailnet path being current, "relay" is the relay path being current with its
-// channel open, "none" is neither. A phone cannot see which route Tailscale took inside, so
-// `tailnet` appears only when the caller measured a round trip (`rtt`, as paths.js reports it).
+// "direct" is the direct path being current, "relay" is the relay path being current with its
+// channel open, "none" is neither. A phone cannot see which route the direct path took inside, so
+// `tailnet` (the direct path's detail; the key keeps its name for the apps that read it) appears only when the caller measured a round trip (`rtt`, as paths.js reports it).
 // No timers: the answer is read when asked, and `watch` only remembers when the reach last changed.
 
 const now0 = () => Date.now();
@@ -32,8 +32,8 @@ export function health(source, o = {}) {
 
   if (kind === "direct") {
     // Current is the best path that answered; good === false is a failure not yet moved off.
-    if (cur.good === false) return { reach: "none", why: "Your server does not answer over Tailscale.", fix: { action: "open-tailscale", label: "Open Tailscale" }, since };
-    return { reach: "direct", why: "Connected to your server over Tailscale.", since,
+    if (cur.good === false) return { reach: "none", why: "Your server does not answer on its direct address.", fix: retry, since };
+    return { reach: "direct", why: "Connected to your server directly.", since,
       ...(rtt !== null ? { tailnet: { path: "direct", latencyMs: rtt } } : {}) };
   }
   if (kind === "relay") {

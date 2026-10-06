@@ -34,6 +34,9 @@ import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
 import { createNetd } from "./netd.js";
+import { createNetJoin } from "./netjoin.js";
+import { relayKeyPair } from "./directkey.js";
+import { relayUrlProblem } from "../../lib/relay-url.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, resumeServing, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL, SCAN_TOOL } from "./storage/bridge.js";
 import { createHolds, holdDrive } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -324,6 +327,7 @@ export function createWink(inject = {}) {
     const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
     /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
+    /** @type {ReturnType<typeof createNetJoin> | null} */ let liveJoin = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
@@ -345,11 +349,31 @@ export function createWink(inject = {}) {
       ports: inject.ports,
       offers: inject.offers || (ctx.kernel && typeof ctx.kernel.offersPort === "function" ? ctx.kernel.offersPort() : undefined),
       // what a server being paired needs to reach this home: the built-in network's control address and a one-time join key when it has an address another machine can reach (netd.handover), else nothing
-      handover: inject.handover || (async (/** @type {any} */ q) => (netdRef ? netdRef.handover(q) : null)),
+      handover: inject.handover || (async (/** @type {any} */ q) => {
+        const net = netdRef ? await netdRef.handover(q).catch(() => null) : null;
+        // the relay way back to this home, for when the direct path is down: its route and key, and a row for this server's own relay key (derived from the peer secret both hold)
+        const back = await relayHandover(q).catch(() => null);
+        return net || back ? { ...(back || {}), ...(net || {}) } : null;
+      }),
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
+    /** What a server needs to reach this home through the relay: the relay, this home's route and key. Admits the server's own relay key (core/wink/directkey.js relayKeyPair) as a row of kind server first. @param {any} q */
+    const relayHandover = async q => {
+      if (!q || typeof q.device !== "string" || !q.device) return null;
+      const rr = /** @type {any} */ (await ctx.call("relay.route.id", {}));
+      const st = /** @type {any} */ (await ctx.call("relay.status", {}));
+      const route = rr && rr.data && rr.data.route, box = rr && rr.data && rr.data.box;
+      const url = String((st && st.data && st.data.url) || (ctx.config.relay && ctx.config.relay.url) || "");
+      if (!route || !box || !url) return null;
+      // a plain ws:// relay is never published to a server in a release build (a browser page cannot open it): no relay way back, and the log says why
+      const bad = relayUrlProblem(url);
+      if (bad) { ctx.log(`wink: no relay way back handed to a server: ${bad}`); return null; }
+      const a = /** @type {any} */ (await ctx.call("relay.devices.admit-server", { pub: Buffer.from(relayKeyPair(pairing.peers.secretFor(q.device)).publicKey).toString("base64url"), server: q.device }));
+      if (a && a.error) return null;
+      return { relay: url, route: String(route), box: String(box) };
+    };
     pairing.tools();
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
@@ -721,22 +745,55 @@ export function createWink(inject = {}) {
     // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
     // The built-in network (core/wink/netd.js): Headscale, the gate and the Wink node, started in the background on a server home. It hands its node host to the
     // network status above; a box with no programs installed says "no-binary" there and the relay carries everything. `inject.netd === false` is a test seam that leaves it off.
+    const dirCall = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      const r = /** @type {any} */ (await ctx.call(tool, input));
+      if (r && r.error) throw Object.assign(new Error(r.error.message || String(r.error)), { code: r.error.code });
+      return r && "data" in r ? r.data : r;
+    };
     const netd = inject.netd === false ? null : createNetd({
       root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
       space: spaceId,
       box: async () => { const r = /** @type {any} */ (await ctx.call("relay.route.id", {})); return String((r && r.data && (r.data.box || r.data.route)) || ""); },
-      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; },
+      // a device on the identity list, else a live paired server of this home (its key is derived from the peer secret this home holds for it, core/wink/directkey.js)
+      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); const e = r && !r.error ? (r.data !== undefined ? r.data : r) : null; return e || pairing.peers.directEntry(eid); },
       serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
       onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
+      devices: () => { try { return /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE removed_at IS NULL").all()).map(r => String(r.id)); } catch { return []; } },
       log: m => ctx.log(m),
       relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
       enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
+      // the public gate: this box's name and the name directory's DNS calls, which the names module signs for (names.directory.*, this module only)
+      name: () => (ctx.config && typeof ctx.config.name === "string" && ctx.config.name && ctx.config.network && ctx.config.network.via === "vyre.run" ? ctx.config.name : null),
+      directory: {
+        acme: async (/** @type {string} */ token) => dirCall("names.directory.acme", { token }),
+        acmeClear: async () => dirCall("names.directory.acme-clear", {}),
+        publish: async () => dirCall("names.directory.publish", {}),
+      },
+      // public ingress: the public gate carries POST /hooks/<route> and GET /s/<token> to the hooks listener and the share server on loopback (control/gate.js), nothing else
+      ingress: {
+        hooks: async () => { try { const r = /** @type {any} */ (await ctx.call("hooks.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+        share: async () => { try { const r = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); const d = r && r.data; return d && d.on && d.available && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+      },
+      onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); },
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
+      ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.gatePort) ? { gatePort: ctx.config.wink.gatePort } : {}),
       ...(inject.netd || {}),
     });
-    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
+    const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
+      ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged())] : [];
+    registerNetwork(ctx, { identity: ports.network, ...(netd ? { ingress: () => netd.ingress() } : {}), ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();
+    // A paired server's side: what the home handed over at adopt time (controlUrl, join key, node name, the home's door) joins the home's network, direct with the relay as fallback.
+    const join = inject.netjoin === false ? null : createNetJoin({ name: String(ctx.config.name || "a server"), root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), ownHandover: () => pairing.ownHandover(), log: m => ctx.log(m), ...(inject.netjoin || {}) });
+    // a removed device that was a server loses its relay row too (the door also asks "is this still a paired server" on every call, so this only tidies)
+    const offDrop = [ctx.events.on("wink.removed", (/** @type {any} */ e) => { const d = e && e.payload && e.payload.device; if (typeof d === "string" && d) void Promise.resolve(ctx.call("relay.devices.drop-server", { server: d })).catch(() => {}); })];
+    const offJoin = join ? [ctx.events.on("wink.server-adopted", () => { void join.refresh(); }), ctx.events.on("wink.server-released", () => { void join.refresh(); })] : [];
+    liveJoin = join;
+    if (join) void join.start();
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -852,6 +909,8 @@ export function createWink(inject = {}) {
       bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       ownHandover: () => pairing.ownHandover(),
+      join: () => liveJoin,
+      netd: () => netdRef,
       async stop() {
         live = null;
         liveLinks = null;
@@ -859,6 +918,8 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
+        for (const off of offNetd) { try { off(); } catch {} }
+        for (const off of offDrop) { try { off(); } catch {} }
         for (const off of offHold) { try { off(); } catch {} }
         try { offBridge(); } catch {}
         dropHold();
@@ -866,6 +927,7 @@ export function createWink(inject = {}) {
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
         try { if (netd) await netd.stop(); } catch {}
+        try { if (join) { for (const off of offJoin) { try { off(); } catch {} } await join.stop(); } } catch {}
       },
     };
   },
@@ -881,6 +943,8 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
   Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
   Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
+  Object.defineProperty(mod, "netd", { enumerable: false, get: () => (live && live.netd ? live.netd() : null) });
+  Object.defineProperty(mod, "join", { enumerable: false, get: () => (live && live.join ? live.join() : null) });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;

@@ -176,6 +176,16 @@ jobs:
           [ -f site/box/shell.json ] && cp site/box/shell.json dist/ || { echo "build-site made no shell.json"; exit 1; }
           # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
           node scripts/setup-hashes.mjs dist
+      - name: The Wink node program for a Mac server (wink-forwarder-darwin-<arch>), built in the pinned Go image the box image uses
+        run: |
+          # The Mac installer (scripts/install-mac-server.sh setup_wink_net) takes it from the signed SHA256SUMS like every file. Same Go image digest as box/Dockerfile's winknode stage.
+          img=$(sed -n 's/^FROM \(golang:[^ ]*\) AS winknode$/\1/p' box/Dockerfile)
+          [ -n "$img" ] || { echo "box/Dockerfile has no winknode stage"; exit 1; }
+          for a in arm64 amd64; do
+            docker run --rm -v "$PWD/wink/forwarder:/src:ro" -v "$PWD/dist:/out" -w /src -e CGO_ENABLED=0 -e GOOS=darwin -e GOARCH=$a "$img" \
+              go build -trimpath -ldflags="-s -w" -o /out/wink-forwarder-darwin-$a .
+          done
+          ls -l dist/wink-forwarder-darwin-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared

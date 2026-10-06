@@ -14,7 +14,7 @@
       "onboard.machine",
       "onboard.name",
       "onboard.claude",
-      "onboard.tailscale",
+      "onboard.pair",
       "onboard.join",
       "onboard.history",
       "onboard.skip",

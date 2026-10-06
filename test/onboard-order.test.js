@@ -70,7 +70,7 @@ test("once the server has an owner, the person's own session signs the AI accoun
 test("with an owner, a model, another module, an agent and a second person's label still cannot sign in or claim a name", { timeout: 60_000 }, async t => {
   const d = await box(t, { ownerSeen: true });
   for (const caller of ["mcp", "mcp:thread:t", "mcp:agent:a", "module:other", "agent:juno", "tailnet-guest:bob", "anonymous", "hook"]) {
-    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.name", { action: "claim", name: "alexbox", confirm: true }], ["onboard.tailscale", { action: "connect" }], ["onboard.finish", {}]]) {
+    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.name", { action: "claim", name: "alexbox", confirm: true }], ["onboard.history", { action: "start" }], ["onboard.finish", {}]]) {
       const r = await d.registry.call(/** @type {string} */ (tool), input, caller);
       assert.ok(r.error && /^(denied|no_such_tool|not_allowed|forbidden)$/.test(r.error.code || ""), `${caller} ${tool} -> ${code(r)} ${r.error ? r.error.message : ""}`);
     }

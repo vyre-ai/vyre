@@ -200,8 +200,6 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
-  // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
-  tailscale: ["network"],
   thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
@@ -468,7 +466,7 @@ export const SURFACE_LABELS = PERSON_SURFACES;
 const LEGACY_PHONE = "mobile";
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
-export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "server", "unknown", "core", "vault"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "tailnet", "device", "space", "agent"]);

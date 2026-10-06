@@ -1,7 +1,7 @@
 // @ts-check
-// `vyre hooks`: webhooks from the internet through Funnel (core/hooks). Lists what is open, reads
-// what Funnel publishes, and opens or closes one route at a time, each of which needs a person
-// (ADR 0004). Vyre never runs the Funnel command; this prints it.
+// `vyre hooks`: webhooks from the internet (core/hooks). Lists what is open, says
+// whether the internet can reach it, and opens or closes one route at a time, each of which needs a person
+// (ADR 0004).
 
 import { call } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
@@ -13,7 +13,7 @@ const USAGE = "vyre hooks [list|status|on|off|open <name> --scheme hmac-sha256|g
 /** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
 export const VERBS = [
   { verb: "list", summary: "the listener and each open route, with its recent deliveries", usage: "[--json]", read: true },
-  { verb: "status", summary: "what Funnel publishes, next to what is open, and what to fix", usage: "[--json]", read: true },
+  { verb: "status", summary: "what is open, and whether the internet can reach it", usage: "[--json]", read: true },
   { verb: "on", summary: "start the webhook listener", usage: "[--json]", person: true },
   { verb: "off", summary: "stop the webhook listener", usage: "[--json]", person: true },
   { verb: "open", summary: "open one route, checked with a secret from the vault", usage: "<name> --scheme hmac-sha256|github|stripe --secret <item> [--header <name>] [--json]", person: true },
@@ -53,20 +53,14 @@ async function status() {
   if (r.error) return fail(r);
   if (json()) return emit(r.data);
   const d = r.data;
-  out(`  listener ${d.listening ? signal(`on ${d.host}:${d.port}`) : dim("off")} · funnel attribute ${d.node.funnel ? signal("yes") : beacon("no")} · https ${d.node.https ? signal("yes") : beacon("no")}`);
-  if (!d.funnel.read) out(beacon(`  could not read Funnel: ${d.funnel.why}`));
+  out(`  listener ${d.listening ? signal(`on ${d.host}:${d.port}`) : dim("off")}`);
   for (const n of d.routes) out(`  ${bold(n)}  ${d.urls[n] || dim("no public address yet")}`);
-  for (const m of d.mismatches) {
-    out(`  ${m.harmless ? dim("note") : beacon("fix")} ${m.message}`);
-    if (m.fix) out(dim(`      ${m.fix}`));
-  }
-  if (!d.mismatches.length && d.routes.length) out(signal("  Funnel publishes every open route, and nothing else"));
-  out(dim(`  ${d.docker}`));
+  if (d.public && !d.public.available) out(dim(`  ${d.public.why}`));
   return 0;
 }
 
 export default {
-  name: "hooks", order: 45, usage: "vyre hooks [list|status|on|off|open <name>|close <name>] [--json]", summary: "webhooks from the internet through Funnel, one route at a time",
+  name: "hooks", order: 45, usage: "vyre hooks [list|status|on|off|open <name>|close <name>] [--json]", summary: "webhooks from the internet, one route at a time",
   verbs: VERBS,
   async run(args) {
     const [verb = "list", ...rest] = args.filter(a => a !== "--json");
@@ -95,8 +89,6 @@ export default {
       if (r.error) return fail(r);
       if (json()) return emit(r.data);
       out(`  /hooks/${name} closed ${dim("· vyred answers 404 there now")}`);
-      out(dim(`  stop publishing it: ${r.data.funnel.close}`));
-      if (r.data.funnel.off) out(dim(`  no routes left; turn the Funnel port off: ${r.data.funnel.off}`));
       return 0;
     }
     return bad();

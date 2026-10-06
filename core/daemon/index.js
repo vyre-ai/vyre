@@ -3,7 +3,7 @@
 //
 // It opens the store, starts the modules this machine's role calls for, and serves the API on
 // a unix socket in VYRE_HOME. Surfaces, the Harness hooks and the CLI all talk to it here and
-// nowhere else. Networking over Tailscale is layered on later by the names module; the socket
+// nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
@@ -31,7 +31,6 @@ import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
-import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 // lib/, not core/relay/index.js: importing the module itself would be a new kernel -> feature
 // edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
@@ -589,6 +588,7 @@ async function startLocked(opts, root, p, release) {
         return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
+      const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
@@ -605,7 +605,7 @@ async function startLocked(opts, root, p, release) {
         // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
       registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -1105,23 +1105,6 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
   let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
-  // A guest from another tailnet (ADR 0014 part 8) reaches only its own tools: the ones the owner
-  // listed or the policy granted it, and of those only GUEST_SAFE (core/names/guests.js). Every
-  // other tool, and every other path but the Deck's files, is "no such" thing, not "denied", so
-  // a guest learns nothing about what else is here.
-  if (caller.startsWith("tailnet-guest:")) {
-    const mine = new Set(allowedTools(cfg.network, policy.peer));
-    const isTool = url.pathname.startsWith("/v1/tools/");
-    if (isTool && !(req.method === "POST" && mine.has(decodeURIComponent(url.pathname.slice("/v1/tools/".length))))) {
-      return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
-    }
-    if (req.method === "GET" && url.pathname === "/v1/tools") {
-      return send(res, 200, { data: registry.listTools(caller).filter(t => mine.has(t.name)) });
-    }
-    if (!isTool && !(req.method === "GET" && !url.pathname.startsWith("/v1/"))) {
-      return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
-    }
-  }
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
     return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });

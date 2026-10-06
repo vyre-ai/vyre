@@ -6,9 +6,8 @@
 // changes a machine, and it changes nothing unless the caller passes dryRun: false.
 //
 // vyred runs as the box owner's own login account, never root: Claude Code, its credentials,
-// transcripts and the CLI all belong to that person, and ~/.vyre/vyred.sock stays theirs. Port
-// 443 on the tailnet interface comes from a socket unit (fd 3, see ADR 0002), so vyred needs no
-// capability and no child process can take the port first.
+// transcripts and the CLI all belong to that person, and ~/.vyre/vyred.sock stays theirs. vyred
+// opens no listener of its own on the network: the built-in network and the relay carry every connection out.
 
 import crypto from "node:crypto";
 import nodeFs from "node:fs";
@@ -24,46 +23,29 @@ export const ETC = "/etc/systemd/system";
  *   | { do: "note", text: string }} Step */
 
 const NAME = /^[a-z_][a-z0-9_-]{0,31}$/;
-const DEVICE = /^[A-Za-z0-9_.-]{1,15}$/;
 // A unit file is line-based and treats % as a specifier and whitespace as a separator, so a
 // path carrying any of those would change the unit's meaning. Refuse rather than escape.
 const SAFE_PATH = /^\/[A-Za-z0-9_@+,.:/-]*$/;
 
-function check({ user, group, home, node, pkg, port, device }) {
+function check({ user, group, home, node, pkg }) {
   if (!NAME.test(String(user))) throw new Error(`"${user}" is not a user name`);
   if (user === "root") throw new Error("vyred does not run as root; pass the box owner's own login");
   if (!NAME.test(String(group))) throw new Error(`"${group}" is not a group name`);
   for (const [k, v] of Object.entries({ home, node, pkg })) {
     if (!SAFE_PATH.test(String(v)) || String(v).includes("..")) throw new Error(`${k} "${v}" must be an absolute path without spaces, quotes or %`);
   }
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`port ${port} is not a port`);
-  if (!DEVICE.test(String(device))) throw new Error(`"${device}" is not a network device name`);
 }
 
 /**
- * The two unit files.
- * @param {{ user: string, group: string, home: string, node: string, pkg: string, port?: number, device?: string }} o
- * @returns {{ "vyre.service": string, "vyre.socket": string }}
+ * The unit file.
+ * @param {{ user: string, group: string, home: string, node: string, pkg: string }} o
+ * @returns {{ "vyre.service": string }}
  */
-export function units({ user, group, home, node, pkg, port = 443, device = "tailscale0" }) {
-  check({ user, group, home, node, pkg, port, device });
-  const socket = `[Unit]
-Description=Vyre tailnet listener
-After=tailscaled.service
-Wants=tailscaled.service
-
-[Socket]
-ListenStream=${port}
-BindToDevice=${device}
-FileDescriptorName=tailnet
-NoDelay=true
-
-[Install]
-WantedBy=sockets.target
-`;
+export function units({ user, group, home, node, pkg }) {
+  check({ user, group, home, node, pkg });
   const service = `[Unit]
 Description=Vyre
-After=network-online.target tailscaled.service vyre.socket
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -83,44 +65,33 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 `;
-  return { "vyre.service": service, "vyre.socket": socket };
+  return { "vyre.service": service };
 }
 
 /**
  * What to do to get vyred running under systemd, given what is already there. Running the same
  * plan twice changes nothing the second time except starting the service if it stopped.
- * @param {{ user: string, group: string, home: string, node: string, pkg: string, port?: number, device?: string,
- *   hasUnit?: { service?: string, socket?: string }, tailscale: { installed: boolean, device: boolean, operator: string|null },
- *   systemd: boolean, etc?: string }} o
+/**
+ * What to do to get vyred running under systemd, given what is already there. Running the same
+ * plan twice changes nothing the second time except starting the service if it stopped.
+ * @param {{ user: string, group: string, home: string, node: string, pkg: string,
+ *   hasUnit?: { service?: string }, systemd: boolean, etc?: string, wall?: Step[] }} o
  * @returns {Step[]}
  */
-export function installPlan({ user, group, home, node, pkg, port = 443, device = "tailscale0", hasUnit = {}, tailscale, systemd, etc = ETC, wall = [] }) {
+export function installPlan({ user, group, home, node, pkg, hasUnit = {}, systemd, etc = ETC, wall = [] }) {
   if (!systemd) {
     return [{ do: "note", text: "systemd is required for a system install (no /run/systemd/system here). "
       + "Under another supervisor, run `vyre daemon` as the box owner (not root), with VYRE_HOME set, and restart it when it exits." }];
   }
-  const u = units({ user, group, home, node, pkg, port, device });
+  const u = units({ user, group, home, node, pkg });
   /** @type {Step[]} */
   const steps = [{ do: "mkdir", path: path.join(home, ".vyre"), mode: 0o700, owner: `${user}:${group}` }];
   // The wall watchers run behind (lib/sandbox/apparmor.js): bubblewrap and, where Ubuntu restricts user namespaces, its profile.
   steps.push(...wall);
   const serviceChanged = hasUnit.service !== u["vyre.service"];
-  const socketChanged = hasUnit.socket !== u["vyre.socket"];
   if (serviceChanged) steps.push({ do: "write", path: path.join(etc, "vyre.service"), content: u["vyre.service"], mode: 0o644 });
-  if (socketChanged) steps.push({ do: "write", path: path.join(etc, "vyre.socket"), content: u["vyre.socket"], mode: 0o644 });
-  const changed = serviceChanged || socketChanged;
+  const changed = serviceChanged;
   if (changed) steps.push({ do: "run", argv: ["systemctl", "daemon-reload"], why: "pick up the changed unit files" });
-  if (tailscale.installed && tailscale.operator !== user) {
-    steps.push({ do: "run", argv: ["tailscale", "set", `--operator=${user}`], why: `let ${user} run tailscale up and tailscale cert without root` });
-  }
-  if (tailscale.device) {
-    steps.push({ do: "run", argv: ["systemctl", "enable", "--now", "vyre.socket"], why: `listen on port ${port} of ${device}` });
-    // enable --now leaves an already-listening socket on its old port; a changed unit needs a restart.
-    if (socketChanged && hasUnit.socket !== undefined) steps.push({ do: "run", argv: ["systemctl", "restart", "vyre.socket"], why: "apply the changed listener" });
-  } else {
-    steps.push({ do: "note", text: `${device} does not exist yet, so the tailnet listener is not enabled. `
-      + "It is enabled on the next run after Tailscale is installed and up; until then vyred serves only its local socket." });
-  }
   if (changed) {
     steps.push({ do: "run", argv: ["systemctl", "enable", "vyre.service"], why: "start vyred at boot" });
     steps.push({ do: "run", argv: ["systemctl", "restart", "vyre.service"], why: "run vyred with the new units" });
@@ -140,9 +111,8 @@ export function uninstallPlan({ purge = false, home, etc = ETC, wall = [] }) {
   /** @type {Step[]} */
   const steps = [
     { do: "note", text: "DNS records for your vyre.run name are released with `vyre name release`, run before uninstalling; this does not release them." },
-    { do: "run", argv: ["systemctl", "disable", "--now", "vyre.service", "vyre.socket"], why: "stop vyred and its listener", optional: true },
+    { do: "run", argv: ["systemctl", "disable", "--now", "vyre.service"], why: "stop vyred", optional: true },
     { do: "remove", path: path.join(etc, "vyre.service") },
-    { do: "remove", path: path.join(etc, "vyre.socket") },
     { do: "run", argv: ["systemctl", "daemon-reload"], why: "forget the removed units", optional: true },
     ...wall,
   ];
@@ -212,23 +182,14 @@ function writeAtomic(fs, target, text, mode) {
   fs.chmodSync(target, mode);
 }
 
-const readOut = argv => execFileSync(argv[0], argv.slice(1), { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-
 /**
  * Look at the machine. Read-only; every probe that fails reads as "not there".
- * @param {{ fs?: typeof nodeFs, exec?: (argv: string[]) => string, etc?: string, device?: string }} [o]
+ * @param {{ fs?: typeof nodeFs, etc?: string }} [o]
  */
-export function detect({ fs = nodeFs, exec = readOut, etc = ETC, device = "tailscale0" } = {}) {
+export function detect({ fs = nodeFs, etc = ETC } = {}) {
   const read = p => { try { return fs.readFileSync(p, "utf8"); } catch { return undefined; } };
-  let installed = false;
-  try { exec(["tailscale", "version"]); installed = true; } catch {}
-  let operator = null;
-  if (installed) {
-    try { operator = JSON.parse(String(exec(["tailscale", "debug", "prefs"]))).OperatorUser || null; } catch {}
-  }
   return {
     systemd: fs.existsSync("/run/systemd/system"),
-    tailscale: { installed, device: fs.existsSync(path.join("/sys/class/net", device)), operator },
-    units: { service: read(path.join(etc, "vyre.service")), socket: read(path.join(etc, "vyre.socket")) },
+    units: { service: read(path.join(etc, "vyre.service")) },
   };
 }

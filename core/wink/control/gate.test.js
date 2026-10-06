@@ -6,7 +6,7 @@ import http from "node:http";
 import net from "node:net";
 import tls from "node:tls";
 import https from "node:https";
-import { createGate, NOT_FOUND, certPin, parseHeadscaleLog, addrKey } from "./gate.js";
+import { createGate, NOT_FOUND, certPin, parseHeadscaleLog, addrKey, INGRESS_BODY_LIMIT as INGRESS_LIMIT } from "./gate.js";
 import { selfSigned } from "./testing/selfsigned.js";
 
 /** A fake Headscale: records every request, answers /key, upgrades /ts2021 and /derp into an echo. */
@@ -291,4 +291,90 @@ test("gate: TLS to the upstream, pinned", async t => {
   await bad.listen(); t.after(() => bad.close());
   assert.match((await raw(/** @type {number} */ (bad.address()?.port), get("/key", "Connection: close\r\n"))).toString(), /^HTTP\/1\.1 503/);
   assert.equal(seen.length, 1);
+});
+
+// ---- public ingress: two loopback listeners, by exact shape, and nothing else ----
+
+/** A fake hooks listener and a fake share server on loopback; they record every request. */
+async function listeners() {
+  /** @type {{ who: string, method: string, url: string, headers: Record<string, any>, body: string }[]} */ const seen = [];
+  const mk = who => http.createServer((req, res) => {
+    let b = ""; req.on("data", d => (b += d));
+    req.on("end", () => { seen.push({ who, method: /** @type {string} */ (req.method), url: /** @type {string} */ (req.url), headers: req.headers, body: b }); res.writeHead(who === "hooks" ? 202 : 200, { "content-type": "text/plain", "x-who": who }); res.end(req.method === "HEAD" ? undefined : who === "hooks" ? "" : "shared page"); });
+  });
+  const hooks = mk("hooks"), share = mk("share");
+  await new Promise(r => hooks.listen(0, "127.0.0.1", () => r(undefined)));
+  await new Promise(r => share.listen(0, "127.0.0.1", () => r(undefined)));
+  return { seen, hooksPort: /** @type {net.AddressInfo} */ (hooks.address()).port, sharePort: /** @type {net.AddressInfo} */ (share.address()).port, close() { hooks.close(); share.close(); hooks.closeAllConnections(); share.closeAllConnections(); } };
+}
+const TOKEN = "AbCdEfGhIjKlMnOpQrStUv_-0123456789";
+const post = (p, body, extra = "") => `POST ${p} HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n${extra}\r\n${body}`;
+
+test("gate ingress: a signed webhook and a share link reach their own loopback listener, with the real address and no spoofed headers", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  const h = (await raw(port, post("/hooks/northwind-orders", '{"a":1}', "X-Hub-Signature-256: sha256=abc\r\nX-Forwarded-For: 6.6.6.6\r\nTrue-Client-IP: 6.6.6.6\r\n"))).toString();
+  assert.match(h, /^HTTP\/1\.1 202 /);
+  assert.deepEqual(ls.seen.map(s => [s.who, s.method, s.url, s.body]), [["hooks", "POST", "/hooks/northwind-orders", '{"a":1}']]);
+  assert.equal(ls.seen[0].headers["x-hub-signature-256"], "sha256=abc", "the signature header reaches the home");
+  assert.equal(ls.seen[0].headers["x-forwarded-for"], "127.0.0.1", "a client's own forwarding header is replaced by the socket's address");
+  assert.equal(ls.seen[0].headers["true-client-ip"], undefined);
+  const s = (await raw(port, get(`/s/${TOKEN}`, "Range: bytes=0-3\r\nConnection: close\r\n"))).toString();
+  assert.match(s, /^HTTP\/1\.1 200 /);
+  assert.match(s, /shared page/);
+  assert.equal(ls.seen[1].who, "share"); assert.equal(ls.seen[1].headers.range, "bytes=0-3");
+  const hd = (await raw(port, `HEAD /s/${TOKEN}/ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`)).toString();
+  assert.match(hd, /^HTTP\/1\.1 200 /);
+  assert.equal(be.seen.length, 0, "Headscale was never asked");
+  assert.doesNotMatch(s + h, /server:|node|headscale/i);
+});
+
+test("gate ingress: everything that is not exactly those two shapes is the same 404 and reaches nothing", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  const big = "x".repeat(INGRESS_LIMIT + 1);
+  const cases = [
+    get("/hooks/northwind-orders", "Connection: close\r\n"),                                  // wrong method
+    post("/hooks/northwind-orders?x=1", "{}"), post("/hooks/Northwind", "{}"), post("/hooks/a/b", "{}"), post("/hooks/", "{}"), post("/hooks", "{}"), post("/hooks/-a", "{}"),
+    post("/hooks/" + "a".repeat(41), "{}"), post("/hooks/%61bc", "{}"), post("//hooks/abc", "{}"), post("/hooks/abc/", "{}"),
+    post("/hooks/abc", big),                                                                  // over 256 KB
+    "POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",   // wrong type
+    "POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+    "POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",     // no length
+    "PUT /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+    post(`/s/${TOKEN}`, "{}"), get(`/s/${TOKEN}?x=1`, "Connection: close\r\n"), get(`/s/${TOKEN}/x`, "Connection: close\r\n"), get("/s/short", "Connection: close\r\n"), get("/s/", "Connection: close\r\n"),
+    get(`/s/${TOKEN}`, "Upgrade: websocket\r\nConnection: Upgrade\r\n"), get(`/s/${"a".repeat(65)}`, "Connection: close\r\n"),
+    get("/", "Connection: close\r\n"), get("/health", "Connection: close\r\n"), get("/api/v1/node", "Connection: close\r\n"), get("/artifacts", "Connection: close\r\n"), get("/.env", "Connection: close\r\n"),
+    get("/ts2021", "Connection: close\r\n"), get("/derp", "Connection: close\r\n"), get("/mcp", "Connection: close\r\n"), get("/webhook", "Connection: close\r\n"),
+  ];
+  for (const c of cases) assert.deepEqual(await raw(port, c), NOT_FOUND, c.split("\r\n")[0]);
+  assert.deepEqual(ls.seen, [], "no listener was reached");
+  assert.equal(be.seen.length, 0, "Headscale was not reached by an ingress shape");
+});
+
+test("gate ingress: off unless set, and a listener that is not up answers the same 404", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const off = await setup(t);
+  assert.deepEqual(await raw(off.port, post("/hooks/abc", "{}")), NOT_FOUND);
+  assert.deepEqual(await raw(off.port, get(`/s/${TOKEN}`, "Connection: close\r\n")), NOT_FOUND);
+  const { port } = await setup(t, { ingress: { hooks: () => null, share: async () => { throw new Error("down"); } } });
+  assert.deepEqual(await raw(port, post("/hooks/abc", "{}")), NOT_FOUND);
+  assert.deepEqual(await raw(port, get(`/s/${TOKEN}`, "Connection: close\r\n")), NOT_FOUND);
+  assert.deepEqual(ls.seen, []);
+});
+
+test("gate ingress: an address that sends too many gets 429 and the next address still gets in", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const { port } = await setup(t, { ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  let limited = 0;
+  for (let i = 0; i < 130; i++) if ((await raw(port, get(`/s/${TOKEN}`, "Connection: close\r\n"))).toString().startsWith("HTTP/1.1 429")) limited++;
+  assert.ok(limited >= 10, `limited ${limited}`);
+});
+
+test("gate ingress: a sender that lies about its length never gets more than the declared bytes to the home's listener", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const { port } = await setup(t, { ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  await raw(port, `POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}${"y".repeat(5000)}`);
+  assert.ok(ls.seen.every(s => s.body === "{}" || s.body === ""), JSON.stringify(ls.seen.map(s => s.body.length)));
+  assert.ok(!ls.seen.some(s => s.body.includes("y")));
 });

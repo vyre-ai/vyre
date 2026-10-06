@@ -47,7 +47,6 @@ export const HUMAN_ONLY = new Set([
   // and the sites that leave through the owner's Mac. Switching a share the owner already made
   // between read-only and read-write is the owner's own (PERSON_ONLY below).
   "files.drive.share", "files.drive.unshare",
-  "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same

@@ -10,7 +10,7 @@
 //
 // Three kinds of schedule: cron, "webhook" (vyred's /v1/watchers/<name>/hook, token-checked), and
 // "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
-// `where`. For hook.received (core/hooks, an internet webhook through Funnel) the runtime reads the
+// `where`. For hook.received (core/hooks, an internet webhook through the Wink public gate) the runtime reads the
 // delivery with hooks.delivery and hands it to the watcher, which stays in its sandbox and never
 // calls a tool itself.
 //

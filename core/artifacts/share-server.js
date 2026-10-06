@@ -2,8 +2,8 @@
 // The public share server: the one thing that answers a public artifact link. A separate process
 // that imports nothing from Vyre and holds no socket, token or key of vyred's. It reads one folder
 // of published snapshots (<data>/public/<sha256 of the link token>/{index.html,meta.json}) and
-// nothing else, and listens on loopback only. Tailscale Funnel proxies https://<node>:8443/s/ to
-// it (tailnet owns turning Funnel on; plans/artifacts.md 3.6, AR6). The box image runs it under its
+// nothing else, and listens on loopback only. The Wink public gate (core/wink/control/gate.js) carries GET|HEAD /s/<token> from the internet to
+// it (plans/artifacts.md 3.6, AR6). The box image runs it under its
 // OWN user, never vyred's (reviewer-2 H2): given --not-uid <vyred's uid> it refuses to start as that
 // user, and it never runs as root. Run it under Node's permission model too, with read and write
 // limited to that folder. When it listens it writes <dir>/.server.json {pid, uid, port}; vyred turns
@@ -37,8 +37,8 @@ if (ME === 0 || ME === NOT_UID || NOT_UID < 0) {
 const TOKEN = /^[A-Za-z0-9_-]{22,64}$/;
 const HEADERS_404 = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" };
 
-// A small fixed budget: 60 requests a minute per link, 600 in all. Behind Funnel every request
-// comes from Tailscale's own relays, so a per-address limit would mean nothing.
+// A small fixed budget: 60 requests a minute per link, 600 in all. Behind a proxy every request
+// comes from the proxy's address, so a per-address limit would mean nothing.
 const budget = { all: 0, per: /** @type {Map<string, number>} */ (new Map()) };
 setInterval(() => { budget.all = 0; budget.per.clear(); }, 60_000).unref();
 

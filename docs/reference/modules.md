@@ -52,8 +52,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 70 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
-| [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
-| [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
+| [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
+| [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 7 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
@@ -64,7 +64,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 17 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 43 | 23 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
@@ -392,7 +392,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 
 ## hooks
 
-Inbound webhooks from the public internet through Tailscale Funnel: one route at a time, each checked by the sender's signature, stored and announced to watchers.
+Inbound webhooks from the public internet: one route at a time, each checked by the sender's signature, stored and announced to watchers.
 
 - Folder: `core/hooks`, version 0.1.0
 - Runs on: `box`
@@ -499,23 +499,21 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [10](tools.md#names), 1 of them only for other modules
-- Emits: [9 events](events.md#names)
+- Tools: [8](tools.md#names), 3 of them only for other modules
+- Emits: [3 events](events.md#names)
 - Shows on: cli
-- Needs vault: `cloudflare-vyre-token`
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## network
 
-Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
+The built-in network as the person sees it: whether this machine is signed in, per space whether the link is up (direct or through the relay), and joining or leaving a space. The work is the Wink module's; this module holds the public names (network.wink.*).
 
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [13](tools.md#network)
-- Emits: [4 events](events.md#network)
+- Tools: [4](tools.md#network)
+- Emits: no events
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## onboard
 
@@ -630,16 +628,15 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 
 ## relay
 
-A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+The way to reach the box that always works: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
 
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [43](tools.md#relay), 14 of them only for other modules
+- Tools: [42](tools.md#relay), 14 of them only for other modules
 - Emits: [23 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
-- Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## releases

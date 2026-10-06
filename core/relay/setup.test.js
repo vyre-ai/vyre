@@ -82,11 +82,11 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
-  for (const name of ["network.tailscale.logout", "network.tailscale.authkey", "network.tailscale"]) assert.equal(setupToolAllowed(name), false, name);
-  for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
+  for (const name of ["network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
+  for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.wink.statusx", "network.wink.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
   assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
@@ -131,10 +131,10 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(p.path("GET", "/v1/tools"), true);
   for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
 
-  r = await call("GET", "/v1/events?type=tailscale.changed");
+  r = await call("GET", "/v1/events?type=relay.paired");
   assert.equal(r.status, 200);
-  assert.equal(seen.at(-1).eventType, "tailscale.changed");
-  for (const type of ["device.paired", "vault.opened", "", "tailscale.changed,device.paired"]) {
+  assert.equal(seen.at(-1).eventType, "relay.paired");
+  for (const type of ["device.paired", "vault.opened", "", "tailscale.changed", "relay.paired,device.paired"]) {
     r = await call("GET", `/v1/events?type=${encodeURIComponent(type)}`);
     assert.equal(r.status, 404, `event ${type || "(none)"}`);
   }
@@ -473,11 +473,10 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
   }
 });
 
-test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in link, and can still read the status", () => {
-  assert.equal(WEB_DENY.test("network.tailscale.login"), true);
+test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {
   assert.equal(WEB_DENY.test("relay.setup.claim"), true);
   assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
-  for (const ok of ["network.tailscale.status", "network.tailscale.peers", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+  for (const ok of ["network.wink.status", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
 // ---- the setup channel, one session, end to end ----
@@ -515,7 +514,7 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
-test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in, Tailscale and a second call", async t => {
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in and a second call", async t => {
   const dirFake = await fakeDirectory(t);
   const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
@@ -532,7 +531,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   assert.equal(c1.status, 200, JSON.stringify(c1));
   assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
   await settle(200);
-  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "with no tailnet yet it waits at Found and named");
+  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
   // The real sessions tool: its askedOnly gate lets the setup device through as the person (device:<id>)
@@ -540,10 +539,6 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
   assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
   assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
-  const ts = await a.call("network.tailscale.status");
-  assert.ok(ts.data && ts.data.state, "Tailscale status answers on the setup channel");
-  const login = await a.call("network.tailscale.login");
-  assert.ok(login.data && "state" in login.data, "so does login");
   const c2 = await claim();
   assert.equal(c2.status, 200, JSON.stringify(c2));
   assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
