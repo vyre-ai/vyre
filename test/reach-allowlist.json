@@ -297,7 +297,7 @@
   },
   "memory.follow": {
    "module": "memory",
-   "default": "callers admit a model"
+   "default": "open to any caller"
   },
   "memory.graph": {
    "module": "memory",
@@ -309,7 +309,7 @@
   },
   "memory.markers": {
    "module": "memory",
-   "default": "callers admit a model"
+   "default": "open to any caller"
   },
   "memory.me": {
    "module": "memory",
