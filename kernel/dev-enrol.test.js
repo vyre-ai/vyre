@@ -45,6 +45,7 @@ test("dev-enrol-software-key and dev-sign-proof: a software owner key is enrolle
   // a release-stamped copy of the tree refuses both
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), "devenrol-")); t.after(() => fs.rmSync(copy, { recursive: true, force: true }));
   for (const d of ["kernel", "lib", "scripts"]) fs.cpSync(path.join(ROOT, d), path.join(copy, d), { recursive: true, filter: f => !/\.test\.js$/.test(f) });
+  fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(copy, "node_modules")); // the kernel imports the pinned @noble packages
   fs.writeFileSync(path.join(copy, "package.json"), '{"type":"module"}');
   fs.writeFileSync(path.join(copy, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
   const home2 = tempHome(t); homeIdentity(home2);
@@ -65,6 +66,7 @@ test("a release-kind build ignores VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE even whe
   // a release-stamped copy, as a packaged image is, run with the dev switches forwarded (what the wrapper's root-run whitelist now passes on)
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), "reladmin-")); t.after(() => fs.rmSync(copy, { recursive: true, force: true }));
   for (const d of ["kernel", "lib", "scripts"]) fs.cpSync(path.join(ROOT, d), path.join(copy, d), { recursive: true, filter: f => !/\.test\.js$/.test(f) });
+  fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(copy, "node_modules")); // the kernel imports the pinned @noble packages
   fs.writeFileSync(path.join(copy, "package.json"), '{"type":"module"}');
   fs.writeFileSync(path.join(copy, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
   const { spawn } = await import("node:child_process");
