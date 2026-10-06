@@ -121,7 +121,7 @@ for (const driver of ["cli", "sdk"]) {
     const c = (await w.tool("threads.send", { thread: th.id, text: "never mind this", surface: "deck", mode: "queue" })).data;
     assert.deepEqual((await w.tool("threads.edit", { thread: th.id, queued: b.queued_id, text: "and the autumn prices" })).data, { edited: true, queued: b.queued_id });
     assert.deepEqual((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id })).data, { unqueued: [c.queued_id] });
-    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "not_found", "a model never takes a person's words back");
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "denied", "a model never takes a person's words back");
     await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
     await w.finished(th.id, 2);
     const ev = await w.events(th.id);
@@ -507,7 +507,7 @@ for (const driver of ["cli", "sdk"]) {
     const sh = (await w.tool("threads.shell", { thread: th.id, command: "echo northwind" }, "deck")).data;
     assert.deepEqual([sh.code, sh.output.trim()], [0, "northwind"]);
     assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo x > .claude/settings.local.json" }, "deck")).error.code, "denied", "the floor holds");
-    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "not_found", "a model never runs the person's shell");
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "denied", "a model never runs the person's shell");
     await w.tool("threads.send", { thread: th.id, text: "what did it print?", surface: "deck" });
     await w.finished(th.id, 3);
     assert.match((await w.said(th.id)).at(-1), /<bash-input>echo northwind<\/bash-input>[\s\S]*<bash-stdout>northwind/);
