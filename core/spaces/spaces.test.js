@@ -1685,3 +1685,15 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
   assert.equal(row.upgraded_to, undefined, "the Personal row does not point to My Cloud until My Cloud has confirmed");
   void w;
 });
+
+test("spaces.servers: the servers this device is paired to, with the id spaces.create takes; none paired is an empty list", async t => {
+  const w = world(t);
+  const d = await device(t);
+  assert.deepEqual(await d.ok("spaces.servers"), { servers: [] }, "no wink table, no servers");
+  const db = d.db;
+  db.exec("CREATE TABLE IF NOT EXISTS wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', owner_kind TEXT, owner_id TEXT, offers TEXT, created INTEGER NOT NULL DEFAULT 0)");
+  db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("srv_box1", "server", "Home server", 2);
+  db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("ph_1", "phone", "Phone", 1);
+  assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, and not a phone");
+  void w;
+});

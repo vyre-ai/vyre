@@ -701,9 +701,7 @@ export function createRecords(cfg) {
     let id = mintUuid(clock());
     if (opts.import === true) {
       if (!isUuid(String(opts.id))) throw new KernelError("bad_input", "an imported record keeps a time-prefixed uuid id");
-      id = String(opts.id);
-      checkType(type);
-      await gate(chain, "records.import", urn(type, id));
+      id = String(opts.id); checkType(type); await gate(chain, "records.import", urn(type, id));
     } else if (opts.id !== undefined) throw new KernelError("bad_input", "ids are the kernel's to mint; an import says so");
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
@@ -1156,6 +1154,9 @@ export function createRecords(cfg) {
         } while (cursor);
       }
       for (const x of relink) if (!(await allowed(chain, "records.update", urn(x.type, x.id)))) throw new KernelError("not_allowed", "this merge would change records you may not change");
+      // Read each link value now, while the dropped record is live: Twenty reads a link to a removed record as empty, so a list read after the removal would have lost the very entry to swap.
+      /** @type {Map<string, any>} */ const linkBefore = new Map();
+      try { for (const x of relink) linkBefore.set(`${x.type}/${x.id}/${x.field}`, (await store.get(x.type, x.id)).data[x.field]); } catch (e) { throw mapError(e); }
       /** @type {(() => Promise<any>)[]} */ const undo = [];
       const done = [];
       try {
@@ -1165,8 +1166,9 @@ export function createRecords(cfg) {
           // a record linking through two fields shows up twice: take its version from the store each time
           const cur = await store.get(x.type, x.id);
           const lf = defs.find((/** @type {any} */ t) => t.name === x.type).fields.find((/** @type {any} */ g) => g.name === x.field);
-          const upd = await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, cur.data[x.field], dropUrn, keepUrn) }, cur.version);
-          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, upd.data[x.field], keepUrn, dropUrn) }, upd.version));
+          const was = linkBefore.get(`${x.type}/${x.id}/${x.field}`);
+          const upd = await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, was, dropUrn, keepUrn) }, cur.version);
+          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: was }, upd.version));
           done.push({ type: x.type, id: x.id, field: x.field });
         }
         let kept = keep;

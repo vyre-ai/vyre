@@ -33,7 +33,7 @@ export class TwentyClient {
     for (let attempt = 0; ; attempt++) {
       let res;
       try {
-        res = await this.fetch(`${this.url}/${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${this.key()}`, ...(this.hostHeader ? { host: this.hostHeader } : {}) }, body: JSON.stringify({ query, variables }), signal: AbortSignal.timeout(30_000) });
+        res = await this.fetch(`${this.url}/${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${this.key()}`, ...(this.hostHeader ? { host: this.hostHeader } : {}) }, body: JSON.stringify({ query, variables }), signal: AbortSignal.timeout(path === "metadata" ? 240_000 : 30_000) }); // a schema change (an object, a field) is slow on a small server: the tiny profile's first define timed out at 30 s
       } catch (e) {
         if (attempt < 2) { await this.sleep(200 * (attempt + 1)); continue; }
         throw new StoreError("unavailable", `Records did not answer: ${/** @type {Error} */ (e).message}`);

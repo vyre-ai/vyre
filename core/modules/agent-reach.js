@@ -9,6 +9,17 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.upgrade.plan", "part of the person's own move of their Personal space to My Cloud: the person's own act, with their presence"],
+  ["spaces.upgrade.run", "moves the person's whole Personal space to My Cloud and freezes it: needs the person's presence, the person's own act"],
+  ["spaces.upgrade.receipt", "part of the person's own move to My Cloud: the device asks it with the person's own chain"],
+  ["spaces.upgrade.wrap-key", "part of the person's own move to My Cloud: it hands over a signed key sealed values are carried to"],
+  ["spaces.moves.evidence", "part of the person's own project move to another space: the person's own act, with their presence"],
+  ["spaces.moves.receive", "part of the person's own project move to another space: the person's own act, with their presence"],
+  ["spaces.moves.receipt", "part of the person's own project move to another space: the person's own act"],
+  ["spaces.moves.finish", "finishes the person's own project move and clears or keeps the original: the person's own act"],
+  ["spaces.personal-host.set", "chooses where the person's own encrypted items live: the person's own act"],
+  ["spaces.storage.set-cap", "sets a member's storage cap: an owner's own act, an assistant never widens its own budget"],
+  ["spaces.members.add-agent", "gives an assistant a place in a space: it widens an assistant's own authority, the person's own act"],
   ["spaces.identity.republish", "republishes the person's identity list: the person's own act"],
   ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
   ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
@@ -231,6 +242,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "spaces.servers", "spaces.time-zone.set", "spaces.storage.put", "spaces.storage.put-if", "spaces.storage.get", "spaces.storage.list", "spaces.storage.delete", "spaces.storage.usage", // the person's own server list, their space's time zone and their own per-member storage: the kernel's grants and the call's own chain decide
   // what is connected (which services have a credential, which Google accounts are signed in) and the recipe to log one mailbox: the person's own, and the person's proven assistant under their grants; never a guest or an unproven caller
   "connectors.declared",
   "connectors.logging",

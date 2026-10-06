@@ -39,6 +39,8 @@ function box(t, opts = {}) {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
     VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
     VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
+    // Never the machine's own units: on a host that runs a real Vyre the uninstall sees them and keeps the wrapper.
+    VYRE_SYSTEMD_DIR: path.join(base, "systemd"),
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
   };
@@ -141,7 +143,7 @@ test("install-box.sh v2: --from as an account outside the docker group stops ear
 
 test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
   const { REQUIRE, requireFor } = await import("../stores/twenty/space-store.js");
-  assert.equal(Number(/^SPACE_MEM_TINY_MB=(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "the installer's small-server number is requireFor(4096): change both together");
+  assert.equal(Number(/^SPACE_MEM_TINY_MB=(?:\$\{VYRE_SPACE_MEM_TINY_MB:-)?(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "the installer's small-server number is requireFor(4096): change both together");
   assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });

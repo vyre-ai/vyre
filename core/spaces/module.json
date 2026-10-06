@@ -97,7 +97,15 @@
     "reach": "person"
    },
    {
+    "name": "spaces.servers", "effect": "read",
+    "reach": "person"
+   },
+   {
     "name": "spaces.upgrade.receipt", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.wrap-key", "effect": "read",
     "reach": "person"
    },
    {
@@ -118,6 +126,10 @@
    },
    {
     "name": "spaces.moves.pull-sign", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.source-channel", "effect": "read",
     "reach": "modules"
    },
    {

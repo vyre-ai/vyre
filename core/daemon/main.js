@@ -36,6 +36,6 @@ if (process.platform === "darwin") {
   const { readCoreConfig } = await import("../../lib/vyre-core-client.js");
   if (readCoreConfig()) coreKeys = (await import("../../lib/vyre-core-keys.js")).createCoreKeys();
 }
-d = await start({ coreKeys, deviceIdentity: async () => { const r = await d.registry.call("spaces.identity.device", {}, "module:vyred"); return r && r.data ? r.data : null; } }).catch(e => { console.error("vyred: " + e.message); process.exit(1); });
+d = await start({ coreKeys, deviceIdentity: async () => { const r = await d.registry.call("spaces.identity.device", {}, "module:vyred"); return r && r.data ? r.data : null; } }).catch(e => { console.error(e.code === "windows_home" ? e.message : "vyred: " + e.message); process.exit(e.code === "windows_home" ? 0 : 1); });
 // Asked to stop while starting: now that it has started, stop it.
 if (stopping) { await d.stop(); process.exit(0); }

@@ -214,8 +214,7 @@ export function createGateway(cfg) {
     authorize: authorizer.authorize,
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
-    /** Upgrading this Personal space to My Cloud: `start` (approved once), `finish`, `movedTo`. kernel/gateway/upgrade.js. */
-    upgrade,
+    upgrade, // Personal to My Cloud: start (approved once), finish, movedTo (kernel/gateway/upgrade.js)
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     memory,
