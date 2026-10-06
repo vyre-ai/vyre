@@ -204,8 +204,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x" })).error.code, "no_such_tool", "internal: modules only");
     const a = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
     assert.deepEqual([a.text, a.ok, a.warm], ["echo: who is kit", true, false]);
-    // The spare for the next question is started behind it; wait for it to be up.
-    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && ["idle", "starting"].includes(r.status) && r.id !== a.thread);
+    // The spare for the next question is started behind it; wait for it to be up and waiting (a spare still starting is not warm yet).
+    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && r.status === "idle" && r.id !== a.thread);
     await until(async () => (await quickLive()).length === 1, "the spare");
     const b = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
     assert.deepEqual([b.text, b.warm], ["echo: who is juno", true], "a fresh session that never heard the first question");
