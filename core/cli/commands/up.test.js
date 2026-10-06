@@ -176,7 +176,8 @@ test("up on a Mac: a temp or dev home never talks to a real box unless told to",
 test("up on a server: no link and no browser; unpaired it says how to pair, paired it names the space", async t => {
   world(t, running([]));
   config.save({ role: "box" });
-  const f = fakes(t, { tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
+  // no terminal: it says how to pair (on a terminal it runs the installer's pairing, pair-here.js, which has its own tests)
+  const f = fakes(t, { tty: false, tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
   f.deps.platform = "linux";
   assert.equal(await up([], f.deps), 0);
   assert.match(f.text(), /not paired yet\. Pair this server from your Vyre app: run vyre call wink\.server\.code/);
