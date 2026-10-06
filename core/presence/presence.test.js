@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { Presence, HUMAN_ONLY, PERSON_ONLY, canonical, inputHash, parse } from "./index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { discover, Registry } from "../modules/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } };
@@ -776,6 +776,12 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
   setCardRedeemer(null);
+  // The kernel's legacy gates, wired as the daemon wires them, leave the plain `outward: true` hold to this inline rule: it still holds the agent and still lets you through.
+  const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+  reg.deps.gates = createLegacyGates({ registry: reg });
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "mcp:agent:kit")).error.code, "held_for_approval", "deps.gates wired: an agent is still held");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "cli")).data.ran, "bakery.mailout", "deps.gates wired: you still run it");
+  delete reg.deps.gates;
   // a module acting for you (its origin is you) is you
   assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "module:notes", { origin: "cli" })).data.ran, "bakery.mailout");
   // modules: internal, hidden from everyone but another module.
@@ -1331,4 +1337,12 @@ test("modules: a relayed call is judged as the relayed person, firstParty false;
   assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: alex })).data, { r: { data: { passed: "member", relayedBy: "module:spaces" } } }, "a relayed member passes as a member, the module named for audit only");
   // a plain module call (no relay) is still first-party, and carries no relayedBy
   assert.deepEqual((await reg.call("spaces.plain", {}, "cli", { kernelFacts: stranger })).data, { r: { data: { passed: "first-party", relayedBy: null } } });
+});
+
+test("modules: an added module may emit only events named for itself; Vyre's own modules keep the reserved-owner rule", () => {
+  const m = (name, emits) => ({ name, version: "0.1.0", apiVersion: 1, description: "x", roles: ["box", "local"], does: { tools: [] }, watches: { emits } });
+  assert.deepEqual(validate(m("oven", ["oven.heated", "oven-x.cooled"])), []);
+  for (const e of ["name.claimed", "wink.removed", "device.paired", "turn.completed", "vault.changed", "settings.changed", "spaces.created", "relay.opened"])
+    assert.match(validate(m("oven", [e])).join("; "), /may emit only events named for itself/, e);
+  assert.deepEqual(validate(m("wink", ["wink.removed"]), { firstParty: true }), [], "a first-party module is not held to its own name");
 });

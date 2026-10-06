@@ -56,4 +56,6 @@ export interface SealApi {
   put(input: SealPutInput): Promise<SealPutResult>;
   use(input: SealUseInput): Promise<SealUseResult>;
   reveal(input: SealRevealInput): Promise<SealRevealResult>;
+  /** Move a sealed value into another Space's namespace inside the process: the same one person in both chains, no model in either; the kernel authorised the move first. A new ref in the target. */
+  reseal(input: { chain: Chain; to_chain: Chain; ref: string; to_record: string; field: string }): Promise<SealPutResult>;
 }

@@ -12,6 +12,7 @@
 //   child's stdout --translate--> thread.* / ask.* events --> /v1/events/stream --> every surface
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
+import { newId } from "../../lib/id.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -880,7 +881,7 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      id = crypto.randomUUID(); box.id = id;
+      id = newId(); box.id = id; // a time-ordered id (lib/id.js)
       at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
@@ -1640,9 +1641,8 @@ export class Switchboard {
    * @param {string} id
    */
   handoffBrief(id, { recent = 8, keep = 6000 } = {}) {
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT type, payload FROM events WHERE thread = ?
-      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
-      ORDER BY id`).all(id));
+    // The thread's own events from the log: what a person sent, and each assistant answer once it is done (not a notice or a kind of its own).
+    const rows = this.deps.ofThread(id, { types: ["thread.sent", "thread.text"] }).filter(e => e.type === "thread.sent" || (e.payload.done === 1 || e.payload.done === true) && (e.payload.notice === undefined || e.payload.notice === null) && (e.payload.kind === undefined || e.payload.kind === null)).map(e => ({ type: e.type, payload: JSON.stringify(e.payload) }));
     const turns = rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: String(JSON.parse(String(r.payload)).text || "").trim() })).filter(t => t.text);
     return briefOfTurns(turns, "[Vyre handoff: this conversation was already under way with another assistant. The files are as they left them.", { recent, keep });
   }
@@ -1798,9 +1798,14 @@ export class Switchboard {
   /** The characters of a thread's conversation (what was sent and said) since its last rollover, for a window count when the agent reports none. @param {string} id */
   rollChars(id) {
     const last = /** @type {any} */ (this.db.prepare("SELECT at FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 1").get(id));
-    const r = /** @type {any} */ (this.db.prepare(`SELECT COALESCE(SUM(length(json_extract(payload, '$.text'))), 0) AS n FROM events WHERE thread = ? AND at > ?
-      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))`).get(id, last ? Number(last.at) : 0));
-    return Number(r && r.n) || 0;
+    const since = last ? Number(last.at) : 0;
+    const spoken = (/** @type {any} */ p) => p && (p.done === 1 || p.done === true) && (p.notice === undefined || p.notice === null);
+    let n = 0;
+    for (const e of this.deps.ofThread(id, { types: ["thread.sent", "thread.text"] })) {
+      if (!(e.at > since) || !(e.type === "thread.sent" || spoken(e.payload))) continue;
+      n += typeof e.payload.text === "string" ? [...e.payload.text].length : 0;
+    }
+    return n;
   }
 
   /**
@@ -1860,10 +1865,10 @@ export class Switchboard {
 
   /** The conversation as turns, newest last, from the event log (every provider writes it): what the person sent and what the assistant said. @param {string} id @param {number} [limit] */
   rollTurns(id, limit = 400) {
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT type, payload FROM events WHERE thread = ?
-      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
-      ORDER BY id DESC LIMIT ?`).all(id, limit)).reverse();
-    return rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: withoutSeed(String(JSON.parse(String(r.payload)).text || "").trim()) })).filter(t => t.text);
+    const rows = this.deps.ofThread(id, { types: ["thread.sent", "thread.text"] })
+      .filter(e => e.type === "thread.sent" || ((e.payload.done === 1 || e.payload.done === true) && (e.payload.notice === undefined || e.payload.notice === null) && (e.payload.kind === undefined || e.payload.kind === null)))
+      .slice(-limit);
+    return rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: withoutSeed(String(r.payload.text || "").trim()) })).filter(t => t.text);
   }
 
   /**
@@ -1891,8 +1896,8 @@ export class Switchboard {
       ? dec.data.decisions.filter((/** @type {any} */ d) => d && d.by === "person" && d.state === "current" && !d.untrusted).map((/** @type {any} */ d) => ({ topic: d.topic, value: d.value, text: d.text, state: d.state, at: d.at })) : [];
     let plan = [];
     if (thread) {
-      const planRow = /** @type {any} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.plan' ORDER BY id DESC LIMIT 1").get(thread));
-      try { plan = planRow ? (JSON.parse(String(planRow.payload)).items || []) : []; } catch { plan = []; }
+      const planRow = this.deps.ofThread(thread, { types: ["thread.plan"] }).at(-1);
+      try { plan = planRow ? (planRow.payload.items || []) : []; } catch { plan = []; }
     }
     const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
     return { ...seedOf({ decisions, plan, pointers, tail: held ? held.tail : thread ? this.rollTurns(thread) : [], roll, folder: rec.cwd }), held: Boolean(held) };
@@ -2931,7 +2936,7 @@ export class Switchboard {
 
   /** Who wrote this message, from the event that sent or queued it (null when it was not recorded). @param {string} id @param {string} uuid */
   authorOf(id, uuid) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type IN ('thread.sent', 'thread.queued') AND json_extract(payload, '$.uuid') = ? ORDER BY id LIMIT 1").all(id, uuid));
+    const rows = this.deps.ofThread(id, { types: ["thread.sent", "thread.queued"] }).filter(e => e.payload.uuid === uuid).slice(0, 1).map(e => ({ payload: JSON.stringify(e.payload) }));
     if (!rows.length) return null;
     try { const a = JSON.parse(String(rows[0].payload)).author; return typeof a === "string" && a ? a : null; } catch { return null; }
   }
@@ -2993,9 +2998,9 @@ export class Switchboard {
     if (!at) return this.launch({ fork: id, prompt, name, surface });
     let uuid = String(at);
     if (/^[^:]+:\d+$/.test(uuid)) {
-      const e = /** @type {any} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.turn' AND json_extract(payload, '$.turn') = ? ORDER BY id LIMIT 1").get(id, uuid));
+      const e = this.deps.ofThread(id, { types: ["thread.turn"] }).find(x => String(x.payload.turn) === uuid);
       if (!e) throw Object.assign(new Error(`no turn ${uuid} in this session`), { code: "bad_input" });
-      uuid = String(JSON.parse(String(e.payload)).uuid || "");
+      uuid = String(e.payload.uuid || "");
       if (!uuid) throw Object.assign(new Error("that turn has no message to branch at"), { code: "bad_input" });
     }
     this.needCap(id, "rewind", "branch from an earlier point");
@@ -3270,6 +3275,7 @@ export class Switchboard {
       ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
       try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
     }
+    try { this.deps.eraseThread?.(id); } catch (e) { this.deps.log(`deleting ${id}'s events failed: ${/** @type {Error} */ (e).message}`); }
     this.states.delete(id);
     // Not tied to the thread it names (its rows are gone): the payload carries the id.
     this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
@@ -3335,8 +3341,7 @@ export class Switchboard {
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
   get(id, { since = 0, limit = 200 } = {}) {
     const rec = this.must(id);
-    const events = this.db.prepare("SELECT * FROM events WHERE thread = ? AND id > ? ORDER BY id DESC LIMIT ?").all(id, since, Math.min(1000, limit))
-      .reverse().map(e => ({ id: e.id, at: e.at, type: e.type, payload: JSON.parse(String(e.payload)) }));
+    const events = this.deps.ofThread(id, { after: since, limit: Math.min(1000, limit), tail: true }).map(e => ({ id: e.id, at: e.at, type: e.type, payload: e.payload }));
     return { thread: rec, asks: this.asks.open(id).map(({ request_id, ...a }) => a), events };
   }
 
@@ -3352,12 +3357,12 @@ export class Switchboard {
     const rec = this.must(id);
     const want = Math.max(1, Math.min(200, Number(limit) || 50));
     const after = Math.max(0, Number(since) || 0);
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, payload FROM events WHERE thread = ? AND id > ?
-      AND type IN ('thread.sent','thread.text','thread.tool','thread.plan','thread.provider') ORDER BY id ASC LIMIT ?`).all(id, after, want * 4 + 200));
-    const done = this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.tool' AND json_extract(payload, '$.call') = ? AND json_extract(payload, '$.phase') = 'done' ORDER BY id DESC LIMIT 1`);
+    const rows = this.deps.ofThread(id, { after, types: ["thread.sent", "thread.text", "thread.tool", "thread.plan", "thread.provider"], limit: want * 4 + 200 }).map(e => ({ ...e, payload: JSON.stringify(e.payload) }));
+    const tools = this.deps.ofThread(id, { types: ["thread.tool"] });
+    const done = { get: (/** @type {string} */ _id, /** @type {any} */ call) => { for (let i = tools.length - 1; i >= 0; i--) if (tools[i].payload.call === call && tools[i].payload.phase === "done") return { payload: JSON.stringify(tools[i].payload) }; return undefined; } };
     // Events written now say who spoke (provider, model). For older ones: the provider the thread started on, moved by each switch.
-    const first = /** @type {any} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.provider' ORDER BY id LIMIT 1").get(id));
-    let provider = (first && JSON.parse(String(first.payload)).from) || rec.provider || "claude";
+    const first = this.deps.ofThread(id, { types: ["thread.provider"], limit: 1 })[0];
+    let provider = (first && first.payload.from) || rec.provider || "claude";
     /** @type {any[]} */ const items = [];
     let more = false;
     for (const e of rows) {
@@ -3396,10 +3401,9 @@ export class Switchboard {
     if (!runs.length) return [];
     const byId = new Map(runs.map(r => [String(r.id), r]));
     const want = Math.max(1, Math.min(200, Number(limit) || 20));
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, thread, payload FROM events
-      WHERE thread IN (${runs.map(() => "?").join(",")}) AND id < ?
-        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
-      ORDER BY id DESC`).iterate(...runs.map(r => r.id), Number(before) || Number.MAX_SAFE_INTEGER));
+    const isTurnLine = (/** @type {any} */ e) => e.type === "thread.sent" || (e.type === "thread.text" && (e.payload.done === 1 || e.payload.done === true) && (e.payload.notice === undefined || e.payload.notice === null) && (e.payload.kind === undefined || e.payload.kind === null));
+    const rows = runs.flatMap(r => this.deps.ofThread(String(r.id), { types: ["thread.sent", "thread.text"], before: Number(before) || Number.MAX_SAFE_INTEGER }).filter(isTurnLine))
+      .sort((a, b) => b.id - a.id).map(e => ({ ...e, payload: JSON.stringify(e.payload) }));
     /** @type {Map<string, string[]>} replies seen (newest first) per thread, waiting for their send */
     const replies = new Map();
     const out = [];
@@ -3446,9 +3450,8 @@ export class Switchboard {
     let summary = null;
     if (reason === "asked") summary = payload.summary || payload.tool || null;
     else {
-      const last = /** @type {any} */ (this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.text'
-        AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.kind') IS NULL ORDER BY id DESC LIMIT 1`).get(thread));
-      summary = last ? cut(String(JSON.parse(String(last.payload)).text || ""), 280) : null;
+      const last = this.deps.ofThread(thread, { types: ["thread.text"] }).filter(e => (e.payload.done === 1 || e.payload.done === true) && (e.payload.kind === undefined || e.payload.kind === null)).pop();
+      summary = last ? cut(String(last.payload.text || ""), 280) : null;
     }
     for (const w of rows) {
       if (Number(this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(w.id).changes) === 0) continue;
@@ -3694,6 +3697,8 @@ export default {
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
+      ofThread: (thread, opts) => ctx.events.ofThread(thread, opts),
+      eraseThread: (thread) => ctx.events.eraseThread(thread),
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       startTimeoutMs: cfg.start_timeout_s ? cfg.start_timeout_s * 1000 : undefined,
       requireAccount: Boolean(ctx.config && ctx.config.role === "box" && ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable && !process.env.VYRE_CLAUDE_BIN),

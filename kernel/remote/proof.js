@@ -83,6 +83,17 @@ export function proofRequest(space, call, ...args) {
 }
 
 /**
+ * What a surface shows and signs for the ONE approval of a sealed-value move (the Personal to My Cloud upgrade): the upgrade's plan hash, the target Space's wrapping key and the exact refs it will carry.
+ * Signed in the same prompt as the upgrade's own proof, then handed to `gateway.seal.exportApprove` as `proof`. `{ op, space, fields, payload_hash }` like proofRequest; the sealing process recomputes it.
+ * @param {string} space @param {{ plan_hash: string, target_key: string, refs: string[] }} i
+ */
+export function sealExportApproveRequest(space, i) {
+  if (!i || typeof i.plan_hash !== "string" || typeof i.target_key !== "string" || !Array.isArray(i.refs) || !i.refs.length) throw new KernelError("bad_input", "an export approval names a plan hash, the target's key and the refs");
+  const op = "seal.export_approve", fields = { plan_hash: i.plan_hash, target_key: i.target_key, refs: [...new Set(i.refs.map(String))].sort() };
+  return Object.freeze({ op, space, fields, payload_hash: payloadHash(op, space, fields) });
+}
+
+/**
  * The `{ presence }` option for a kernel call, from what the surface sent: `meta.kernel_proof`, a plain object no larger than 4 KB. Anything else (a string, an
  * array, an object with functions, the legacy `meta.proof`) is no proof, and the kernel then refuses with `needs_presence`. The kernel verifies; this only carries.
  * @param {{ kernel_proof?: any } | null | undefined} meta

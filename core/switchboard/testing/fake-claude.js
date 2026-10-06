@@ -398,6 +398,7 @@ async function turn(prompt, uuid = null) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } });
     return result(false, "Claude usage limit reached.", 0);
   }
+  // A Vyre-started session is given its own socket (VYRE_SOCKET) and no VYRE_HOME, so a forgery goes where a real Bash in the session would: down that socket, and only without one to the home's.
   // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
   // "forge <caller> <tool>" sends the agent's own key with it, which the daemon refuses outright
   // (the key must name its own agent); "bareforge <caller> <tool>" sends neither a key nor a
@@ -416,7 +417,7 @@ async function turn(prompt, uuid = null) {
     const http = await import("node:http");
     const { paths } = await import("../../config/index.js");
     const r = await new Promise(resolve => {
-      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
+      const req = http.request({ socketPath: process.env.VYRE_SOCKET || paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
         headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(kind === "forge" ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } : {}) } }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
       });

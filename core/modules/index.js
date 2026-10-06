@@ -10,9 +10,11 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { sandboxDoor } from "./sandbox-ctx.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate, open as openStore } from "../store/index.js";
@@ -37,7 +39,7 @@ const LOADER_FEATURES = ["modules.status"];
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
 // relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -237,6 +239,10 @@ export function validate(m, { firstParty = false } = {}) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
     if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
+    if (typeof e === "object" && e.flow !== undefined) {
+      if (!e.flow || typeof e.flow !== "object" || !["read", "write", "outward.send"].includes(e.flow.risk)) out.push(`tool "${t}": flow.risk must be read, write or outward.send`);
+      else if (e.reach !== undefined && e.reach !== "anyone") out.push(`tool "${t}": a tool that can be a Flow step must be reach anyone`);
+    }
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -244,12 +250,21 @@ export function validate(m, { firstParty = false } = {}) {
     // history) come only from the first-party module that owns them.
     const owners = RESERVED_EVENTS[e.split(".")[0]];
     if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
+    // Allowlist, not a denylist: other modules act on device.*, wink.*, name.*, relay.*, vault.*, turn.*, settings.* and spaces.* events, so an added module may emit only events named for itself
+    // (`<its name>.verb`, the singular of it ("notes" says `note.added`) or `<its name>-x.verb`). A first-party module keeps the rule above.
+    else if (!firstParty) { const noun = e.split(".")[0], own = String(m.name); if (noun !== own && noun !== own.replace(/s$/, "") && !noun.startsWith(`${own}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.…")`); }
   }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: toolEntries(m).map(t => t.name) }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   out.push(...checkCredentials(m.needs && m.needs.credentials));
+  if (m.needs && m.needs.kernel !== undefined) {
+    const k = m.needs.kernel;
+    if (!k || typeof k !== "object" || Array.isArray(k)) out.push("needs.kernel must be an object like { records: [type, ...] }");
+    else if (k.records !== undefined && (!Array.isArray(k.records) || k.records.some((/** @type {any} */ t) => typeof t !== "string" || !/^[a-z][a-z0-9_]{0,40}$/.test(t)))) out.push("needs.kernel.records must be a list of record type names (lowercase, letters, digits, underscores)");
+    else if (k.files !== undefined && (!Array.isArray(k.files) || k.files.some((/** @type {any} */ f) => typeof f !== "string" || !/^[A-Za-z0-9][A-Za-z0-9 _.\/-]{0,120}$/.test(f) || f.includes("..")))) out.push("needs.kernel.files must be a list of Drive folders like Clients/Contracts");
+  }
   // setupTools: this module's own tools the setup channel may call (built in only, see addedCheck).
   if (m.setupTools !== undefined) {
     const own = new Set(toolEntries(m).map(t => t.name));
@@ -782,12 +797,15 @@ export class Registry {
       // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
       // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
       if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
-        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [] });
         const ctx = this.context(m);
-        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
-        rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };
+        // The module's ctx is this host-side one; the sandbox reaches each door by message (core/modules/sandbox-ctx.js), so an added module runs the same contract as a built-in one.
+        const door = sandboxDoor({ name: m.name, ctx, dataDir: path.join((this.deps.paths && this.deps.paths.root) || os.tmpdir(), "data", m.name) });
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [], ctx: door });
+        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input, /** @type {any} */ meta) => this.deps.moduleHost.call(m.name, e.name, input, meta ? { caller: meta.caller, who: meta.who, agent: meta.agent, thread: meta.thread, project: meta.project } : undefined) });
+        rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
         rec.state = "running";
+        await this.registerFlowActions(m);
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
         return;
       }
@@ -795,6 +813,7 @@ export class Registry {
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
       rec.state = "running";
+      await this.registerFlowActions(m);
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
@@ -803,6 +822,13 @@ export class Registry {
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
+  }
+
+  /** The tools a module marked `flow` become actions of the Space (and the owner and admins may run them from a Flow): the kernel registers them (deps.registerFlowActions). @param {any} m */
+  async registerFlowActions(m) {
+    const defs = toolEntries(m).filter(e => e.flow && typeof e.flow === "object").map(e => ({ action: e.name, risk: e.flow.risk, label: e.flow.label || e.summary || e.name, gloss: e.summary || "" }));
+    if (!defs.length || typeof this.deps.registerFlowActions !== "function") return;
+    try { await this.deps.registerFlowActions(m.name, defs); for (const d of defs) (this.flowActionTools ||= new Set()).add(d.action); } catch (e) { this.deps.log(`warn: module ${m.name}: its Flow actions were not registered: ${/** @type {Error} */ (e).message}`); }
   }
 
   /**
@@ -863,6 +889,9 @@ export class Registry {
     });
     return {
       db: routed,
+      // Async, the same shape an added module reaches its own file with (core/modules/sandbox-ctx.js), so one module source runs in either place.
+      exec: async (/** @type {string} */ sql, /** @type {any[]} */ params = []) => { const r = current().prepare(String(sql)).run(...params); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; },
+      query: async (/** @type {string} */ sql, /** @type {any[]} */ params = []) => current().prepare(String(sql)).all(...params).map((/** @type {any} */ r) => ({ ...r })),
       migrate: (/** @type {string[]} */ steps) => { lists.push(steps); migrate(db, m.name, steps); for (const [key, d] of opened) if (key.endsWith(`/${m.name}`)) migrate(d, m.name, steps); },
       /** The module's own data folder for a Space (the running call's by default), created on first use. @param {string} [space] */
       dir: (/** @type {string | undefined} */ space) => {
@@ -920,6 +949,15 @@ export class Registry {
   context(m) {
     const { db, events, config, log, paths } = this.deps;
     // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
+    // An added module that declared `needs.kernel.records` (the record types it may make, read and change) gets narrow verbs, never the handle: they run under the person who installed it, with the module
+    // beside them as an external hop, and only on the declared types (the daemon's `moduleKernel` builds them). The rest of the kernel is not a door.
+    const addedKernel = (() => {
+      const r = this.modules.get(m.name), nk = m.needs && m.needs.kernel;
+      if (!nk || !r || this.isFirstParty(r.dir) || !this.deps.moduleKernel) return undefined;
+      const strs = (/** @type {any} */ v) => (Array.isArray(v) ? v.filter((/** @type {any} */ t) => typeof t === "string") : []);
+      const want = { records: strs(nk.records), files: strs(nk.files) };
+      return want.records.length || want.files.length ? this.deps.moduleKernel.doors(m.name, want) : undefined;
+    })();
     const homeKernel = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.withCrossSpace(m, this.deps.kernelFor(m)) : undefined; })();
     const kernelHandle = homeKernel ? this.routedKernel(m, homeKernel) : undefined;
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
@@ -1071,6 +1109,10 @@ export class Registry {
         origin: () => captureOrigin(),
         withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => withOrigin(o, f),
         since: (id, opts) => events.since(id, opts),
+        // One thread's own events, oldest first (an indexed read of the log).
+        ofThread: (thread, opts) => events.ofThread(thread, opts),
+        // Delete every event of a thread (what the person asked for when they deleted it, whichever module said it): the threads module's alone.
+        eraseThread: (thread) => { if (m.name !== "threads") throw new Error("only the threads module deletes a thread's events"); return events.eraseThread(thread); },
         // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
         // follows the stream from this id, has no gap.
         latestId: () => events.latestId(),
@@ -1246,7 +1288,7 @@ export class Registry {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
       },
-      ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      ...(kernelHandle ? { kernel: kernelHandle } : (addedKernel ? { kernel: addedKernel } : {})),
       // The home's peer door for a paired device's stream, set by the daemon (core/daemon/peer-door.js); only the relay module bridges it.
       // This device's open peer session to a server it paired (`sessionFor(serverId)` -> { call, close }) and the kernel's remote client over it, handed up by the wink module; only the modules that
       // reach a paired server's kernel are given them (spaces: where a space is hosted; runner: lending), late-bound because wink starts after them.
@@ -1355,6 +1397,31 @@ export class Registry {
         .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t)));
   }
 
+  /**
+   * What the older outward kind words (send, post, pay, delete) and the ask-first agent tools do for a caller who is not the person: the held answer (placeholders resolved first, the held card told the field
+   * names), or null when this is not such a call. One place, used by the registry's own gates and by the kernel retrofit gates (kernel/retrofit/gates.js), so both give the same answer.
+   * @param {{ tool: string, def: any, caller: string, input: any, meta: any }} o
+   */
+  async outwardRefusal({ tool, def, caller, input, meta }) {
+    if (!(((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller))) return null;
+    // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
+    // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
+    /** @type {any} */ let held = {};
+    if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
+      try {
+        if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
+        const r = await this.deps.resolveFields({ tool, input, meta });
+        held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
+      } catch (e) {
+        // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
+        return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
+      }
+      // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
+      if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
+  }
+  return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+  }
+
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -1410,24 +1477,7 @@ export class Registry {
       // here can yet tell that the person's own words asked for it.
       // The plain mark `outward: true` is what the one-yes moment reads (isOutward); a tool so marked keeps its own held flow for an agent (publish's requests, github's asked, apps.send's proof,
       // vault's Gate sender), which this fail-closed stand-in would pre-empt. Only the older kind words (send, post, pay, delete) are held here.
-      if (((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller)) {
-        // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
-        // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
-        /** @type {any} */ let held = {};
-        if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
-          try {
-            if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
-            const r = await this.deps.resolveFields({ tool, input, meta });
-            held = { resolved: r.resolved, slots: r.slots, bound: r.bound };
-          } catch (e) {
-            // One refusal for every reason (RF-2): the model must not learn that a record exists, that a field is readable or which ones are sealed.
-            return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } };
-          }
-          // The field names, the sealed slots and the hash of what was resolved reach the approver through the held card only (the Gate's `held` hook), never through the model's answer.
-          if (typeof this.deps.held === "function") { try { await this.deps.held({ tool, caller, thread: meta.thread, ...held }); } catch { /* the hold is the same either way */ } }
-        }
-        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
-      }
+      { const held = await this.outwardRefusal({ tool, def, caller, input, meta }); if (held) return held; }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       // a browser (`web:<id>`) and a setup page (`setup:<id>`) are none of the person's classes (BR-2): each reaches only its own short list (WEB_REACH, SETUP_REACH), whatever a tool's `callers` says, and a label nobody
@@ -1561,12 +1611,17 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
+    // The person's own switch (Settings > Privacy: confirm.pairing, confirm.vault, confirm.outward, on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
+    // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
+    const moment = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward));
+    const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && this.deps.config.confirm[{ pair: "pairing", vault: "vault", outward: "outward" }[moment]] === false);
+    if (switchedOff) meta = { ...meta, presence: { method: "switch", keyId: null } };
     // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
     // itself, over the exact input, so vyred passes it through untouched rather than checking (and
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+    } else if (presence && !switchedOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
       // One yes: a floor-bearing tool that is one of the three moments (vault, pairing a device, an outward send) also takes the owner's approval of exactly this call: a card the phone answered, bound to the
       // asking device taken from the verified caller (never from input), spent once. Everything else, and everything that is not an approved card, goes on to the old proof check below.
       /** @type {{ method: string, keyId: null } | null} */ let approved = null;

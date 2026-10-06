@@ -3,7 +3,7 @@
 // its op and fields are what the kernel's one verifier checks (kernel/remote/proof.js proofRequest builds them). The asker opens a request with them, the paired phone lists it, shows what will
 // happen and signs the payload hash with Face ID, and the asker reads the proof back ONCE and attaches it to its own act (`kernel_proof`), where the kernel verifies it (counter-bound, single use).
 // This module decides nothing and checks no signature: a wrong or replayed proof is refused by the act itself. The same shape as the rollback route (core/modulelist), for any op.
-import { randomBytes } from "node:crypto";
+import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
@@ -85,7 +85,7 @@ export default {
           if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
           const sg = signOf(moment, request), space = String((ctx.kernel && ctx.kernel.space) || "");
           const payload_hash = payloadHash(sg.op, space, sg.fields);
-          const id = `ap_${randomBytes(9).toString("base64url")}`;
+          const id = `ap_${newId()}`;
           let who = "A device";
           try { const d = from.startsWith("device:") ? await ctx.call("wink.device.record", { id: from.slice(7) }) : null; if (d && d.data && d.data.name) who = String(d.data.name); } catch { /* the generic name */ }
           const line = lineOfOp(request.op, request.fields, who);
@@ -99,7 +99,7 @@ export default {
         if (!input.fields || typeof input.fields !== "object" || Array.isArray(input.fields) || JSON.stringify(input.fields).length > 4096) throw refuse("the fields of the act, plain data", "bad_input");
         if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
         const payload_hash = payloadHash(op, String(input.space), input.fields);
-        const id = `ap_${randomBytes(9).toString("base64url")}`;
+        const id = `ap_${newId()}`;
         const a = { id, op, space: String(input.space), fields: input.fields, payload_hash, from: String(meta.caller || ""), at: now(), state: /** @type {"waiting"} */ ("waiting") };
         open.set(id, a);
         return { id, payload_hash, expires_in_s: ASK_MS / 1000 };
@@ -123,7 +123,7 @@ export default {
         if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
         const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
         const payload_hash = payloadHash(sg.op, space, sg.fields);
-        const id = `ap_${randomBytes(9).toString("base64url")}`;
+        const id = `ap_${newId()}`;
         const line = lineOfOp(request.op, request.fields, `An assistant (${from.replace(/^[a-z]+:/, "").slice(0, 40) || "unknown"})`);
         open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment: "outward", request, line });
         return { id, line };

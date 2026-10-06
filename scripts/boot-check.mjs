@@ -10,7 +10,7 @@ const d = await start({ root, presence: present, log: () => {} });
 const st = d.registry.status();
 const bad = st.filter(m => m.state === "failed");
 const off = st.filter(m => m.state === "off").map(m => m.name);
-console.log(`BOOT kernel=${process.env.VYRE_KERNEL || "0"} modules=${st.length} running=${st.length - bad.length} failed=${bad.length}`);
+console.log(`BOOT kernel=on modules=${st.length} running=${st.length - bad.length} failed=${bad.length}`);
 console.log("  off (not started on this box): " + off.join(", "));
 for (const m of bad) console.log(`  ${m.state} ${m.name}: ${m.error || m.reason || ""}`);
 await d.stop(); fs.rmSync(root, { recursive: true, force: true });

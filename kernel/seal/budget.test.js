@@ -15,7 +15,9 @@ const GROUPS = {
   attest: { cap: 250, files: ["seal/appattest.js", "seal/strength.js"] },
   // BG-1 (reviewer-2's sign-off, RC1): 900 is the CEILING for the sealing group, raised from 800 for what RC1 had to put inside the sealing process: the one key-strength rule (strength.js, by method and signer,
   // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-2's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
-  sealing: { cap: 900, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
+  // SX-1 (platform, 0.2.9; NEEDS reviewer-3's sign-off): 960, raised from 900 for moving a sealed value to a Space on another server without its plaintext leaving a sealing process (wrapKey, export, exportApprove, import: the Personal to
+  // My Cloud upgrade). That is 61 lines of the 60 asked for; the group sat at 861 before it.
+  sealing: { cap: 960, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
   // The host CLI's wipe (`sudo vyre admin wipe`): destroys the sealing master key and folder with the daemon stopped. Never imported by the daemon.

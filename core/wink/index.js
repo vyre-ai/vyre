@@ -595,8 +595,11 @@ export function createWink(inject = {}) {
         let allowed = null;
         if (wd && !wd.removed) {
           db.prepare("UPDATE wink_devices SET offers = ? WHERE id = ?").run(JSON.stringify({ ...wd.offers, compute: true }), wd.id);
-          await pairing.compute.set(wd.identity, wd.id, "member", true, { member: wd.identity, device_key: wd.nodeKey || undefined });
-          allowed = await pairing.computeAllowed({ device: wd.id, space: wd.identity });
+          // The compute offer is kept per Space: the kernel's offers port knows the home's own Space id, never an identity id (a build without a kernel keeps the identity as the personal Space's key, as before).
+          if (ctx.kernel && !wd.nodeKey) throw fail("unavailable", "that computer has not given this server its key yet, so it cannot lend its compute; pair it again from the computer");
+          const offerSpace = ctx.kernel && typeof ctx.kernel.space === "string" && ctx.kernel.space ? ctx.kernel.space : wd.identity;
+          await pairing.compute.set(offerSpace, wd.id, "member", true, { member: (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner) || wd.identity, device_key: wd.nodeKey || undefined, meta });
+          allowed = await pairing.computeAllowed({ device: wd.id, space: offerSpace });
         }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });
         return { grant: grant.id, ...(allowed ? { allowed } : {}) };

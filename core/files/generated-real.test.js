@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";

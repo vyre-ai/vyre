@@ -390,12 +390,15 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
   // Trusted by path here (an added module is sandboxed with the kernel on and has no ctx.call), so the call is not refused as undeclared; what must hold is that on_behalf from a module changes nothing: the hold carries no thread, agent or surface.
-  // KO-2: no agent is named (juno does not exist in this home, which made the old check pass for any reason): on_behalf carries a surface alone, and the call must still be HELD, with no thread or agent on the item.
-  const forced = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
+  // KO-2, with a REAL agent so the check can fail: a module trusted by path is first party here, and a first-party module's on_behalf DOES attribute the held item (the Switchboard relies on it): the item names juno.
+  // An added module that is NOT trusted gets no ctx in the sandbox and cannot reach mcp.call at all (core/vault/module-delete.test.js and reach.test.js pin that with the kernel on), so on_behalf is unreachable for it.
+  assert.ok(!(await cli("agents.create", { name: "juno", kind: "assistant" })).error, "the agent exists");
+  const forced = (await cli("bakery.try", { on_behalf: { surface: "capsule", agent: "juno" } })).data;
   const heldId = forced && (forced.held || (forced.data && forced.data.held));
-  assert.ok(heldId, `the module's outward call is held: ${JSON.stringify(forced)}`);
+  assert.ok(heldId, `the first-party module's outward call is held: ${JSON.stringify(forced)}`);
   const forcedItem = (await cli("gate.get", { id: heldId })).data;
-  assert.ok(forcedItem && !forcedItem.thread && !forcedItem.agent, JSON.stringify(forcedItem));
+  assert.equal(forcedItem.agent, "juno", "on_behalf from a first-party module attributes the hold to the named agent");
+  assert.ok(!forcedItem.thread);
   const plain = (await cli("bakery.issue", {})).data;
   assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
   const it = (await cli("gate.get", { id: plain.data.held })).data;

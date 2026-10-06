@@ -304,6 +304,7 @@ export function toolEntries(m) {
     if (t.projectIsRecord === true) extra.projectIsRecord = true;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
+    if (TYPES.object(t.flow) && typeof t.flow.risk === "string") extra.flow = { risk: t.flow.risk, ...(typeof t.flow.label === "string" ? { label: t.flow.label } : {}) };
     if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });

@@ -220,3 +220,18 @@ test("K-1: a release-signed minimum version makes an older signed copy not first
   fs.appendFileSync(path.join(d, "index.js"), "\n// tampered");
   assert.equal(check(d), false);
 });
+
+test("supervisor: the sandbox self-test is proved once per process, and a failure is not reused", async () => {
+  const { createSupervisor } = await import("./supervisor.js");
+  if (!mechanism(process.platform)) return;
+  const a = createSupervisor({ platform: process.platform }), b = createSupervisor({ platform: process.platform });
+  const first = await a.selfTest();
+  const t = Date.now();
+  const second = await b.selfTest();
+  assert.deepEqual(second, first);
+  assert.equal(b.available(), first.ok);
+  if (first.ok) assert.ok(Date.now() - t < 500, "the second home does not prove it again");
+  const none = createSupervisor({ platform: "plan9" });
+  assert.equal((await none.selfTest()).ok, false);
+  assert.equal((await createSupervisor({ platform: "plan9" }).selfTest()).ok, false);
+});

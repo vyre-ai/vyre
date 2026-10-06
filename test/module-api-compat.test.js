@@ -17,7 +17,7 @@ import * as v1 from "../packages/module-sdk/compat/v1.js";
 import { createTestContext } from "../packages/module-sdk/testing.js";
 import { discover, validate, Registry } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
