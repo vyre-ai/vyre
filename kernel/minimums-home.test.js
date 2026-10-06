@@ -20,7 +20,11 @@ test("M-1: the accepted minimums live in the sealed log; deleting or rolling bac
   const dbFile = path.join(root, "k.db");
   const mk = version => { const dir = fs.mkdtempSync(path.join(root, "fp-")); fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email", version })); fs.writeFileSync(path.join(dir, "index.js"), "export default {};"); signModule(dir, release.privateKey); return dir; };
   const doc = (min, counter) => fs.writeFileSync(path.join(id.dir, "minimums.json"), JSON.stringify(signMinimums(min, release.privateKey, counter)));
-  const boot = async () => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: () => {}, isFirstParty: () => false, releaseKey: release.publicKey });
+  // the signature check is what is under test: a development build trusts first-party modules by path unless it is told not to (pathRule: false), and then `firstPartyCheck` is the signed one
+  let live = null;
+  const boot = async () => { live = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: () => {}, isFirstParty: () => false, releaseKey: release.publicKey, pathRule: false }); return live; };
+  // a failed assertion must not leave a booted kernel holding the process open: the file fails at once instead of hanging until the timeout
+  t.after(async () => { try { if (live) await live.stop(); } catch { /* already stopped */ } });
   const old = mk("0.2.9"), ok = mk("0.3.0"), newer = mk("0.4.0");
 
   let k = await boot();
@@ -66,7 +70,7 @@ test("M-1: the accepted minimums live in the sealed log; deleting or rolling bac
   await forge({ counter: 9997, minimums: { email: "0.0.1" }, doc: real });
   await k.stop();
   const logs = [];
-  k = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: release.publicKey });
+  k = live = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: release.publicKey, pathRule: false });
   assert.equal(k.firstPartyCheck(ok), false, "the forged weak minimums did not outrank the real one");
   assert.equal(k.firstPartyCheck(newer), true);
   assert.equal(logs.filter(m => /does not carry a document the release key signed/.test(m)).length, 2, "the two unsigned events are named");
