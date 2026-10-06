@@ -20,6 +20,7 @@
       {
         "name": "team.add",
         "projectArg": "project",
+        "projectIsRecord": true,
         "summary": "add a teammate to a project",
         "reach": "asked",
         "target": "team.act.target",
@@ -28,6 +29,7 @@
       {
         "name": "team.retire",
         "projectArg": "project",
+        "projectIsRecord": true,
         "summary": "retire a teammate",
         "reach": "asked",
         "target": "team.act.target",
@@ -36,48 +38,56 @@
       {
         "name": "team.charter.get",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "team.charter.set",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "person",
         "effect": "write"
       },
       {
         "name": "team.charter.history",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "team.charter.diff",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "team.charter.revert",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "person",
         "effect": "write"
       },
       {
         "name": "team.charter.accept",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "person",
         "effect": "write"
       },
       {
         "name": "team.charter.draft",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "write"
       },
       {
         "name": "team.role.fill",
         "projectArg": "project",
+        "projectIsRecord": true,
         "summary": "have one of your agents fill a role",
         "reach": "asked",
         "target": "team.act.target",
@@ -96,12 +106,14 @@
       {
         "name": "team.duties.create",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "write"
       },
       {
         "name": "team.duties.list",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
@@ -140,11 +152,13 @@
       {
         "name": "team.list",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone"
       },
       {
         "name": "team.ask",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "write"
       },
@@ -180,24 +194,28 @@
       {
         "name": "team.default.get",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "team.default.set",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "person",
         "effect": "write"
       },
       {
         "name": "team.project-has-any",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "team.project-append",
         "projectArg": "project",
+        "projectIsRecord": true,
         "reach": "anyone",
         "effect": "read"
       }

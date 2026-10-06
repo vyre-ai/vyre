@@ -2069,6 +2069,10 @@
    "module": "work",
    "reason": "read-only: the plan is read under the caller's own chain in both Spaces"
   },
+  "work.project.ref": {
+   "module": "work",
+   "reason": "callers list in code (cli, local, deck, capsule, device, module): never a model, a hook or an anonymous caller; the record is read again under the caller's own chain, so a Project the person may not read is not found, and a module is first-party or the registry's own door call"
+  },
   "work.project.rename": {
    "module": "work",
    "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"

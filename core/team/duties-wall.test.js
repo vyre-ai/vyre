@@ -39,7 +39,7 @@ test("a person turns on a teammate's duty: the real watcher runs once and files 
   const ok = async r => { const x = await r; assert.ok(!x.error, JSON.stringify(x.error)); return x.data; };
 
   const project = await ok(person("projects.create", { name: "Harlow Legal", home }));
-  const added = await ok(person("team.add", { project: project.slug, role: "reviewer", brief: "reviews finished work" }));
+  const added = await ok(person("team.add", { project: project.record, role: "reviewer", brief: "reviews finished work" }));
 
   // The person creates a duty: it starts at once (a model's own creation is a proposal, tested elsewhere).
   if (noWall) {

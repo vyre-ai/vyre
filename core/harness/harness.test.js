@@ -13,6 +13,13 @@ import { tempHome, writeModule } from "../../test/helpers.js";
 
 const HOME = "/home/alex/.vyre";
 
+/** Records' answer for a short name: the Project record's id, which team's rows are keyed by. */
+const PID = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f";
+const workRef = `export default { async start(ctx) {
+  ctx.tool("work.project.ref", { effect: "read", run: async ({ project }) => (project === "harlow-legal" ? { id: ${JSON.stringify(PID)}, urn: "vyre://spc/project/${PID}", slug: "harlow-legal", name: "Harlow Legal" } : null) });
+  return {};
+} };`;
+
 test("rules: nothing reads the vault, however it is reached", () => {
   const deny = i => rules({ tool: i.tool, input: i.input, cwd: "/home/alex/Work", home: HOME }).decision;
   assert.equal(deny({ tool: "Read", input: { file_path: "/home/alex/.vyre/vault/items.sealed" } }), "deny");
@@ -120,9 +127,11 @@ test("harness: brief and enrich use projects and memory when they are running", 
   // Teammates section 1: core/team says the sentence to inject, or null (team.default off, or
   // no teammates yet with the person choosing not to be nudged - not this hook's business which).
   const team = `export default { async start(ctx) {
-    ctx.tool("team.project-append", { effect: "read", run: async ({ project }) => ({ project, text: project === "harlow-legal" ? "This project has teammates: design." : null }) });
+    ctx.tool("team.project-append", { effect: "read", run: async ({ project }) => ({ project, text: project === ${JSON.stringify(PID)} ? "This project has teammates: design." : null }) });
     return {};
   } };`;
+  // team's rows are keyed by the Project record's id: the harness asks Records for it from the short name the session carries.
+  const work = workRef;
   // core/style (ADR 0037): the house voice, for every session - project or not.
   const style = `export default { async start(ctx) {
     ctx.tool("style.append", { effect: "read", run: async ({ project } = {}) => ({ project: project || null, text: project ? "Write plainly, no em dashes (project rules)." : "Write plainly, no em dashes." }) });
@@ -131,6 +140,7 @@ test("harness: brief and enrich use projects and memory when they are running", 
   const { reg, events } = await harness(t, [
     ["projects", { version: "0.1.0", does: { reads: ["projects.of", "projects.context"], tools: ["projects.of", "projects.context"] } }, projects],
     ["memory", { version: "0.1.0", does: { reads: ["memory.relevant"], tools: ["memory.relevant"] } }, memory],
+    ["work", { version: "0.1.0", does: { reads: ["work.project.ref"], tools: ["work.project.ref"] } }, work],
     ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, team],
     ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, style],
   ]);
@@ -170,6 +180,7 @@ test("harness: the style-plus-team nudge is capped at APPEND_TOTAL_MAX, ellipsis
   const { reg } = await harness(t, [
     ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
     ["style", { version: "0.1.0", does: { reads: ["style.append"], tools: ["style.append"] } }, longStyle],
+    ["work", { version: "0.1.0", does: { reads: ["work.project.ref"], tools: ["work.project.ref"] } }, workRef],
     ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, longTeam],
   ]);
   const text = (await reg.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text;
@@ -194,6 +205,7 @@ test("harness: brief's team nudge is null-safe - team.default off, or core/team 
   } };`;
   const { reg: withTeamOff } = await harness(t, [
     ["projects", { version: "0.1.0", does: { reads: ["projects.context"], tools: ["projects.context"] } }, projects],
+    ["work", { version: "0.1.0", does: { reads: ["work.project.ref"], tools: ["work.project.ref"] } }, workRef],
     ["team", { version: "0.1.0", does: { reads: ["team.project-append"], tools: ["team.project-append"] } }, teamOff],
   ]);
   assert.equal((await withTeamOff.call("harness.brief", { cwd: "/w/harlow-site" }, "cli")).data.text, "Project harlow-legal.");
