@@ -77,3 +77,9 @@ test("sealed drive: share wraps the file key to the project's ring (no copy); un
   // another project is not held here: nothing to wrap
   assert.deepEqual(await w.sd.share("Projects/other/chat/c1/plan.txt"), { wrapped: false });
 });
+
+test("sealed drive: it keeps the Drive's pool and path check, so wink storage can join paired drives to the Space's pool", t => {
+  const w = world(t);
+  assert.equal(w.sd.pool, w.pool, "the pool under the sealed Drive is the Drive's own");
+  assert.equal(w.sd.path("a//b"), w.drive.path("a//b"));
+});

@@ -73,6 +73,9 @@ export function sealedDrive(drive, src) {
   });
 
   const self = {
+    // the pool under the Drive (wink storage places its encrypted chunks on paired drives through it) and the path check: a chat's sealing is above them, never in them
+    pool: drive.pool,
+    path: (/** @type {string} */ p) => drive.path(p),
     loadShared,
     /** The path the Drive actually stores a logical path under (ids for a chat's files): what the gateway authorizes and logs, so no name reaches the kernel's log either. @param {string} p */
     stored,
