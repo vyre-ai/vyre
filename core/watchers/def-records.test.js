@@ -1,0 +1,116 @@
+// @ts-check
+// Watcher definitions are hidden records (def-watcher), like Flow definitions, in a REAL vyred with the kernel on: an existing folder is migrated into a record once, a record edited by a person
+// is written back to the folder (so the watcher shows changed and waits for a new dry run), a folder edited by Claude's skill is written into the record, a lost folder is restored from the record,
+// and none of it is run state (the schedule, cursor and items stay in the module's own tables).
+import "../../scripts/mac-test-guard.mjs";
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
+import { tempHome, present } from "../../test/helpers.js";
+import { hashOf } from "./defs.js";
+
+process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+const SPEC = JSON.stringify({ name: "northgate-inbox", project: "northgate", schedule: "*/30 * * * *", emits: "mail.seen" });
+const CODE = "export default async function watch({ emit }) { emit({ id: 'a' }); }\n";
+
+async function world(/** @type {any} */ t) {
+  const root = tempHome(t);
+  const dir = path.join(root, "watchers", "northgate-inbox"); fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "watcher.json"), SPEC); fs.writeFileSync(path.join(dir, "watch.js"), CODE);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const cli = (/** @type {string} */ tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  const recs = async () => (await d.kernel.gateway.records.query(admin, "def-watcher", { page: { limit: 50 } })).rows;
+  return { root, dir, d, admin, cli, recs };
+}
+
+test("an existing watcher folder becomes a record once, whatever calls sync, and the record is the whole definition", { timeout: 90_000 }, async t => {
+  const { dir, cli, recs } = await world(t);
+  const l = await cli("watchers.list"); assert.ok(!l.error, JSON.stringify(l));
+  await cli("watchers.list"); await cli("watchers.list");
+  const rows = await recs();
+  assert.equal(rows.length, 1, "migrated once, not once per look");
+  assert.deepEqual([rows[0].data.name, rows[0].data.project, rows[0].data.schedule, rows[0].data.hash], ["northgate-inbox", "northgate", "*/30 * * * *", hashOf(SPEC, CODE)]);
+  assert.equal(rows[0].data.spec, SPEC); assert.equal(rows[0].data.code, CODE);
+  assert.equal(fs.readFileSync(path.join(dir, "watcher.json"), "utf8"), SPEC, "the folder is untouched");
+  // the state of the watcher (the list) is unchanged by having a record
+  assert.equal((await cli("watchers.list")).data.watchers.find((/** @type {any} */ w) => w.name === "northgate-inbox").state, "draft");
+});
+
+test("a record edited by a person is written back to the folder; a folder edited by the skill is written into the record; a lost folder is restored", { timeout: 90_000 }, async t => {
+  const { dir, d, admin, cli, recs } = await world(t);
+  await cli("watchers.list");
+  let [rec] = await recs();
+  // the person edits the record (the settings)
+  const spec2 = JSON.stringify({ name: "northgate-inbox", project: "northgate", schedule: "0 * * * *", emits: "mail.seen" });
+  await d.kernel.gateway.records.update(admin, "def-watcher", rec.id, { spec: spec2 }, rec.version);
+  await cli("watchers.list");
+  assert.equal(fs.readFileSync(path.join(dir, "watcher.json"), "utf8"), spec2, "the folder follows the record");
+  assert.equal((await cli("watchers.list")).data.watchers.find((/** @type {any} */ w) => w.name === "northgate-inbox").schedule, "0 * * * *");
+  // the skill rewrites the code in the folder
+  const code2 = CODE + "// changed by the skill\n";
+  fs.writeFileSync(path.join(dir, "watch.js"), code2);
+  await cli("watchers.list");
+  [rec] = await recs();
+  assert.equal(rec.data.code, code2, "the record follows the folder");
+  assert.equal(rec.data.hash, hashOf(spec2, code2));
+  // a lost folder comes back from the record
+  fs.rmSync(dir, { recursive: true, force: true });
+  await cli("watchers.list");
+  assert.equal(fs.readFileSync(path.join(dir, "watch.js"), "utf8"), code2);
+  assert.equal((await recs()).length, 1);
+});
+
+test("the definition type is hidden like Flow definitions, and a model cannot reach it through the records tools", { timeout: 90_000 }, async t => {
+  const { cli, d } = await world(t);
+  await cli("watchers.list");
+  const types = (await cli("records.types", {})).data.types.map((/** @type {any} */ x) => x.name);
+  assert.ok(!types.includes("def-watcher"), "hidden from the person's lists");
+  assert.ok((await cli("records.types", { system: true })).data.types.some((/** @type {any} */ x) => x.name === "def-watcher" && x.system === true));
+  assert.ok((await d.registry.call("records.list", { type: "def-watcher" }, "mcp")).error, "a model is refused");
+});
+
+test("a person who deletes a watcher's record deletes the watcher: it is not made again from the folder", { timeout: 90_000 }, async t => {
+  const { dir, d, admin, cli, recs } = await world(t);
+  await cli("watchers.list");
+  const [rec] = await recs();
+  await d.kernel.gateway.records.remove(admin, "def-watcher", rec.id, rec.version);
+  await cli("watchers.list"); await cli("watchers.list");
+  assert.equal((await recs()).length, 0, "the record stays deleted");
+  assert.equal(fs.existsSync(dir), false, "and the folder went with it");
+  assert.equal((await cli("watchers.list")).data.watchers.some((/** @type {any} */ w) => w.name === "northgate-inbox"), false, "the watcher is gone from the list");
+});
+
+test("DW-4: a short or failed list of records never deletes a person's watcher: each is asked for by name first", async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createDefs, MIGRATIONS } = await import("./defs.js");
+  const root = tempHome(t), dir = path.join(root, "watchers");
+  const mk = (/** @type {string} */ name) => { fs.mkdirSync(path.join(dir, name), { recursive: true }); fs.writeFileSync(path.join(dir, name, "watcher.json"), SPEC.replace("northgate-inbox", name)); fs.writeFileSync(path.join(dir, name, "watch.js"), CODE); };
+  mk("northgate-inbox");
+  const db = new DatabaseSync(":memory:"); for (const m of MIGRATIONS) db.exec(m);
+  db.prepare("INSERT INTO watchers_defsync (name, hash) VALUES (?, ?)").run("northgate-inbox", hashOf(SPEC, CODE));
+  const row = { id: "r1", version: 1, data: { name: "northgate-inbox", spec: SPEC, code: CODE, hash: hashOf(SPEC, CODE) } };
+  const mode = { list: "short", byName: "found" };
+  const kernel = { serviceChain: () => ({}), records: { query: async (/** @type {any} */ _c, /** @type {string} */ _t, /** @type {any} */ spec) => {
+    if (spec && spec.filter) { if (mode.byName === "fail") throw new Error("the records store is busy"); return { rows: mode.byName === "found" ? [row] : [], next_cursor: null }; }
+    return { rows: mode.list === "short" ? [] : [row], next_cursor: null };
+  }, create: async () => row, update: async () => row, remove: async () => ({}) } };
+  const gone = /** @type {string[]} */ ([]);
+  const defs = createDefs({ kernel, dir, db, log: () => {}, onGone: n => gone.push(n) });
+  // the list comes back short but the record is there: nothing is removed
+  assert.equal((await defs.sync()).removed, 0);
+  assert.ok(fs.existsSync(path.join(dir, "northgate-inbox")) && gone.length === 0, "a truncated list deleted nothing");
+  // the list comes back short and the direct question fails: nothing is removed
+  mode.byName = "fail";
+  assert.equal((await defs.sync()).removed, 0);
+  assert.ok(fs.existsSync(path.join(dir, "northgate-inbox")) && gone.length === 0, "a failed question deleted nothing");
+  // only a clean answer that there is no such record removes the watcher
+  mode.byName = "none";
+  assert.equal((await defs.sync()).removed, 1);
+  assert.deepEqual(gone, ["northgate-inbox"]);
+  assert.equal(fs.existsSync(path.join(dir, "northgate-inbox")), false);
+});
