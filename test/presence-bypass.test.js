@@ -263,7 +263,8 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
     assert.equal(r.status, 403, caller);
   }
   const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
-  assert.match(wrong.error.message, /must be for me\.vyre\.run/);
+  // refused: before PW-1 for the wrong address, since PW-1 earlier, because a passkey on the box enrols only from the owner's own paired device
+  assert.match(wrong.error.message, /must be for me\.vyre\.run|owner's own paired device/);
   const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
   assert.ok(ok.data, JSON.stringify(ok));
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
