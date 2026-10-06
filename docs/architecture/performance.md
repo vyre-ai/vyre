@@ -20,7 +20,7 @@ what was measured.
 | vyred idle | under 0.5% of one core and under 150 MB resident; no polling faster than once a minute when nothing is happening |
 | Lumen hidden | under 0.2% CPU, no GPU use, under 250 MB resident for all its processes |
 | Lumen shown and idle | under 2% CPU; wakes in under 100 ms |
-| Deck in a background tab | no timers faster than a minute; the event stream only |
+| Vyre app web build in a background tab | no timers faster than a minute; the event stream only |
 | Heavy work (indexing, embedding, curation) | low priority, yields, pauses on battery and when you are active, never blocks a hook or Lumen |
 | Memory that grows with the corpus | bounded and measured |
 
@@ -104,7 +104,6 @@ An earlier run gated on raw max CPU and failed on a single sample out of 40 (0.7
 | `core/recall/index.js` | a transcript scan every 5 minutes | kept: a stat-only pass over 600 sessions costs 8 to 70 ms |
 | `core/memory/index.js` | suspected re-derive on every event | already debounced (`SETTLE_MS` 250 ms) and coalesced; about 2 s per 100,000 turns |
 | `core/computers/index.js` | a sweep every 5 s whether or not a computer was in use | sweeps every `sweepMs` (5 s) only while something is checked out or waiting to freeze, else every `idleSweepMs` (60 s) |
-| `deck/views/now.js` | the header clock ticked every 30 s in a hidden tab | pauses on `visibilitychange` and catches up when shown |
 
 The switchboard, gate, vault, learn and system modules and the Harness are driven by events
 and hooks. The event stream's 15-second heartbeat runs only while a client is connected.
@@ -135,15 +134,13 @@ clipboard watcher (a Swift helper, polling the pasteboard every 750 ms) measured
 Wake timing leaves out the hotkey's own double-tap window (about 450 ms, by design) and the
 first show after launch (about 721 ms).
 
-### Deck and Glass
+### The app and Glass
 
-- `deck/glass/watch.js` disconnects when the tab is hidden, keeping the last frame, and
-  reconnects with backoff (1 s doubling to 30 s) only while visible.
-- `deck/glass/takeover.js` ticks the held-time display once a second only while this tab holds
-  the keyboard and is visible.
+- `apps/app/screens/glass/state.ts` lets go of the screen when the tab is hidden, keeping the last
+  frame, and asks for a fresh ticket when the tab is visible again.
 - `core/glass/` has no timers. `core/computers/glass.js` sends a 30-second keepalive per open
   viewer, which exists only while someone is watching.
-- `deck/onboard/onboard.js` polls every 1.5 to 5 s while you wait on a step. That is a
+- `apps/app/screens/onboarding/SetupScreen.tsx` polls every 3 s while you wait on a step. That is a
   foreground wizard you are looking at, so it is outside the background-tab budget.
 
 ## Not measured yet

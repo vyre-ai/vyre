@@ -289,7 +289,7 @@ export function createFlow(o) {
   async function checkDomain(text) {
     if (!chan || !domainOk() || state.domain.checking) return;
     const domain = tidy(text ?? state.domain.input);
-    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example harlowlegal.com.", result: null } });
+    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example juniperstudio.example.", result: null } });
     const mine = run;
     set({ domain: { ...state.domain, input: domain, checking: true, error: null } });
     try {

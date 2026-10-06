@@ -12,7 +12,7 @@ export const FORBIDDEN = ["aXJmYWQ=", "bXlsZWdhbGFjYWRlbXk=", "cmFucWw=", "aXZ5c
 
 export const SECRET = /((?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|xox[abprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 
-// Examples use the made-up sample world (alex, Harlow Legal, Northwind Bakery, juno, kit) or the
+// Examples use the made-up sample world (alex, Juniper Studio, Northwind Bakery, juno, kit) or the
 // domains reserved for documentation. Anything else could be a real person's inbox. A git remote
 // (git@github.com) is an address in form only.
 const EMAIL = /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;

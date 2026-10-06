@@ -82,7 +82,7 @@ Point `$schema` at it for editor help. `x-` keys are free for experiments.
 | `does.watchers` | watcher preset files it ships, offered when someone asks for a watcher |
 | `does.hooks` | harness points (`brief`, `enrich`, `pretool`, `stop`), each served by one of its tools |
 | `watches.emits`, `watches.on` | the events it may emit and the patterns it may listen to |
-| `shows.deck` | slots in the web app on the Deck, Windows and the phone: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>` |
+| `shows.deck` | slots in the Vyre app on the web, Windows and the phone: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>` |
 | `shows.capsule` | results and actions in the Capsule on a Mac |
 | `shows.notices` | the notice kinds it raises |
 | `settings` | its settings, drawn in Settings and `vyre config` with no UI work |

@@ -10,7 +10,7 @@ status: stable
 
 Status: proposed, 26 Sep 2026. Builds on ADR 0002 (network and identity). Amends SPEC section 1
 ("Install and onboarding") where noted. The one-page version for users is
-[Onboarding](../get-started/onboarding.md).
+[Install](../get-started/install.md).
 
 ## Context
 

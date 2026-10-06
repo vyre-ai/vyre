@@ -15,7 +15,7 @@ call and before a turn ends, so a model cannot forget it. Learning works in four
 lesson that keeps being broken.
 
 Anything that makes Vyre stricter is free. Anything that makes it looser needs you, from your
-own terminal, Deck or Lumen.
+own terminal, Vyre app or Lumen.
 
 ## Signals: what Vyre hears
 
@@ -72,8 +72,8 @@ the plugin stops Claude's shell from running them. A proposed lesson looks like 
       vyre learn accept 7 · vyre learn retire 7
 ```
 
-- **Deck**: **Memory**, then the **Lessons** tab (`/memory?tab=lessons`), in four groups:
-  Proposed, Active, Retired, and Proposed skills. Relax, and a skill's Install and Dismiss, ask for your passkey; with no passkey the row shows the terminal command instead.
+- **Vyre app**: **Memory**, then the **Lessons** tab (`/u/memory`), in four groups:
+  Proposed, Active, Retired, and Proposed skills. Relax, and a skill's Install and Dismiss, ask you to prove you are there.
 - **Lumen**: a proposed lesson shows as a row to accept or decline.
 - **Claude**: `/vyre lessons` lists them. Claude can add a lesson (`learn.add`) and tighten one
   (`learn.edit`), and never accepts, retires or loosens one.
@@ -114,7 +114,7 @@ vyre learn stats                       # working, not working, or still measurin
 vyre learn level 7 block               # raising is free
 vyre learn level 7 remind              # lowering is yours alone
 vyre learn scope 7 all                 # widening to everywhere is free
-vyre learn scope 7 project harlow-legal   # narrowing is yours alone
+vyre learn scope 7 project juniper-legal   # narrowing is yours alone
 vyre learn relax 7 max ask             # cap it; also: pin, paths, when, scope
 ```
 
@@ -137,7 +137,7 @@ Installing and retiring a skill need presence.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Lumen | Claude |
+| Task | Terminal | Vyre app | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | List lessons | `vyre learn` | Memory, Lessons tab | | `/vyre lessons`, `learn.lessons` |
 | Add a lesson | `vyre learn add` | | | `/vyre remember`, `learn.add` |

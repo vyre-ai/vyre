@@ -54,27 +54,24 @@ export const CONCEPTS = [
   { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "apps/app/src/chat/ChatScreen.tsx" },
   { name: "computer", page: "using/agents.md#give-an-agent-a-computer", match: /\bcomputers?\b/i, code: "core/computers/index.js" },
   { name: "connector", page: "using/connectors.md", match: /\bconnectors?\b/i },
-  { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "apps/app/app/index.tsx" },
   { name: "enforcement", page: "using/learning.md#enforcement", match: /\benforce(?:s|d|ment)?\b/i, code: "core/harness/rules.js" },
   { name: "escalation", page: "using/learning.md#escalation", match: /\bescalat(?:e|es|ed|ion|ions)\b/i, code: "core/learn/index.js" },
   { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "kernel/bus.js" },
   { name: "floor", page: "concepts/floor.md", match: /\bfloor\b/i },
-  { name: "Gate", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bGate\b/, code: "core/gate/index.js" },
-  { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "apps/app/screens/glass/GlassScreen.tsx" },
+  { name: "Gate", page: "concepts/floor.md", match: /\bGate\b/, code: "core/gate/index.js" },
   { name: "gold marking", page: "using/memory.md#the-gold-marking", match: /\bgold\b/i },
   { name: "grant", page: "using/vault.md#let-an-agent-module-or-watcher-use-an-item", match: /\bgrant(?:s|ed|ing)?\b/i, code: "core/vault/index.js" },
   { name: "harness", page: "concepts/modules.md#kinds-of-module", match: /\bharness\b/i, code: "core/harness/index.js" },
   { name: "headless thread", page: "using/projects-and-threads.md#headless-threads", match: /\bheadless (?:thread|session)s?\b/i, code: "core/switchboard/index.js" },
-  { name: "held draft", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bheld drafts?\b|\bdrafts? (?:held|waits?|waiting) at the Gate\b/i, code: "core/gate/index.js" },
+  { name: "held draft", page: "concepts/floor.md", match: /\bheld drafts?\b|\bdrafts? (?:held|waits?|waiting) at the Gate\b/i, code: "core/gate/index.js" },
   { name: "lease", page: "concepts/floor.md#4-one-screen-types-into-a-thread-at-a-time", match: /\bleases?\b/i, code: "core/switchboard/index.js" },
   { name: "lesson", page: "using/learning.md#lessons-accept-edit-retire", match: /\blessons?\b/i, code: "core/learn/index.js" },
   { name: "Mac", page: "concepts/box-and-mac.md", match: /\bMacs?\b/ },
   { name: "MCP hub", page: "build/mcp-hub.md", match: /\bMCP hub\b/i },
   { name: "memory", page: "using/memory.md", match: /\bmemory\b/i, code: "core/memory/index.js" },
   { name: "module", page: "concepts/modules.md", match: /\bmodules?\b/i, code: "core/modules/index.js" },
-  { name: "onboarding", page: "get-started/onboarding.md", match: /\bonboarding\b/i, code: "core/onboard/index.js" },
-  { name: "owner", page: "concepts/tailnet.md#the-owner", match: /\bowner\b/i },
-  { name: "pairing", page: "using/tailscale.md#connect-your-mac-to-the-box", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
+  { name: "owner", page: "concepts/network.md#the-owner", match: /\bowner\b/i },
+  { name: "pairing", page: "get-started/install.md#4-pair-your-server", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
   { name: "pass", page: "using/vault.md#share-with-another-person", match: /\b(?:a|the|by|each|every|one|your|sealed|relayed|shared)\s+pass(?:es)?\b|\bpasses\b/i, code: "core/vault/index.js" },
   { name: "passkey", page: "concepts/presence.md#enroll-your-keys", match: /\bpasskeys?\b/i, code: "core/presence/index.js" },
   { name: "presence", page: "concepts/presence.md", match: /\bpresence\b/i, code: "core/presence/index.js" },
@@ -83,7 +80,6 @@ export const CONCEPTS = [
   { name: "room", page: "using/memory.md#how-projects-keep-memory-apart", match: /\brooms?\b/i, code: "core/memory/index.js" },
   { name: "signal", page: "using/learning.md#signals-what-vyre-hears", match: /\bsignals?\b/i, code: "core/learn/signals.js" },
   { name: "skill", page: "using/learning.md#skills-from-what-you-repeat", match: /\bskills?\b/i, code: "core/learn/skills.js" },
-  { name: "tailnet", page: "concepts/tailnet.md", match: /\btailnets?\b/i },
   { name: "thread", page: "using/projects-and-threads.md", match: /\bthreads?\b/i, code: "core/switchboard/index.js" },
   { name: "vault", page: "using/vault.md", match: /\bvaults?\b/i, code: "core/vault/index.js" },
   { name: "vyred", page: "concepts/box-and-mac.md#one-process-per-machine", match: /\bvyred\b/, code: "core/daemon/index.js" },
@@ -93,10 +89,10 @@ export const CONCEPTS = [
 
 // Where each Deck view is explained, when not on the Deck page's list of views.
 const SCREEN_PAGES = {
-  agents: "using/agents.md", chat: "using/chat.md", glass: "using/glass.md", memory: "using/memory.md", vault: "using/vault.md",
-  onboard: "get-started/onboarding.md",
+  agents: "using/agents.md", chat: "using/chat.md", memory: "using/memory.md", vault: "using/vault.md",
+  onboard: "get-started/install.md",
 };
-const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
+const DECK_VIEWS_PAGE = "concepts/floor.md";
 
 // Commands whose first word after the name must be one of their subcommands: anything else is an
 // error there, so a page naming another one is stale. The rest take free words (a query, a name).
@@ -308,6 +304,8 @@ export function envVars(root) {
 
 /** The Deck's views and their routes (when a checkout still has the Deck), and the pre-app pages. */
 export function screens(root) {
+  // The Deck is removed in 0.2.9 (the app replaces it), so there are no Deck screens to list.
+  if (root !== null) return [];
   const out = [];
   let app = "";
   try { app = fs.readFileSync(path.join(root, "deck/js/app.js"), "utf8"); } catch { /* the Deck is gone: only the pre-app pages are listed */ }
@@ -324,7 +322,7 @@ export function screens(root) {
       file: fs.existsSync(path.join(root, `deck/views/${view}.js`)) ? `deck/views/${view}.js` : "deck/js/app.js", page: SCREEN_PAGES[view] || DECK_VIEWS_PAGE });
   }
   if (fs.existsSync(path.join(root, "web/onboard/index.html"))) out.push({ name: "/onboard", label: "Onboarding", routes: ["/onboard"], file: "web/onboard/index.html", page: SCREEN_PAGES.onboard });
-  if (fs.existsSync(path.join(root, "web/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "web/onboard/passkey", page: "using/deck.md#add-a-passkey" });
+  if (fs.existsSync(path.join(root, "web/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "web/onboard/passkey", page: "concepts/presence.md#enroll-your-keys" });
   return out.sort((a, b) => byName(a.name, b.name));
 }
 

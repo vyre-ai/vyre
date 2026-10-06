@@ -675,7 +675,7 @@ mbx_init() {
   body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK")
   case "$(mbx_post "$body")" in
     200) MBX=1 ;;
-    409) printf 'vyre: Another server already used this code. Your browser is not connected to this server. Start again at https://vyre.run/setup.\n' >&2; exit 1 ;;
+    409) printf 'vyre: Another server already used this code. Run the install line again to get a new code.\n' >&2; exit 1 ;;
     *) MBX=0 ;;
   esac
 }
