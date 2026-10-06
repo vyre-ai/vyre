@@ -184,3 +184,23 @@ test("degrade: a refusal that is an answer to a person, and a bad VYRE_STORE, st
   const bad = createStoreFor({ home, mode: "nope", degrade: true });
   await assert.rejects(() => bad(SP, {}), /VYRE_STORE is sqlite, auto or twenty/);
 });
+
+test("degrade: a store still starting past startWaitMs does not hold the server: the Space gets the waiting store at once, and a late failure goes to the retries", async () => {
+  const home = tmp(); const lines = [];
+  /** @type {(e: Error) => void} */ let fail = () => {};
+  const f = createStoreFor({ home, mode: "twenty", degrade: true, startWaitMs: 30, retryBaseMs: 60_000, log: (l) => lines.push(l), helper: false,
+    preflight: async () => ({ ok: true, reasons: [] }),
+    provision: () => new Promise((_, rej) => { fail = rej; }) });
+  const t0 = Date.now();
+  const st = await f(SP, { personal: true });
+  assert.ok(Date.now() - t0 < 2000, "the server was not held while the store starts");
+  assert.equal(st.attached(), false);
+  assert.equal(f.waiting().length, 1);
+  assert.ok(lines.some((l) => /still starting; the server goes on/.test(l)));
+  await f.retry(SP);                                   // an attempt while the first start runs does not start a second one
+  fail(new Error("the helper did not answer"));
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(f.waiting().length, 1);
+  assert.match(f.waiting()[0].reason, /the helper did not answer/);
+  assert.ok(lines.some((l) => /not available \(the helper did not answer\); the server keeps running/.test(l)));
+});

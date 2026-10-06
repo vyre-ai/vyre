@@ -58,6 +58,8 @@ export const spacesThatFit = (availableMb, totalMb = os.totalmem() / 1048576) =>
 export const nameOf = (space) => space.replace(/_/g, "-");
 
 const sh = (/** @type {string} */ cmd, /** @type {string[]} */ args) => new Promise((resolve) => execFile(cmd, args, { timeout: 15000 }, (err, stdout) => resolve(err ? null : String(stdout))));
+// what the first start of a slow store resolves to once the server has stopped waiting for it
+const LATE = Symbol("late");
 
 /**
  * Can this box run a Space's Twenty? Never throws. `memoryMb` is what is available now (free plus reclaimable), not what is installed.
@@ -202,7 +204,35 @@ export function createStoreFor(cfg) {
   const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
     if (!cfg.degrade) return open(space, meta);
     const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
-    try { return await open(space, meta); } catch (e) {
+    // A first start makes the Space's database (minutes, and on a box it needs the root helper, which the installer adds once the server answers): past `startWaitMs` the
+    // server goes on with the waiting store and the setup finishes in the background, so a slow store never keeps the server's socket closed.
+    const opening = open(space, meta);
+    /** @type {any} */ let slow = null;
+    const late = new Promise((r) => { slow = setTimeout(() => r(LATE), cfg.startWaitMs ?? 20_000); slow.unref?.(); });
+    try {
+      const got = await Promise.race([opening, late]);
+      clearTimeout(slow);
+      if (got !== LATE) return got;
+      const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
+      w.reason = "the record store is still starting"; w.running = true;
+      if (!w.store) w.store = createDeferredStore({ reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      waiting.set(space, w);
+      log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
+      opening.then(async (real) => {
+        if (real) await w.store.attach(real);
+        waiting.delete(space);
+        try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
+        log(`store for ${space}: Records are available now`);
+      }, (e) => {
+        w.attempts++; w.reason = /** @type {Error} */ (e).message;
+        const wait = backoff(w.attempts);
+        writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
+        log(`store for ${space}: not available (${w.reason}); the server keeps running and tries again in ${Math.round(wait / 1000)} s`);
+        w.timer = setTimeout(() => { attempt(space).catch(() => {}); }, wait); w.timer.unref?.();
+      }).finally(() => { w.running = false; });
+      return w.store;
+    } catch (e) {
+      clearTimeout(slow);
       const err = /** @type {any} */ (e);
       if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
