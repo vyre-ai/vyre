@@ -1845,12 +1845,18 @@ space_helper() {
       ;;
     remove)
       [ "$(id -u)" = 0 ] || [ -n "$SYSTEMD_SEAM" ] || exec sudo -n "$WRAPPER" space-helper remove
+      # Each Space's containers go with the helper (left running, nothing would firewall them again); their volumes and keys stay, and purging them is `vyre admin purge-space`.
+      for sd in "$SP_PRIV"/spaces/*/; do
+        n=$(basename "$sd"); sp_known "$n" || continue
+        sp_dc "$n" down --remove-orphans >/dev/null 2>&1 || say "the Space $n's containers could not be removed: sudo docker compose -p vyre-$n-twenty down"
+        sp_fw_del "$n" >/dev/null 2>&1 || true
+      done
       rm -f "$SP_STATE/ready"
       systemctl disable --now "$un.path" >/dev/null 2>&1 || true
       systemctl disable --now "$un-watch.service" >/dev/null 2>&1 || true
       rm -f "$units/$un.path" "$units/$un.service" "$units/$un-watch.service"
       systemctl daemon-reload 2>/dev/null || true
-      say "the Space helper is removed (the Spaces and their data are kept)"
+      say "the Space helper is removed and the Spaces are stopped (their data is kept)"
       ;;
     watch)
       # Event driven, not polling: every start of the vyre container (a restart outside the wrapper, a reboot, a Docker restart) gets its Spaces joined and firewalled
