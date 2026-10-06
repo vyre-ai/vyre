@@ -143,7 +143,8 @@ export default {
     // Moving a Project to another Space (core/work/project-move.js, team/0.3/DESIGN-project-move.md): a side is a Space's gateway with the mover's own chain in THAT Space.
     const sideOf = async (/** @type {string} */ space, /** @type {any} */ extra) => {
       const k = kernelOf();
-      const chain = await k.chainIn(space, extra);
+      // a Space on another server (My Cloud on the person's own server): this home cannot carry chats there yet, so the chats port steps aside and the upgrade goes on without it (0.3.0, team/BACKLOG.md)
+      const chain = await k.chainIn(space, extra).catch((/** @type {any} */ e) => { if (e && e.code === "not_found" && space !== k.space) throw fail("not_hosted", "this server cannot carry chats to a Space on another server yet; they stay in this Space"); throw e; });
       // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
       const gw = (await k.for(space)).gateway;
       // the chats and members of that Space too, for a chat that moves with its project (core/work/chat-carry.js): the target's own, under the mover's own chain there
