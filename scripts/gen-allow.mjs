@@ -26,6 +26,14 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
+  "spaces.time-zone.set": "sets the time zone of a space the caller may change; the kernel's grants decide",
+  "spaces.storage.put": "writes the caller's own per-member storage in a space; the kernel's grants and the member's cap decide",
+  "spaces.storage.put-if": "writes the caller's own per-member storage only if it is unchanged; the kernel's grants and the cap decide",
+  "spaces.storage.get": "reads the caller's own per-member storage; the kernel's grants decide",
+  "spaces.storage.list": "lists the caller's own per-member storage; the kernel's grants decide",
+  "spaces.storage.delete": "deletes from the caller's own per-member storage; the kernel's grants decide",
+  "spaces.storage.usage": "reads how much of their own storage cap the caller uses",
   "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "spaces.identity.devices": "lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger",
