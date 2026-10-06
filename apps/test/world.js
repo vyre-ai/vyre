@@ -28,6 +28,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildHome, makeProjects, makeAgents, heldItems } from "../../web/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { asOwner } from "../../test/helpers.js";
 import { setPeerHosting } from "../../core/daemon/peer.js";
 
 // This world hosts vyred in its own process and drives it from that process and its children:
@@ -83,6 +84,8 @@ const w = buildHome(root, {
 
 const { start } = await import("../../core/daemon/index.js");
 const d = await start({ root });
+// the world's own calls as "cli" arrive as the owner's device, as on the real socket (the chat gate refuses a caller with no person)
+asOwner(d, root);
 const handle = d.registry.deps.handler({});
 // PW-1: on a box a one-time code enrols a key only from the owner's own PAIRED device (a confirmed Wink record), not from a tailnet login. This world is alex's phone on the tailnet and no real pairing runs here, so the
 // phone stands in for the paired owner device: the presence layer's `ownerDevice` answers true for exactly the world's one caller. (The real rule is tested in core/presence and test/wink-paired.test.js.)
