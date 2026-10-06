@@ -47,6 +47,7 @@ test("one identity: spaces.identity.status and wink.pair.targets report the same
   assert.equal(me.id, made.data.id, "pairing answers for the identity the person claimed");
   await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
   const list = await deck("spaces.list");
-  assert.equal(list.data.length, 1, lines.filter(l => /records/.test(l)).join(" ; "));
+  // the person's own My Cloud Space is listed with the one they made
+  assert.deepEqual(list.data.map((/** @type {any} */ x) => x.label).sort(), ["harlow", "personal"], lines.filter(l => /records/.test(l)).join(" ; "));
   assert.equal((await deck("wink.pair.targets")).data.targets[0].id, made.data.id);
 });
