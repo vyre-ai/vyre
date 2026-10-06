@@ -273,7 +273,8 @@ test("C-5: edit-retry whose send would be refused (the keyboard is held elsewher
   const w = await boot(t);
   const { th, turns, lines } = await threeTurns(w);
   const before = lines().length;
-  const held = (await w.tool("threads.lease", { thread: th.id, surface: `cli:${process.pid}` })).data;
+  // a terminal takes the keyboard: the owner's own calls are their one surface (surfaceFor), so the terminal's lease is taken as vyred itself, which keeps the surface it names
+  const held = (await w.d.registry.call("threads.lease", { thread: th.id, surface: `cli:${process.pid}` }, "module:vyred")).data;
   assert.ok(held, "another surface takes the keyboard");
   for (const [tool, input] of [["threads.edit-retry", { thread: th.id, message: turns[1].uuid, text: "two, shorter", surface: "deck" }], ["threads.retry", { thread: th.id, message: turns[1].uuid, surface: "deck" }]]) {
     const r = await w.d.registry.call(tool, input, "deck", { idempotencyKey: `k-${tool}` });

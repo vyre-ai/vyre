@@ -251,9 +251,8 @@ for (const driver of ["cli", "sdk"]) {
     noMemoryBlocks(w);
     const th = (await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "start", surface: "deck" })).data;
     await w.finished(th.id);
-    const db = w.d.registry.deps.db;
-    // The event log holds what was said: 400,000 characters is 100,000 tokens, and 12,000 more are the agent's own, of a 256,000-token window: 44%, under the 50% line an estimate rolls at.
-    const say = chars => db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)").run(Date.now(), "thread.text", "threads", null, th.id, JSON.stringify({ message: "m", text: "word ".repeat(chars / 5), done: true }));
+    // The kernel log holds what was said: 400,000 characters is 100,000 tokens, and 12,000 more are the agent's own, of a 256,000-token window: 44%, under the 50% line an estimate rolls at.
+    const say = chars => w.d.registry.deps.events.emit("threads", "thread.text", { message: "m", text: "word ".repeat(chars / 5), done: true }, { thread: th.id });
     say(400_000);
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "a short one", surface: "deck" })).error, undefined);
     await w.finished(th.id, 2);
