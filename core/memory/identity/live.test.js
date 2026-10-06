@@ -150,7 +150,7 @@ test("a restart is answered from the phone without asking again, while the grant
   // The server comes back: locked, and it tells the phone it wants the memory (an event); the phone calls begin, answers, finish: no prompt, no yes.
   const d2 = await start({ root, log: () => {} });
   t.after(() => d2.stop());
-  const asked = d2.registry.deps.db.prepare("SELECT payload FROM events WHERE type = 'memory.unlock-asked'").all();
+  const asked = d2.registry.deps.events.since(0, { type: "memory.unlock-asked", limit: 5000 }); // the bus is the kernel log now
   assert.ok(asked.length >= 1, "the phone was told");
   assert.equal((await as(d2, "memory.identity.status", {}, "mcp:agent:juno")).data.unlocked, false);
   const b = await as(d2, "memory.identity.unlock.begin", {}, "mcp:agent:juno");
