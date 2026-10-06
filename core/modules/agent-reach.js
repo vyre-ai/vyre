@@ -9,6 +9,10 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
+  ["spaces.storage.put", "writes the person's own per-member storage: the person's own act until an assistant's write is decided (lead, 0.2.9)"],
+  ["spaces.storage.put-if", "writes the person's own per-member storage if unchanged: the person's own act (lead, 0.2.9)"],
+  ["spaces.storage.delete", "deletes from the person's own per-member storage: the person's own act (lead, 0.2.9)"],
   ["runner.places", "where the person's own chats run (the lent computer of each): the person's own view"],
   ["stream.typing", "says the person is typing in a chat they are in: the person's own surface"],
   ["stream.catchup", "what the person missed in a chat they are in: the person's own surface reads it"],
@@ -283,7 +287,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "spaces.servers", "spaces.time-zone.set", "spaces.storage.put", "spaces.storage.put-if", "spaces.storage.get", "spaces.storage.list", "spaces.storage.delete", "spaces.storage.usage", // the person's own server list, their space's time zone and their own per-member storage: the kernel's grants and the call's own chain decide
+  "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",
   // what is connected (which services have a credential, which Google accounts are signed in) and the recipe to log one mailbox: the person's own, and the person's proven assistant under their grants; never a guest or an unproven caller
