@@ -72,6 +72,7 @@
       "expo-web-browser",
       "expo-secure-store",
       "expo-asset",
+      ["expo-splash-screen", { "image": "./assets/splash.png", "imageWidth": 200, "resizeMode": "contain", "backgroundColor": "#0B0A09" }],
       [
         "expo-camera",
         {
