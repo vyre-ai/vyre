@@ -38,11 +38,12 @@ export function parsePhonePayload(s) {
 
 /**
  * @param {{ payload: string, key: { publicKey: string, label?: string, agree?: string, held?: "web" | boolean, enclave?: string, attest?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
- *   avatar?: ArrayLike<number>, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
+ *   avatar?: ArrayLike<number>, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string, expires?: number) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function addThisDevice(o) {
   /** @type {{ seed: Uint8Array, relay: string } | null} */ let scan;
+  /** the typed code's end in epoch ms, when the relay said it: the wait for the ack runs to it */ let typedEnd = 0;
   // The camera reader's picture of the typed code (the avatar's 8 bytes) is the code itself.
   if (o.code === undefined && o.avatar !== undefined && o.payload === undefined) { const c = avatarBytesToCode(o.avatar); if (!c) throw fail("bad_code", "That is not a Vyre code. Scan the avatar the other device shows."); o = { ...o, code: c }; }
   if (o.code !== undefined && o.payload === undefined) {
@@ -50,8 +51,9 @@ export async function addThisDevice(o) {
     if (!o.relay) throw fail("bad_code", "addThisDevice needs the relay's address to use a typed code");
     const t = await typeWinkCode({ relay: o.relay, input: String(o.code), ...(o.fetch ? { fetch: o.fetch } : {}) });
     if (!t.ok) throw fail(t.reason === "offline" ? "unreachable" : t.reason === "busy" ? "busy" : "taken", t.reason === "offline" ? "The relay could not be reached." : t.reason === "busy" ? "Too many tries; wait a minute." : "That code did not work. Check it on the other device, or ask for a new one.");
-    if (o.onAck) o.onAck(t.ack);
+    if (o.onAck) o.onAck(t.ack, t.expires);
     scan = { seed: t.seed, relay: o.relay };
+    typedEnd = t.expires || 0;
   } else scan = parsePhonePayload(String(o.payload));
   if (!scan) throw fail("bad_code", "That is not a code for adding a device. On the device that is already signed in, choose Add a device and scan or paste the code it shows.");
   const raw = o.key && typeof o.key.publicKey === "string" ? b64u(o.key.publicKey) : null;
@@ -62,7 +64,7 @@ export async function addThisDevice(o) {
   /** @type {any} */ let paired;
   try {
     // A typed code's ticket appears at the relay only once the person has typed the ack back on the other device: ask until it does (or the wait runs out).
-    const until = Date.now() + (o.timeoutMs ?? 5 * 60_000);
+    const until = typedEnd && o.timeoutMs === undefined ? typedEnd : Date.now() + (o.timeoutMs ?? 5 * 60_000);
     for (;;) {
       try {
         paired = await pairTicket(scan.seed, { relay, name: deviceName, ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });

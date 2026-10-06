@@ -10,7 +10,7 @@
 //                directory port below: the kernel's memberships and roles, or a fake until the real directory is merged).
 //   Pairing      two ways: scan a QR, or paste the long code; both confirmed by the same three words. A phone pairs to
 //                the identity only. wink.pair.server (the app scans the server's QR or takes its pasted long code), wink.server.code / wink.server.adopt
-//                (the server's side), wink.phone.open / wink.phone.scan (QR or paste, three words on both sides, a yes on the computer); the typed code is a development flag.
+//                (the server's side), wink.phone.open / wink.phone.scan (QR or paste, three words on both sides, a yes on the computer); the typed code is on by default, with a kill switch.
 //   Compute      wink.offer.set and computeAllowed: a computer's compute reaches a space only when the space allows it AND the member
 //                accepts (DESIGN-wink section 7).
 // The module wiring (index.js) owns the Wink code state machine and hands this file the pieces it needs.
@@ -172,6 +172,9 @@ export function createPairing(o) {
   let abandonHook = () => {};
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
   const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
+  /** The typed-back acks of this server's person, by the tag of the ticket the typed code's key made: the ack IS the owner's yes for the device that redeems that ticket (DESIGN-wink, the typed code: no three words). Single use. @type {Map<string, number>} */
+  const typedAcks = new Map();
+  const takeTypedAck = (/** @type {string} */ tag) => { for (const [k, until] of typedAcks) if (until <= now()) typedAcks.delete(k); const until = typedAcks.get(tag); if (until === undefined) return false; typedAcks.delete(tag); return true; };
 
   const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", ...(r.key_storage === "software" ? { software: true } : {}) } : null;
   /** Ends a device's paired person session and grant (presence.person.end-paired, module:wink only). Late-bound: set once the context can call. A failure is logged, never a reason to keep the device. @type {(device?: string) => void} */
@@ -352,7 +355,7 @@ export function createPairing(o) {
   /**
    * What the new server needs to reach its home with no one to carry it (home address, box id, the node's join key, the relay and its own device id),
    * handed over only inside the paired channel's encrypted call to wink.server.adopt, stored on the server, never in a card, an event or a log.
-   * @param {any} paired @param {{ kind: string, id: string }} target @param {{ identity: string, peerSecret: string, device: string, ownerName?: string, handover?: any, seed?: Uint8Array, onConfirm?: (words: string, until: number) => void }} x */
+   * @param {any} paired @param {{ kind: string, id: string }} target @param {{ identity: string, peerSecret: string, device: string, ownerName?: string, handover?: any, seed?: Uint8Array, typedSeed?: Uint8Array, onConfirm?: (words: string, until: number) => void }} x */
   const adopt = async (paired, target, x) => {
     if (ports.adopt) return ports.adopt(paired, target, x);
     const hand = x.handover && typeof x.handover === "object" ? { ...x.handover, device: x.device } : { device: x.device };
@@ -370,7 +373,9 @@ export function createPairing(o) {
     // sha256(its nonce) first, the server answers with its own nonce, then this app reveals its nonce, so neither side can pick a nonce after seeing the other's.
     const seed = x.seed ? b64url(x.seed) : "";
     const na = newNonce(), commit = await nonceCommit(na), tag = seed ? await ticketTag(seed) : "";
-    const pair = (/** @type {any} */ more) => ({ ...input, pairing: { commit, ...(tag ? { tag } : {}), ...more } });
+    // A pairing that came in by the typed code names that code's ticket in its own field (`typed_tag`), never in `tag`: a server that has the typed-ack rule reads it, an older one ignores it and asks the words as before
+    const typedTag = x.typedSeed ? await ticketTag(b64url(x.typedSeed)) : "";
+    const pair = (/** @type {any} */ more) => ({ ...input, pairing: { commit, ...(tag ? { tag } : {}), ...(typedTag ? { typed_tag: typedTag } : {}), ...more } });
     /** @type {string} */
     let mine = "";
     const cancel = () => { void callServer(paired, "wink.server.adopt", { ...input, pairing: { cancel: true, commit, ...(tag ? { tag } : {}) } }).catch(() => null); };
@@ -566,7 +571,7 @@ export function createPairing(o) {
           let ok = false, why = null;
           // A release that could not be delivered when the person removed this server goes now, over the channel this pairing just made.
           if (meta.get(`release:${sid}`)) { if ((await callRelease(channelOf(pd) || meta.get(`release:${sid}`))) !== "unreachable") meta.del(`release:${sid}`); }
-          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed, onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
+          try { ok = await adopt(pd, i.target, { identity, peerSecret, device: sid, ownerName: i.label, handover, seed: i.seed, ...(i.code && !i.seed ? { typedSeed: t.seed } : {}), onConfirm: (/** @type {string} */ w) => { if (p.state !== "confirm") { p.state = "confirm"; p.words = w; ctx.events.emit("wink.pair-confirm", { pairing: id, words: w }); } } }); }
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
@@ -673,7 +678,7 @@ export function createPairing(o) {
       run: async (_, meta = {}) => { owner(meta, "the pair targets"); return { targets: await targets(await o.identity()) }; },
     });
     ctx.tool("wink.pair.server", {
-      description: "Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. A short typed code is switched off in this release (`code` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).",
+      description: "Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. The short typed code works too (`code`: type the one the server shows, then the server asks for the code this app shows); it is refused only when the kill switch is set on this computer (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
       input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["target"]),
       presence: { summary: async () => "Add a server to Vyre" },
       run: async (input, meta = {}) => {
@@ -780,11 +785,12 @@ export function createPairing(o) {
         if (!t || t.error) return unreachable(t && t.error ? String(t.error).slice(0, 80) : "");
         const qr = serverQrPayload(seed, await o.relayUrl());
         await rememberTicket(b64url(seed));
-        return { ...made, qr, art: qrArt(qr), expires: now() + 5 * 60_000 };
+        // `expires` is the QR's life; with a typed code beside it, `code_expires` is the code's own (ten minutes, code.js), so a screen can say each
+        return { ...made, qr, art: qrArt(qr), expires: now() + 5 * 60_000, ...(made && made.code ? { code_expires: made.expires, code_tries: made.tries } : {}) };
       } catch (e) { if (/** @type {any} */ (e).code === "unavailable") throw e; return unreachable(""); }
     };
     ctx.tool("wink.server.code", {
-      description: "On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
+      description: "On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires, code?, code_expires?, code_tries? }: `code` (with `code_expires`, ten minutes, and `code_tries`, the wrong tries that close it) is the short typed code when it is on and `qr: true` was asked for; `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). The server also offers a short typed code (WINK-XXXX-XXXX, 10 minutes, three wrong tries, one use) beside the QR when `qr: true` is asked for: the app types it, shows a code, and the person types that back at the server (wink.server.confirm). `typed: true` is refused only when the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
       input: obj({ qr: { type: "boolean" }, typed: { type: "boolean" }, pairTo: str }),
       run: async (input, meta = {}) => {
         owner(meta, "adding this server");
@@ -798,7 +804,7 @@ export function createPairing(o) {
           if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id or its name.");
           meta0Set(to);
         }
-        // Only the development flag keeps the typed code: its offer and short code are made as before, and the QR is added when asked for.
+        // The typed code is on by default (kill switch aside): its offer and short code are made, and the QR is added when asked for.
         const preferTyped = typeof o.typedDefault === "function" ? Boolean(o.typedDefault()) : typedOn();
         if (preferTyped && i.qr !== true && i.typed !== false) return o.openCode("W3");
         const made = preferTyped ? await o.openCode("W3") : {};
@@ -1074,6 +1080,8 @@ export function createPairing(o) {
             try { proven = await proveIdentity(claimed, input, caller, true); } catch (e) { dropLater(caller); throw e; }
           }
           const fresh = !to && !o.pairWordsFor;
+          // The owner typed back the ack of the typed code this device came in by: that is the yes, so no three words are asked (single use; the QR and long-code paths ask them)
+          const typedYes = Boolean(pr.typed_tag) && takeTypedAck(String(pr.typed_tag));
           // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
           const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
           if (pr.tag) liveTickets.delete(String(pr.tag));
@@ -1086,14 +1094,14 @@ export function createPairing(o) {
             ticket = t.seed;
           }
           const nb = newNonce();
-          const w = fresh || to ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
+          const w = fresh || to || typedYes ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
           const until = now() + ASK_MS;
-          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
+          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to || typedYes ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
           if (w) setWords(mine, w);
           // no answer, no yes: the ask ends by itself and lets the app's relay device go, even when the app never calls again
           const timer = setTimeout(() => { if (ask === mine) askLive(); }, ASK_MS + 5);
           if (timer.unref) timer.unref();
-          if (!to && !fresh) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, choices: mine.choices, until: mine.until });
+          if (!to && !fresh && !typedYes) ctx.events.emit("wink.pair-asked", { device: caller.slice(7), name: mine.name, choices: mine.choices, until: mine.until });
         }
         if (a.state === "waiting" && !a.words) {
           // not revealed yet: answer with the server's nonce; the words appear when the app reveals its own
@@ -1367,7 +1375,7 @@ export function createPairing(o) {
 
     // A phone (DESIGN-wink section 4): a signed-in computer shows a QR and a long code (a long secret, one use, 5 minutes); the phone scans or pastes it; both show the same three
     // words made from both sides' keys; the person says yes on the computer. No yes in 5 minutes, a no, or wrong words: nothing is added and the phone is let go.
-    // The typed code stays behind the development flag only.
+    // The typed code is on by default (kill switch: VYRE_WINK_TYPED_CODE=0 or wink.typedCode: false).
     /** @type {null | { qr: string, art: string, until: number, claimed: boolean, seed: string }} the QR on show */
     let phoneTicket = null;
     /** @type {null | { device: string, name: string, fingerprint: string, words: string, choices: string[], until: number, state: "waiting" | "yes" | "no" | "expired", nb: string, commit: string, ticket: string, named: boolean }} the phone asking to be added */
@@ -1406,7 +1414,7 @@ export function createPairing(o) {
     /** The avatar's 8 bytes for a typed code (the camera reader's picture of the same code), base64url. @param {string} code */
     const avatarOf = code => { const b = codeToAvatarBytes(code); return b ? b64url(b) : null; };
     ctx.tool("wink.phone.open", {
-      description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. A short typed code is switched off in this release (`typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).",
+      description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. The short typed code works too (`typed: true` asks for it) unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
       input: obj({ space: str, typed: { type: "boolean" } }),
       presence: { summary: async () => "Show a code to add a phone" },
       run: async (input, meta = {}) => {
@@ -1440,11 +1448,11 @@ export function createPairing(o) {
     /** A phone typed the code and the person typed its ack back: the ticket both ends derived from the PAKE key is the pairing now (the QR's is spent), and the phone is confirmed by the code. @param {string} seed base64url @param {any} presence */
     phone.codeSeed = (seed, presence) => { phoneTicket = { qr: "", art: "", until: now() + 5 * 60_000, claimed: false, seed, byCode: true, presence }; phoneAsk = null; };
     ctx.tool("wink.phone.scan", {
-      description: "On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
+      description: "On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code works too unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
       input: obj({ payload: str, code: str, target: obj({ kind: str, id: str }) }),
       run: async (input, meta = {}) => {
         owner(meta, "adding this phone");
-        // a typed code is switched off: say so plainly, not "payload is required"
+        // the kill switch is set: say so plainly, not "payload is required"
         if (input.payload === undefined && input.code !== undefined && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         if (input.payload === undefined && input.code === undefined) throw fail("bad_input", words("notACode"));
         const text = String(input.payload !== undefined ? input.payload : input.code);
@@ -1594,7 +1602,7 @@ export function createPairing(o) {
       return best;
     } catch { return null; }
   };
-  return { autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { typedAck: (/** @type {string} */ tag) => { typedAcks.set(String(tag), now() + 5 * 60_000); }, forgetTypedAck: (/** @type {string} */ tag) => { typedAcks.delete(String(tag)); }, autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

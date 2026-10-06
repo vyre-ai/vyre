@@ -32,6 +32,7 @@ import { probe as probeBox } from "../probe.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
 import { findAssistant } from "./assistant.js";
+import { pairHere } from "./pair-here.js";
 import { build, label } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
@@ -279,6 +280,9 @@ async function run(args, deps) {
     return 0;
   }
   if (json) return done({ paired: false, ready: false, pairing: "vyre call wink.server.code '{\"qr\":true}'" });
+  // Not paired yet and on a terminal: show the pairing here, the same one the installer shows (pair-here.js: the QR, the long code and the typed code, then the code the app shows typed back).
+  const io = deps.io || terminal;
+  if (io.tty && !flags["keep-link"]) { await pairHere({ tool: callTool, io, say, ...(deps.sleep ? { sleep: deps.sleep } : {}) }); return 0; }
   say(`  not paired yet. Pair this server from your Vyre app: run ${signal("vyre call wink.server.code '{\"qr\":true}'")} here, then scan the QR or paste the long code.`);
   return 0;
 }

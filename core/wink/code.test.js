@@ -122,9 +122,11 @@ test("the typist confirms first: a bad confirmation gets nothing derived from th
 test("a wrong confirmation counts an attempt and says so quietly; the code stays unless rotateOnWrong is set", async () => {
   const w = world();
   const shown = /** @type {any} */ (await w.code.open());
-  for (let i = 1; i <= 3; i++) { confirmMsg(w, shown, first(w, shown, "00000A")); assert.equal(w.code.status()?.attempts, i); }
-  assert.equal(w.names().filter(n => n === "wink.code.wrong").length, 3);
-  assert.equal(w.last("wink.code.wrong").attempts, 3);
+  // the last try closes the code as it starts (MAX_ATTEMPTS), so the code stays through the tries before it
+  const tries = MAX_ATTEMPTS - 1;
+  for (let i = 1; i <= tries; i++) { confirmMsg(w, shown, first(w, shown, "00000A")); assert.equal(w.code.status()?.attempts, i); }
+  assert.equal(w.names().filter(n => n === "wink.code.wrong").length, tries);
+  assert.equal(w.last("wink.code.wrong").attempts, tries);
   assert.equal(w.code.status()?.code, shown.code);
   const r = world({ opts: { rotateOnWrong: true } });
   const s2 = /** @type {any} */ (await r.code.open());
@@ -145,7 +147,7 @@ test("an abort after message 1 consumes an attempt", async () => {
   assert.equal(w.code.handle({ rv: shown.rv, s: f.t.s, n: 1, m: client.b64url(f.t.first) }), null);
   assert.equal(w.code.status()?.attempts, 1);
   assert.equal(w.evals.n, 1);
-  // Nine more abandoned sessions: the tenth closes the code and a fresh one replaces it.
+  // The remaining abandoned sessions: the last one closes the code and a fresh one replaces it.
   for (let i = 0; i < MAX_ATTEMPTS - 1; i++) first(w, shown);
   await new Promise(x => setImmediate(x));
   assert.equal(w.last("wink.code.closed").reason, "too_many");

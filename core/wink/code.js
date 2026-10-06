@@ -34,8 +34,9 @@
 
 import * as client from "../../relay/client/code.js";
 
-export const CODE_TTL_MS = 5 * 60_000;
-export const MAX_ATTEMPTS = 10;
+// The typed code's life and tries (the user's ruling, 5 Oct 2026): ten minutes, three wrong tries per code, one use. The one place these numbers are stated; the Wink module imports them.
+export const CODE_TTL_MS = 10 * 60_000;
+export const MAX_ATTEMPTS = 3;
 /** Reasons after which a fresh code appears with no tap. */
 const REPLACING = new Set(["expired", "too_many", "wrong_number", "wrong_code"]);
 
@@ -164,7 +165,7 @@ export function createWinkCode(o) {
         l.attempts++;
         const session = { eval: /** @type {any} */ (null), done: false };
         l.sessions.set(msg.s, session);
-        // The tenth attempt closes the code as it starts, before it is answered, but it is still evaluated
+        // The last attempt closes the code as it starts, before it is answered, but it is still evaluated
         // once, so the count of evaluations is exactly the count of attempts.
         let out = null;
         try {

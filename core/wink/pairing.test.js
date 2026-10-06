@@ -735,6 +735,37 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "the question is closed");
 });
 
+test("typed code: the owner's typed-back ack is the yes, so the device that came in by it is adopted with NO three-word question; a QR or long-code adoption still asks, and an ack covers one ticket once", async () => {
+  const TAG = "t".repeat(43), OTHER = "u".repeat(43);
+  const typed = world({ confirm: true });
+  typed.p.typedAck(TAG);
+  const done = await adoptAs(typed, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } });
+  assert.equal(done.pending, undefined, "no question to wait on");
+  assert.deepEqual(done.owner, { kind: "identity", id: ME });
+  assert.equal(typed.p.meta.get("adopter"), "device:app1");
+  assert.equal((await atServer(typed, "wink.server.pairing")).asking, false, "the server never asks the three words");
+  assert.ok(!typed.events.some(e => e[0] === "wink.pair-asked"), "and says nothing was asked");
+  // the long-code and QR paths (no typed ack for their ticket) still ask the words
+  const qr = world({ confirm: true });
+  qr.p.typedAck(TAG);
+  const asked = await adoptAs(qr, "device:app1", { ...ASKED, pairing: { typed_tag: OTHER } });
+  assert.equal(asked.pending, true, "another ticket is not covered by the ack");
+  assert.equal((await atServer(qr, "wink.server.pairing")).asking, true);
+  const plain = world({ confirm: true });
+  assert.equal((await adoptAs(plain, "device:app1")).pending, true, "no tag at all: asked");
+  // one ticket, one use: the ack is spent by the first adoption that carries its tag
+  const once = world({ confirm: true });
+  once.p.typedAck(TAG);
+  await adoptAs(once, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } });
+  once.p.meta.del("owner"); once.p.meta.del("adopter");
+  assert.equal((await adoptAs(once, "device:app2", { ...ASKED, pairing: { typed_tag: TAG } })).pending, true, "the same tag again is asked");
+  // and an ack that is never used ends with the ask window
+  let t = 9_000_000;
+  const late = world({ confirm: true, now: () => t });
+  late.p.typedAck(TAG); t += 6 * 60_000;
+  assert.equal((await adoptAs(late, "device:app1", { ...ASKED, pairing: { typed_tag: TAG } })).pending, true, "an ack that waited more than five minutes covers nothing");
+});
+
 test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {
   const w = world({ confirm: true });
   await adoptAs(w, "device:app1");
@@ -1102,7 +1133,7 @@ test("a second scanner is refused without ending the first one's ask (break 2), 
   assert.equal(app.p.devices.list(ME).length, 0);
 });
 
-test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a plain reason unless the development flag is set; scan and paste always work", async () => {
+test("typed code kill switch (typedCode false): the typed paths are refused with a plain reason; scan and paste always work", async () => {
   const w = world({ typedCode: false });
   const target = { kind: "identity", id: ME };
   await assert.rejects(() => w.call("wink.server.code", { typed: true }), e => e.code === "typed_code_off" && /switched off/.test(e.message));
@@ -1115,7 +1146,7 @@ test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a pl
   const scan = await w.call("wink.pair.server", { payload: made.qr, target });
   assert.equal(scan.ack, null, "a scan or a paste has nothing to type");
   assert.equal(w.typed.length, 0, "no typing port was used");
-  // the flag brings the old behaviour back, tests and development only
+  // with the switch not set the typed code is on
   const dev = world({ typedCode: true });
   assert.equal((await dev.call("wink.server.code", {})).code, "WINK-ZZZZ-ZZZZ");
   assert.equal((await dev.call("wink.pair.server", { code: "WINK-K7QM-4P2X", target })).ack, "WINK-AB12-CD34");
