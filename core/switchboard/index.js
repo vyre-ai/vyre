@@ -3942,12 +3942,12 @@ export default {
         if (modelCall && !firstParty) { const named = ["agent", "agent_kind", "account"].filter(k => restAll[k] !== undefined); if (named.length) throw Object.assign(new Error(`threads.start does not take ${named.join(", ")} from a model session`), { code: "bad_input" }); }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
-        const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
+        const fromPerson = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
         const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
-        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
+        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromPerson);
       });
 
     /**
