@@ -1,0 +1,115 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=block" rel="stylesheet">
+<style>
+:root { --bg:#0E0D0C; --panel:#161513; --hover:#1E1C1A; --rule:#2B2926; --ink:#F1EEE6; --stone:#B3AEA4; --ash:#8C877D; --violet:#B8A4FF; }
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:1200px; height:675px; overflow:hidden; background:#0B0A09; font-family:'Instrument Sans','Helvetica Neue',sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
+#desk { position:absolute; inset:0; background: radial-gradient(1200px 700px at 30% 20%, #1d1b18 0%, #0f0e0d 55%, #0a0908 100%); }
+#field { position:absolute; inset:0; opacity:.5; }
+/* the panel: 680 wide, 14 radius, its top at 22 percent of the screen */
+#panel { position:absolute; left:150px; top:118px; width:680px; border-radius:14px; background:rgba(22,21,19,.94); border:1px solid rgba(241,238,230,.07);
+  box-shadow: 0 1px 0 rgba(241,238,230,.05) inset, 0 28px 64px -20px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.35); overflow:hidden; transform-origin:50% 0; }
+#bar { height:56px; display:flex; align-items:center; gap:12px; padding:0 20px; border-bottom:1px solid transparent; }
+#bar .mark { width:22px; height:22px; flex:none; }
+#q { font-size:15px; line-height:22px; color:var(--ink); white-space:pre; }
+#q .ph { color:var(--ash); }
+#q .at { color:var(--violet); }
+.caret { display:inline-block; width:1.5px; height:18px; background:var(--ink); vertical-align:-3px; margin-left:1px; }
+#view { border-top:1px solid var(--rule); }
+.head { height:44px; display:flex; align-items:center; gap:8px; padding:0 20px; }
+.label { font-size:12px; line-height:16px; font-weight:600; }
+.title { font-size:13px; line-height:18px; color:var(--stone); }
+.sub { font-size:12px; line-height:16px; color:var(--ash); }
+.list { padding:6px 20px 14px; display:flex; flex-direction:column; gap:10px; }
+.msg { display:flex; flex-direction:column; gap:3px; }
+.who { display:flex; align-items:center; gap:6px; }
+.av { width:14px; height:14px; border-radius:50%; flex:none; }
+.av.me { background:#5d5850; }
+.av.juno { background: radial-gradient(circle at 35% 30%, #fff 0, #D9CCFF 40%, #8E78E6 100%); }
+.av.kit { background: radial-gradient(circle at 35% 30%, #fff 0, #CFE6D2 45%, #6FA27A 100%); }
+.text { font-size:15px; line-height:22px; color:var(--ink); }
+.tool { display:flex; align-items:center; gap:6px; height:18px; font-size:12px; color:var(--stone); }
+.tool .ic { width:12px; text-align:center; color:var(--ash); }
+.tool .ic.ok { color:#9FC7A6; }
+.tool .st { margin-left:auto; color:var(--ash); }
+.wait { display:flex; align-items:center; gap:10px; height:44px; padding:0 20px; border-top:1px solid var(--rule); color:var(--violet); font-size:13px; }
+.wait .dot { width:7px; height:7px; border-radius:50%; background:var(--violet); box-shadow:0 0 10px rgba(184,164,255,.8); }
+.notice { padding:0 20px 14px; font-size:12px; line-height:16px; color:var(--ash); }
+.spin { display:inline-block; width:10px; height:10px; border:1.5px solid var(--ash); border-top-color:transparent; border-radius:50%; }
+/* the phone: a card at the right */
+#phone { position:absolute; right:56px; top:150px; width:250px; height:420px; border-radius:36px; background:#0E0D0C; border:1px solid rgba(241,238,230,.12); box-shadow:0 30px 60px -20px rgba(0,0,0,.7); overflow:hidden; }
+#phone .island { position:absolute; left:50%; top:10px; width:80px; height:22px; margin-left:-40px; border-radius:12px; background:#000; }
+#phone .card { position:absolute; left:14px; right:14px; top:120px; border-radius:18px; background:#1A1917; border:1px solid var(--rule); padding:16px; }
+#phone .card .t { font-size:14px; line-height:20px; font-weight:600; }
+#phone .card .d { margin-top:6px; font-size:12px; line-height:17px; color:var(--stone); }
+#phone .card .b { margin-top:14px; height:38px; border-radius:12px; background:var(--ink); color:#141312; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px; }
+#phone .face { position:absolute; left:50%; top:52%; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:16px; border:2.5px solid var(--violet); }
+#cap { position:absolute; left:0; right:0; bottom:34px; text-align:center; font-size:15px; color:var(--stone); letter-spacing:.01em; }
+#cap b { color:var(--ink); font-weight:600; }
+</style></head><body>
+<div id="desk"></div><canvas id="field" width="1200" height="675"></canvas>
+<div id="panel"></div>
+<div id="phone" style="display:none"><div class="island"></div><div id="ph"></div></div>
+<div id="cap"></div>
+<script>
+const $ = s => document.querySelector(s);
+const MARK = '<svg class="mark" viewBox="0 0 24 24" fill="none"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#B8A4FF"/></svg>';
+// a faint dot field behind, as the site's
+(() => { const c = $("#field").getContext("2d"); for (let y = 12; y < 675; y += 24) for (let x = 12; x < 1200; x += 24) { const r = .6 + .4 * Math.sin(x * .013 + y * .021); c.fillStyle = "rgba(241,238,230,.07)"; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); } })();
+const ease = t => t < 0 ? 0 : t > 1 ? 1 : 1 - Math.pow(1 - t, 3);
+const typed = (s, t0, t, cps = 26) => s.slice(0, Math.max(0, Math.floor((t - t0) * cps)));
+const ASK = "get the overdue invoices chased this week";
+const R1 = "kit handles billing. I've asked it to chase them, and I'll let you know as soon as it's back.";
+const R2 = "kit is back. Three invoices are overdue: Northwind Supply, Oakline and Brightwell. It drafted a reminder for each, and they wait for your yes.";
+function stream(s, t0, t, wps = 9) { const w = s.split(" "); const n = Math.max(0, Math.floor((t - t0) * wps)); return n >= w.length ? s : w.slice(0, n).join(" ") + " …"; }
+function tool(sum, done) { return `<div class="tool"><span class="ic ${done ? "ok" : ""}">${done ? "✓" : '<span class="spin"></span>'}</span>${sum}<span class="st">${done ? "done" : "running"}</span></div>`; }
+function msg(who, cls, body, op = 1) { return `<div class="msg" style="opacity:${op}"><div class="who"><span class="av ${cls}"></span><span class="label" style="color:${cls === "me" ? "var(--ash)" : "var(--ink)"}">${who}</span></div>${body}</div>`; }
+window.render = (t) => {
+  // 0 to 1.0: the panel opens (Option-Space)
+  const open = ease(t / .45);
+  const p = $("#panel"); p.style.opacity = open; p.style.transform = `scale(${.97 + .03 * open})`;
+  let q, view = "", caption = "";
+  if (t < 1.0) { q = '<span class="ph">Ask, or @ an agent</span>'; caption = "<b>Option-Space</b> opens Vyre over any app"; }
+  else if (t < 5.6) {
+    const s = typed("@juno " + ASK, 1.2, t, 15);
+    const at = s.startsWith("@juno") ? '<span class="at">@juno</span>' + s.slice(5) : '<span class="at">' + s + "</span>";
+    q = (s ? at : '<span class="ph">Ask, or @ an agent</span>') + '<span class="caret"></span>'; caption = "Ask your assistant, or <b>@</b> any agent on your team";
+  } else q = '<span class="ph">type to follow up</span>';
+  if (t >= 5.6) {
+    const busy = t < 9.2 || (t > 12.2 && t < 17.2);
+    let list = msg("You", "me", `<div class="text"><span style="color:var(--violet)">@juno</span> ${ASK}</div>`, t < 6.1 ? .6 : 1);
+    if (t >= 6.3) {
+      const tools = (t >= 7.0 ? tool("Read the open invoices", t >= 7.8) : "") + (t >= 7.9 ? tool("Asked kit (billing)", t >= 8.7) : "");
+      const txt = t >= 8.8 ? `<div class="text">${stream(R1, 8.8, t)}</div>` : `<div class="text" style="color:var(--ash)">thinking …</div>`;
+      list += msg("juno", "juno", tools + txt);
+    }
+    if (t >= 12.6) {
+      const tools = tool("kit found 3 overdue invoices", t >= 13.3) + (t >= 13.4 ? tool("kit drafted 3 reminders", t >= 14.4) : "");
+      list += msg("juno", "juno", tools + (t >= 14.5 ? `<div class="text">${stream(R2, 14.5, t)}</div>` : ""));
+    }
+    const head = `<div class="head"><span class="label" style="color:var(--ink)">Direct</span><span class="title">juno</span><span style="flex:1"></span><span class="sub">${busy ? "working" : ""}</span></div>`;
+    let tail = "";
+    if (t >= 10.4 && t < 12.6) tail = `<div class="notice">Waiting for kit. You can close this; the reply comes to you here and on your phone.</div>`;
+    if (t >= 17.2 && t < 21.3) tail = `<div class="wait"><span class="dot"></span>3 emails wait for your yes</div>`;
+    if (t >= 21.3) tail = `<div class="notice">Sent 3 emails. Each is logged on its client.</div>`;
+    view = `<div id="view">${head}<div class="list">${list}</div>${tail}</div>`;
+    caption = t < 10.4 ? "Your assistant sends the work to the right agent" : t < 12.6 ? "It runs on your server while you get on with your day" : t < 17.2 ? "The agent works from your records, and the update comes back to you" : t < 21.3 ? "Anything that leaves waits for <b>your yes</b>" : "Approved on your phone. Sent, and on the record.";
+  }
+  p.innerHTML = `<div id="bar">${MARK}<div id="q">${q}</div></div>${view}`;
+  // the phone: the approval card, then Face ID, then done
+  const ph = $("#phone");
+  if (t >= 17.6 && t < 23.4) {
+    ph.style.display = "block"; const a = ease((t - 17.6) / .5); ph.style.opacity = a; ph.style.transform = `translateY(${(1 - a) * 24}px)`;
+    let inner = `<div class="card"><div class="t">kit wants to send 3 emails</div><div class="d">Reminders to Northwind Supply, Oakline and Brightwell, from billing@yourfirm.com.</div><div class="b">Approve with Face ID</div></div>`;
+    if (t >= 19.6 && t < 20.9) inner = `<div class="face" style="opacity:${.5 + .5 * Math.sin((t - 19.6) * 9)}"></div>`;
+    if (t >= 20.9) inner = `<div class="card"><div class="t">Approved</div><div class="d">3 emails sent. Your approval covers these three, once.</div></div>`;
+    $("#ph").innerHTML = inner;
+  } else ph.style.display = "none";
+  // the end card
+  const end = ease((t - 23.4) / .6);
+  $("#cap").innerHTML = t < 23.4 ? caption : `<b>Vyre</b> · your team and your agents, on your server · <span style="color:var(--violet)">vyre.run</span>`;
+  $("#cap").style.opacity = t < 23.4 ? 1 : end;
+};
+window.render(0);
+</script></body></html>

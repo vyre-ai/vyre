@@ -1,101 +1,132 @@
-# Vyre
+<p align="center">
+  <img src="docs/images/readme/vyre-mark.svg" width="96" alt="Vyre">
+</p>
 
-[![node](https://github.com/vyre-ai/vyre/actions/workflows/node.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/node.yml)
-[![capsule-mac](https://github.com/vyre-ai/vyre/actions/workflows/capsule-mac.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/capsule-mac.yml)
-[![ios](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml)
-[![android](https://github.com/vyre-ai/vyre/actions/workflows/android.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/android.yml)
+<h1 align="center">Vyre</h1>
 
-**One place where your team and your AI agents work together, on a server you own.**
+<p align="center"><b>Your team and your AI agents, working together on a server you own.</b><br>
+Open source. Self-hosted. Any model.</p>
 
-Vyre is an open-source, self-hosted workspace for teams that work with AI agents every day. Your people, your clients' records, your conversations and your agents live in one Space on your server. Agents do real work there: they read the record they are working on, draft, file, schedule and follow up. Every step they take goes through one set of rules, and anything that leaves your server waits for a person to say yes.
+<p align="center">
+  <a href="https://vyre.run">Website</a> ·
+  <a href="docs/get-started/install.md">Install</a> ·
+  <a href="docs/index.md">Docs</a> ·
+  <a href="docs/known-gaps.md">Known gaps</a>
+</p>
 
-## Why one product
+<p align="center">
+  <a href="https://github.com/vyre-ai/vyre/actions/workflows/node.yml"><img src="https://github.com/vyre-ai/vyre/actions/workflows/node.yml/badge.svg" alt="tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="Apache 2.0"></a>
+</p>
 
-A team that works with agents today spreads that work across a chat app, a CRM, a pile of API keys, an automation tool and a different window for each model. Each one keeps its own copy of who the client is. Agents get context by copy and paste, keys sit in environment files, and nobody can say afterwards which agent did what, or why.
+<p align="center">
+  <img src="docs/images/readme/vyre-demo.gif" width="860" alt="Ask your assistant from any app on your Mac: it hands the work to the right agent, reports back when it's done, and the emails wait for your Face ID before they go out.">
+</p>
 
-Vyre puts the pieces in one place on purpose:
+AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same client your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.
 
-- **One record of your work.** People, companies, leads, clients, appointments, projects, tasks and every email and meeting are records in your Space, linked both ways. A Contact shows its leads, projects, tasks and messages.
-- **One conversation for people and agents.** A chat holds people, assistants and AI models side by side. Mention a teammate or an agent with @, point to a record with #, and switch the model a reply comes from. Each reply shows which provider wrote it.
-- **One way work gets done.** Flows watch for a new email, a form answer, a stage change or a time, then run their steps: classify with a model, create or update a record, assign a task, send. Agents pick up tasks with the record, its links and its recent history in hand.
-- **One set of rules.** A single permission system in Vyre's kernel decides every call, from a person's phone, an agent's session or a Flow step. The Space's log records each change and each approval.
+Vyre is the place where they can. Your people, your agents and the work they share live on one server you own. You ask from your phone, your Mac or a browser, the right agent does the work with the right context, and everything that leaves your server waits for a person's yes.
 
-Each part needs the others. A Flow is useful because the record it changes is the same one your team sees in chat. An agent is safe to hand work to because the kernel holds its sends and keeps your secrets out of its context.
+## What you get
 
-## Deterministic
+- **A team of agents, not a chat box.** Give each agent a role and its own instructions, or let your assistant hand work to the one best placed for it. Agents work on your server while you get on with your day, and report back when they are done.
+- **Any model, your own accounts.** Claude, Codex, Grok, or hundreds of models through OpenRouter. Sign in with the subscription you already pay for, or use an API key. Switch models in the middle of a conversation, or ask two at once.
+- **One shared picture of the work.** Clients, contacts, projects, tasks, emails and meetings are linked records that people and agents read from the same place. An agent working on a client sees that client's history, not a copy someone pasted.
+- **Conversations with people and agents together.** @ a teammate or an agent, # a record, and keep the whole thread, with exact recall of anything said before.
+- **Automations that do the same thing every time.** Watch for an email, a form or a date, then run declared steps: sort it with a model, update a record, assign a task, draft the reply.
+- **A yes for anything that leaves.** Emails, posts, payments and deletes wait for Face ID or Touch ID on your phone, and the approval covers that one act, once.
+- **Keys your agents can use but never see.** A built-in vault holds your passwords and API keys, encrypted on your server, and hands them over only where they are allowed to go.
 
-Agents are probabilistic. What they are allowed to do is not.
+## How it works
 
-- **Flows are declared steps,** not a prompt. A code step runs in a sandbox with time and memory limits. A model step classifies or extracts, with no tools.
-- **Every outside write is safe to repeat.** It carries an idempotency key, is read back, respects the service's rate limit, and after a crash only the missing part is redone.
-- **One yes, for one act.** An act that sends, pays, publishes, shares or deletes is held once. The approval is single use and bound to exactly that act, so it cannot be spent on a different one.
-- **Exact recall.** A person or an assistant in a chat can read a past part of it word for word, including your terminal Claude Code sessions. Memory answers say which session they came from.
+```mermaid
+flowchart LR
+  subgraph You["You and your team"]
+    P["Phone"]
+    M["Mac (Option-Space)"]
+    W["Windows / browser"]
+  end
+  subgraph Server["Your server"]
+    K["Rules and approvals<br/>(one check for every call)"]
+    R["Records, chats,<br/>files, memory"]
+    V["Vault"]
+    A["Agents and<br/>automations"]
+  end
+  L["Model providers<br/>Claude · Codex · Grok · OpenRouter"]
+  P & M & W -- "end-to-end encrypted" --> K
+  K --- R
+  K --- V
+  K --- A
+  A -- "your accounts" --> L
+```
 
-## Secure by design
+Every call, whether it comes from a person's phone, an agent or an automation, goes through one check on your server. It decides what the caller may read and change, holds anything outward for a person, and writes changes and approvals to the log. Agents run in their own sandboxes on the same server, with the records and files their task needs.
 
-- **Your server, your data.** Records, chats, files, memory and keys stay on the server you run. Your prompts go only to the AI provider you chose.
-- **Encrypted chats.** A chat with a person in it is never stored in the clear. Its key lives on the participants' devices and is lent to the server only while a session runs. A server admin sees ids and ciphertext.
-- **Sealed fields.** A social security number or an API key in a record is held by Vyre's sealing process. An agent sees a placeholder, never the value, and revealing it asks for your presence.
-- **A vault for credentials.** Agents and connectors use a credential without seeing its value.
-- **Your phone is your key.** Face ID or Touch ID is asked for only where it matters: pairing a device, revealing a vault secret, and sending, posting or paying.
-- **Vyre's own code is signed.** The kernel is always on and checks Vyre's modules by signature. A module you add runs in a sandbox and can only post events named for itself. Releases are signed (Ed25519 on the release files, cosign on the server image), and Vyre checks both before it installs one.
-- **No open door.** Your devices reach the server through Vyre's relay, end-to-end encrypted, or through a direct path your router agreed to. The one port the server publishes is a TLS door for its own name, and nothing listens there until the server has a name and a certificate.
+## Bring any model
 
-## Spaces and your team
+| Provider | Runs | Sign in with |
+|---|---|---|
+| Claude | Claude Code | your Claude subscription, or an Anthropic API key |
+| Codex | Codex, over the open Agent Client Protocol | your ChatGPT sign-in, or an OpenAI API key |
+| Grok | Grok Build, over the Agent Client Protocol | your Grok sign-in, or an xAI API key |
+| OpenRouter | hundreds of models | an OpenRouter API key |
 
-A Space is your team's home: its own records, its own Drive with its own key, and its own members. Roles are owner, admin, manager, member and temp, and a temp's access ends by itself. You also have a Personal Space for your own work, and one approval moves it to your own server (My Cloud) with its records, files and sealed values.
+Your conversations, memory and files belong to Vyre, not to a provider, so changing the model doesn't mean starting over. Each reply shows which provider wrote it. Your prompts go only to the provider you choose.
 
-## Your models, your accounts
+## How the vault works
 
-Use the subscriptions you already pay for: Claude, Codex, Grok or OpenRouter. Pick the model for each chat, or switch it mid-conversation: the chat, its folder and its files stay where they are.
+1. **You add a key or a password** from the app or the terminal. It is encrypted at rest on your server, and you say where it may be sent, for example only to `api.stripe.com`.
+2. **You grant it** to an agent, an automation or a connected service, by name.
+3. **The agent uses it without seeing it.** It asks to call the service, and Vyre attaches the credential to that one request on the way out. The value never enters the agent's context, a log or an event.
+4. **Showing or copying a value** needs you, in person: Face ID, Touch ID or a passkey.
 
-## Where you work
+The vault is also a password manager for your team: logins with one-time codes, cards, notes, API keys and SSH keys. You share an item with a teammate and revoke it when they leave. Sensitive fields in your records, such as a social security number, work the same way: an agent sees a placeholder, never the value.
 
-- **Your phone.** The Vyre app pairs with your server, holds your chat keys and approves what leaves.
-- **Your Mac.** Vyre Lumen opens with Option-Space (or Control twice) in any app: ask, hand work to an agent, or run a `vyre` command.
-- **Windows.** A tray app with an Alt-Space panel.
-- **A browser.** A browser joins your identity from your phone's code, and the browser can never change who speaks for you.
+## Security
 
-## Set up
+- **Your data stays on your server.** Records, chats, files, memory and keys never leave it, except what a step sends to the provider you chose.
+- **Encrypted chats.** A chat with a person in it is never stored in the clear. Its key lives on the participants' devices and is lent to the server only while a session runs.
+- **Signed code.** Vyre's own modules are checked by signature. An add-on runs in a sandbox and can only reach what it declares. Releases are signed, and Vyre verifies them before it updates.
+- **No open door.** Your devices reach the server through an end-to-end encrypted relay, or a direct path your router agreed to. The one port the server publishes is a TLS door for its own name, and nothing listens there until the server has a name and a certificate.
 
-You need a server (a Linux machine with Docker, or a Mac that stays on) and an account with at least one AI provider.
+## Quick start
 
-1. Open the Vyre app on your phone and claim your name.
-2. On the server, run the line the app shows:
+You need a server (a Linux machine with Docker, or a Mac that stays on) and an account with at least one model provider.
 
-   ```
+1. Install the Vyre app on your phone and claim your name.
+2. Run the line it shows on your server:
+
+   ```sh
    curl -fsSL vyre.run/i | sh
    ```
 
-3. Pair the server with the app: scan the QR, paste the long code, or type the short code it shows.
+3. Pair the server from the app: scan the code, paste it, or type the short code.
 
-The installer sets up the server and your Space's records database. On our test server the Space was ready about two minutes after the install finished. Step by step: [Install](docs/get-started/install.md).
+On our test server the workspace was ready about two minutes after the install finished. Step by step: [Install](docs/get-started/install.md).
 
-## What is not here yet
+## Words you'll see in the app
 
-See [Known gaps](docs/known-gaps.md) for what 0.2.9 does not do yet and what to do today.
+| Word | What it is |
+|---|---|
+| Space | Your team's workspace: its members, records, chats and files. You also get a Personal one. |
+| Assistant | Your own agent. It answers you and hands work to the others. |
+| Agent | An AI teammate with a role, its own instructions and the access you gave it. |
+| Flow | An automation: something to watch for, and the steps to run. |
+| Kit | A ready-made set of record types and stages, for example for a law firm. |
+| Lumen | Vyre on your Mac, opened with Option-Space. |
 
-## Questions
+## Contributing
 
-**What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
+Vyre needs Node 22.5 or newer, and the server has no build step.
 
-**Do I need to be technical?** You need to run one line on a server. Everything after that happens in the app.
-
-**Can my clients' data reach the AI providers?** Only what a step or a session sends. Sealed fields go as placeholders, and you choose the provider.
-
-**Can I add my own tools?** Yes. A module declares its tools and what it may reach, and runs in a sandbox. See [Modules](docs/MODULES.md).
-
-## Develop
-
-Needs Node 22.5 or newer. No build step for the server.
-
-```
+```sh
 npm test
 VYRE_HOME=$(mktemp -d) bin/vyre up
 bin/vyre call system.echo '{"text":"hi"}'
-bin/vyre down
 ```
+
+Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). Security reports go through [private advisories](https://github.com/vyre-ai/vyre/security/advisories/new).
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE). Vyre is free; you pay your model providers as you do today.
