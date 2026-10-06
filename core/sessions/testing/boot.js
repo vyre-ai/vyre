@@ -10,7 +10,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { start } from "../../daemon/index.js";
-import { call } from "../../daemon/client.js";
 import { tempHome, present, writeModule, asOwner } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { installed } from "../sdk.js";
@@ -76,7 +75,8 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   // Vyre's own state, as it does on a real machine.
   const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  // through the registry as the owner's device (asOwner above): over ssh the socket's "cli" is no person (its ancestry is not measured), and the chat gate would refuse it
+  const tool = (name, input, caller = "cli") => d.registry.call(name, input, caller);
   for (const [name, value] of Object.entries(vault)) {
     assert.ok((await tool("vault.put", { name, kind: name === "anthropic-api-key" ? "api-key" : "secret", fields: { value } })).data);
     // The provider sign-in items are never granted to a module (vault.launcherOnly): the session launcher reads them through the credentials port the daemon holds. Any other item is still a grant.
