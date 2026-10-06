@@ -413,7 +413,6 @@ Listens for: `floor.wrote`, `thread.deleted`
 | --- | --- |
 | `project.changed` | `project`; sometimes `archived`, `fields`, `name` |
 | `project.created` | `home`, `name`, `project`, `threads` |
-| `projects.moved` | `at`, `from`, `moved`, `skipped`, `to` |
 | `thread.picked` | `project`, `thread` |
 | `thread.unpicked` | `project`, `thread` |
 
@@ -620,6 +619,7 @@ Listens for: `link.unpaired`
 | `model.switched` | `live`, `model`; sometimes `reported` |
 | `thinking.switched` | `on` |
 | `thread.archived` | `agent`, `project` |
+| `thread.chat` | `chat`, `cwd`, `session` |
 | `thread.contended` | `holder`, `session` |
 | `thread.continued` | `from_machine`, `from_thread`, `provider`, `source`, `thread`, `turns` |
 | `thread.deleted` | `agent`, `project`, `thread` |

@@ -145,7 +145,7 @@ async function say(text) {
   // Long text goes in bigger pieces, so a seed of tens of thousands of characters does not take seconds to echo.
   for (const piece of text.match(new RegExp(`.{1,${Math.max(6, Math.ceil(text.length / 150))}}`, "gs")) || []) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
-    await sleep(2);
+    await sleep(Number(process.env.FAKE_CLAUDE_DELTA_MS) || 2); // FAKE_CLAUDE_DELTA_MS: a test that needs a reply still arriving for seconds slows the deltas
   }
   out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }],
     usage: { input_tokens: 12, cache_read_input_tokens: 2400 + BLOAT, cache_creation_input_tokens: 40, output_tokens: Math.ceil(text.length / 4) } }, session_id: session, parent_tool_use_id: null,

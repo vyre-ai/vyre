@@ -1,13 +1,14 @@
 // @ts-check
-// projects — a project is a home folder, the other folders it owns, the threads in it, its
-// people and its watchers (docs/SPEC.md, section 7.2).
+// projects — what this computer knows of a project: the folders on it that belong to the project, the threads picked into it, its people and its watchers. The project itself (its name, short
+// name, Drive folder, memory scope) is a Project record in Records (core/work/hub.js, team/0.3/DESIGN-project-hub.md); this module's rows are per machine, and the two stay in step through the
+// events `project.created` and `project.changed` (the work module writes the record) and the tool `projects.adopt` (the work module tells this computer about a record).
 //
 // Projects are made by hand. At onboarding a person picks sessions from the catalogue, which is
 // every session on the device, searchable by what was said in it. An earlier design sorted
 // sessions into projects automatically by what they talked about; it filed hub sessions under
 // whichever client they named most and was dropped. What remains are two ways a thread belongs:
 //
-//   picked   a person put it there. Recorded in the marker, so it survives anything. A session
+//   picked   a person put it there. Recorded with the project, so it survives anything. A session
 //            can be picked into as many projects as it is work for: a weekly planning session
 //            that covers two clients belongs to both. Only a person removes a pick.
 //   folder   it ran in one of the project's folders. A fact about where the work happened,
@@ -21,7 +22,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as M from "./markers.js";
+import * as M from "./folders.js";
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
 
@@ -120,9 +121,32 @@ export const MIGRATIONS = [
     at      INTEGER NOT NULL
   );
   `,
+  // Step 4 (the Project hub, team/0.3/DESIGN-project-hub.md): a project is a Project RECORD now. The folders on this computer move into a per-machine table (a path is a fact about one
+  // computer, so it never sits on the shared record), the home column leaves projects_projects, and the agent-access table is kept as projects_access_legacy until its rows are carried into kernel grants: reach to a project is a kernel grant (action
+  // project.reach), the one permission system. Appended after the released steps, never edited into them.
+  `
+  CREATE TABLE projects_folders (
+    path    TEXT PRIMARY KEY,
+    project TEXT NOT NULL,
+    kind    TEXT NOT NULL CHECK (kind IN ('home', 'workspace'))
+  );
+  INSERT OR IGNORE INTO projects_folders (path, project, kind) SELECT home, slug, 'home' FROM projects_projects;
+  CREATE TABLE projects_projects_new (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    spec TEXT NOT NULL,
+    at   INTEGER NOT NULL
+  );
+  INSERT INTO projects_projects_new (slug, name, spec, at) SELECT slug, name, spec, at FROM projects_projects;
+  DROP TABLE projects_projects;
+  ALTER TABLE projects_projects_new RENAME TO projects_projects;
+  -- the old per-agent access rows are KEPT until the person's own approval carries them into kernel grants (projects.access.restore); a grant needs the person's proof, so a migration cannot make it
+  ALTER TABLE projects_access RENAME TO projects_access_legacy;
+  DROP TABLE IF EXISTS projects_access_seeded;
+  `,
 ];
 
-/** @typedef {import("./markers.js").Project} Project */
+/** @typedef {import("./folders.js").Project} Project */
 /** @typedef {(tool: string, input: any) => Promise<{ data?: any, error?: { code: string, message: string } }>} Call */
 
 export class Projects {
@@ -139,38 +163,53 @@ export class Projects {
     this.all = [];
   }
 
-  /** Where markers are looked for: the projects folder Vyre creates homes in, and the user's roots. */
-  roots() {
-    return [...new Set([this.config.projectsDir, ...(this.config.roots || [])].filter(Boolean))];
+  /**
+   * Read every project this computer knows, with its folders, from the tables. Cheap enough for every call; there is no walk and no file to read.
+   */
+  refresh() {
+    const rows = this.db.prepare("SELECT slug, name, spec FROM projects_projects ORDER BY at").all();
+    /** @type {Map<string, { path: string, kind: string }[]>} */ const folders = new Map();
+    for (const f of this.db.prepare("SELECT path, project, kind FROM projects_folders ORDER BY rowid").all()) {
+      const k = String(f.project);
+      if (!folders.has(k)) folders.set(k, []);
+      /** @type {any[]} */ (folders.get(k)).push({ path: String(f.path), kind: String(f.kind) });
+    }
+    /** @type {Project[]} */
+    const list = rows.map(r => {
+      /** @type {any} */ let spec = {};
+      try { spec = JSON.parse(String(r.spec)); } catch { spec = {}; }
+      const slug = String(r.slug);
+      const mine = folders.get(slug) || [];
+      const home = (mine.find(f => f.kind === "home") || mine[0] || { path: "" }).path;
+      const list = (/** @type {any} */ v) => (Array.isArray(v) ? v : []);
+      return {
+        slug, name: String(r.name), org: spec.org ? String(spec.org) : null, home,
+        // The home is always a workspace: work done in it is work on the project.
+        workspaces: [...new Set([...(home ? [home] : []), ...mine.map(f => f.path)])],
+        threads: [...new Set(list(spec.threads).map((/** @type {any} */ t) => M.parentOf(t)))],
+        people: list(spec.people).filter((/** @type {any} */ p) => p && (p.name || p.email)).map((/** @type {any} */ p) => ({ name: String(p.name || p.email).trim(), ...(p.email ? { email: String(p.email).trim() } : {}) })),
+        watchers: list(spec.watchers).map(String),
+        archived_at: Number.isFinite(Number(spec.archived_at)) && Number(spec.archived_at) > 0 ? Number(spec.archived_at) : null,
+        avatar_seed: typeof spec.avatar_seed === "string" && spec.avatar_seed ? spec.avatar_seed : slug,
+      };
+    });
+    this.all = list;
+    return list;
   }
 
-  /**
-   * Re-read every known marker, and with walk, look under the roots for new ones. Reading known
-   * markers is a handful of small files, cheap enough for every call; the walk is not, so only
-   * listing and creating do it.
-   */
-  refresh({ walk = false } = {}) {
-    const known = this.db.prepare("SELECT slug, home FROM projects_projects ORDER BY at").all();
-    const byHome = new Map();
-    for (const r of known) { const p = M.load(String(r.home)); if (p) byHome.set(p.home, p); }
-    if (walk) for (const p of M.discover(this.roots())) if (!byHome.has(p.home)) byHome.set(p.home, p);
-    const list = M.flagClashes([...byHome.values()]);
-    const now = Date.now();
-    this.db.exec("BEGIN");
-    try {
-      // A marker that is gone takes its project with it: the file is the declaration.
-      const homes = new Set(list.filter(p => !p.error).map(p => p.home));
-      for (const r of known) if (!homes.has(String(r.home))) this.db.prepare("DELETE FROM projects_projects WHERE home = ?").run(r.home);
-      const up = this.db.prepare(`INSERT INTO projects_projects (slug, name, home, spec, at) VALUES (?,?,?,?,?)
-        ON CONFLICT(slug) DO UPDATE SET name = excluded.name, home = excluded.home, spec = excluded.spec`);
-      for (const p of list) if (!p.error) {
-        this.db.prepare("DELETE FROM projects_projects WHERE home = ? AND slug != ?").run(p.home, p.slug);
-        up.run(p.slug, p.name, p.home, JSON.stringify(p), now);
-      }
-      this.db.exec("COMMIT");
-    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
-    this.all = list;
-    return list.filter(p => !p.error);
+  /** Change what this computer keeps of a project: its name and/or fields of its spec. @param {string} slug @param {{ name?: string } & Record<string, any>} fields */
+  save(slug, fields) {
+    const row = this.db.prepare("SELECT name, spec FROM projects_projects WHERE slug = ?").get(slug);
+    if (!row) throw new Error(`no project ${slug}`);
+    /** @type {any} */ let spec = {};
+    try { spec = JSON.parse(String(row.spec)); } catch { spec = {}; }
+    const { name, ...rest } = fields;
+    this.db.prepare("UPDATE projects_projects SET name = ?, spec = ? WHERE slug = ?").run(name !== undefined ? name : String(row.name), JSON.stringify({ ...spec, ...rest }), slug);
+  }
+
+  /** @param {string} slug @param {string} dir @param {"home" | "workspace"} kind */
+  bindFolder(slug, dir, kind) {
+    this.db.prepare("INSERT INTO projects_folders (path, project, kind) VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET project = excluded.project, kind = excluded.kind").run(dir, slug, kind);
   }
 
   valid() { return this.all.filter(p => !p.error); }
@@ -207,13 +246,14 @@ export class Projects {
     if (!clean) throw new Error("a project needs a name");
     const slug = M.slugify(clean);
     if (!slug) throw new Error(`"${clean}" has no letters or digits to make a slug from`);
-    this.refresh({ walk: true });
+    this.refresh();
     const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug));
     refuseSensitiveRoot(where);
     for (const w of workspaces) refuseSensitiveRoot(w);
     const clash = this.valid().find(p => p.slug === slug);
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
-    if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);
+    const owner = this.db.prepare("SELECT project FROM projects_folders WHERE path = ?").get(where);
+    if (owner) throw new Error(`${where} is already a project home`);
     fs.mkdirSync(where, { recursive: true });
     // A chat made into a project (from_thread) is picked into it and gives it its avatar seed, so
     // the chat's draft tile carries over and turns solid (ADR 0043 section 6). Otherwise the seed
@@ -221,17 +261,35 @@ export class Projects {
     const from = from_thread != null ? threadId(from_thread) : null;
     if (from_thread != null && !from) throw Object.assign(new Error("from_thread must be a chat's session id (a UUID)"), { code: "bad_input" });
     const ids = [...new Set([...threads, ...(from ? [from] : [])].map(M.parentOf))];
-    const p = /** @type {Project} */ (M.write(where, {
-      name: clean, ...(org ? { org: String(org) } : {}), avatar_seed: from || slug,
-      workspaces: M.relative(where, workspaces).filter(w => w !== "."),
-      threads: ids, people, watchers,
-    }));
-    this.db.prepare("INSERT OR REPLACE INTO projects_projects (slug, name, home, spec, at) VALUES (?,?,?,?,?)")
-      .run(p.slug, p.name, p.home, JSON.stringify(p), Date.now());
+    const spec = { ...(org ? { org: String(org) } : {}), avatar_seed: from || slug, threads: ids, people, watchers };
+    this.db.prepare("INSERT INTO projects_projects (slug, name, spec, at) VALUES (?,?,?,?)").run(slug, clean, JSON.stringify(spec), Date.now());
+    this.bindFolder(slug, where, "home");
+    for (const w of workspaces) { const r = M.real(w); if (r !== where) this.bindFolder(slug, r, "workspace"); }
     this.refresh();
+    const p = this.resolve(slug);
     this.emit("project.created", { project: p.slug, name: p.name, home: p.home, threads: ids.length }, { project: p.slug });
     for (const id of ids) this.emit("thread.picked", { project: p.slug, thread: id }, { project: p.slug, thread: id });
     return p;
+  }
+
+  /**
+   * A project this computer has not heard of yet (a Project record made elsewhere, or by the work module): given a local row and a home folder, the same as `create` but with no emitted
+   * `project.created` (the record already exists). Already known: nothing changes.
+   * @param {{ slug: string, name: string }} o
+   */
+  adopt({ slug, name }) {
+    const s = String(slug || "");
+    if (!M.isProjectId(s)) throw Object.assign(new Error("a project's short name is lower case letters, numbers and dashes"), { code: "bad_input" });
+    this.refresh();
+    const have = this.valid().find(p => p.slug === s);
+    if (have) return have;
+    const where = M.real(path.join(this.config.projectsDir, s));
+    refuseSensitiveRoot(where);
+    fs.mkdirSync(where, { recursive: true });
+    this.db.prepare("INSERT OR IGNORE INTO projects_projects (slug, name, spec, at) VALUES (?,?,?,?)").run(s, String(name || s).trim() || s, JSON.stringify({ avatar_seed: s, threads: [], people: [], watchers: [] }), Date.now());
+    this.bindFolder(s, where, "home");
+    this.refresh();
+    return this.resolve(s);
   }
 
   /** Pick threads into a project. Already-picked threads are left alone, and emit nothing. */
@@ -240,8 +298,9 @@ export class Projects {
     const p = this.resolve(ref);
     const add = [...new Set(ids.map(M.parentOf))].filter(id => !p.threads.includes(id));
     if (!add.length) return { project: p.slug, added: [], threads: p.threads.length };
-    const next = /** @type {Project} */ (M.write(p.home, { threads: [...p.threads, ...add] }));
+    this.save(p.slug, { threads: [...p.threads, ...add] });
     this.refresh();
+    const next = this.resolve(p.slug);
     for (const id of add) this.emit("thread.picked", { project: p.slug, thread: id }, { project: p.slug, thread: id });
     this.emit("project.changed", { project: p.slug, fields: ["threads"] }, { project: p.slug });
     return { project: p.slug, added: add, threads: next.threads.length };
@@ -260,19 +319,15 @@ export class Projects {
     refuseSensitiveRoot(folder);
     this.refresh();
     const p = this.resolve(ref);
-    const rel = M.relative(p.home, [folder]).filter(w => w !== ".");
-    if (!rel.length) return { project: p.slug, added: null, workspaces: p.workspaces }; // the folder IS the project's home
-    const [add] = rel;
-    // p.workspaces (loaded) is absolute and home-prefixed; the marker stores relative paths
-    // without the home, the same shape create() writes. existing strips the load()-added home
-    // (always index 0) and re-derives the relative list, so this never writes p.workspaces'
-    // resolved form back onto disk.
-    const existing = M.relative(p.home, p.workspaces.slice(1));
-    if (existing.includes(add)) return { project: p.slug, added: null, workspaces: p.workspaces };
-    const next = /** @type {Project} */ (M.write(p.home, { workspaces: [...existing, add] }));
+    const dir = M.real(String(folder));
+    if (p.workspaces.includes(dir)) return { project: p.slug, added: null, workspaces: p.workspaces }; // already one of its folders (or its home)
+    const taken = this.db.prepare("SELECT project FROM projects_folders WHERE path = ?").get(dir);
+    if (taken && taken.project !== p.slug) throw new Error(`${dir} already belongs to ${taken.project}`);
+    this.bindFolder(p.slug, dir, "workspace");
     this.refresh();
+    const next = this.resolve(p.slug);
     this.emit("project.changed", { project: p.slug, fields: ["workspaces"] }, { project: p.slug });
-    return { project: p.slug, added: add, workspaces: next.workspaces };
+    return { project: p.slug, added: path.relative(p.home || dir, dir) || dir, workspaces: next.workspaces };
   }
 
   /**
@@ -285,7 +340,7 @@ export class Projects {
     const drop = new Set(ids.map(M.parentOf));
     const removed = p.threads.filter(id => drop.has(id));
     if (removed.length) {
-      M.write(p.home, { threads: p.threads.filter(id => !drop.has(id)) });
+      this.save(p.slug, { threads: p.threads.filter(id => !drop.has(id)) });
       this.refresh();
       for (const id of removed) this.emit("thread.unpicked", { project: p.slug, thread: id }, { project: p.slug, thread: id });
       this.emit("project.changed", { project: p.slug, fields: ["threads"] }, { project: p.slug });
@@ -306,8 +361,9 @@ export class Projects {
     const clean = [...new Set(names.map(n => String(n).trim()).filter(Boolean))];
     const add = clean.filter(n => !p.watchers.includes(n));
     if (!add.length) return { project: p.slug, added: [], watchers: p.watchers };
-    const next = /** @type {Project} */ (M.write(p.home, { watchers: [...p.watchers, ...add] }));
+    this.save(p.slug, { watchers: [...p.watchers, ...add] });
     this.refresh();
+    const next = this.resolve(p.slug);
     this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
     return { project: p.slug, added: add, watchers: next.watchers };
   }
@@ -319,8 +375,9 @@ export class Projects {
     const drop = new Set(names.map(n => String(n).trim()));
     const removed = p.watchers.filter(n => drop.has(n));
     if (!removed.length) return { project: p.slug, removed: [], watchers: p.watchers };
-    const next = /** @type {Project} */ (M.write(p.home, { watchers: p.watchers.filter(n => !drop.has(n)) }));
+    this.save(p.slug, { watchers: p.watchers.filter(n => !drop.has(n)) });
     this.refresh();
+    const next = this.resolve(p.slug);
     this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
     return { project: p.slug, removed, watchers: next.watchers };
   }
@@ -498,8 +555,7 @@ export class Projects {
     const p = this.resolve(ref);
     const clean = String(name || "").trim();
     if (!clean) throw Object.assign(new Error("a project needs a name"), { code: "bad_input" });
-    M.write(p.home, { slug: p.slug, name: clean, avatar_seed: p.avatar_seed });
-    this.db.prepare("UPDATE projects_projects SET name = ? WHERE slug = ?").run(clean, p.slug);
+    this.save(p.slug, { name: clean, avatar_seed: p.avatar_seed });
     this.refresh();
     const next = this.resolve(p.slug);
     this.emit("project.changed", { project: p.slug, name: next.name }, { project: p.slug });
@@ -509,7 +565,7 @@ export class Projects {
   /** Hide a project from the list (its folder, threads and history stay), or bring it back. */
   archive(ref, archived = true) {
     const p = this.resolve(ref);
-    M.write(p.home, { slug: p.slug, archived_at: archived ? Date.now() : null });
+    this.save(p.slug, { archived_at: archived ? Date.now() : null });
     this.refresh();
     const next = this.resolve(p.slug);
     this.emit("project.changed", { project: p.slug, archived: Boolean(next.archived_at) }, { project: p.slug });
@@ -517,8 +573,8 @@ export class Projects {
   }
 
   /** Projects for the list: newest activity first. */
-  list({ walk = true, archived = false } = {}) {
-    const list = this.refresh({ walk }).filter(p => archived || !p.archived_at);
+  list({ archived = false } = {}) {
+    const list = this.refresh().filter(p => archived || !p.archived_at);
     const member = this.membership();
     const sessions = new Map(this.sessions().map(s => [s.id, s]));
     const out = list.map(p => {
@@ -535,7 +591,6 @@ export class Projects {
         watchers: p.watchers, avatar_seed: p.avatar_seed, archived_at: p.archived_at, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
-    const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));
-    return { projects: out, problems };
+    return { projects: out, problems: [] };
   }
 }
