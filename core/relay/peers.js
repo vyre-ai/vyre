@@ -43,3 +43,15 @@ export function serversFor(ctx) {
   try { d = f(); } catch { return undefined; }
   return d && typeof d.acceptServer === "function" && typeof d.isServer === "function" && typeof d.space === "string" ? d : undefined;
 }
+
+/**
+ * The home door: another home's pull stream (a project move). `acceptHome(stream, { homeId }, head)` and `homeOpen()` (is any move open now) of the same `ctx.peerDoor()`, or undefined. @param {any} ctx
+ * @returns {{ homeOpen: () => boolean, acceptHome: (stream: any, who: { homeId: string }, head: any) => void } | undefined}
+ */
+export function homesFor(ctx) {
+  const f = ctx && ctx.peerDoor;
+  if (typeof f !== "function") return undefined;
+  let d;
+  try { d = f(); } catch { return undefined; }
+  return d && typeof d.acceptHome === "function" && typeof d.homeOpen === "function" ? d : undefined;
+}

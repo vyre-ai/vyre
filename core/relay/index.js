@@ -23,7 +23,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
-import { peersFor, inviteesFor, serversFor } from "./peers.js";
+import { peersFor, inviteesFor, serversFor, homesFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -120,6 +120,7 @@ export default {
     /** A seam read when it is used, so a test can change it after the relay started (the invitee channel lifetimes). @param {string} k */
     const liveSeam = k => (/** @type {any} */ (seams.get(ctx.paths.root)) || {})[k] ?? /** @type {any} */ (seam)[k];
     /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
+    /** @type {Set<any>} the channels of strange homes open now (a project move's pull) */ const homePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = seam.now || Date.now;
@@ -253,6 +254,14 @@ export default {
       // An invitee (DESIGN-spaces-first.md): a person who is not a member of any space here reaches the home for one purpose. The channel makes no device row, no presence key and no session; it may
       // open only the invitee peer stream, whose door (core/daemon/peer-door.js) checks the identity proof and the invite. A key that is a paired device here is not an invitee on this hello.
       if (hello && hello.invitee === true && !existing && !pendingPairs.has(id)) return { v: 1, box: { name: boxName() }, invitee: id };
+      // A HOME (the target of a project move): another box that holds no row here and asks for one thing. The channel is admitted only while a move is open on this home (the door says so), makes no
+      // device row, no presence key and no session, and may open only the pull stream (core/daemon/peer-door.js acceptHome). A key that is a paired device here is not a home on this hello.
+      if (hello && hello.homeMove === true && !existing && !pendingPairs.has(id)) {
+        const homes = homesFor(ctx);
+        if (!homes || !homes.homeOpen()) throw new Error("no move is open on this box");
+        if (typeof /** @type {any} */ (homes).homeArrive === "function") /** @type {any} */ (homes).homeArrive();
+        return { v: 1, box: { name: boxName() }, home: id };
+      }
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
@@ -534,6 +543,27 @@ export default {
         const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "an invite opens one door" } })); } catch { /* gone */ } };
         bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door,
           oninvitee: { opened: () => { streams++; opened = true; }, closed: () => { streams = Math.max(0, streams - 1); if (opened && streams === 0) setTimeout(() => end("invite stream ended"), 100).unref?.(); } } });
+        return;
+      }
+      if (reply && reply.home) {
+        const door = homesFor(ctx);
+        if (!door) { channel.close(4401, "this box does not take homes"); return; }
+        const hid = String(reply.home);
+        // a stranger home has a small pool of its own, a life of its own (30 s to open the stream, one hour at most) and one door; no HTTP-like request reaches anything
+        if (homePool.size >= (seam.homePool ?? 4)) { channel.close(4429, "too many homes are asking; try again in a minute"); return; }
+        homePool.add(channel);
+        const timers = /** @type {any[]} */ ([]);
+        const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; homePool.delete(channel); };
+        const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
+        let opened = false;
+        const idle = setTimeout(() => { if (!opened) end("no pull stream opened"); }, liveSeam("homeIdleMs") ?? 30_000);
+        const total = setTimeout(() => end("pull channel time is up"), liveSeam("homeTotalMs") ?? 3_600_000);
+        for (const t of [idle, total]) { if (t.unref) t.unref(); timers.push(t); }
+        const prevClose = channel.onclose;
+        channel.onclose = (/** @type {any[]} */ ...a) => { stop(); return typeof prevClose === "function" ? prevClose.apply(channel, a) : undefined; };
+        const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "another home opens one door" } })); } catch { /* gone */ } };
+        bridge(channel, { handler: refuse, caller: `home:${hid}`, peer: { node: "home", stableId: hid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), homes: door,
+          onhome: { opened: () => { opened = true; }, closed: () => { setTimeout(() => end("pull stream ended"), 100).unref?.(); } } });
         return;
       }
       if (reply && reply.pending) {

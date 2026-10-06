@@ -28,6 +28,21 @@
         "reach": "modules"
       },
       {
+        "name": "wink.home-move.open",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.home-move.close",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.home.call",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "wink.code.open",
         "reach": "person",
         "effect": "write"

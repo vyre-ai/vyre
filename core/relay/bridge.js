@@ -57,6 +57,7 @@ const fail = (s, status, code, message) => {
  *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
  *   oninvitee?: { opened: () => void, closed: () => void },
  *   invitees?: { acceptInvitee: (stream: any, who: { inviteeId: string }, head: any) => void }, perMin?: number,
+ *   homes?: { acceptHome: (stream: any, who: { homeId: string }, head: any) => void }, onhome?: { opened: () => void, closed: () => void },
  *   peers?: { space: string, serverId?: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
  *     perMin?: number, open?: number, now?: () => number } }} o
  */
@@ -75,6 +76,7 @@ export function bridge(channel, o) {
     const h = s.head || {};
     if (JSON.stringify(h).length > MAX_HEAD) return fail(s, 431, "bad_input", "request head too large");
     if (/^invitee:/.test(String(o.caller)) && h.peer === undefined) return fail(s, 403, "denied", "an invite opens one door");
+    if (/^home:/.test(String(o.caller))) return h.peer !== undefined && !h.ws ? homeStream(s, h) : fail(s, 403, "denied", "another home opens one door");
     if (h.ws) return socketStream(s, h);
     if (h.peer !== undefined) return peerStream(s, h);
     const method = String(h.method || "").toUpperCase();
@@ -148,6 +150,32 @@ export function bridge(channel, o) {
     s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
     try { p.accept(s, { via: "relay", deviceId: device, space: p.space }); }
     catch (e) { release(); s.reset("peer door failed"); return; }
+  }
+
+  /** Another home's pull stream: {peer: "wink", space: "home", pull: {space}} and nothing more; one stream at a time per channel. @param {any} s @param {any} h */
+  function homeStream(s, h) {
+    const door = /** @type {any} */ (o).homes;
+    if (!door) return fail(s, 403, "denied", "this box does not take homes");
+    if (h.peer !== "wink" || h.space !== "home" || !h.pull || typeof h.pull !== "object" || typeof h.pull.space !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(h.pull.space)
+      || Object.keys(h).some(k => k !== "peer" && k !== "space" && k !== "pull") || Object.keys(h.pull).some(k => k !== "space")) return fail(s, 400, "bad_input", "a pull stream is {peer: \"wink\", space: \"home\", pull: {space}}");
+    const id = String(o.caller).slice(5);
+    const u = peerUse.get(o.caller) || { stamps: [], open: 0 };
+    peerUse.set(o.caller, u);
+    if (u.open >= 1) return fail(s, 429, "rate_limited", "one pull stream at a time");
+    u.open++;
+    const tell = /** @type {any} */ (o).onhome;
+    if (tell && typeof tell.opened === "function") { try { tell.opened(); } catch { /* the pool must not break the stream */ } }
+    let released = false;
+    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (!u.open) peerUse.delete(o.caller); if (tell && typeof tell.closed === "function") { try { tell.closed(); } catch { /* gone */ } } };
+    for (const name of /** @type {const} */ (["onend", "onreset"])) {
+      let hh = s[name];
+      Object.defineProperty(s, name, { configurable: true, enumerable: true,
+        get: () => (/** @type {any[]} */ ...a) => { release(); return typeof hh === "function" ? hh.apply(s, a) : undefined; },
+        set: f => { hh = f; } });
+    }
+    for (const name of /** @type {const} */ (["end", "reset"])) { const f = s[name].bind(s); s[name] = (/** @type {any[]} */ ...a) => { release(); return f(...a); }; }
+    s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
+    try { door.acceptHome(s, { homeId: id }, h); } catch (e) { release(); s.reset("home door failed"); }
   }
 
   /** @param {any} s @param {any} h */
