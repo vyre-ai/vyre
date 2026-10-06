@@ -263,7 +263,8 @@ test("learn: two different free-text rules are two proposals", async t => {
 
 test("learn: brief lists every active lesson, marking the checked ones", async t => {
   const { reg, add } = await learning(t);
-  assert.equal((await reg.call("harness.brief", { cwd: CWD, session: "s1" }, "cli")).data.text, "");
+  // with no lessons the brief holds only the time line (lib/time) or nothing
+  assert.equal((await reg.call("harness.brief", { cwd: CWD, session: "s1" }, "cli")).data.text.replace(/^Time: .*$/m, "").trim(), "");
   await add("never use em dashes");
   await add("from now on sign emails as Harlow Legal");
   const b = (await reg.call("harness.brief", { cwd: CWD, session: "s1" }, "cli")).data.text;

@@ -69,7 +69,7 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   assert.equal((await w.tool("gate.held", {}, { origin: "https://evil.example.com" })).status, 403);
 
   const projects = await w.tool("projects.list");
-  assert.deepEqual(projects.body.data.projects.map(p => p.name).sort(), ["Harlow Legal", "Northwind Bakery"]);
+  assert.deepEqual(projects.body.data.projects.map(p => p.name).sort(), ["General", "Harlow Legal", "Northwind Bakery"]); // every Space has General
   const held = await w.tool("gate.held");
   assert.equal(held.body.data.length, 2, JSON.stringify(held.body));
 
