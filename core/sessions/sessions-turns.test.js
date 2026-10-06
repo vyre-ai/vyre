@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { call } from "../daemon/client.js";
 import { noSdk, until, boot, terminalSession } from "./testing/boot.js";
+// A model caller (mcp) on a person's chat is refused by the chat gate before the tool's own check: it is told the thread is not there (not_found), never that it exists and is refused.
 
 // ------------------------------------------------------------ on either driver
 
@@ -120,7 +121,7 @@ for (const driver of ["cli", "sdk"]) {
     const c = (await w.tool("threads.send", { thread: th.id, text: "never mind this", surface: "deck", mode: "queue" })).data;
     assert.deepEqual((await w.tool("threads.edit", { thread: th.id, queued: b.queued_id, text: "and the autumn prices" })).data, { edited: true, queued: b.queued_id });
     assert.deepEqual((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id })).data, { unqueued: [c.queued_id] });
-    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "denied", "a model never takes a person's words back");
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "not_found", "a model never takes a person's words back");
     await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
     await w.finished(th.id, 2);
     const ev = await w.events(th.id);
@@ -178,7 +179,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(argv[argv.indexOf("--effort") + 1], "high");
     assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.effort, "high");
     assert.equal((await w.tool("threads.start", { cwd: w.work, prompt: "hello", effort: "huge" })).error.code, "bad_input");
-    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "not_found");
     assert.deepEqual((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "deck")).data, { thread: th.id, effort: "low" });
     await until(() => w.launches().some(l => l.effort === "low"), "the effort to reach Claude Code");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.effort, "low");
@@ -189,7 +190,7 @@ for (const driver of ["cli", "sdk"]) {
     argv = w.launches().filter(x => x.argv).at(-1).argv;
     assert.equal(argv[argv.indexOf("--effort") + 1], "low", "a resume keeps it");
     // The Capsule's Cmd-Return: deeper, on the same thread, in one send.
-    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "not_found");
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", surface: "deck", model: "sonnet", effort: "max" }, "deck")).data.sent, true);
     await w.finished(th.id, 3);
     const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
@@ -280,7 +281,7 @@ for (const driver of ["cli", "sdk"]) {
     const again = lines().find(l => l.type === "user" && l.message.content === "two, but shorter");
     assert.equal(again.parentUuid, two.parentUuid, "the new message hangs where the old one did");
     assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[0].uuid })).data.rewound, false, "the first message starts a new session instead");
-    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "not_found");
   });
 
   // native-core: Claude Code parity item 3, "fork from any turn" - rewind's other menu item.
@@ -478,7 +479,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(() => w.launches().some(l => l.model === "sonnet"), "the switch to reach Claude Code");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.model, "sonnet");
     assert.ok((await w.events(th.id)).some(e => e.type === "model.switched" && e.payload.model === "sonnet"));
-    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "not_found");
     // The / menu
     const cmds = (await w.tool("threads.commands", { thread: th.id })).data.commands;
     assert.deepEqual(cmds.map(c => c.name), ["compact", "review"]);
@@ -506,7 +507,7 @@ for (const driver of ["cli", "sdk"]) {
     const sh = (await w.tool("threads.shell", { thread: th.id, command: "echo northwind" }, "deck")).data;
     assert.deepEqual([sh.code, sh.output.trim()], [0, "northwind"]);
     assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo x > .claude/settings.local.json" }, "deck")).error.code, "denied", "the floor holds");
-    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "denied", "a model never runs the person's shell");
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "not_found", "a model never runs the person's shell");
     await w.tool("threads.send", { thread: th.id, text: "what did it print?", surface: "deck" });
     await w.finished(th.id, 3);
     assert.match((await w.said(th.id)).at(-1), /<bash-input>echo northwind<\/bash-input>[\s\S]*<bash-stdout>northwind/);
