@@ -1113,6 +1113,8 @@ export class Switchboard {
         const g = st && st.group;
         return { pids: [st && st.proc && st.proc.pid, g && g.pid].filter(Boolean), pgids: g && g.pgid ? [g.pgid] : [], sids: g && g.sid ? [g.sid] : [] };
       } });
+      // vyred began stopping while this socket opened: stopAll has closed the others already, so this one closes now instead of keeping the process alive
+      if (sock && this.closing) { await this.endKernelSession(id); await sock.close(); return; }
       if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id); await sock.close(); } });
       else await this.endKernelSession(id);
     } catch (e) {
