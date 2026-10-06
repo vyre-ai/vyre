@@ -1343,6 +1343,10 @@ test("modules: an added module may emit only events named for itself; Vyre's own
   const m = (name, emits) => ({ name, version: "0.1.0", apiVersion: 1, description: "x", roles: ["box", "local"], does: { tools: [] }, watches: { emits } });
   assert.deepEqual(validate(m("oven", ["oven.heated", "oven-x.cooled"])), []);
   for (const e of ["name.claimed", "wink.removed", "device.paired", "turn.completed", "vault.changed", "settings.changed", "spaces.created", "relay.opened"])
-    assert.match(validate(m("oven", [e])).join("; "), /may emit only events named for itself/, e);
+    assert.match(validate(m("oven", [e])).join("; "), /are Vyre's own|may emit only events named for itself/, e);
   assert.deepEqual(validate(m("wink", ["wink.removed"]), { firstParty: true }), [], "a first-party module is not held to its own name");
+  // naming an added module after a shared noun, or its plural, does not open that noun's events
+  for (const [name, e] of [["device", "device.paired"], ["devices", "device.paired"], ["winks", "wink.removed"], ["names", "name.claimed"], ["relays", "relay.opened"], ["vaults", "vault.changed"]])
+    assert.match(validate(m(name, [e])).join("; "), /are Vyre's own/, `${name} -> ${e}`);
+  assert.deepEqual(validate(m("notes", ["note.added"])), [], "the singular of an ordinary name still works");
 });

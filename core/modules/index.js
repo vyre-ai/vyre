@@ -205,6 +205,9 @@ export const RESERVED_EVENTS = {
   thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
+/** Event nouns Vyre's own modules act on. An added module never emits these, whatever it is named: a module named "device" or "devices" must not say device.paired. */
+export const SHARED_EVENT_NOUNS = new Set(["device", "wink", "name", "relay", "vault", "turn", "settings", "spaces", "space", "chat", "task", "record", "records", "flow", "file", "files", "identity", "person", "kernel", "module", "approval", "stream", "network"]);
+
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
@@ -252,6 +255,7 @@ export function validate(m, { firstParty = false } = {}) {
     if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
     // Allowlist, not a denylist: other modules act on device.*, wink.*, name.*, relay.*, vault.*, turn.*, settings.* and spaces.* events, so an added module may emit only events named for itself
     // (`<its name>.verb`, the singular of it ("notes" says `note.added`) or `<its name>-x.verb`). A first-party module keeps the rule above.
+    else if (!firstParty && SHARED_EVENT_NOUNS.has(e.split(".")[0])) out.push(`event "${e}": ${e.split(".")[0]}.* events are Vyre's own; an added module can't emit them`);
     else if (!firstParty) { const noun = e.split(".")[0], own = String(m.name); if (noun !== own && noun !== own.replace(/s$/, "") && !noun.startsWith(`${own}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.…")`); }
   }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: toolEntries(m).map(t => t.name) }));
