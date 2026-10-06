@@ -806,7 +806,7 @@ export class Registry {
         for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input, /** @type {any} */ meta) => this.deps.moduleHost.call(m.name, e.name, input, meta ? { caller: meta.caller, who: meta.who, agent: meta.agent, thread: meta.thread, project: meta.project } : undefined) });
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
-        rec.state = "running";
+        rec.state = "running"; delete rec.error;
         await this.registerFlowActions(m);
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
         return;
@@ -814,7 +814,7 @@ export class Registry {
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
-      rec.state = "running";
+      rec.state = "running"; delete rec.error;
       await this.registerFlowActions(m);
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
