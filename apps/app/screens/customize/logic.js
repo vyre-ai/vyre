@@ -1,7 +1,7 @@
 // @ts-check
 // Customize (ui-primitives.md section 4.2): a space owns its types. Rename them, add fields, reorder stages, add a type from a template. Pure.
 
-/** @typedef {{ key: string, label: string, kind: string, required?: boolean, rule?: string, sealed?: boolean }} Field */
+/** @typedef {{ key: string, label: string, kind: string, required?: boolean, rule?: string, sealed?: boolean, to?: string }} Field */
 /** @typedef {{ id: string, label: string, plural: string, spaces: string[], work: boolean, kit?: string, icon?: string, fields: Field[], stages: string[], rules?: Record<string,string> }} TypeDef */
 
 export const KINDS = [
@@ -66,11 +66,11 @@ export function rename(/** @type {TypeDef} */ t, /** @type {string} */ label, /*
 export const callThemCases = (/** @type {TypeDef} */ t) => rename(t, "Case", "Cases");
 
 /** @returns {TypeDef} */
-export function addField(/** @type {TypeDef} */ t, /** @type {string} */ label, /** @type {string} */ kind) {
+export function addField(/** @type {TypeDef} */ t, /** @type {string} */ label, /** @type {string} */ kind, /** @type {string | undefined} */ to) {
   const base = slug(label);
   let key = base;
   for (let n = 2; t.fields.some((f) => f.key === key); n++) key = `${base}-${n}`;
-  const fields = [...t.fields, { key, label: label.trim() || "New field", kind, sealed: kind === "sealed" }];
+  const fields = [...t.fields, { key, label: label.trim() || "New field", kind, sealed: kind === "sealed", ...(kind === "link" && to ? { to } : {}) }];
   return { ...t, fields };
 }
 
@@ -106,7 +106,7 @@ export const CONDITION_HELP = "A condition hides a field in the app and asks for
 
 /** The line under a field. */
 export function fieldLine(/** @type {Field} */ f) {
-  return [kindLabel(f.kind), f.required ? "required" : null, f.rule ?? null].filter(Boolean).join(" · ");
+  return [f.kind === "link" && f.to ? `Link to ${f.to}` : kindLabel(f.kind), f.required ? "required" : null, f.rule ?? null].filter(Boolean).join(" · ");
 }
 
 /** The line under a type in the list. */

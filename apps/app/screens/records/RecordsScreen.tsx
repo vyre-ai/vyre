@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
+import { BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
 
 type ViewKind = "list" | "board" | "calendar" | "dashboard";
+/** More types than this are a picker, not tabs. */
+const TABS_MAX = 5;
 const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /** /u/records/<type>: every record of one type, as a list, a board or a calendar, drawn from the type's definition. Nothing here knows Contact or Matter. */
@@ -48,7 +50,15 @@ export function RecordsScreen({ type }: { type: string }) {
           <Text size="caption" tone="label">{rows.length} {rows.length === 1 ? def.label.toLowerCase() : vd.plural.toLowerCase()}</Text>
         </View>
       </View>
-      <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />
+      {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
+      <View className="flex-row gap-s2">
+        <Button kind="ghost" size="sm" icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
+        <Button kind="ghost" size="sm" icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
+      </View>
+      {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
+      {world.types.length > TABS_MAX
+        ? <Select label="Type" value={type} options={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
+        : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
       {filter && !cleared ? (
         <Card>
           <View className="flex-row items-center gap-s3 px-s4 py-s3">

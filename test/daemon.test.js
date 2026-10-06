@@ -195,40 +195,15 @@ test("daemon: stop is not held open by a connected event stream", { timeout: 20_
   assert.ok(Date.now() - t0 < 15000, "stop waited on the stream");
 });
 
-test("daemon: non-API paths serve the Deck and never anything outside deck/", { timeout: 20_000 }, async t => {
+test("daemon: non-API paths serve the app and web/ and never anything outside them", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
   for (const p of ["/../package.json", "/%2e%2e/package.json", "/..%2fpackage.json"]) {
     const r = await get(p);
-    assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
+    assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped web/`);
   }
-});
-
-test("daemon: a real directory under deck/ with no index.html of its own still gets the shell", { timeout: 20_000 }, async t => {
-  // A view's own folder (deck/chat/, holding JS modules a view imports, not a page) is a real
-  // directory. Before this fix, a bare request for it 404'd instead of falling back to the one
-  // shell every client route shares, the way a path that is not a file at all already did.
-  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "deck");
-  const probe = path.join(dir, "_daemon-test-no-index");
-  fs.mkdirSync(probe, { recursive: true });
-  fs.writeFileSync(path.join(probe, "module.js"), "// not a page");
-  t.after(() => fs.rmSync(probe, { recursive: true, force: true }));
-
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {} });
-  t.after(() => d.stop());
-  const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
-
-  const shell = htmlWithBuild(fs.readFileSync(path.join(dir, "index.html"), "utf8"));
-  const r = await get("/_daemon-test-no-index");
-  assert.equal(r.status, 200);
-  assert.equal(r.body, shell);
-  // A real file in that directory is still served as itself, not the shell.
-  const mod = await get("/_daemon-test-no-index/module.js");
-  assert.equal(mod.status, 200);
-  assert.equal(mod.body, "// not a page");
 });
 
 test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", { timeout: 20_000 }, async t => {
@@ -482,7 +457,7 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   }
 });
 
-test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*.js imports) is served from relay/client, and the Deck's CSP allows the relay it needs", { timeout: 20_000 }, async t => {
+test("daemon: Wink's relay client (web/js/pair-ticket.js's ../../relay/client/*.js imports) is served from relay/client, and the pages' CSP allows the relay it needs", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], relay: { url: "wss://relay.example.com" } }));
   const d = await start({ root, log: () => {} });
@@ -505,18 +480,17 @@ test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*
       assert.ok(csp.includes(origin), `${f}: connect-src missing ${origin} (${csp})`);
     }
   }
-  // relay/client/nodecrypto.js is Node-only, never imported from the Deck; not on the allowlist,
-  // so it falls through to the Deck's own client-routing shell (as any unmatched path does), not
+  // relay/client/nodecrypto.js is Node-only, never imported by a page; not on the allowlist,
+  // so it falls through to the app's client-routing shell (as any unmatched path does), not
   // the real file.
   const nodeOnly = /** @type {any} */ (await get("/relay/client/nodecrypto.js"));
   assert.notEqual(nodeOnly.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", "nodecrypto.js"), "utf8"));
-  // The Deck's own shell carries the same connect-src fix (deck/views/wink.js's own fetch/WebSocket
-  // to the relay runs from here, not from /relay/client/*.js).
-  const shell = /** @type {any} */ (await get("/pair/scan"));
-  assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
+  // The pre-app pages carry the same connect-src fix (the device page's own fetch/WebSocket to the relay runs from here, not from /relay/client/*.js).
+  const page = /** @type {any} */ (await get("/onboard/device"));
+  assert.ok(page.headers["content-security-policy"].includes("wss://relay.vyre.run"));
 });
 
-test("daemon: every module outside deck/ that any Deck module imports is served (a missing one blanks the page that imports it)", { timeout: 30_000 }, async t => {
+test("daemon: every module outside web/ that any pre-app page imports is served (a missing one blanks the page that imports it)", { timeout: 30_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [] }));
   const d = await start({ root, log: () => {} });
@@ -527,7 +501,7 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
     let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
   }).on("error", reject));
   const REPO = path.join(import.meta.dirname, "..");
-  /** Every relative import from a file under deck/ (not tests, vendor or fixtures) that lands outside deck/. @type {Set<string>} */
+  /** Every relative import from a file under web/ (not tests, vendor or fixtures) that lands outside web/. @type {Set<string>} */
   const outside = new Set();
   const seen = new Set();
   const walk = (/** @type {string} */ file) => {
@@ -538,7 +512,7 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
     for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)[^'"\n]*?from\s*["'](\.[^"']+)["']|import\(\s*["'](\.[^"']+)["']\s*\)|(?:^|\n)import\s+["'](\.[^"']+)["']/g)) {
       const spec = m[1] || m[2] || m[3];
       const target = path.normalize(path.join(path.dirname(file), spec));
-      if (!target.startsWith(path.join(REPO, "deck") + path.sep)) outside.add(path.relative(REPO, target));
+      if (!target.startsWith(path.join(REPO, "web") + path.sep)) outside.add(path.relative(REPO, target));
       walk(target);
     }
   };
@@ -547,14 +521,14 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
     if (e.isDirectory()) return ["vendor", "fixtures", "test", "node_modules"].includes(e.name) ? [] : all(p);
     return e.name.endsWith(".js") && !e.name.endsWith(".test.js") ? [p] : [];
   });
-  for (const f of all(path.join(REPO, "deck"))) walk(f);
-  assert.ok(outside.size > 3, "the Deck imports a few shared modules from outside deck/");
+  for (const f of all(path.join(REPO, "web"))) walk(f);
+  assert.ok(outside.size > 3, "the pre-app pages import a few shared modules from outside web/");
   const bad = [];
   for (const rel of [...outside].sort()) {
     const r = /** @type {any} */ (await get("/" + rel.split(path.sep).join("/")));
     if (r.status !== 200 || !/javascript/.test(String(r.headers["content-type"])) || r.body !== fs.readFileSync(path.join(REPO, rel), "utf8")) bad.push(rel);
   }
-  assert.deepEqual(bad, [], `the daemon does not serve: ${bad.join(", ")} (add them to its Deck allowlist)`);
+  assert.deepEqual(bad, [], `the daemon does not serve: ${bad.join(", ")} (add them to its web allowlist)`);
   // Only the contracts' constant tables are served from kernel/: nothing else there answers as a file.
   for (const p of ["/kernel/index.js", "/kernel/core/authorize.js", "/kernel/contracts/chain.d.ts", "/kernel/contracts/contracts.test.js", "/kernel/contracts/package.json", "/kernel/seal/process.js", "/kernel/grants/index.js"]) {
     const r = /** @type {any} */ (await get(p));
@@ -563,10 +537,10 @@ test("daemon: every module outside deck/ that any Deck module imports is served 
   }
 });
 
-test("daemon: a real box never serves the Deck's sample data; only a dev world does (0.2 honesty pass)", { timeout: 20_000 }, async t => {
+test("daemon: a box never serves sample data, not even to a dev world that asks", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const saved = process.env.VYRE_DECK_FIXTURES;
-  delete process.env.VYRE_DECK_FIXTURES;
+  process.env.VYRE_DECK_FIXTURES = "1";
   t.after(() => { if (saved === undefined) delete process.env.VYRE_DECK_FIXTURES; else process.env.VYRE_DECK_FIXTURES = saved; });
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -575,14 +549,10 @@ test("daemon: a real box never serves the Deck's sample data; only a dev world d
   const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
     let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b }));
   }).on("error", reject));
-  for (const p of ["/fixtures/threads.json", "/chat/fixtures/session-blocks.json", "/fixtures/../fixtures/threads.json"]) {
+  for (const p of ["/fixtures/onboard.json", "/fixtures/relay.json", "/Fixtures/onboard.json", "/fixtures/../fixtures/onboard.json"]) {
     const r = /** @type {any} */ (await get(p));
-    assert.equal(r.status, 404, p);
-    assert.doesNotMatch(r.body, /Harlow|Northwind/, p);
+    assert.doesNotMatch(r.body, /Harlow|Northwind|"onboard"/, p);
   }
-  process.env.VYRE_DECK_FIXTURES = "1";
-  const dev = /** @type {any} */ (await get("/fixtures/threads.json"));
-  assert.equal(dev.status, 200, "a dev world still gets its sample data");
 });
 
 test("daemon: every address the signed shell list names is served with exactly the listed bytes, the onboarding and passkey-claim pages included", { timeout: 60_000 }, async t => {
@@ -600,8 +570,8 @@ test("daemon: every address the signed shell list names is served with exactly t
   const bad = [];
   for (const [p, want] of shellHashes().files) {
     const r = /** @type {any} */ (await get(p));
-    // index.html carries its build id in one meta tag set per build (htmlWithBuild); the release lists it as "dev".
-    const body = p === "/" || p === "/index.html" ? Buffer.from(r.body.toString("utf8").replace(/(<meta name="vyre-build" content=")[^"]*(")/, "$1dev$2")) : r.body;
+    // A page carries its build id in one meta tag set per build (htmlWithBuild); the release lists it as "dev".
+    const body = /\.html$/.test(p) || !/\.[a-z0-9]+$/.test(p) ? Buffer.from(r.body.toString("utf8").replace(/(<meta name="vyre-build" content=")[^"]*(")/, "$1dev$2")) : r.body;
     if (r.status !== 200 || crypto.createHash("sha256").update(body).digest("hex") !== want) bad.push(p);
   }
   assert.deepEqual(bad, [], "a page with anything per-box in its bytes cannot be on the signed list");

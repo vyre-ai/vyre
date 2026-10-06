@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
+import { isKind } from "./frame-type.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type GroupActions, type SessionActions } from "./box-stream";
@@ -31,21 +32,25 @@ export type ChatStore = {
   shown(key: string): number | undefined;
   meta(): Meta;
   /** Resolves with why the box refused it, or null. */
-  send(text: string, o?: { mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
+  send(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue" }): Promise<string | null>;
   interrupt(): Promise<string | null>;
   answer(ask: string, decision: "approve" | "deny"): Promise<string | null>;
   /** The group side: authors, presence, reactions, pins, threads, the read marker, fan-out sets (group.js). */
   readonly group: ReturnType<typeof createGroup>;
   subscribeGroup(f: () => void): () => void;
+  /** Say this person is typing (the others see it for a few seconds). */
+  typing(): void;
+  /** Teach the chat names a frame did not carry (who is in it, the model slots). */
+  learnNames(list: { id: string; name: string }[]): void;
   /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
-  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
+  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */
   social: { keep(group: string, message: string): void; react(message: string, emoji: string, remove?: boolean): void; pin(message: string, pinned: boolean): void; markRead(upto: number): void };
   /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
   readonly actions: Partial<Pick<SessionActions, "editRetry" | "retry" | "branch">> | null;
 };
 
-const withActions = (source: StreamSource): Partial<SessionActions & GroupActions> => source as unknown as Partial<SessionActions & GroupActions>;
+const withActions = (source: StreamSource): Partial<SessionActions & GroupActions & { typing(): void }> => source as unknown as Partial<SessionActions & GroupActions & { typing(): void }>;
 
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const frameSoon = (fn: (t: number) => void) =>
@@ -133,8 +138,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         if (!wasReplay) pending.push({ key: r.appended.key, end: r.appended.length, t: f.t ?? nowMs(), first: !seenFirst.has(r.appended.key) });
         seenFirst.add(r.appended.key);
       }
-      if (f.type === "session.text-done") finished.add("a:" + f.data.message);
-      if (f.type === "session.status" || f.type === "session.user-message") meta = true;
+      if (isKind(f, "text-done")) finished.add("a:" + f.data.message);
+      if (isKind(f, "status") || isKind(f, "user-message")) meta = true;
       for (const k of r.touched) touched.add(k);
     }
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }
@@ -188,7 +193,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : undefined);
+        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
         return r.ok ? null : r.reason;
       }
       if (a.sendText) return a.sendText(text, o);
@@ -213,15 +218,17 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     },
     group,
     subscribeGroup(f) { groupSubs.add(f); return () => void groupSubs.delete(f); },
+    typing() { withActions(source).typing?.(); },
+    learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
       const a = withActions(source);
-      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { to: o.to, ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
+      if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
+        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
         return r.ok ? null : r.reason;
       }
-      if (source.sendGroup && (o.to.length || o.fanout || o.parent)) { source.sendGroup(text, o); return null; }
-      return store.send(text, o.mentions?.length ? { mentions: o.mentions } : undefined);
+      if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
+      return store.send(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}) });
     },
     social: {
       keep: (g, m) => source.keep?.(g, m),
@@ -238,7 +245,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
 }
 
 /** The source for a session id: the mock for `demo`, the real client against the box for every other id. */
-export const sourceFor = (sessionId: string): StreamSource => (sessionId === "demo" ? createMockStream({ session: "demo" }) : boxStream(sessionId));
+/** The sample world's three chats (CONTRACT-one-chat.md section 4) run on mock streams; every other id is a chat on the box. */
+const SAMPLE_SCENARIO: Record<string, "models" | "people" | "assistant" | undefined> = { demo: undefined, "demo-three": "models", "demo-people": "people", "demo-assistant": "assistant" };
+export const sourceFor = (sessionId: string): StreamSource => (sessionId in SAMPLE_SCENARIO ? createMockStream({ session: sessionId, scenario: SAMPLE_SCENARIO[sessionId] }) : boxStream(sessionId));
 
 /**
  * The one door for a session's frames. `source` is a StreamSource (the mock, or core/stream's

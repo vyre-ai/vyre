@@ -9,16 +9,19 @@
 
 /**
  * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string|null, type: string, time?: number, corr?: string|null, t?: number,
- *   author?: string, acts_for?: string, message?: string, data: any }} Frame
+ *   author?: string, acts_for?: string, message?: string, via?: string, data: any }} Frame
  * @typedef {{ key: string, kind: string, [k: string]: any }} Item
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
+
+import { kindOf } from "./frame-type.js";
+import { quoteFromData } from "./reply.js";
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
 /** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
 const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again." };
-const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "The session failed." };
+const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "This chat failed." };
 
 /** The states in which a message you send is queued, not taken. @param {string} state */
 export const busyState = (state) => state === "working" || state === "asking" || state === "starting";
@@ -33,7 +36,7 @@ export const plainName = (id) => {
   return s ? s[0].toUpperCase() + s.slice(1) : String(id);
 };
 /** Who wrote a frame, for the row. @param {Frame} f */
-const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}) });
+const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}), ...(f.via === "assistant" ? { via: "assistant" } : {}) });
 
 /** @param {string} b64 */
 function decode(b64) {
@@ -106,7 +109,7 @@ export function createFolder() {
     const out = { dup: false, gap: false, layout: false, touched: /** @type {string[]} */ ([]), appended: /** @type {{ key: string, length: number } | null} */ (null) };
     if (!f || typeof f.cur !== "number" || typeof f.type !== "string") return { ...out, dup: true };
     const d = f.data ?? {};
-    const kind = f.type.replace(/^session\./, "");
+    const kind = kindOf(f.type);
     // Ephemeral frames have no cursor: they never move `last`, and a repeat is harmless.
     if (EPHEMERAL.includes(kind)) {
       if (kind === "presence") { presence.set(String(d.who), { state: d.state, ...(d.doing ? { doing: d.doing } : {}), at: f.time ?? 0 }); bump("@presence"); }
@@ -136,7 +139,7 @@ export function createFolder() {
         } else {
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
           // A private message (enc) holds no words the home can read: the row says so, and a device that holds the key draws it (not built yet).
-          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...who(f), ...(d.parent ? { parent: d.parent } : {}) };
+          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...(typeof f.time === "number" ? { at: f.time } : {}), ...(typeof d.tz === "string" && d.tz ? { tz: d.tz } : {}), ...who(f), ...(d.parent ? { parent: d.parent } : {}), ...quoteFromData(d) };
           if (put(key, "user", it)) out.layout = true;
           else { items.set(key, it); }
           touch(key);
@@ -206,7 +209,8 @@ export function createFolder() {
         bump("@participants");
         // A person who joins sees the chat from their own join: the server sends who was there before as `quiet` (the roster, no marker), and the join itself is the one
         // marker a new participant sees, drawn as a quiet line ("Chris joined") with nothing above it.
-        if (d.quiet) break;
+        // A frame that names nobody and whose id is no readable name (a person's id, a model slot's) makes no line: "Per i44k... joined" tells a person nothing.
+        if (d.quiet || (!names.has(String(d.who)) && /(^|:)per_|^model:|#/.test(String(d.who)))) break;
         const key = "p:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;

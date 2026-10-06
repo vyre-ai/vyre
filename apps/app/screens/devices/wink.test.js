@@ -29,7 +29,8 @@ test("the step line says what happens", () => {
 
 test("every step has words", () => {
   for (const k of ["phone", "computer", "server"]) for (let i = 0; i < stepCount(k); i++) assert.ok(stepWords(k, i));
-  assert.match(stepWords("server", 0), /A short typed code is not accepted/);
+  assert.match(stepWords("server", 0), /Scan the QR, or paste the long code\./);
+  assert.doesNotMatch(stepWords("server", 0), /not accepted/, "the short typed code is a way in again (the user's ruling)");
   assert.match(stepWords("computer", 0), /new computer shows its code/);
 });
 
@@ -47,12 +48,12 @@ test("a computer is lent only when both sides say yes", () => {
 
 test("lists read like a sentence", () => {
   assert.equal(list(["Mine"]), "Mine");
-  assert.equal(list(["Mine", "Harlow Legal"]), "Mine and Harlow Legal");
+  assert.equal(list(["Mine", "Juniper Studio"]), "Mine and Juniper Studio");
   assert.equal(list(["A", "B", "C"]), "A, B and C");
 });
 
 test("a device says which spaces it is in", () => {
-  assert.equal(deviceLine("Alex's Mac", ["Mine", "Harlow Legal"]), "Alex's Mac is in Mine and Harlow Legal");
+  assert.equal(deviceLine("Alex's Mac", ["Mine", "Juniper Studio"]), "Alex's Mac is in Mine and Juniper Studio");
   assert.equal(deviceLine("Alex's Mac", []), "Alex's Mac is not in any space");
 });
 

@@ -8,7 +8,7 @@ import { migrate, open } from "../store/index.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { registerSpaceLinks, mimeOf, MAX_DAYS, LINK_PATH } from "./space-links.js";
+import { registerSpaceLinks, mimeOf, MAX_DAYS, LINK_PATH, MAX_LINKS, MAX_TOTAL_BYTES } from "./space-links.js";
 
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
@@ -122,4 +122,45 @@ test("the file is too large to share", async () => {
   const r = rig();
   r.files.set("big", Buffer.alloc(8 * 1024 * 1024 + 1));
   assert.equal(await code(r.run("files.drive.link.create", { path: "big" })), "too_large");
+});
+
+test("an expired link keeps no copy: the bytes are cleared on the first read, list or create after it ends, and the read still answers the same 404", async () => {
+  const r = rig();
+  const a = await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf", days: 1 });
+  const b = await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf", days: 1 });
+  const held = (/** @type {string} */ c) => /** @type {any} */ (r.db.prepare("SELECT bytes FROM files_links WHERE code = ?").get(c)).bytes;
+  assert.ok(held(a.code));
+  r.clock.t += 2 * DAY;
+  const wrong = await r.get("?c=AAAAAAAAAAAAAAAAAAAAAA");
+  const gone = await r.get(`?c=${a.code}`);
+  assert.equal(gone.status, 404);
+  assert.deepEqual(gone.body, wrong.body, "an expired code looks like a wrong one");
+  assert.equal(held(a.code), null, "cleared by the first read after expiry");
+  assert.equal(held(b.code), null, "the sweep covers every expired link");
+  const list = await r.run("files.drive.link.list", {});
+  assert.ok(list.links.every((/** @type {any} */ l) => !l.active));
+});
+
+test("create sweeps first: an expired link frees its place and its bytes under the caps", async () => {
+  const r = rig();
+  const a = await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf", days: 1 });
+  r.clock.t += 2 * DAY;
+  await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" });
+  assert.equal(/** @type {any} */ (r.db.prepare("SELECT bytes FROM files_links WHERE code = ?").get(a.code)).bytes, null);
+});
+
+test("there is a cap on live links and on the bytes they hold; revoking or expiry frees room", async () => {
+  const r = rig();
+  const made = [];
+  for (let n = 0; n < MAX_LINKS; n++) made.push(await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" }));
+  assert.equal(await code(r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" })), "too_many");
+  await r.run("files.drive.link.revoke", { code: made[0].code });
+  await r.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" });
+  const big = rig();
+  big.files.set("big.bin", Buffer.alloc(8 * 1024 * 1024));
+  const per = 8 * 1024 * 1024;
+  for (let n = 0; n < MAX_TOTAL_BYTES / per; n++) await big.run("files.drive.link.create", { path: "big.bin" });
+  assert.equal(await code(big.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" })), "too_large");
+  big.clock.t += 8 * DAY;
+  await big.run("files.drive.link.create", { path: "Clients/A/retainer.pdf" });
 });

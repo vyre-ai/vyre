@@ -250,10 +250,10 @@ export default function RealVault() {
         {adding ? (
           <View className="gap-s3">
             <Segmented label="Kind" value={adding.kind} onChange={(kind) => setAdding({ ...adding, kind })} options={NEW_KINDS} />
-            <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder={adding.kind === "login" ? "Harlow Drive" : "OpenAI key"} />
+            <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"} />
             {adding.kind === "login" ? <Field label="Username" value={adding.username} onChangeText={(username) => setAdding({ ...adding, username })} /> : null}
             <Field label={adding.kind === "login" ? "Password" : "Value"} value={adding.secret} onChangeText={(secret) => setAdding({ ...adding, secret })} kind="password" />
-            {adding.kind === "login" ? <Field label="Web address (optional)" value={adding.url} onChangeText={(url) => setAdding({ ...adding, url })} placeholder="https://drive.harlow.example" /> : null}
+            {adding.kind === "login" ? <Field label="Web address (optional)" value={adding.url} onChangeText={(url) => setAdding({ ...adding, url })} placeholder="https://drive.juniper.example" /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <Button kind="primary" label={busy ? "Saving" : "Save with Face ID"} onPress={busy ? () => {} : doAdd} />
             <Text size="caption" tone="label">The box asks you to approve this save. Assistants never see the value.</Text>

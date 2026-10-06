@@ -15,7 +15,7 @@ function box(o = {}) {
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     seen.push({ tool, input });
     if (tool === "vault.list") return { data: { locked: false, personal: "none", items: [
-      { name: "Gmail", kind: "login", description: "intake mail", fields: ["username", "password"], hosts: ["https://mail.google.com"], rotate: false, updated: 1, vault: "agents", grants: [{ module: "mail" }, { module: "watch", watcher: "intake", project: "harlow" }] },
+      { name: "Gmail", kind: "login", description: "intake mail", fields: ["username", "password"], hosts: ["https://mail.google.com"], rotate: false, updated: 1, vault: "agents", grants: [{ module: "mail" }, { module: "watch", watcher: "intake", project: "juniper" }] },
       { name: "Firm Visa", kind: "card", description: "", fields: ["number"], hosts: [], rotate: false, updated: 1, vault: "personal", grants: [] },
       { name: "Stripe", kind: "api-key", description: "", fields: ["key"], url: "https://api.stripe.com/v1", hosts: [], rotate: true, why: "leaked", updated: 1, vault: "agents", unverified: true, grants: [] },
     ] } };
@@ -36,7 +36,7 @@ test("the list becomes tabs: logins, cards, and everything else as keys", { skip
   assert.deepEqual(itemsOf(r.items, "Card").map((i) => i.name), ["Firm Visa"]);
   const key = itemsOf(r.items, "Key")[0];
   assert.deepEqual({ name: key.name, line: key.line, unverified: key.unverified, rotate: key.rotate }, { name: "Stripe", line: "api.stripe.com", unverified: true, rotate: true });
-  assert.deepEqual(toItem(r.items[0]).grants, [{ who: "mail" }, { who: "watch/intake", project: "harlow" }]);
+  assert.deepEqual(toItem(r.items[0]).grants, [{ who: "mail" }, { who: "watch/intake", project: "juniper" }]);
   assert.equal(JSON.stringify(r).includes("fake-secret-value"), false);
 });
 
@@ -78,10 +78,10 @@ test("Remove revokes one module, and a watcher grant revokes that watcher", { sk
 test("an added item is checked before the box is asked, and sent as vault.put with the host split out; state and unlock are their own calls", { skip: !strip }, async () => {
   const { vaultSource } = await import("./source.ts");
   const m = await import("./real-model.ts");
-  assert.equal(m.hostOf("https://Drive.Harlow.example/login?x=1"), "drive.harlow.example");
+  assert.equal(m.hostOf("https://Drive.Juniper.example/login?x=1"), "drive.juniper.example");
   assert.equal(m.hostOf("not a link"), "");
-  const ok = m.putInput({ kind: "login", name: " Harlow Drive ", username: "alex", secret: "pw-1", url: "https://drive.harlow.example" });
-  assert.deepEqual(ok, { input: { name: "Harlow Drive", kind: "login", fields: { username: "alex", password: "pw-1" }, url: "https://drive.harlow.example", hosts: ["drive.harlow.example"] } });
+  const ok = m.putInput({ kind: "login", name: " Juniper Drive ", username: "alex", secret: "pw-1", url: "https://drive.juniper.example" });
+  assert.deepEqual(ok, { input: { name: "Juniper Drive", kind: "login", fields: { username: "alex", password: "pw-1" }, url: "https://drive.juniper.example", hosts: ["drive.juniper.example"] } });
   assert.deepEqual(m.putInput({ kind: "api-key", name: "k", username: "", secret: "v", url: "" }), { input: { name: "k", kind: "api-key", fields: { value: "v" } } });
   for (const bad of [{ kind: "login", name: "", username: "", secret: "x", url: "" }, { kind: "secret", name: "n", username: "", secret: "", url: "" }, { kind: "login", name: "n", username: "", secret: "x", url: "zzz" }]) assert.ok("error" in m.putInput(/** @type {any} */ (bad)), JSON.stringify(bad));
   const b = box();

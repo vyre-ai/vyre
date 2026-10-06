@@ -13,7 +13,7 @@ export function SampleAiScreen() {
   const acct = ai.find((a) => a.name === sheet);
   return (
     <Page title="AI accounts" back="/u/settings">
-      <Banner>Nobody's work runs on someone else's account. In a shared space, your sessions still use your accounts and count against your budget.</Banner>
+      <Banner>Nobody's work runs on someone else's account. In a shared space, your chats still use your accounts and count against your budget.</Banner>
       <Card flush>
         {ai.map((a, i) => (
           <View key={a.name}>
@@ -43,7 +43,7 @@ export function SampleAiScreen() {
       <Sheet open={!!acct} onClose={() => setSheet(null)} title={acct ? `${acct.name} budget` : undefined}>
         {acct ? (
           <>
-            <Text tone="muted">A month's limit for sessions on this account. At the limit, assistants stop and ask you.</Text>
+            <Text tone="muted">A month's limit for chats on this account. At the limit, assistants stop and ask you.</Text>
             <Segmented label="Monthly budget" value={String(acct.budget)} onChange={(v) => { setBudget(acct.name, Number(v)); showToast(`${acct.name} budget is ${money(Number(v))} a month.`); }} options={BUDGET_STEPS.map((n) => [String(n), money(n)] as [string, string])} />
             <View className="flex-row"><Button kind="primary" label="Done" onPress={() => setSheet(null)} /></View>
           </>

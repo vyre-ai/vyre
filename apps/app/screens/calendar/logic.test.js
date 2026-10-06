@@ -36,7 +36,7 @@ test("a day lists what is on it: all-day first, then by time, with the type and 
   const { from, to } = rangeOf("day", D("2026-10-04T08:00:00"));
   const on = today(all, D("2026-10-04T08:00:00").getTime());
   assert.deepEqual(on.map((i) => i.title), ["Doe trust", "Intake call"]);
-  assert.deepEqual(on.map((i) => subLine(i)), ["All day, Matter: Closing", "09:30 to 10:15, Event"]);
+  assert.deepEqual(on.map((i) => subLine(i)), ["All day, Matter: Closing", "9:30 am to 10:15 am, Event"]);
   assert.equal(within(all, from, to).length, 2);
 });
 
@@ -58,11 +58,39 @@ test("a timed event that runs past midnight is on both days", () => {
 test("headings and times read as words", () => {
   const a = D("2026-10-04T12:00:00");
   assert.deepEqual([heading("month", a), heading("day", a), heading("week", a), dayHeading("2026-10-04")], ["October 2026", "Sunday 4 October", "Mon 28 Sep to Sun 4 Oct", "Sunday 4 October"]);
-  assert.deepEqual([timeLine({ allDay: true }), timeLine({ allDay: false, start: D("2026-10-04T09:05:00"), end: null })], ["All day", "09:05"]);
+  assert.deepEqual([timeLine({ allDay: true }), timeLine({ allDay: false, start: D("2026-10-04T09:05:00"), end: null })], ["All day", "9:05 am"]);
 });
 
 test("the month grid is weeks of seven, Monday first, null outside the month", () => {
   const g = monthGrid(D("2026-10-15T00:00:00"));
   assert.ok(g.every((w) => w.length === 7));
   assert.deepEqual([g[0].filter(Boolean).length, g[0].findIndex(Boolean), g.flat().filter(Boolean).length], [4, 3, 31]);
+});
+
+import { occurrencesFrom, withOccurrences } from "./logic.js";
+test("a repeating Event's occurrences come from planner.agenda and replace its single first-date item; the app expands no rule", () => {
+  const T = Date.UTC(2026, 9, 6, 9);
+  // planner.agenda's entries for a repeating event, as core/planner's events-repeat test reads them: record, start and end in ms, occurrence, rrule.
+  const agenda = { entries: [
+    { record: "ev1", title: "Board meeting", start: T, end: T + 3_600_000, occurrence: 0, rrule: "FREQ=WEEKLY" },
+    { record: "ev1", title: "Board meeting", start: T + 7 * 86_400_000, end: T + 7 * 86_400_000 + 3_600_000, occurrence: 1, rrule: "FREQ=WEEKLY" },
+    { record: "al1", title: "Ring", start: T, source: "planner" },
+  ] };
+  const occ = occurrencesFrom(agenda);
+  assert.deepEqual(occ.map((o) => o.start.getTime()), [T, T + 7 * 86_400_000]);
+  assert.equal(occ[0].end.getTime(), T + 3_600_000);
+  const first = { urn: "vyre://s/event/ev1", id: "ev1", type: "event", typeLabel: "Event", title: "Board meeting", field: "start", fieldLabel: "Start", start: new Date(T - 200 * 86_400_000), end: null, allDay: false, event: true };
+  const other = { urn: "vyre://s/event/ev2", id: "ev2", type: "event", typeLabel: "Event", title: "One-off", field: "start", fieldLabel: "Start", start: new Date(T + 3_600_000), end: null, allDay: false, event: true };
+  const merged = withOccurrences([first, other], occ);
+  assert.deepEqual(merged.map((i) => [i.id, i.start.getTime()]), [["ev1", T], ["ev2", T + 3_600_000], ["ev1", T + 7 * 86_400_000]]);
+  assert.deepEqual(withOccurrences([first], []), [first], "no box answer: the first-date item stays");
+});
+
+test("a time that belongs to a space with its own zone also says the space's time; the viewer's zone alone otherwise", () => {
+  // 16:00 UTC on 6 Oct 2026: 9:00 am in Pacific time, 9:00 pm in Karachi (lib/time's own words)
+  const at = Date.UTC(2026, 9, 6, 16, 0);
+  const item = { allDay: false, start: new Date(at), end: null };
+  assert.equal(timeLine(item, { person: "Asia/Karachi", space: "America/Los_Angeles" }), "9:00 am PT · 9:00 pm your time");
+  assert.equal(timeLine(item, { person: "Asia/Karachi", space: null }), "9:00 pm");
+  assert.equal(timeLine(item, { person: "America/Los_Angeles", space: "America/Los_Angeles" }), "9:00 am");
 });

@@ -20,7 +20,7 @@ if (typeof pre.build !== "string" || !pre.build) { console.error("appbuild-manif
 const { appWorker, appManifest } = await import("../core/daemon/app.js");
 const generated = {
   "sw.js": appWorker({ dir: dist, template: fs.readFileSync(path.join(root, "core", "daemon", "app-sw.js"), "utf8") }),
-  "manifest.webmanifest": appManifest({ dir: dist, deckManifest: path.join(root, "deck", "manifest.webmanifest") }),
+  "manifest.webmanifest": appManifest({ dir: dist, webManifest: path.join(root, "web", "manifest.webmanifest") }),
 };
 const text = buildAppList(dist, release, counter, generated);
 if (out) fs.writeFileSync(out, text); else process.stdout.write(text);

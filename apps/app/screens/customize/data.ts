@@ -1,12 +1,12 @@
 // Types per space, sample data (public sample world). `loadTypes()` is the one read; a real source replaces it.
 import type { TypeDef } from "./logic.js";
 
-export const CUSTOMIZE_SPACES: [string, string][] = [["mine", "Mine"], ["harlow", "Harlow Legal"]];
+export const CUSTOMIZE_SPACES: [string, string][] = [["mine", "Mine"], ["juniper", "Juniper Studio"]];
 
 export function loadTypes(): TypeDef[] {
   return [
     {
-      id: "contact", label: "Contact", plural: "Contacts", spaces: ["mine", "harlow"], work: false, icon: "contacts",
+      id: "contact", label: "Contact", plural: "Contacts", spaces: ["mine", "juniper"], work: false, icon: "contacts",
       fields: [
         { key: "name", label: "Name", kind: "text", required: true }, { key: "role", label: "Role", kind: "choice" }, { key: "email", label: "Email", kind: "email" },
         { key: "phone", label: "Phone", kind: "phone" }, { key: "address", label: "Address", kind: "address" }, { key: "dob", label: "Date of birth", kind: "date" },
@@ -16,7 +16,7 @@ export function loadTypes(): TypeDef[] {
       stages: [],
     },
     {
-      id: "matter", label: "Matter", plural: "Matters", spaces: ["harlow"], work: true, kit: "Estate planning matter",
+      id: "matter", label: "Matter", plural: "Matters", spaces: ["juniper"], work: true, kit: "Estate planning matter",
       fields: [
         { key: "title", label: "Title", kind: "text", required: true }, { key: "client", label: "Client", kind: "link" }, { key: "plan", label: "Plan", kind: "choice" },
         { key: "fee", label: "Fee", kind: "money" }, { key: "stage", label: "Stage", kind: "stage", rule: "Engagement needs a signed letter" }, { key: "owner", label: "Owner", kind: "actor" },

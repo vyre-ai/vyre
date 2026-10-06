@@ -22,7 +22,7 @@ export default function RealMcp() {
   if (!list) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3 pt-s2">
-      <Text tone="muted" size="secondary">Add one and its tools reach every session through the one vyre entry.</Text>
+      <Text tone="muted" size="secondary">Add one and its tools reach every chat through the one vyre entry.</Text>
       {list.length ? (
         <Card flush>
           {list.map((s, i) => {
@@ -70,7 +70,7 @@ export default function RealMcp() {
             );
           })}
         </Card>
-      ) : <Card><EmptyState title="No MCP servers yet" body="Add one and its tools reach every session through the one vyre entry." /></Card>}
+      ) : <Card><EmptyState title="No MCP servers yet" body="Add one and its tools reach every chat through the one vyre entry." /></Card>}
       <View className="self-start"><Button kind={list.length ? "ghost" : "primary"} size="sm" icon="plus" label="Add MCP server" onPress={() => setAdding(blank())} /></View>
       <AddServer value={adding} onClose={() => setAdding(null)} onAdded={(name, t) => { if (t) setTested((m) => ({ ...m, [name]: t })); load(); }} />
     </View>

@@ -287,6 +287,7 @@ test("glass: release returns held_ms, emits, and notes the thread without anythi
   s.h.takes.get("kit").since -= 134_000;
   const r = await s.deck("glass.release", { target: "computer:kit", surface: "phone:pocket", note: "signed in to the bank portal" });
   assert.equal(r.data.released, true);
+  assert.equal(r.data.noted, true, "the thread was told");
   assert.ok(r.data.held_ms >= 134_000 && r.data.held_ms < 140_000, String(r.data.held_ms));
   const ev = s.events("glass.released")[0].payload;
   assert.deepEqual([ev.target, ev.surface, ev.why], ["computer:kit", "phone:pocket", "gave back"]);
@@ -297,6 +298,12 @@ test("glass: release returns held_ms, emits, and notes the thread without anythi
   // Releasing what you do not hold changes nothing and says so.
   assert.deepEqual((await s.deck("glass.release", { target: "computer:kit", surface: "phone:pocket" })).data, { released: false, held_ms: 0 });
   assert.equal(s.events("glass.released").length, 1);
+  // An agent with no thread open is not told, and the answer says so (a screen must not claim the note arrived).
+  await s.deck("glass.take", { target: "computer:pax", surface: "phone:pocket" });
+  const before = s.threads.sent.length;
+  const none = await s.deck("glass.release", { target: "computer:pax", surface: "phone:pocket", note: "hello" });
+  assert.deepEqual([none.data.released, none.data.noted], [true, false]);
+  assert.equal(s.threads.sent.length, before, "the release sent nothing to a thread that is not there");
   assert.equal(duration(40_000), "40 s");
   assert.equal(duration(3_780_000), "1 h 3 min");
 });

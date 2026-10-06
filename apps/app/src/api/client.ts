@@ -14,6 +14,7 @@
 // can load this file as it is. The platform pieces come in through createClient (box.web.ts,
 // box.native.ts).
 
+import { ZONE_HEADER, systemZone } from "../../../../lib/time/index.js";
 import { follow } from "../../../../core/resilience/stream.js";
 import { outbox as makeOutbox } from "../../../../core/resilience/outbox.js";
 import type { Open, StreamState, VyreEvent } from "../../../../core/resilience/stream.js";
@@ -63,7 +64,7 @@ export type OutboxChange = {
 
 export type ClientDeps = {
   /**
-   * The box's http(s) address, e.g. "https://harlow.example.ts.net". Over relay/client's paths it
+   * The box's http(s) address, e.g. "https://juniper.example.ts.net". Over relay/client's paths it
    * only names the box (the relay's base, route included); requests go through `open`/`caller`.
    */
   base: string;
@@ -143,7 +144,8 @@ export async function createClient(d: ClientDeps): Promise<Client> {
     const body = JSON.stringify(input ?? {});
     const proved = Boolean(extra["x-vyre-presence"]);
     const attempt = async () => {
-      const headers = { ...(auth ? await auth.headers("POST", path, body, proved) : {}), ...extra };
+      // Every call says which zone this device is in, so the box reads a person's times in it (lib/time; the daemon validates the header and hands it to a tool as meta.zone).
+      const headers = { [ZONE_HEADER]: systemZone(), ...(auth ? await auth.headers("POST", path, body, proved) : {}), ...extra };
       return (await d.caller(base, { headers, timeoutMs })(tool, input, key)) as Result<unknown>;
     };
     let r = await attempt();

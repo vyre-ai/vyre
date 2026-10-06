@@ -1,4 +1,4 @@
-import type { FieldDefinition, Who } from "../../../../deck/ui/contracts.js";
+import type { FieldDefinition, Who } from "../../src/store-core/contracts.js";
 
 export type FieldMode = "view" | "edit" | "compact";
 

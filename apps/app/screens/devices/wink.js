@@ -46,7 +46,7 @@ export function stepWords(/** @type {DeviceKind} */ kind, /** @type {number} */ 
   const noun = kind === "server" ? "server" : kind === "phone" ? "phone" : "computer";
   if (!showsRing(kind)) {
     return [
-      "The server printed a QR code and a long code. Scan the QR, or paste the long code. A short typed code is not accepted.",
+      "The server printed a QR code and a long code. Scan the QR, or paste the long code.",
       "The server shows who is asking and the same three words. Confirm only if they match.",
       "Both screens say done. Nothing was configured.",
     ][step];
@@ -65,7 +65,7 @@ export function lendState(/** @type {{ spaceAllows: boolean, meAllows: boolean }
   return "waiting";
 }
 
-/** "Mine, Harlow Legal and Northwind Bakery". */
+/** "Mine, Juniper Studio and Northwind Bakery". */
 export function list(/** @type {string[]} */ a) {
   return a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`;
 }
@@ -82,7 +82,7 @@ export const spacesLine = (/** @type {string[]} */ names) => (names.length ? `In
 export const REINSTALL_LINE = "Reinstalling Vyre on this phone resumes as you, because the phone keeps your key. To stop this phone reaching your spaces, remove it below, or remove it from another of your devices.";
 
 /** What removing something does, said before it happens. */
-export function removeText(/** @type {"Device"|"Person"|"Assistant"|"Kit"|"Flow"} */ kind, /** @type {string} */ name, space = "Harlow Legal") {
+export function removeText(/** @type {"Device"|"Person"|"Assistant"|"Kit"|"Flow"} */ kind, /** @type {string} */ name, space = "Juniper Studio") {
   const first = name.split(" ")[0];
   return {
     Device: `Removing ${name} stops it opening anything of yours from now on, and what is stored on it is deleted when it next connects or its access runs out. It cannot take back what it has already opened or copied.`,

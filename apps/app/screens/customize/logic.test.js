@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { KINDS, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, typeLine } from "./logic.js";
 
-const matter = { id: "matter", label: "Matter", plural: "Matters", spaces: ["harlow"], work: true, kit: "Estate planning matter", fields: [{ key: "title", label: "Title", kind: "text", required: true }], stages: ["Intake", "Drafting", "Closed"] };
+const matter = { id: "matter", label: "Matter", plural: "Matters", spaces: ["juniper"], work: true, kit: "Estate planning matter", fields: [{ key: "title", label: "Title", kind: "text", required: true }], stages: ["Intake", "Drafting", "Closed"] };
 
 test("there are fifteen field kinds", () => assert.equal(KINDS.length, 15));
 

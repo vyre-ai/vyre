@@ -2,7 +2,7 @@
 // Vyre's colours as config: `theme.colors` { dark: {...}, light: {...} } in config.json, keyed by
 // the custom property names the Deck uses without their dashes. THEME_COLORS below is the palette
 // itself (docs/design/TOKENS.md draws its tables from it, and test/theme-defaults.test.js holds
-// deck/css/tokens.css and deck/css/deck.css to it); THEME_USE says what each one is for. Those two
+// web/css/tokens.css and web/css/deck.css to it); THEME_USE says what each one is for. Those two
 // stylesheets paint these defaults; GET /theme.css (core/daemon) turns whatever config overrides into custom
 // properties, dark on :root and light on :root[data-theme="paper"]. A value that is not a plain
 // CSS colour is dropped, so config can never add a rule, an import or a url().
@@ -70,7 +70,7 @@ export const THEME_USE = {
 
 /**
  * Dark swatch names config has always used, and the roles deck.css used to derive from them. The
- * roles now come from the generated deck/css/tokens.css, so an override of a swatch is also written
+ * roles now come from the generated web/css/tokens.css, so an override of a swatch is also written
  * to its roles here (unless config names the role itself): { dark: { graphite } } still repaints
  * the ground.
  */

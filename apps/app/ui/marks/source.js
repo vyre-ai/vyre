@@ -1,13 +1,13 @@
 // @ts-check
 // The SVG source of every mark in the app, pure (no DOM, no React): one function, markSource(), from (kind, seed, size band, scheme)
-// to markup. The generators are the Deck's own (deck/vendor/vyrecode: assistant creature, agent, teammate character, project and space emblem),
+// to markup. The generators are the Deck's own (lib/wink-code: assistant creature, agent, teammate character, project and space emblem),
 // plus the person face v2 ported from the prototype (team/0.2.2/prototype-src/p3o.js personV2) and the device marks of team/0.3/assets.
 // Same seed, same mark, on every surface. A mark never falls back to a letter.
 
-import { creature } from "../../../../deck/vendor/vyrecode/creature.js";
-import { character } from "../../../../deck/vendor/vyrecode/characters.js";
-import { emblem } from "../../../../deck/vendor/vyrecode/emblem.js";
-import { agentV2 } from "../../../../deck/vendor/vyrecode/agent2.js";
+import { creature } from "../../../../lib/wink-code/creature.js";
+import { character } from "../../../../lib/wink-code/characters.js";
+import { emblem } from "../../../../lib/wink-code/emblem.js";
+import { agentV2 } from "../../../../lib/wink-code/agent2.js";
 import { PROJECT_COLORS } from "../../../../lib/wink-code/identity.js";
 import { projectBytes } from "../../../../lib/avatar-seed/index.js";
 

@@ -4,6 +4,7 @@
 // is the typed placeholder chip and never a value. Callbacks (open terminal, open in Drive, Face ID,
 // take over) arrive in `ctx`: the screen decides what they do.
 
+import { RC } from "../../screens/shell/rc";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -56,6 +57,9 @@ export type BlockCtx = {
   onOpenSource?: (url: string) => void;
   onTakeOver?: () => void;
   onCopy?: (text: string) => void;
+  /** The held item a draft is, when the box holds it for a yes (its need id), and the way to open it. */
+  heldFor?: (draft: { subject?: string | null; body?: string }) => string | null;
+  onOpenHeld?: (needId: string) => void;
   /** Face ID for a task's approval: resolves true when the person passed. */
   onFaceId?: () => Promise<boolean>;
   onApprove?: (taskId: string) => void;
@@ -64,8 +68,12 @@ export type BlockCtx = {
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
   onBranchFrom?: (uuid: string) => void;
-  /** Group chats: reply in a thread to a message (its id and its author's name). */
-  onReplyTo?: (message: string, name: string) => void;
+  /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
+  onReplyTo?: (message: string, name: string, text?: string) => void;
+  /** Tapping a quote goes to the original message and lights it up. */
+  onJumpTo?: (message: string) => void;
+  /** The message to light up for a moment after a jump. */
+  flash?: string | null;
   /** Highlight to assistant: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
@@ -361,9 +369,10 @@ export function DraftBlock({ block, ctx }: { block: Extract<Block, { block: "dra
   const { color } = useUiTheme();
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(block.body);
+  const held = ctx.heldFor?.(block) ?? null;
   return (
     <Shell icon="chat" title={block.subject ?? "Draft"} sub={block.to ? `To ${block.to}` : block.kind}
-      right={<Chip>Draft, nothing sent</Chip>}>
+      right={<Chip>{held ? "Waiting for your yes" : "Draft, nothing sent"}</Chip>}>
       {editing ? (
         <TextInput multiline value={body} onChangeText={setBody} accessibilityLabel="Edit the draft" style={{ color: color.text, minHeight: 96, borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 8, padding: 8, fontSize: 15, lineHeight: 22 }} />
       ) : (
@@ -372,6 +381,7 @@ export function DraftBlock({ block, ctx }: { block: Extract<Block, { block: "dra
       <View style={S.s25}>
         <Button size="sm" label={editing ? "Done" : "Edit"} onPress={() => setEditing((e) => !e)} />
         <Button size="sm" kind="ghost" icon="copy" label="Copy" onPress={() => copy(body, ctx)} />
+        {held && ctx.onOpenHeld ? <Button size="sm" kind="primary" label="Review and send" onPress={() => ctx.onOpenHeld?.(held)} /> : null}
       </View>
     </Shell>
   );
@@ -449,7 +459,7 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "draft": return <DraftBlock block={block} ctx={ctx} />;
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;
-    case "screen": return <ScreenFrames block={block} ctx={ctx} />;
+    case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
     default: return <TextBlock block={block} />;
   }
 }

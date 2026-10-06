@@ -15,7 +15,7 @@ import * as config from "../core/config/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "..", "core", "daemon", "main.js");
-const FAKE_TAILSCALE = path.join(HERE, "..", "deck", "test", "fake-tailscale.js");
+const FAKE_TAILSCALE = path.join(HERE, "..", "web", "test", "fake-tailscale.js");
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
 /** @param {string} socketPath */

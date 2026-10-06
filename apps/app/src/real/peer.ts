@@ -40,6 +40,8 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
   try { return (await p.call(tool, input)) as T; }
   catch (e) {
     const code = (e as { code?: string })?.code;
+    // the relay says the owner removed this device: it forgets everything it held and pairs again (a refused sign-in or an unreachable server never does this)
+    if (code === "relay_removed") { await (await import("../identity/removed")).ifRemoved(code); throw e; }
     // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
     if (code === "person_session_required" && (await renewSession())) { p = await openPeer(); return (await p.call(tool, input)) as T; }
     // a closed connection is reopened once; anything the server answered is the answer
@@ -73,14 +75,14 @@ export function renewSession(): Promise<boolean> {
 /** Drop the open peer (sign out, a removed device). */
 export function closePeer(): void { try { peer?.close(); } catch { /* closed */ } peer = null; }
 
-/** The duplex the resumable stream client (core/stream/client.js) opens: a chat stream followed over the peer wire (tool stream.follow). Frames come as server messages; a send is ignored (the subscription is the open call's `from`). */
+/** The duplex the resumable stream client (core/stream/client.js) opens: a chat stream followed over the peer wire (tool stream.open-peer { chat, from }, answering { stream, chat, session, viewer, head, floor }). Frames come as server messages; a send is ignored (the subscription is the open call's `from`). */
 export async function peerDuplex(session: string, from: number): Promise<{ send(m: unknown): void; onMessage(cb: (m: unknown) => void): void; onClose(cb: () => void): void; close(): void; info: { viewer?: string; head?: number; floor?: number } }> {
   const p = await openPeer();
   const msg: Array<(m: unknown) => void> = [];
   const shut: Array<() => void> = [];
   let ended = false;
   const end = () => { if (ended) return; ended = true; for (const cb of shut) cb(); };
-  const s = await p.openStream("stream.follow", { session, from }, { onframe: (data) => { for (const cb of msg) cb(data); }, onend: end });
+  const s = await p.openStream("stream.open-peer", { chat: session, from }, { onframe: (data) => { for (const cb of msg) cb(data); }, onend: end });
   const r = (s.result ?? {}) as { viewer?: string; head?: number; floor?: number };
   return { send() {}, onMessage: (cb) => { msg.push(cb); }, onClose: (cb) => { shut.push(cb); if (ended) cb(); }, close: () => { try { s.close(); } catch { /* closed */ } end(); }, info: { viewer: r.viewer, head: r.head, floor: r.floor } };
 }

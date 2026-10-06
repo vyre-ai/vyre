@@ -1,5 +1,5 @@
 // @ts-check
-// A throwaway world for the phone apps: the Deck's world (deck/test/world.js: the fictional
+// A throwaway world for the phone apps: the Deck's world (web/test/world.js: the fictional
 // corpus, two projects, two held Gate items) on a box, with every request looking like alex's
 // phone on the tailnet. A test helper, not part of the product. Never touches ~/.vyre.
 //
@@ -26,7 +26,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildHome, makeProjects, makeAgents, heldItems } from "../../deck/test/world.js";
+import { buildHome, makeProjects, makeAgents, heldItems } from "../../web/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { setPeerHosting } from "../../core/daemon/peer.js";
 

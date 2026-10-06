@@ -1,6 +1,6 @@
 // @ts-check
 // Vyre's colours in one place, as roles, for the dark theme and paper. docs/design/TOKENS.md
-// names them; deck/css/deck.css declares them (palette.test.js holds the two together). Every
+// names them; web/css/deck.css declares them (palette.test.js holds the two together). Every
 // text-on-colour pair the surfaces draw is listed in PAIRS and must pass WCAG AA: 4.5:1 for body
 // text, 3:1 for large text and UI marks (dots, rings, borders that carry meaning).
 

@@ -1,7 +1,7 @@
 // Avatar tests: the Swift port draws the Deck's identity marks byte for byte (ADR 0043).
 //
 // Every expected SVG below was printed by the Deck's own renderers at native-core a1d8ac72
-// (deck/js/avatars.js avatarSource over deck/vendor/vyrecode), from node, and pasted here
+// (deck/js/avatars.js avatarSource over web/vendor/vyrecode), from node, and pasted here
 // unchanged: the edges (all-zero and all-0xff fingerprints, an empty seed, a unicode project
 // name), every person look, every project colour and mark, solid and draft, and every teammate
 // role at both badge sizes. Synthetic seeds only, from the sample world.

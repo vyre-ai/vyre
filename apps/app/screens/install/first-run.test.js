@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { afterQuestion, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -25,7 +25,7 @@ test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
   assert.equal(WELCOME.start, "Get started");
   assert.equal(WELCOME.have, "I already have Vyre");
-  assert.equal(backOf("name", { welcome: true }), "welcome");
+  assert.equal(backOf("name", { welcome: true }), "question", "Get started goes to setup's one question first");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
   assert.equal(backOf("welcome"), null);
@@ -80,7 +80,14 @@ test("a phone and a browser never read a server or an install line for a pairing
   assert.equal(pairSayFor(server, "mac"), server, "the Mac is the device that runs the line");
   assert.equal(pairSayFor("Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.", "android"), PHONE_SAY.unreachable);
   assert.equal(pairSayFor("The pairing ran out of time, so nothing was paired. Run the install line on your server again to get a new code.", "ios"), PHONE_SAY.expired);
-  for (const s of Object.values(PHONE_SAY)) assert.doesNotMatch(s, /server|install/i);
+  for (const s of [...Object.values(PHONE_SAY), ...Object.values(WEB_SAY)]) assert.doesNotMatch(s, /server|install/i);
+});
+
+test("a browser that cannot reach the Vyre says This browser, a phone says Your phone", () => {
+  const t = "Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.";
+  assert.equal(pairSayFor(t, "web"), "This browser cannot reach your Vyre right now. Nothing was paired.");
+  assert.equal(pairSayFor(t, "ios"), PHONE_SAY.unreachable);
+  assert.doesNotMatch(WEB_SAY.spaceOffline, /phone/i);
 });
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {
@@ -101,10 +108,10 @@ test("who it is for: three answers, and a space for one person has nobody to inv
 });
 
 test("who it is for is kept with the progress and with what the box keeps", () => {
-  const raw = packProgress({ step: "look", name: "alex", spaceName: "Harlow Legal", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone", who: "personal" });
+  const raw = packProgress({ step: "look", name: "alex", spaceName: "Juniper Studio", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone", who: "personal" });
   assert.equal(unpackProgress(raw).who, "personal");
-  assert.equal(unpackProgress(packProgress({ step: "look", name: "alex", spaceName: "Harlow Legal", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone" })).who, "team");
-  assert.equal(setupFrom({ step: "look", name: "Harlow Legal", addr: null, look: "amber", where: "server", connectors: [], kit: null, who: "client" }).picks.who, "client");
+  assert.equal(unpackProgress(packProgress({ step: "look", name: "alex", spaceName: "Juniper Studio", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone" })).who, "team");
+  assert.equal(setupFrom({ step: "look", name: "Juniper Studio", addr: null, look: "amber", where: "server", connectors: [], kit: null, who: "client" }).picks.who, "client");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "personal" } } }).who, "personal");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });
@@ -129,4 +136,59 @@ test("the install line is the release candidate's own only for a hyphenated vers
   assert.equal(installLine("0.3.0"), STABLE);
   for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /", "0.3.0-rc.1; ls", "-rc1"]) assert.equal(installLine(v), STABLE, String(v));
   assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
+});
+
+test("whose a server is: a browser reads it as the server said it, a phone as this Vyre", () => {
+  const s = "This server belongs to walkercc.vyre.run. Ask them to add you to a space, or reset the server to start over.";
+  assert.equal(pairSayFor(s, "web"), s);
+  assert.equal(pairSayFor(s, "mac"), s);
+  assert.equal(pairSayFor(s, "ios"), "This Vyre belongs to walkercc.vyre.run. Ask them to add you to a space, or reset it to start over.");
+});
+
+import { setupUnfinished, SETUP_BANNER } from "./first-run.js";
+test("the setup banner shows only when the box says setup is not finished", () => {
+  assert.equal(setupUnfinished({ finished: false }), true);
+  assert.equal(setupUnfinished({ finished: true }), false);
+  assert.equal(setupUnfinished(null), false);
+  assert.equal(setupUnfinished({}), false);
+  assert.equal(SETUP_BANNER.route, "/u/install/setup");
+});
+
+test("the short typed code is on in release and gated on RC.typedCode, so the kill switch hides every typed path", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rc = readFileSync(new URL("../shell/rc.ts", import.meta.url), "utf8");
+  assert.match(rc, /typedCode: flagNotOff\(process\.env\.EXPO_PUBLIC_VYRE_TYPED_CODE\)/, "on by default: only an explicit 0 turns it off, read by the exact literal Expo inlines");
+  for (const f of ["../devices/TypeCode.tsx"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.match(src, /export function TypeCode\(p: TypeCodeProps\) \{ return RC\.typedCode \?/, "the typed field renders nothing only while the kill switch is set");
+    assert.match(src, /export function AckCode\(p: \{ offer: string; onDone: \(\) => void \}\) \{ return RC\.typedCode \?/, "so does the ack box");
+  }
+  assert.match(readFileSync(new URL("./MacServer.tsx", import.meta.url), "utf8"), /if \(!RC\.typedCode\)/, "and the Mac's typed-code window");
+});
+
+test("the words step after a long code uses the session's own kind: a real (watch) session shows the words and waits for the yes, never the typed-words form", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  const step = src.slice(src.indexOf('} else if (step === "scanwords") {'), src.indexOf('} else if (step === "recovery") {'));
+  assert.match(step, /<PairServer session=\{session\}/);
+  assert.doesNotMatch(step, /<PairWords/);
+});
+
+test("a phone's long code adds this device to the name (a browser too); a server's long code pairs this device to that server", () => {
+  assert.equal(codeRoute({ kind: "ticket", for: "phone" }), "add-device");
+  assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
+  assert.equal(codeRoute({ kind: "offer" }), "pair-server");
+  assert.equal(codeRoute(null), "pair-server");
+});
+
+test("a fresh device that picks I have my own server reaches the name screen before it pairs anything; a device with a name goes straight to My Cloud", async () => {
+  assert.equal(afterQuestion("own", false), "name", "no name, no identity to pair with: the name comes first");
+  assert.equal(afterQuestion("own", true), "mycloud");
+  assert.equal(afterQuestion("join", false), "name");
+  assert.equal(afterQuestion("join", true), "name");
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  assert.match(src, /setStep\(afterQuestion\("own", Boolean\(w\)\)\)/, "the question's own answer goes through afterQuestion, not straight to the My Cloud page");
+  assert.doesNotMatch(src, /QUESTION\.own\.title\}[^\n]*setStep\("mycloud"\)/);
+  assert.match(src, /ownServer\.current \? "mycloud"/, "after the name and the recovery code, an own-server first run carries on to My Cloud");
 });

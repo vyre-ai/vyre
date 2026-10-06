@@ -521,7 +521,7 @@ put_wrapper() {
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
 # publish_release SRC: the release's SHA256SUMS, its signature, shell.json and modules.json (the signed list of first-party modules,
-# kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/deck/release.
+# kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/web/release.
 # The folder is replaced as a whole by rename, never file by file, so a running vyred keeps the one consistent release it was started with and the
 # next one sees the next. The list's counter only ever goes up: a modules.json whose counter is below the one already published (a rollback, or an old
 # signed release shown again) is refused and nothing changes.

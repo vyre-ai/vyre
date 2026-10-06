@@ -95,3 +95,14 @@ test("the short kind names map to the kernel's", () => {
   assert.equal(normalizeKind("richText"), "rich_text");
   assert.equal(normalizeKind("money"), "money");
 });
+
+import { linkHref, linkLabel } from "./logic.js";
+test("a url field opens only http and https addresses", () => {
+  assert.equal(linkHref("https://meet.example.com/x?y=1"), "https://meet.example.com/x?y=1");
+  assert.equal(linkHref("  http://a.example "), "http://a.example/");
+  assert.equal(linkHref("javascript:alert(1)"), null);
+  assert.equal(linkHref("file:///etc/passwd"), null);
+  assert.equal(linkHref("meet.example.com"), null);
+  assert.equal(linkHref(null), null);
+  assert.equal(linkLabel("https://meet.example.com/x/"), "meet.example.com/x");
+});

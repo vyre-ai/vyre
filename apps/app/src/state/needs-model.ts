@@ -76,7 +76,7 @@ function gateTitle(kind: string, via: string | null, to: string[], summary: stri
 
 /** A tool as the verb a person reads. */
 function askTitle(kind: string, tool: string | null, agent: string | null): string {
-  if (kind === "question") return `${agent ?? "A session"} has a question`;
+  if (kind === "question") return `${agent ?? "A chat"} has a question`;
   switch (tool) {
     case "Bash": return "Run a command";
     case "Write": return "Write a file";

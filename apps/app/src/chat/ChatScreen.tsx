@@ -28,6 +28,18 @@ import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
+import { ChatToolsSheet } from "../../screens/chat-tools";
+import { readDraft, writeDraft } from "./drafts";
+import { addTeammateInput, addable } from "./group.js";
+import { excerpt, jumpIndex } from "./reply.js";
+import { ChatExtras } from "./ChatExtras";
+import { useChatMembers } from "./useChatMembers";
+import { useChatKeyLease } from "./useChatKeyLease";
+import { queueFrom } from "./extras.js";
+import { tool } from "../real/box";
+import { useNeeds } from "../state/needs";
+import { heldFor } from "../state/held.js";
+import { useRouter } from "expo-router";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -79,12 +91,34 @@ export function ChatScreen(p: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
   const viewer = store.group.viewer;
+  // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
+  const here = useChatMembers(p.sessionId, meta.busy);
+  useChatKeyLease(p.sessionId);
+  // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
+  useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
   const [note, setNote] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
+  const [draftN, setDraftN] = useState(0);
+  // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
+  const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
+  useEffect(() => {
+    if (!toolsOpen || allowsMock()) return;
+    let live = true;
+    tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
+    return () => { live = false; };
+  }, [toolsOpen, p.sessionId, here.thread]);
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
-  const [replyTo, setReplyTo] = useState<{ message: string; name: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
+  // Tapping a quote goes to the original and lights it up for a moment.
+  const [jump, setJump] = useState<{ key: string; n: number } | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowKeys = useRef<string[]>([]);
+  rowKeys.current = rows.map((r) => r.key);
   // The sealed note shows once per chat, on its first open. Storage can be missing or throw: then it shows again, never hides.
   const [sealedNote, setSealedNote] = useState(() => p.showSealedNote ?? !sealedNoteSeen(storage(), p.sessionId));
   useEffect(() => { if (sealedNote) markSealedNoteSeen(storage(), p.sessionId); }, [sealedNote, p.sessionId]);
@@ -92,6 +126,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   const actions = store.actions;
   const { onBranched } = p;
+  const needs = useNeeds();
+  const router = useRouter();
+  const chatId = here.thread ?? p.sessionId;
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
@@ -107,15 +144,27 @@ export function ChatScreen(p: ChatScreenProps) {
             },
           }
         : {}),
-      onReplyTo: (message: string, name: string) => setReplyTo({ message, name }),
+      // A draft that is a held send links to its item, where it is read in full, edited and sent.
+      heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
+      onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
+      onReplyTo: (message: string, name: string, text?: string) => setReplyTo({ message, name, text: text ?? "" }),
+      flash,
+      onJumpTo: (message: string) => {
+        const at = jumpIndex(rowKeys.current, message);
+        if (at < 0) return;
+        setJump({ key: rowKeys.current[at], n: Date.now() });
+        setFlash(message);
+        if (flashTimer.current) clearTimeout(flashTimer.current);
+        flashTimer.current = setTimeout(() => setFlash(null), 1800);
+      },
       onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
+    [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean; mentions?: { kind: string; id: string; name: string }[] }) => {
+    async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
@@ -125,11 +174,12 @@ export function ChatScreen(p: ChatScreenProps) {
       }
       store.social.markRead(store.group.last); // sending says you have read everything above
       const parent = replyTo?.message;
+      const quoted = replyTo;
       setReplyTo(null);
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(body, { to: o.to, fanout: o.fanout, parent, ...(o.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
+      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
       if (why) setNote(why);
     },
     [store, editing, actions, replyTo, highlights],
@@ -140,22 +190,31 @@ export function ChatScreen(p: ChatScreenProps) {
 
   const group = store.group;
   const found = group.participants();
-  const faces = found.length ? found : [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  // Before the stream says who is here: a real chat asks the box (work.chat.get); only the sample world shows its sample people.
+  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  const faces = found.length ? found : allowsMock() ? sample : here.members;
+  const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
-  const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
+  const line = [info.record?.title, info.space, allowsMock() ? null : here.where].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   const realComposer = useRealComposer(p.sessionId, found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined, viewer, setNote);
+  // A chat with several assistants or models: one chip each, to switch that slot's model.
+  const slots = found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} />
+      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
+        onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
-        title={p.title ?? "Session"}
+        title={p.title ?? "Chat"}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
-        viewer={viewer}
+        viewer={viewerId}
         info={info}
+        addable={realComposer ? addable(realComposer.people, found) : undefined}
+        onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         muted={muted}
         pinned={pinned}
         onMute={setMuted}
@@ -180,6 +239,7 @@ export function ChatScreen(p: ChatScreenProps) {
           <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
           <Text size="caption" tone="label" strong>Got it</Text>
         </Pressable> : null}<View style={{ height: 12 }} /></View>}
+            jumpTo={jump}
             jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
         )}
@@ -215,10 +275,10 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {replyTo ? (
-        <View accessibilityLabel="Replying in a thread" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{`Replying in a thread to ${replyTo.name}`}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, justifyContent: "center", paddingHorizontal: 8 }}><Text size="caption" strong>Cancel</Text></Pressable>
+          <View style={{ flex: 1, minWidth: 0, borderLeftWidth: 3, borderLeftColor: color.accent, paddingLeft: 8 }}><Text size="caption" strong tone="accent" numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>{replyTo.text ? <Text size="caption" tone="muted" numberOfLines={1}>{excerpt(replyTo.text)}</Text> : null}</View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, minWidth: 44, alignItems: "center", justifyContent: "center" }}><Icon name="x" /></Pressable>
         </View>
       ) : null}
 
@@ -234,21 +294,25 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
           phone={phone}
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
           people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
-          records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
+          records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Juniper Studio intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
+          slots={slots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}

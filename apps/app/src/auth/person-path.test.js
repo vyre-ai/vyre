@@ -13,7 +13,7 @@ import { createHash, generateKeyPairSync, sign as nodeSign, verify as nodeVerify
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 const enc = new TextEncoder();
 const DIRECT = "directtok001.directsecretdirectsecret01";
 const RELAY = "relaytoken01.relaysecretrelaysecret0001";

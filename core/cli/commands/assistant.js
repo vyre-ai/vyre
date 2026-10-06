@@ -3,7 +3,7 @@
 // onboarding (onboard.finish); a person who skipped that step, or finished before Claude was
 // signed in, has none, and `vyre up` used to end on "your assistant  not set up yet" with nothing
 // to do about it. This makes it with the same input the Deck's "Create your assistant" card sends
-// (deck/js/assistant-setup.js): the name slugged, kind assistant, every project, the Vault items
+// (the app's assistant setup): the name slugged, kind assistant, every project, the Vault items
 // the Claude step stored, the same instructions. On a paired Mac it asks the box.
 
 import { call } from "../../daemon/client.js";

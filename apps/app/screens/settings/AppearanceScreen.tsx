@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Row, Segmented, Switch, Text, allowsMock, showToast, useAppearance, useUiTheme } from "@vyre/ui";
-import { V3 } from "@vyre/deck-ui/tokens-v3.js";
+import { V3 } from "@vyre/store/tokens-v3.js";
 import { tokens } from "../../src/theme/tokens";
 import { Group, Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";
@@ -17,7 +17,7 @@ const FONT_NAMES: Record<string, string> = Object.fromEntries(Object.entries((V3
 const fonts = Object.keys(FONT_NAMES).filter((k) => k !== "sans").map((k) => [k, FONT_NAMES[k]] as [string, string]);
 const ACCENTS = ["violet", "amber", "sky", "sage", "rose"].map((k) => [k, k[0].toUpperCase() + k.slice(1)] as [string, string]);
 
-/** Settings, Appearance: the scope control (Me, Mine, Harlow Legal), the controls for that scope, what is showing now, and every base component drawn live. */
+/** Settings, Appearance: the scope control (Me, Mine, Juniper Studio), the controls for that scope, what is showing now, and every base component drawn live. */
 /** The custom-accent field starts on the token the app already treats as its beacon, not a colour of its own. */
 const DEFAULT_HEX: string = tokens.color.dark.beacon;
 

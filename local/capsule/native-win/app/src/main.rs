@@ -385,6 +385,21 @@ fn pair_status(live: State<Live>) -> &'static str {
 
 /// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
 /// which holds no secret), close the pairing page and open the panel.
+/// A pairing made with the typed code another device showed (relay/client/join.js, the ack typed back there is the person's yes): keep it as the device-first pairing does, pinned to the
+/// box's own address. Only the bundled first-run page may call this; the address must be a server address the shell would pin anyway.
+#[tauri::command]
+async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: String) -> Result<(), String> {
+    let pin = Pinned::parse(&address).ok_or("The pairing gave no address this app can open.")?;
+    if !link.is_object() { return Err("The pairing was not complete.".into()); }
+    let path = record_path(&app).ok_or("No place to save on this computer.")?;
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&path, serde_json::json!({ "address": pin.origin(), "link": link }).to_string()).map_err(|e| e.to_string())?;
+    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
+    ensure_link_window(&app);
+    show_panel(&app, "/quick");
+    Ok(())
+}
+
 #[tauri::command]
 async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Value) -> Result<(), String> {
     if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
@@ -528,7 +543,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, finish_typed_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });

@@ -127,7 +127,7 @@ RUN mkdir -p /home/acct && chmod 755 /home/acct \
  && usermod -aG "$(seq 2000 2063 | sed 's/^/vyre-acct-/' | paste -sd, -)" vyre
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
-# README.md, and deck, modules and local when they exist.
+# README.md, and web, modules and local when they exist.
 WORKDIR /opt/vyre
 COPY . /opt/vyre
 # A checkout has package-lock.json; the release tarball (npm pack) never does.

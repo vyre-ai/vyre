@@ -1,7 +1,9 @@
 // The pure half of Find on every device: what the box has (sessions, projects, assistants, records, places), how a typed line narrows it (the p, t and u prefixes), what each search tool answers
-// (recall.search, files.search, memory.relevant), and the one command the Enter key runs (@agent, tell, watch, or ask the assistant). The grammar and the session merge are the Deck's, kept in commands.ts, so a line means the same
-// thing on every surface.
-import { mergeSessions, parseCommand, parsePrefix, plan, title as sessionTitle, type Command } from "./commands.ts";
+// (recall.search, files.search, memory.relevant), and the one command the Enter key runs (@agent, tell, watch, or ask the assistant). The grammar and the session merge are the Deck's own
+// (deck/js/commands.js, find-prefix.js, chat/lib/sessions.js), so a line means the same thing on every surface.
+import { parseCommand, plan, type Command } from "./commands.js";
+import { parsePrefix } from "./find-prefix.js";
+import { mergeSessions, title as sessionTitle } from "../../src/chat/core/sessions.js";
 
 export { parseCommand, plan, parsePrefix, mergeSessions, sessionTitle };
 export type { Command };
@@ -65,7 +67,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 export type Row = { key: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
-export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown };
+export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
 
 const where = (base: Base, slug: string | null, cwd?: string | null): string => (slug ? base.projects.find((p) => p.slug === slug)?.name ?? slug : String(cwd || "").split("/").filter(Boolean).pop() || "");
 
@@ -104,6 +106,16 @@ export function fileHits(d: unknown): { rows: Row[]; notes: string[] } {
   return { rows: results.filter((f) => typeof f.path === "string").map((f) => ({ key: `f:${f.path}`, kind: "file", title: str(f.name) || String(f.path).split("/").pop() || "", sub: shortDir(f.path), right: f.source === "mac" ? "mac" : "box", file: { name: str(f.name), path: f.path as string, kind: str(f.kind), source: str(f.source) } })), notes };
 }
 export const factHits = (d: unknown): Row[] => arr(d).filter((f) => f.text).map((f, i) => ({ key: `m:${i}:${String(f.text).slice(0, 20)}`, kind: "memory", title: String(f.text), sub: str(f.ref?.name) || str(f.source), href: "/u/memory", fact: true }));
+
+/**
+ * files.drive.space.search: file names in the Space's Drive the caller may read, and in the chats they are in (the box asks the kernel for each folder as the caller, so a chat they are not in never appears here).
+ * Names and paths only. A chat's file opens that chat; any other opens the Drive.
+ */
+export function driveHits(d: unknown): Row[] {
+  const list = arr((d as { results?: unknown } | null)?.results);
+  return list.filter((x) => typeof x.path === "string").map((x): Row => ({ key: `d:${x.path}`, kind: "file", title: str(x.name) || String(x.path).split("/").pop() || "", sub: str(x.chat) ? `In a chat you are in, ${shortDir(x.path)}` : shortDir(x.path),
+    href: str(x.chat) ? `/u/chats/${encodeURIComponent(str(x.chat))}` : "/u/drive" }));
+}
 
 /** Where a mentions.search result opens; null reads only. */
 export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/drive" : null);
@@ -151,6 +163,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
   if (want("people")) { add("people", "People", peopleHits(base, q)); if (sc === "all") add("records", "Records", recordHits(base, q)); }
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
+  if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Drive", driveHits(fetched.drive));
   if (want("memory") && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   return out;
@@ -172,7 +185,7 @@ export const addRecent = (list: string[], q: string): string[] => (q.length < MI
 
 /** The command for a line, and the session a drive or watch goes to (the first candidate unless one was chosen). */
 export function readCommand(line: string, base: Base, chosen: string | null): { cmd: Command; chosen: any | null } {
-  const cmd = parseCommand(line, { agents: base.agents as any, sessions: base.sessions, titleOf: sessionTitle }) as Command;
+  const cmd = parseCommand(line, { agents: base.agents as any, sessions: base.sessions, titleOf: sessionTitle as (r: any) => string }) as Command;
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   return { cmd, chosen: cands.find((c) => c.id === chosen) ?? cands[0] ?? null };
 }
