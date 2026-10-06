@@ -71,3 +71,14 @@ test("approvals.hold: only the registry holds a call, only for an outward tool, 
   const [card] = (await w.run("approvals.pending", {}, { caller: "device:phone" })).approvals;
   assert.equal(card.id, a.id); assert.equal(card.moment, "outward"); assert.match(card.line, /kit/); assert.equal(card.request.fields.input_sha256, f.input_sha256);
 });
+
+test("the calling device comes from the verified peer, not the caller label: a `device:` label alone is not a device, and a device peer's no is ignored without a real session", async () => {
+  const w = await world();
+  const card = async () => w.run("approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }, { caller: "deck" });
+  // a card asked from a verified device peer records that device; its "no" is ignored unless the device has a session of a real key
+  const a = await w.run("approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }, { caller: "device:asker", peer: { kind: "device", stableId: "asker" } });
+  assert.equal((await w.run("approvals.answer", { id: a.id, approve: false }, { caller: "device:other", peer: { kind: "device", stableId: "other" } })).answered, "ignored", "a device peer's no, with no real session");
+  // the same caller LABEL with no verified peer is not a device: it is the person's own surface here, so its no counts
+  assert.equal((await w.run("approvals.answer", { id: a.id, approve: false }, { caller: "device:other" })).answered, "refused", "a label alone is not a device");
+  void card;
+});
