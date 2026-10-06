@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call, write } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, asOwner } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, boot, FAKE } from "../sessions/testing/boot.js";
 import { reduce, toUserMessage } from "../../lib/queue-state.js";
@@ -50,10 +50,11 @@ async function restartable(t) {
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false } }));
   daemon = await start({ root, presence: present, log: () => {} });
+  asOwner(daemon, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
-  return { root, work, tool, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); return daemon; } };
+  return { root, work, tool, get d() { return daemon; }, restart: async () => { await daemon.stop(); daemon = await start({ root, presence: present, log: () => {} }); asOwner(daemon, root); return daemon; } };
 }
 
 const ofType = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
