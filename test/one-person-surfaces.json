@@ -11,7 +11,6 @@
   "core/link/mac.js": 2,
   "core/modulelist/index.js": 1,
   "core/names/index.js": 2,
-  "core/network/tailscale.js": 1,
   "core/network/wink.js": 1,
   "core/onboard/index.js": 2,
   "core/presence/module.js": 1,
