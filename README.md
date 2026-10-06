@@ -20,7 +20,7 @@ Open source. Self-hosted. Any model.</p>
 </p>
 
 <p align="center">
-  <img src="docs/images/readme/vyre-demo.gif" width="860" alt="Ask your assistant from any app on your Mac: it hands the work to the right agent, reports back when it's done, and the emails wait for your Face ID before they go out.">
+  <img src="docs/images/readme/vyre-demo.gif" width="860" alt="Press Option-Space in any app and ask your assistant: it hands the work to the right agent, reports back when it is done, and the three emails wait for your Face ID before they go out.">
 </p>
 
 AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same client your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.
@@ -36,6 +36,10 @@ Vyre is the place where they can. Your people, your agents and the work they sha
 - **Automations that do the same thing every time.** Watch for an email, a form or a date, then run declared steps: sort it with a model, update a record, assign a task, draft the reply.
 - **A yes for anything that leaves.** Emails, posts, payments and deletes wait for Face ID or Touch ID on your phone, and the approval covers that one act, once.
 - **Keys your agents can use but never see.** A built-in vault holds your passwords and API keys, encrypted on your server, and hands them over only where they are allowed to go.
+
+<p align="center">
+  <img src="docs/images/readme/vyre-tour.gif" width="860" alt="A tour of the Vyre app: what needs you today, a conversation where an agent runs the tests and fixes a failure, the vault showing which agents used a login without seeing it, your projects, and your automations.">
+</p>
 
 ## How it works
 
