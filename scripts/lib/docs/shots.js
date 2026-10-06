@@ -62,17 +62,17 @@ const HIDE_SAMPLE = `for (const el of [...document.querySelectorAll("*")].filter
 
 /** @type {any[]} */
 export const SHOTS = [
-  { name: "first-run-claim", dir: "get-started", world: "app", url: "/u/install", width: 390, height: 780, phone: true, themes: BOTH,
+  { name: "first-run-claim", alt: "Choose your Vyre name, with alex-rivera typed and \"is yours to take\" under it", page: "get-started/install.md", heading: "1. Open the Vyre app and choose your name", dir: "get-started", world: "app", url: "/u/install", width: 390, height: 780, phone: true, themes: BOTH,
     script: `${APP_TAP}\n  await tap("Get started");\n  const f = document.querySelector("input"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; f.focus(); set.call(f, "alex-rivera"); f.dispatchEvent(new Event("input", { bubbles: true })); await wait(900);`, shows: [...INSTALL] },
-  { name: "first-run-space", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
+  { name: "first-run-space", alt: "Create a space: the name field filled in, its claimed address under it, and \"A team\" chosen", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
     script: `await wait(600);`, shows: [...INSTALL] },
-  { name: "first-run-pair-code", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
+  { name: "first-run-pair-code", alt: "Pair your server: the server's terminal shows a long code, and the phone has a field to paste it", page: "get-started/install.md", heading: "4. Pair your server", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
     script: `${PAIR_SCRIPT}\n  ${HIDE_SAMPLE}`, shows: [...INSTALL, ...PAIRING] },
-  { name: "first-run-pair-words", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
+  { name: "first-run-pair-words", alt: "Pair your server: the app and the server's terminal show the same three words to pick", page: "get-started/install.md", heading: "4. Pair your server", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
     script: `${PAIR_SCRIPT}\n  await tap("Use the sample code");`, shows: [...INSTALL, ...PAIRING] },
-  { name: "first-run-chat", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
+  { name: "first-run-chat", alt: "The first chat, \"Fix the intake date check\", with the assistant editing and the composer below", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
     script: `await wait(800);`, shows: ["apps/app/app/chat-demo.tsx", "apps/app/src/chat/ChatScreen.tsx", "apps/app/src/chat/mock-stream.ts"] },
-  { name: "first-run-now", dir: "get-started", world: "app", url: "/u/now", width: 390, height: 844, phone: true, themes: BOTH,
+  { name: "first-run-now", alt: "Now, \"Good morning, Alex\", with the spaces All spaces, Mine and Juniper Studio, the next call and the things that need you", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/u/now", width: 390, height: 844, phone: true, themes: BOTH,
     script: `await wait(800);`, shows: ["apps/app/screens/now/NowScreen.tsx", "apps/app/screens/shell/data.ts"] },
 ];
 
