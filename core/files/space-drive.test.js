@@ -100,7 +100,8 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
     for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
-  assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");
+  // a restore that went through is itself a new version; the model, guest and anonymous calls above wrote nothing
+  assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, restored.error ? 3 : 4, "nothing else was written");
 });
 
 test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad paging input", async () => {
