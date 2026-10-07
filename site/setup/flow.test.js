@@ -939,6 +939,25 @@ test("activity: each step leaves one line in the page's own words, and a forged 
   flow.stop();
 });
 
+test("IR-14 the log is one list in the order things happened: the server's lines and the page's own, new ones at the bottom, still filling after the words", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => fakeBox() });
+  await flow.begin();
+  const code = flow.state.code;
+  await w.post(code, "[1/5] Checking Docker", 0);
+  await until(() => flow.state.stage === "found" && flow.state.log.length === 1);
+  flow.confirmWords();
+  await until(() => flow.state.activity.includes("Connected to your server."));
+  await w.post(code, "done: Vyre is up", 1);
+  await until(() => flow.state.log.some(e => e.text === "done: Vyre is up"));
+  const texts = flow.state.log.map(e => e.text);
+  assert.deepEqual(texts.slice(0, 1), ["[1/5] Checking Docker"]);
+  assert.ok(texts.indexOf("The four words matched.") > 0, "the page's line comes after the install line it followed");
+  assert.equal(texts[texts.length - 1], "done: Vyre is up", "a line that arrives later is at the bottom");
+  assert.deepEqual(flow.state.log.filter(e => e.mine).map(e => e.text), flow.state.activity, "the page's own lines keep their order and are marked");
+  flow.stop();
+});
+
 test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {
   const box = stepsBox();
   const flow = await atNamed(t, box);

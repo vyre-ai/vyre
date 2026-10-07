@@ -89,7 +89,7 @@ export function suggestName(text) {
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[], keyKind: null|"openai-compatible"|"anthropic-compatible"|"openrouter", keyBusy: boolean },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
- *   skipped: string[], stoppedAt: number, activity: string[],
+ *   skipped: string[], stoppedAt: number, activity: string[], log: { text: string, mine: boolean }[],
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -113,7 +113,7 @@ export function createFlow(o) {
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], log: [], error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -141,7 +141,7 @@ export function createFlow(o) {
     if (a.stage !== "done" && b.stage === "done") out.push("Passkey made. Setup carries on at your address.");
     return out;
   };
-  const set = patch => { const prev = state; state = { ...state, ...patch }; const more = seen(prev, state); if (more.length) state = { ...state, activity: [...state.activity, ...more].slice(-MAX_LINES) }; emit(); };
+  const set = patch => { const prev = state; state = { ...state, ...patch }; const more = seen(prev, state); if (more.length) state = { ...state, activity: [...state.activity, ...more].slice(-MAX_LINES), log: [...state.log, ...more.map(text => ({ text, mine: true }))].slice(-MAX_LINES) }; emit(); };
   const fail = code => { const at = stepNumber(state); run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", stoppedAt: at || state.stoppedAt, listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
@@ -161,7 +161,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], log: [], error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -183,7 +183,11 @@ export function createFlow(o) {
       try {
         const got = await reader.next();
         if (mine !== run) return;
-        if (got.length) set({ lines: [...state.lines, ...got.map(t => String(t).slice(0, MAX_LINE))].slice(-MAX_LINES) });
+        if (got.length) {
+          const added = got.map(t => String(t).slice(0, MAX_LINE));
+          // One list in the order things happened: the server's lines and the page's own go into `log` as they come.
+          set({ lines: [...state.lines, ...added].slice(-MAX_LINES), log: [...state.log, ...added.map(text => ({ text, mine: false }))].slice(-MAX_LINES) });
+        }
         quiet = 0;
       } catch (e) {
         const code = /** @type {any} */ (e).code;

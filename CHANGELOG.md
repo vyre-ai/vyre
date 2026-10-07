@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(setup): IR-14 the setup page's "What is happening" log is one list in the order things happened, new lines at the bottom: the page's own lines (words matched, claimed, signed in) were drawn above the install lines, so the log looked quiet after the install.
 - fix(release): REL-1 scripts/patch-release.mjs keeps the first commit argument when --base is not given (the filter skipped index 0 whenever the flag was absent).
 - fix(box): IR-8 a root run of the vyre wrapper writes its run files through its own temp names, so two at once (the update path unit and `sudo vyre name status`) no longer print "mv: cannot stat .../compose.env.new".
 - fix(installer): IR-7 Docker's own install output goes to a log file; the screen shows one progress line, and the log's path only if Docker does not install.
