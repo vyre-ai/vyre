@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       journeys: { description: "Journeys to run (J0 for now)", default: "J0" }
-      on: { description: "Targets: all, or a comma list of linux,arm64,android,windows,mac,ios", default: "all" }
+      "on": { description: "Targets: all, or a comma list of linux,arm64,android,windows,mac,ios", default: "all" }
   push:
     branches: ["work/rc-*"]
 permissions:
@@ -229,7 +229,7 @@ jobs:
       - name: The candidate, one version above 0.1.1 so an update has somewhere to go
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          sh scripts/build-site.sh
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
       - name: The v0.1.1 release files
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh release download v0.1.1 --repo vyre-ai/vyre --dir old
@@ -327,7 +327,7 @@ jobs:
       - name: The candidate, one version above 0.1.1
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          sh scripts/build-site.sh
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
       - name: J2b, the signed-update refusals on a real install
         run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals
       - name: Diagnostics
@@ -408,7 +408,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { pattern: results-*, path: results, merge-multiple: true }
+        # One folder per artifact: merged, the jobs' root results.jsonl files overwrote each other and left a torn line (report.mjs then died parsing it).
+        with: { pattern: results-*, path: results }
       - name: The results page
         run: node scripts/matrix/report.mjs results --sha "${{ github.sha }}" --run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - uses: actions/upload-artifact@v4

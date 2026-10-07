@@ -24,6 +24,7 @@ function world(t, { sign = /** @type {any} */ (KEYS.privateKey) } = {}) {
   for (const [p, c] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, "site", "setup", p)), { recursive: true }); fs.writeFileSync(path.join(repo, "site", "setup", p), c); }
   fs.mkdirSync(path.join(repo, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(repo, "scripts", "install-box.sh"), "#!/bin/sh\necho install\n");
+  fs.writeFileSync(path.join(repo, "scripts", "install-windows.ps1"), "# install\n");
   const list = setupHashes(repo);
   const rel = path.join(repo, "rel");
   fs.mkdirSync(rel);
@@ -34,7 +35,7 @@ function world(t, { sign = /** @type {any} */ (KEYS.privateKey) } = {}) {
 }
 /** An origin that serves the repo's setup page and install script, with optional overrides by path. */
 async function origin(t, repo, over = {}) {
-  const map = { "/i": path.join(repo, "scripts", "install-box.sh") };
+  const map = { "/i": path.join(repo, "scripts", "install-box.sh"), "/w": path.join(repo, "scripts", "install-windows.ps1") };
   const walk = (d, rel) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const r = rel ? `${rel}/${e.name}` : e.name; if (e.isDirectory()) walk(path.join(d, e.name), r); else map[r === "index.html" ? "/setup/" : `/setup/${r}`] = path.join(d, e.name); } };
   walk(path.join(repo, "site", "setup"), "");
   const server = http.createServer((req, res) => {
@@ -48,9 +49,14 @@ async function origin(t, repo, over = {}) {
   return `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
 }
 
-test("setup-hashes: every served setup file and the install script, the index at /setup/, and no test file or staging config", t => {
-  const { list } = world(t);
-  assert.deepEqual(list.files.map(f => f[0]), ["/i", "/setup/", "/setup/fonts/a.woff2", "/setup/page.js", "/setup/relay/client.js"]);
+test("setup-hashes: every served setup file (a config.json too) and both install scripts, the index at /setup/, and no test file; a missing /w is refused", t => {
+  const { list, repo } = world(t);
+  assert.deepEqual(list.files.map(f => f[0]), ["/i", "/setup/", "/setup/config.json", "/setup/fonts/a.woff2", "/setup/page.js", "/setup/relay/client.js", "/w"]);
+  fs.mkdirSync(path.join(repo, "site", "setup", ".well-known"));
+  fs.writeFileSync(path.join(repo, "site", "setup", ".well-known", "x"), "x");
+  assert.ok(setupHashes(repo).files.some(f => f[0] === "/setup/.well-known/x"), "a served dotfile is hashed too");
+  fs.rmSync(path.join(repo, "scripts", "install-windows.ps1"));
+  assert.throws(() => setupHashes(repo), /install-windows\.ps1 is missing/);
   assert.ok(list.files.every(f => /^[0-9a-f]{64}$/.test(f[1])));
 });
 
@@ -58,7 +64,7 @@ test("check-served: an origin serving exactly the signed files passes", async t 
   const w = world(t);
   const r = await checkServed({ origin: await origin(t, w.repo), release: w.rel, key: spki(KEYS.publicKey) });
   assert.deepEqual(r.problems, []);
-  assert.equal(r.checked, 5);
+  assert.equal(r.checked, 7);
 });
 
 test("check-served: a changed file, a missing one and a swapped install script are each named", async t => {

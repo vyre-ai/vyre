@@ -111,9 +111,9 @@ jobs:
       - name: Version
         id: v
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          IN_VERSION: ${{ inputs.version }}
         run: |
-          v="$INPUT_VERSION"
+          v="$IN_VERSION"
           [ -n "$v" ] || v="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
           v="${v#v}"
           echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Lumen app version $v"
@@ -125,9 +125,11 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/app" && ditto -x -k "$RUNNER_TEMP/unsigned/Vyre.app.zip" "$RUNNER_TEMP/app" && test -d "$RUNNER_TEMP/app/Vyre.app/Contents/MacOS"
       - name: The pinned Node (the version and checksum are the ones in scripts/install-mac-server.sh)
         id: node
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           v="$(sed -n 's/^NODE_VERSION=//p' scripts/install-mac-server.sh | head -1)"
-          na=${{ matrix.arch }}; [ "$na" = aarch64 ] && na=arm64 || na=x64
+          na=$ARCH; [ "$na" = aarch64 ] && na=arm64 || na=x64
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/node.tgz" "https://nodejs.org/dist/$v/node-$v-darwin-$na.tar.gz"
           echo "tgz=$RUNNER_TEMP/node.tgz" >> "$GITHUB_OUTPUT"; echo "Node $v for $na"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -144,10 +146,23 @@ jobs:
           APPLE_NOTARY_KEY_P8: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_P8 || '' }}
           APPLE_NOTARY_KEY_ID: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_ID || '' }}
           APPLE_NOTARY_ISSUER: ${{ inputs.sign && secrets.APPLE_NOTARY_ISSUER || '' }}
-        run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" ${{ matrix.arch }} "$RUNNER_TEMP/app/Vyre.app" dist-mac
-      - name: The dmg mounts and holds the app, the setup files and the pinned Node
+          VERSION: ${{ steps.v.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: sh scripts/mac-app-package.sh "$VERSION" "$ARCH" "$RUNNER_TEMP/app/Vyre.app" dist-mac
+      - name: Bind the status to the files (the sha256 of each dmg and zip, which the release job recomputes)
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
-          dmg="dist-mac/Vyre-Lumen_${{ steps.v.outputs.version }}_${{ matrix.arch }}.dmg"
+          for f in dist-mac/Vyre-Lumen*.dmg dist-mac/Vyre-Lumen*.zip; do
+            [ -f "$f" ] && printf 'sha256:%s=%s\n' "$(basename "$f")" "$(shasum -a 256 "$f" | cut -d' ' -f1)" >> "dist-mac/mac-app-$ARCH.status"
+          done
+          true
+      - name: The dmg mounts and holds the app, the setup files and the pinned Node
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          dmg="dist-mac/Vyre-Lumen_${VERSION}_${ARCH}.dmg"
           hdiutil verify "$dmg"
           mnt="$(mktemp -d)"; hdiutil attach "$dmg" -nobrowse -mountpoint "$mnt" >/dev/null
           app="$mnt/Vyre Lumen.app"
@@ -165,10 +180,12 @@ jobs:
           codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
           hdiutil detach "$mnt" >/dev/null
       - name: Status
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           case "${{ steps.v.outputs.version }}" in *-*) echo "note: this is a prerelease build; its box-url names https://github.com/vyre-ai/vyre/releases/download/v${{ steps.v.outputs.version }}/, which 404s until that release is cut (a rehearsal)" | tee -a "$GITHUB_STEP_SUMMARY" ;; esac
           cat dist-mac/mac-app-*.status
-          { echo "### Lumen Mac app (${{ matrix.arch }})"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Lumen Mac app ($ARCH)"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mac-app-${{ matrix.arch }}

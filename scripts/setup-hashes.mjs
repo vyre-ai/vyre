@@ -2,7 +2,7 @@
 // @ts-check
 // setup-hashes: writes DIR/setup.json, the sha256 of everything the setup page serves ({ v: 1, files: [[path, hex], ...] }, sorted):
 // every file under site/setup as it is served (/setup/<name>, the index at /setup/), and the two install scripts, /i (scripts/install-box.sh)
-// and /w (scripts/install-windows.ps1 when it exists). The release runs this into dist/ BEFORE the SHA256SUMS step, so SHA256SUMS lists
+// and /w (scripts/install-windows.ps1, required). The release runs this into dist/ BEFORE the SHA256SUMS step, so SHA256SUMS lists
 // setup.json and the one release signature covers it: what vyre.run serves for setup and the install line is checkable against the release
 // (scripts/check-served.mjs does the check). Run after scripts/build-site.sh, which makes the copies of the relay client, tokens, fonts
 // and the Deck pieces under site/setup.
@@ -16,8 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (/** @type {Buffer} */ b) => crypto.createHash("sha256").update(b).digest("hex");
-/** Files the page never serves to a person (tests, a staging override). */
-const skip = (/** @type {string} */ rel) => /\.test\.js$|(^|\/)config\.json$|(^|\/)\.|(^|\/)node_modules\//.test(rel);
+/** Files the page never serves to a person: tests and node_modules only. A dotfile (.well-known) or a config.json that is served is hashed like any other file, so check-served sees it change. */
+const skip = (/** @type {string} */ rel) => /\.test\.js$|(^|\/)node_modules\//.test(rel);
 
 /** @param {string} [repo] @returns {{ v: 1, files: [string, string][] }} */
 export function setupHashes(repo = REPO) {
@@ -35,7 +35,9 @@ export function setupHashes(repo = REPO) {
   walk(root, "");
   for (const [p, f] of /** @type {[string, string][]} */ ([["/i", "scripts/install-box.sh"], ["/w", "scripts/install-windows.ps1"]])) {
     const file = path.join(repo, f);
-    if (fs.existsSync(file)) files.push([p, sha(fs.readFileSync(file))]);
+    // Both are required: a release that loses the Windows installer (/w) must not quietly stop covering it (the release's Windows step is required too).
+    if (!fs.existsSync(file)) throw new Error(`${f} is missing: the signed list must cover ${p}`);
+    files.push([p, sha(fs.readFileSync(file))]);
   }
   if (!files.some(([p]) => p === "/setup/") || !files.some(([p]) => p === "/i")) throw new Error("the setup page or the install script is missing");
   files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
