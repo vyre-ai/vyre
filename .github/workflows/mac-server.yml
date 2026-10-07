@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # the kernel and the vault import the repo's own packages (@noble/hashes and the like): install them before any test loads them
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: The script's own tests
         run: node --test "test/install-mac-server.test.js" "core/vyre-core/*.test.js"
       - name: Install, check, reinstall, uninstall

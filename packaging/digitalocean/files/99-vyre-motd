@@ -4,7 +4,7 @@ S=/var/lib/vyre/firstboot.status
 st=$(cat "$S" 2>/dev/null || echo "not started")
 printf '\n  Vyre\n  ----\n'
 case "$st" in
-  ok*) printf '  Vyre is running on this server (%s).\n  Pair it from your Vyre app. To show the code:   sudo vyre call wink.server.code '{"qr":true}'\n  Then scan the QR or paste the long code in the app.\n' "${st#ok }" ;;
+  ok*) printf '  Vyre is running on this server (%s).\n  Pair it from your Vyre app. To show the code:   %s\n  Then scan the QR or paste the long code in the app.\n' "${st#ok }" "sudo vyre call wink.server.code '{\"qr\":true}'" ;;
   installing*) printf '  Vyre is installing itself now (about a minute). Watch it: tail -f /var/log/vyre-firstboot.log\n' ;;
   failed*) printf '  Vyre did not finish installing: %s\n  Try again: sudo vyre-firstboot\n' "${st#failed: }" ;;
   *) printf '  Vyre installs itself on the first boot. If this stays empty, run: sudo vyre-firstboot\n' ;;

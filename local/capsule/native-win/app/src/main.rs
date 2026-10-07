@@ -83,7 +83,17 @@ struct Live {
 
 /// The short typed code (WINK-NNPP-PPPP) ships in release builds (the user's ruling of 5 Oct; the lead corrected an earlier reading). It is on unless a build sets VYRE_TYPED_CODE=0 at compile time,
 /// which hides the bundled first-run page's typed path and makes `finish_typed_pair` refuse.
-const TYPED_CODE: bool = !matches!(option_env!("VYRE_TYPED_CODE"), Some("0"));
+/// Whether a build-time switch says exactly "0". Compared byte by byte: stable Rust cannot match a `str` in a constant.
+const fn env_is_zero(v: Option<&str>) -> bool {
+    match v {
+        Some(s) => {
+            let b = s.as_bytes();
+            b.len() == 1 && b[0] == b'0'
+        }
+        None => false,
+    }
+}
+const TYPED_CODE: bool = !env_is_zero(option_env!("VYRE_TYPED_CODE"));
 
 #[derive(Serialize)]
 struct StateOut {
