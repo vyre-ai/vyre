@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(wink): the public gate's ACME challenge reaches the name directory as the challenge value; 0.2.9 sent the name instead, so no box got a certificate or a published <name>.vyre.run address (nameDirectory, with a test).
 - fix(perf-check): a refused memory.curate (personal memory answers only a proven person) no longer fails the check; the quiet wait covers curation. test(wink): the linked-root test removes its link.
 - fix(release): vyre.tgz carries its three @noble packages (bundleDependencies), so a Mac server, which unpacks the tarball with no npm step, starts vyred instead of failing on a missing @noble/hashes; build-site.sh refuses a tarball without them; the pack check counts the bundled packages as shipped on purpose.
 - fix(mac-server): the vyred wrapper writes its output to logs/vyred.out, since the system LaunchDaemon sets no output path and a crash left no trace.
