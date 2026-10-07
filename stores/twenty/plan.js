@@ -74,7 +74,8 @@ export function planType(def, hint = {}) {
   if (STANDARD_OBJECTS.has(singular) || STANDARD_OBJECTS.has(pl)) { const up = (/** @type {string} */ n) => "vyre" + n[0].toUpperCase() + n.slice(1); if (!hint.plural) { singular = up(singular); pl = up(pl); } else singular = up(singular); }
   if (singular === pl) throw new PlanError("invalid", `Type "${def.name}" needs a plural that differs from its name`);
   // the title is the first text field that is not unique: Twenty's own `name` column cannot carry a unique index through our define
-  const title = def.fields.find((/** @type {any} */ f) => f.kind === "text" && f.unique !== true)?.name ?? null;
+  // A text field called `name` is the title when it can be (it is Twenty's `name` column); otherwise a `name` field further down would collide with that column, as def-flow's did.
+  const title = def.fields.find((/** @type {any} */ f) => f.kind === "text" && f.unique !== true && f.name === "name")?.name ?? def.fields.find((/** @type {any} */ f) => f.kind === "text" && f.unique !== true)?.name ?? null;
   /** @type {FieldPlan[]} */ const fields = [];
   for (const f of def.fields) {
     const isTitle = f.name === title;
