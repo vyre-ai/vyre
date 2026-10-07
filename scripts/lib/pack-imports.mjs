@@ -43,8 +43,10 @@ export function missingImports(root, files) {
   return out.sort();
 }
 
-/** Files the pack makes on purpose, though git ignores them: the commit stamp and the web app build. */
-const GENERATED = [/^build\.json$/, /^apps\/app\/dist\//];
+// node_modules/<name>/ for a package.json bundleDependencies entry: the package carries those on purpose (build-site.sh)
+const BUNDLED = (/** @type {{ bundleDependencies?: string[] }} */ (JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")))).bundleDependencies || [];
+/** Files the pack makes on purpose, though git ignores them: the commit stamp and the web app build, and the bundled dependencies. */
+const GENERATED = [/^build\.json$/, /^apps\/app\/dist\//, ...BUNDLED.map(d => new RegExp(`^node_modules/${d.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}/`))];
 
 /**
  * The files in the pack that git ignores (a Mac build output in a dirty tree, say), leaving out
