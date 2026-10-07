@@ -227,7 +227,8 @@ export function createEventLog(cfg) {
   /** At-least-once with a durable named cursor: a handler that throws is retried, never skipped. @returns {() => void} */
   function subscribe(/** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
     const had = consumers.get(consumer);
-    const c = { filter, cursor: had ? had.cursor : 0, onEvent, busy: false };
+    // A consumer that was running before a restart goes on from its durable cursor (never past the log's end); from 0 every restart would hand it the whole log again, read back from disk.
+    const c = { filter, cursor: had ? had.cursor : Math.min(cursors.get(consumer) ?? 0, count), onEvent, busy: false };
     consumers.set(consumer, c);
     queueMicrotask(pump);
     return () => { if (consumers.get(consumer) === c) consumers.delete(consumer); };
