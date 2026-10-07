@@ -162,7 +162,7 @@ jobs:
           id=""
           for b in work/v0.3 work/stage-0.2 main; do
             id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --branch "$b" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
-            if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then echo "baseline: run $id on $b"; break; fi
+            if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then echo "baseline: run $id on $b"; echo "$b" > "$RUNNER_TEMP/base/branch"; break; fi
             id=""
           done
           [ -n "$id" ] || echo "no baseline yet"
@@ -180,6 +180,8 @@ jobs:
           # A hard ceiling beside the relative rule, so the bundle cannot drift up 10% at a time: 1200 KiB gzipped for all the app's JS (work/ui measured 1151). The 0.3.0 backlog line is
           # route-level code splitting (chat, settings, flows, the records table and the planner loaded on demand), target under 700 KiB for the entry.
           if [ "$kib" -gt 1200 ]; then echo "JS is over the 1200 KiB ceiling"; exit 1; fi
+          # main still holds the pre-0.3 app: a baseline from main is the doubling the comment above describes, not drift, so only the ceiling holds until the release line has a green run
+          if [ "$(cat "$RUNNER_TEMP/base/branch" 2>/dev/null)" = main ]; then echo "baseline is main's pre-0.3 app: the 10% rule waits for a green run on the release line; the ${kib} KiB ceiling check above holds"; base=""; fi
           if [ -n "$base" ] && [ $((kib * 100)) -gt $((base * 110)) ]; then echo "JS grew more than 10%"; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: success() || failure()
