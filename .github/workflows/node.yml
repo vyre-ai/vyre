@@ -116,6 +116,8 @@ jobs:
         run: |
           $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
           $env:VYRE_NO_DIALOGS = "1"
+          # a home on Windows is 0.3.0: a development build with the file key is the one way vyred starts here (core/daemon/host-guard.js windowsHome), for this socket proof
+          $env:VYRE_KERNEL_FILE_KEY = "1"
           New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
           $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
             -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
