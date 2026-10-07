@@ -3,11 +3,9 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+
+## 0.2.10 (8 Oct 2026)
 - fix(wink): the public gate's ACME challenge reaches the name directory as the challenge value; 0.2.9 sent the name instead, so no box got a certificate or a published <name>.vyre.run address (nameDirectory, with a test).
-- fix(perf-check): a refused memory.curate (personal memory answers only a proven person) no longer fails the check; the quiet wait covers curation. test(wink): the linked-root test removes its link.
-- fix(release): vyre.tgz carries its three @noble packages (bundleDependencies), so a Mac server, which unpacks the tarball with no npm step, starts vyred instead of failing on a missing @noble/hashes; build-site.sh refuses a tarball without them; the pack check counts the bundled packages as shipped on purpose.
-- fix(mac-server): the vyred wrapper writes its output to logs/vyred.out, since the system LaunchDaemon sets no output path and a crash left no trace.
-- test: the runner removes each test process's temp folders on exit; the macOS watch-restart test gives the resumed thread's first send 75 s; the clipboard test reads the fake helper's state only once it is written; the Android capture skips a push that has no green build yet.
 
 ## 0.2.9 (7 Oct 2026)
 - fix(store): a Space store still starting past 20 s leaves the Space a waiting store and finishes in the background, so a first install no longer deadlocks on the root helper.
