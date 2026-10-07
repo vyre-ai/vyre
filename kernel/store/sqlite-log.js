@@ -52,9 +52,6 @@ export function createSqliteEventLog(cfg) {
   const ins = db.prepare("INSERT INTO kernel_events (seq, space, event, salt) VALUES (?, ?, ?, ?)");
   const era = db.prepare("UPDATE kernel_events SET event = ?, salt = NULL WHERE seq = ? AND space = ?");
   const cur = db.prepare("INSERT INTO kernel_cursors (name, seq) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET seq = excluded.seq");
-  // A consumer's cursor moves once per event it handles, several times per event in all: each was a synced commit and blocked the daemon for as long as the disk took (3.7 ms on a
-  // cloud disk, over 14 s in one thread test). A cursor that a power cut takes back only redelivers an event, which at-least-once allows, so it commits without the sync; events never do.
-  const synced = Number(/** @type {any} */ (db.prepare("PRAGMA synchronous").get()).synchronous);
   const latestStmt = db.prepare("SELECT event FROM kernel_events WHERE space = ? AND subject = ? AND seq < ? AND json_extract(event, '$.data.version_hash') IS NOT NULL ORDER BY seq DESC LIMIT 1");
   const one = db.prepare("SELECT event, salt FROM kernel_events WHERE seq = ? AND space = ?");
   return createEventLog({
@@ -63,7 +60,7 @@ export function createSqliteEventLog(cfg) {
     persist: {
       append: (e, salt) => { const text = JSON.stringify(e); ins.run(e.seq, cfg.space, text, salt); return text.length; },
       erase: (seq, e) => { era.run(JSON.stringify(e), seq, cfg.space); },
-      cursor: (name, seq) => { db.exec("PRAGMA synchronous=NORMAL"); try { cur.run(name, seq); } finally { db.exec(`PRAGMA synchronous=${synced}`); } },
+      cursor: (name, seq) => { cur.run(name, seq); },
       get: seq => { const r = /** @type {any} */ (one.get(seq, cfg.space)); return r ? { event: JSON.parse(r.event), salt: r.salt } : null; },
       /** The newest event before `before` about a subject whose data carries a version hash. @param {string} subject @param {number} before */
       latest: (subject, before) => { const r = /** @type {any} */ (latestStmt.get(cfg.space, subject, before)); return r ? JSON.parse(r.event) : null; },
