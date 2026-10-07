@@ -252,6 +252,7 @@
  "lib/acme/certs.test.js": 4,
  "core/names/cloudflare.test.js": 11,
  "lib/acme/csr.test.js": 4,
+ "lib/acme/dnswait.test.js": 2,
  "core/names/directory.test.js": 8,
  "core/names/identity.test.js": 15,
  "core/names/seal.test.js": 7,
