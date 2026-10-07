@@ -10,6 +10,7 @@
 //   "mode"             says its current mode
 //   "ctxused <n>"      reports n tokens used of a 258,400 window (usage_update), as Codex does
 //   anything else      echoes "echo: <prompt>"
+// FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
 // FAKE_ACP_LOG: one line per launch (argv, HOME, client capabilities) and per set_mode.
@@ -35,6 +36,8 @@ async function prompt(id, blocks) {
   // The environment brief and the role ride in a block of their own at the head of a process's first prompt (core/sessions/environment.js): the commands below are read from the blocks after it, and "echo" says it all.
   const t = (blocks.length > 1 && String(blocks[0].text || "").startsWith("[Vyre environment]") ? blocks.slice(1) : blocks).map(b => b.text || "").join("");
   cancelled = false;
+  // FAKE_GOLDEN_FILE: the recorded model of the switch eval (testing/golden.js), which answers from what this session was sent.
+  if (process.env.FAKE_GOLDEN_FILE) { say((await import("./golden.js")).reply(session, t)); return out({ id, result: { stopReason: "end_turn" } }); }
   let m;
   if ((m = /^bash (.+)$/.exec(t))) {
     const tc = { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, title: `Run ${m[1]}`, kind: "execute", status: "pending", rawInput: { command: m[1] } };

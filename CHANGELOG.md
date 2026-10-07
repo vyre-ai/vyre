@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(sessions): a switch of model carries the rollover seed (decisions, plan, open tasks, the files touched, the working folder, Recall pointers, the last turns) and nothing else; handoffBrief is gone. A model that ran the thread before and resumes its own session gets the seed with what was said while it was away, as one message ahead of the person's words, which fixes Claude to Codex to Claude coming back without the Codex turns. Tests: the switch eval (a recorded Claude, Codex, Claude conversation, ten questions).
 - fix(release): vyre.tgz carries its three @noble packages (bundleDependencies), so a Mac server, which unpacks the tarball with no npm step, starts vyred instead of failing on a missing @noble/hashes; build-site.sh refuses a tarball without them; the pack check counts the bundled packages as shipped on purpose.
 - fix(mac-server): the vyred wrapper writes its output to logs/vyred.out, since the system LaunchDaemon sets no output path and a crash left no trace.
 - test: the runner removes each test process's temp folders on exit; the macOS watch-restart test gives the resumed thread's first send 75 s; the clipboard test reads the fake helper's state only once it is written; the Android capture skips a push that has no green build yet.

@@ -265,4 +265,43 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(ev.payload.source, "estimated");
     assert.match(ev.payload.text, /about 5\d% full/);
   });
+
+  test(`${driver}: the switch eval: Claude to Codex and back, ten questions only the earlier turns can answer, every one right after each switch`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    // The recorded model (testing/golden.js): each agent answers a question only when its own session was sent the evidence.
+    const gold = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "golden-switch.json"), "utf8"));
+    const saved = { FAKE_GOLDEN_FILE: process.env.FAKE_GOLDEN_FILE, FAKE_GOLDEN_DIR: process.env.FAKE_GOLDEN_DIR };
+    process.env.FAKE_GOLDEN_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "golden-switch.json");
+    process.env.FAKE_GOLDEN_DIR = path.join(w.root, "golden");
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Codex", kind: "login" })).error, undefined);
+    const say = gold.turns.map(x => x.say);
+    let n = 0;
+    const turn = async (text, how) => {
+      const r = how === "start" ? await w.tool("threads.start", { cwd: w.work, prompt: text, surface: "deck" }) : how.provider
+        ? await w.tool("threads.switch", { thread: how.id, provider: how.provider, text }) : await w.tool("threads.send", { thread: how.id, text, surface: "deck" });
+      assert.equal(r.error, undefined, JSON.stringify(r));
+      const id = how === "start" ? r.data.id : how.id;
+      await w.finished(id, ++n);
+      return { id, said: (await w.said(id)).at(-1) };
+    };
+    const quiz = async (id, after, first) => {
+      const asked = gold.questions.filter(q => q.after === after);
+      for (const [i, q] of asked.entries()) {
+        const r = await turn(q.ask, i === 0 && first ? { id, provider: first } : { id });
+        assert.equal(r.said, q.answer, `${after}: ${q.ask}`);
+      }
+      return asked.length;
+    };
+    const th = (await turn(say[0], "start")).id;
+    for (const x of say.slice(1, 3)) await turn(x, { id: th });
+    let right = await quiz(th, "claude to codex", "grok");
+    for (const x of say.slice(3)) await turn(x, { id: th });
+    right += await quiz(th, "codex to claude", "claude");
+    assert.equal(right, 10, "all ten questions were asked, and every answer was right");
+    const switches = (await w.events(th)).filter(e => e.type === "thread.provider").map(e => `${e.payload.from} to ${e.payload.to}`);
+    assert.deepEqual(switches, ["claude to grok", "grok to claude"]);
+  });
 }
