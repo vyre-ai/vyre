@@ -608,7 +608,8 @@ start() {
   # root for someone else's account, the first start is that account's own.
   as_owner=0
   if [ "$(id -u)" = 0 ] && [ -n "$FROM" ] && [ -n "$OWNER" ] && [ "$OWNER" != root ] && sudo -n -u "$OWNER" docker info >/dev/null 2>&1; then as_owner=1; fi
-  upflag=""
+  # --quiet: the installer says what happens next itself (the pairing, or the check words), so `vyre up` adds no "already running" and no command.
+  upflag="--quiet"
   [ "$LINK_ONLY" = 1 ] && upflag="--print-link"
   if [ "$as_owner" = 1 ]; then
     dk sudo -n -u "$OWNER" env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}

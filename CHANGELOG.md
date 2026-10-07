@@ -3,6 +3,8 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(installer): IR-3 the installer starts vyre with `vyre up --quiet`, so a fresh install no longer reads "vyred is already running" or "not paired yet, run vyre call wink.server.code"; the installer says what comes next itself.
+- fix(installer): IR-1 the check words are read through sudo when the account cannot reach the box itself, and the terminal names the command that shows them when they cannot be read.
 - fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
 - fix(wink): the public gate's ACME challenge reaches the name directory as the challenge value; 0.2.9 sent the name instead, so no box got a certificate or a published <name>.vyre.run address (nameDirectory, with a test).
 - fix(perf-check): a refused memory.curate (personal memory answers only a proven person) no longer fails the check; the quiet wait covers curation. test(wink): the linked-root test removes its link.

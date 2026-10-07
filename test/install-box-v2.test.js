@@ -465,6 +465,17 @@ test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with
   assert.ok(r.stdout.indexOf("check words did not show") < r.stdout.indexOf("Done. Back to your browser."));
 });
 
+const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
+
+test("install-box.sh v2: IR-3 the installer starts vyre quietly: no pairing or status lines of its own, and the pairing is still the installer's", t => {
+  const b = box(t, { docker: PAIRING_BOX });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Long code: .*WINKLONGCODE/);
+  assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
+  assert.doesNotMatch(r.stdout, /already running|not paired yet/);
+});
+
 test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });

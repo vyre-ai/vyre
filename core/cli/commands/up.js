@@ -237,6 +237,8 @@ async function run(args, deps) {
 
   const b = await (deps.bring || bring)(role, deps.build);
   if (!b.ok) return fail("vyred_down", b.note || "vyred did not start");
+  // --quiet (the installer's start): vyred is up and that is all. The installer owns what is said next, so a fresh install never reads "already running" or an engineer's command.
+  if (flags.quiet) return done({ ready: true });
   if (first) {
     say("");
     say(hello(build()));
@@ -472,7 +474,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--quiet] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
