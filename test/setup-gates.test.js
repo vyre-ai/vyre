@@ -41,7 +41,8 @@ test("the setup page's tools are found, and each is on the one list the relay's 
     assert.ok(SETUP_TOOLS.has(t) || SETUP_TOOL_FAMILIES.some(r => r.test(t)), `${t} has a reason but the relay's gate does not allow it`);
     assert.ok(SETUP_REACH.has(t), `${t} is allowed by the relay but not reached by the registry`);
   }
-  for (const bad of ["vault.get", "relay.pair.ticket", "network.wink.join", "presence.enroll"]) assert.equal(classReach(SETUP, bad, () => [bad]), false, bad);
+  for (const bad of ["vault.get", "relay.pair.ticket", "network.wink.join", "presence.enroll"]) assert.equal(classReach(SETUP, bad, () => []), false, bad);
+  for (const bad of ["vault.get", "relay.pair.ticket", "presence.enroll"]) assert.equal(classReach(SETUP, bad, () => [bad]), false, `${bad} is never taken, even if a module lists it`);
 });
 
 test("every tool the setup page calls goes through the real registry as a setup caller and none answers no_such_tool", { timeout: 60_000 }, async t => {
