@@ -2,6 +2,7 @@
 // The pool on its own: a fake driver, a stubbed agents module and a clock the test moves, so
 // idle release, freezing and eviction are checked in milliseconds rather than minutes.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

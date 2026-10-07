@@ -6,6 +6,7 @@
 // tool, an event or an audit row carries holds the password or the username. Every vault lives
 // under the checkout's scratch dir.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

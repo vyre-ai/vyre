@@ -24,7 +24,8 @@
 // CALL_AS entry for undo in core/modules, which is the platform's to add.
 
 import crypto from "node:crypto";
-import { agentClaim, callerKind, ownerDevice, SURFACE_LABELS } from "../modules/index.js";
+import { agentClaim, callerKind } from "../modules/index.js";
+import { isPerson as isPersonCaller } from "../../lib/caller.js";
 import { HUMAN_ONLY, PERSON_ONLY, personOnly } from "../presence/index.js";
 
 const DAY = 24 * 60 * 60_000;
@@ -67,7 +68,7 @@ const plain = (/** @type {unknown} */ v) => Boolean(v) && typeof v === "object" 
 export const prune = (db, now = Date.now()) => Number(db.prepare("DELETE FROM undo_acted WHERE at < ?").run(now - KEEP_MS).changes || 0);
 
 /** The person on one of their own surfaces or devices, never an agent naming one. @param {string} caller */
-export const isPerson = caller => !agentClaim(caller) && (SURFACE_LABELS.includes(callerKind(caller)) || ownerDevice(caller));
+export const isPerson = caller => isPersonCaller(caller);
 
 /** The same actor, however its transport labels it ("mcp:agent:juno" and "harness:agent:juno"). @param {string} a @param {string} b */
 export const sameActor = (a, b) => {
@@ -169,6 +170,7 @@ export default {
     });
 
     ctx.tool("undo.list", {
+      effect: "read",
       description: "What was done on the person's behalf, newest first: {id, at, actor, actor_kind, tool, summary, state, why, can_undo}. Filters: actor_kind (assistant, agent, module, person), actor, since (ms), limit (default 50, at most 200).",
       input: { type: "object", properties: { actor_kind: { type: "string", enum: [...KINDS] }, actor: { type: "string" }, since: { type: "number" }, limit: { type: "integer" } } },
       examples: [{}, { actor_kind: "assistant", limit: 10 }],
@@ -187,6 +189,9 @@ export default {
     const inflight = new Map();
 
     ctx.tool("undo.run", {
+      effect: "write",
+      // The person, and an agent or module for its own rows only (the body checks sameActor); the inverse runs as module:undo, never outward or person-only.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
       description: "Undo one recorded action: runs the inverse its module declared. The person may undo any row; an agent or module only its own. A row already undone answers {already: true}.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       examples: [{ id: "u_abc" }],

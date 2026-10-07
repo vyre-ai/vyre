@@ -1,4 +1,4 @@
-// Needs you, as data (apps/CONTRACT.md sections 2.2 and 2.4): held Gate items and open asks as
+// Needs you, as data (team/archive/CONTRACT-native-apps.md sections 2.2 and 2.4): held Gate items and open asks as
 // one kind of row, oldest first, kept live by the box's events. Pure: no React, no imports, so
 // the Node tests load it as it is.
 //
@@ -76,7 +76,7 @@ function gateTitle(kind: string, via: string | null, to: string[], summary: stri
 
 /** A tool as the verb a person reads. */
 function askTitle(kind: string, tool: string | null, agent: string | null): string {
-  if (kind === "question") return `${agent ?? "A session"} has a question`;
+  if (kind === "question") return `${agent ?? "A chat"} has a question`;
   switch (tool) {
     case "Bash": return "Run a command";
     case "Write": return "Write a file";

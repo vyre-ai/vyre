@@ -3,6 +3,7 @@
 // are testable without Chrome. The real path (a live DOM through cdp.js) is covered end to end
 // in chrome.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as act from "./act.js";
@@ -64,10 +65,10 @@ test("act: a control renamed to something consequential between the two looks is
 });
 
 test("act: two controls that match the request equally is a tie, not a guess", async () => {
-  const a = { path: "a[0]", role: "button", name: "OK", enabled: true, frame: { x: 0, y: 0, w: 10, h: 10 } };
-  const b = { path: "a[1]", role: "button", name: "OK", enabled: true, frame: { x: 0, y: 20, w: 10, h: 10 } };
+  const a = { path: "a[0]", role: "button", name: "Next", enabled: true, frame: { x: 0, y: 0, w: 10, h: 10 } };
+  const b = { path: "a[1]", role: "button", name: "Next", enabled: true, frame: { x: 0, y: 20, w: 10, h: 10 } };
   const r = await act.once({
-    request: { role: "button", name: "OK" },
+    request: { role: "button", name: "Next" },
     perceive: async () => snap([a, b]),
     decide: act.decideBySelector,
     click: async () => { throw new Error("must not click a tie"); },

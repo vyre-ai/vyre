@@ -3,6 +3,7 @@
 // the two in step: the same DENY list, the same verdict on the same paths, and the provider
 // talking to the real /fs handler rather than the fake one.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

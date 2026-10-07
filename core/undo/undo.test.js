@@ -3,30 +3,31 @@
 // recording module is played by calling undo.record as "module:watchers", the label vyred gives a
 // built-in module; a fake home module could not call it at all (reach "modules" is Vyre's own).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { prune, isPerson, sameActor, KEEP_MS } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const g = /** @type {any} */ (globalThis);
 
 const PLANNER = ["planner", { does: { tools: ["planner.add", "planner.remove", "planner.person", "planner.present"] } },
   `export default { async start(ctx) {
-    ctx.tool("planner.add", { run: async i => { globalThis.items.add(i.title); return { item: i.title }; } });
-    ctx.tool("planner.remove", { run: async i => { globalThis.removed.push(i); if (globalThis.breakRemove) throw new Error("the planner is busy"); globalThis.items.delete(i.item); return { ok: true }; } });
+    ctx.tool("planner.add", { effect: "read", run: async i => { globalThis.items.add(i.title); return { item: i.title }; } });
+    ctx.tool("planner.remove", { effect: "read", run: async i => { globalThis.removed.push(i); if (globalThis.breakRemove) throw new Error("the planner is busy"); globalThis.items.delete(i.item); return { ok: true }; } });
     ctx.tool("planner.person", { callers: ["cli", "deck"], run: async () => ({}) });
-    ctx.tool("planner.present", { presence: true, run: async () => ({}) });
+    ctx.tool("planner.present", { effect: "read", presence: true, run: async () => ({}) });
     return {}; } };`];
 const MAIL = ["mail", { does: { tools: [{ name: "mail.unsend", reach: "asked", outward: "send" }] } },
-  `export default { async start(ctx) { ctx.tool("mail.unsend", { run: async () => ({}) }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("mail.unsend", { effect: "read", run: async () => ({}) }); return {}; } };`];
 const THREADS = ["threads", { does: { tools: ["threads.answer"] } },
-  `export default { async start(ctx) { ctx.tool("threads.answer", { run: async () => ({}) }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("threads.answer", { effect: "read", run: async () => ({}) }); return {}; } };`];
 const AGENTS = ["agents", { does: { tools: ["agents.list"] } },
-  `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => { globalThis.agentCalls++; return [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }]; } }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("agents.list", { effect: "read", run: async () => { globalThis.agentCalls++; return [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }]; } }); return {}; } };`];
 
 async function world(t, fakes = [PLANNER, MAIL, THREADS, AGENTS]) {
   g.items = new Set(); g.removed = []; g.breakRemove = false; g.agentCalls = 0;
@@ -171,7 +172,9 @@ test("a failing inverse marks the row failed, says so, and can be tried again", 
 });
 
 test("labels: who counts as the person, and the same actor across transports", () => {
-  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex-mbp"]) assert.ok(isPerson(c), c);
+  // A phone arrives as its paired device label (with a person session), never the bare label `mobile`; the one list of person surfaces is lib/caller.js's.
+  for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex-mbp", "device:abcdefghijklmnop"]) assert.ok(isPerson(c), c);
+  assert.ok(!isPerson("mobile"), "a bare `mobile` label is no one");
   for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "module:watchers", "hook", "tailnet:agent:kit", "tailnet-guest:x"]) assert.ok(!isPerson(c), c);
   assert.ok(sameActor("mcp:agent:kit", "harness:agent:kit"));
   assert.ok(!sameActor("mcp:agent:kit", "mcp:agent:juno"));

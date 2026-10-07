@@ -5,6 +5,7 @@
 // what is faked here is computerd, not the accessibility tree logic: snapshot.js, selector.js,
 // verify.js and act.js run for real against whatever computerd answers.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,6 +16,7 @@ import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 // agents and threads are core modules now (core/agents, core/switchboard) and win any
 // same-named fake under core/modules/index.js's "first found wins" rule, so real agents are made

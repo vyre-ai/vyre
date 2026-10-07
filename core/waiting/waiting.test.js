@@ -3,13 +3,14 @@
 // answer with the owners' real shapes (core/switchboard/asks.js shape, core/gate/gate.js brief,
 // core/planner/index.js planner.ringing, core/link/box.js link.pending).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { clean, tally, fromPending } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -27,7 +28,7 @@ const RING = { firing: "f1", key: `planner-i1-${Math.floor((T + 2000) / 1000)}`,
 const PAIR = { id: "p1", name: "alex's MacBook", login: "alex@example.com", node: "alex-mbp", expires: T + 600_000 };
 
 const fake = (name, tool, key, extra = "") => [name, [tool],
-  `export default { async start(ctx) { ctx.tool(${JSON.stringify(tool)}, { ${extra} run: async () => { globalThis.calls[${JSON.stringify(tool)}] = (globalThis.calls[${JSON.stringify(tool)}] || 0) + 1;
+  `export default { async start(ctx) { ctx.tool(${JSON.stringify(tool)}, { effect: "read", ${extra} run: async () => { globalThis.calls[${JSON.stringify(tool)}] = (globalThis.calls[${JSON.stringify(tool)}] || 0) + 1;
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
 const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
 

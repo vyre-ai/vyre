@@ -1,4 +1,4 @@
-# The Node suite: core, deck, modules, the box and the tests that run anywhere, plus the perf
+# The Node suite: core, web, modules, the box and the tests that run anywhere, plus the perf
 # budget gate (SPEC principle 8: vyred idle under 0.5% CPU / 150 MB, nothing polling faster than
 # once a minute). The Mac-only tests run in capsule-mac.yml.
 name: node
@@ -21,6 +21,8 @@ jobs:
         # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
         # requests run both versions.
         node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+        # Five shards (node --test-shard) so a run is about a fifth of the suite per job; the eval and the perf gate run on shard 1 only.
+        shard: [1, 2, 3, 4, 5]
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
@@ -34,14 +36,32 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
+      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
       - run: npm ci --no-audit --no-fund
-      - if: ${{ runner.environment != 'github-hosted' }}
-        # --test-concurrency is not allowed in NODE_OPTIONS, so splice it into the package.json test command.
-        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 ')")"
-      - if: ${{ runner.environment == 'github-hosted' }}
-        run: npm test
-      - run: npm run eval:answer
-      - run: npm run perf-check
+      # The phone app's tests (apps/app/**) import @noble/*, which only apps/app's own lockfile installs; scripts are off, nothing builds.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: apps/app
+      # scripts/test-counts.mjs runs one process per file with a time limit; VYRE_TEST_SHARD takes every fifth file, VYRE_TEST_CONCURRENCY caps the test box's load.
+      - run: npm test
+        env:
+          VYRE_TEST_SHARD: ${{ matrix.shard }}/5
+          VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && '2' || '' }}
+          VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
+      - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 24 }}
+        # This shard's counts, to record into test/test-counts.json (node scripts/test-counts.mjs update <file>).
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-counts-run-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-counts-run.json
+          if-no-files-found: ignore
+      - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 && matrix.shard == 1 }}
+        # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
+        run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
+      - if: ${{ matrix.shard == 1 }}
+        run: npm run eval:answer
+      - if: ${{ matrix.shard == 1 }}
+        run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
   # only files that pass there), so a red result means something, and it blocks: a regression cannot
   # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
@@ -51,7 +71,7 @@ jobs:
     # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
     # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
     # Windows, so a red result means something; the files left out, each with its reason, are in
-    # docs/work/windows.md ("Known Windows gaps").
+    # team/archive/work-journals/windows.md ("Known Windows gaps").
     timeout-minutes: 10
     env:
       VYRE_NO_DIALOGS: "1"
@@ -96,6 +116,8 @@ jobs:
         run: |
           $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
           $env:VYRE_NO_DIALOGS = "1"
+          # a home on Windows is 0.3.0: a development build with the file key is the one way vyred starts here (core/daemon/host-guard.js windowsHome), for this socket proof
+          $env:VYRE_KERNEL_FILE_KEY = "1"
           New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
           $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
             -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden

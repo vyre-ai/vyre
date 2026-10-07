@@ -2,6 +2,7 @@
 // loadKeys(root), on its own: made on first use, 0600/0700, round-trips, and a genuinely
 // unreadable file (not just missing) fails loudly rather than minting a fresh identity over it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

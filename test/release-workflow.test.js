@@ -1,6 +1,7 @@
 // @ts-check
 // The release workflow produces what the updater reads (launch): the pin script, the Ed25519 signature every updater verifies, the gate, in that order,
 // and the cosign identity unchanged (a keyless `cosign sign --yes` in this workflow, which is what the boxes' identity regex names).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,7 +16,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -91,7 +92,7 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   assert.ok(buildJob.length > 100 && !/environment:|secrets\.|APPLE_/.test(buildJob), "the build job holds no environment and no secret");
   assert.ok(buildJob.includes("build.sh app") && buildJob.includes("upload-artifact"), "the build job builds and uploads the unsigned app");
   const packageJob = mac.slice(mac.indexOf("\n  package:\n"), mac.indexOf("\n  collect:\n"));
-  assert.match(packageJob, /needs: build\n/);
+  assert.match(packageJob, /needs: (build|\[build, web\])\n/);
   assert.ok(!/build\.sh|swiftc|xcodebuild|npm /.test(packageJob), "no build tool runs in the job that holds the secrets");
   assert.match(packageJob, /sh scripts\/mac-app-package\.sh/);
   assert.match(mac, /collect:\n[^\n]*\n    needs: package\n/);
@@ -101,7 +102,9 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   for (const r of refs) assert.ok(r > pkg && r < mac.indexOf("\n      - name:", pkg + 10), "an Apple secret is read only by the package step");
   // Its own push and dispatch triggers never sign: `sign` exists only as a workflow_call input, defaulting to false, so no environment and no secret.
   assert.match(mac, /sign:\n        description: [^\n]*\n        type: boolean\n        default: false/);
-  assert.ok(!/workflow_dispatch:\n    inputs/.test(mac), "dispatch has no input that could turn signing on");
+  // dispatch may take the version to stamp (a rehearsal), never anything that could turn signing on
+  const dispatch = (mac.match(/workflow_dispatch:\n((?: {4}.*\n)*)/) || ["", ""])[1];
+  assert.ok(!/\bsign\b|environment|secret/i.test(dispatch), "dispatch has no input that could turn signing on");
   const gate = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(gate, /MAC_SIGNING: \$\{\{ vars\.MAC_SIGNING \}\}/);
   assert.match(gate, /\[ "\$MAC_SIGNING" = required \]/);
@@ -157,6 +160,15 @@ test("release.yml: prepare refuses a release whose package, lockfile and plugin 
   const i = yml.indexOf('the tag says $version but package.json says $pkg');
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
   assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
+});
+
+test("release.yml: the signed module list is checked against the tarball and the built image before the release is signed", () => {
+  const i = yml.indexOf("The signed module list matches the tarball and the BUILT image");
+  assert.ok(i > 0 && i < yml.indexOf("release.json, SHA256SUMS, and on a publish the Ed25519 signature"), "checked before SHA256SUMS is signed");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 20));
+  assert.match(step, /verify-list-trees\.mjs "\$d" dist\/modules\.json/);
+  assert.match(step, /docker cp "\$id:\/opt\/vyre\/\."/);
+  assert.match(step, /verify-list-trees\.mjs "\$RUNNER_TEMP\/image-root" dist\/modules\.json/);
 });
 
 test("release.yml: a tag that already has a release is refused in prepare before anything is built, a patch run shows the whole diff, and the Mac status is bound to the file hashes", () => {

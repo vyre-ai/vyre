@@ -3,6 +3,7 @@
 // read are fakes that record their calls. The git source is a bare repo in the temp folder, read
 // over file://, so nothing reaches the network.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -268,6 +269,20 @@ test("check --json is { ok, module, problems } with exit 0 clean and 1 with prob
 
 // ---------------------------------------------------------------------------------------------
 // add
+
+test("add a module that ships a Kit: the card says so, and each Kit file is proposed for the person's yes after the module is running", async t => {
+  const w = world(t, { rows: () => [{ name: "bakery", version: "0.1.0", state: "running" }] });
+  const proposed = /** @type {any[]} */ ([]);
+  w.deps.proposeKit = async (_home, kit) => { proposed.push(kit); return { data: { ok: true, proposal: "p1", card: {} } }; };
+  const c = capture(t);
+  const src = bakery(path.join(w.home, "src"), { does: { tools: [{ name: "bakery.orders", summary: "list today's orders" }], kits: ["kits/bakery.json"] } });
+  fs.mkdirSync(path.join(src, "kits"));
+  fs.writeFileSync(path.join(src, "kits", "bakery.json"), JSON.stringify({ id: "bakery", name: "Bakery", version: 1, types: [] }));
+  assert.equal(await moduleCommand(["add", src, "--yes"], w.deps), EXIT.OK);
+  assert.match(text(c), /Kits\s+kits\/bakery\.json: record types, fields and Flows it adds, each waiting for your own yes/);
+  assert.deepEqual(proposed.map(k => k.id), ["bakery"], "proposed once, from the copy in the home");
+  assert.match(text(c), /kits\/bakery\.json: its card is waiting for your yes/);
+});
 
 test("add from a folder: checks, copies without .git, restarts once, reports the state", async t => {
   const w = world(t, { rows: () => [{ name: "bakery", version: "0.1.0", state: "running" }] });

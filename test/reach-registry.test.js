@@ -5,6 +5,7 @@
 // folders in a temp dir, so it runs on a runner or the test box, never on a person's machine. It fails on:
 // an open tool that is not listed; a listed "callers" tool whose code no longer limits callers; a listed
 // "open" tool that now has a callers list (delete the line).
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // (docs/adr/0007-intelligence.md, decision 4; ADR 0004). The memory module against a stand-in
 // for vyred, over the shared fictional corpus.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -155,8 +156,9 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   const { tools, call } = await module_(t);
   for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).presence, undefined, `${tool} asks for presence`);
   // The allowlist and the agent refusal stay, and refusals carry a code.
-  // No callers list: the tool decides (the person's surfaces, or their device with a person session).
-  for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).callers, undefined);
+  // The tool decides (the person's surfaces, or their device with a person session). correct admits a model, which only suggests; merge and split are the person's surfaces only.
+  assert.ok(tools.get("memory.correct").callers.includes("mcp"));
+  for (const tool of ["memory.merge", "memory.split"]) assert.deepEqual(tools.get(tool).callers, ["cli", "local", "deck", "capsule"]);
   for (const caller of ["module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
   // A model (mcp) with no words of the person's behind it only suggests (core/memory/iq/heard.js).
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "mcp", { person: { id: "s1" } })).data.applied, false);

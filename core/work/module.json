@@ -1,0 +1,445 @@
+{
+  "name": "work",
+  "version": "0.1.0",
+  "description": "The work layer on the kernel: the native assistant's tool surface and situation, teammates, the three-layer memory and the Engineer. Every call goes through the kernel with the chain the kernel builds for the caller; nothing here holds authority.",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [],
+  "does": {
+    "reads": [
+      "work.know.search",
+      "work.tools"
+    ],
+    "tools": [
+      {
+        "name": "work.tools",
+        "summary": "the tools this caller may use in this Space, generated from its definitions",
+        "reach": "anyone"
+      },
+      {
+        "name": "work.call",
+        "summary": "run one of those tools; an outward act comes back held for approval",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.create",
+        "summary": "make a Project: one record with its Drive folder, repository and memory scope",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.move-plan",
+        "summary": "what moving a Project to another Space would carry, and the hash the person approves",
+        "reach": "anyone",
+        "effect": "read",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.project.move",
+        "summary": "move a Project to another Space as a new project there, with one yes",
+        "reach": "anyone",
+        "effect": "write",
+        "outward": true,
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.know.move-export",
+        "summary": "a project's Work-engine lines, read for a move between Spaces (needs the move's own event)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.move-import",
+        "summary": "write a moved project's Work-engine lines in the target Space (needs the move's own event)",
+        "reach": "modules",
+        "effect": "write",
+        "crossSpace": "project.move_in"
+      },
+      {
+        "name": "work.know.move-forget",
+        "summary": "drop a moved project's Work-engine lines in the source Space, against the receipt",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.move.serve",
+        "summary": "serve a move to another server from this Space (the spaces module only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "work.project.ensure",
+        "summary": "the Project record for a short name, made if missing (the projects module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.team.member",
+        "summary": "put a teammate on a Project's team as a team-member record, or take it off (the teammates module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.ref",
+        "summary": "the Project a record id, address or short name names: its id, address, short name and name",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.project.rename",
+        "summary": "rename a Project from Records: its record, Drive folder and project list follow",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.chat.list",
+        "summary": "the chats you may see: title, project, who, when, status, where it lives; open on the ones you are in",
+        "reach": "anyone",
+        "effect": "read",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.chat.get",
+        "summary": "one chat you are in: its record, its slots (assistants and models running in it) and its transcript address",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.span",
+        "summary": "an exact span of a chat you are in, word for word, by line range; sealed values stay placeholders",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.upgrade-plan",
+        "summary": "what moving your chats to your other Space would carry (counts and blockers)",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.upgrade-move",
+        "summary": "move your chats to your other Space (Personal to My Cloud), ids kept",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.history-import",
+        "summary": "put back the history of a chat that came with the chat upgrade",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.create",
+        "summary": "start a chat: who is in it and which Project",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.chat.change",
+        "summary": "add or remove people and agents in a chat you are in",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.begin",
+        "summary": "ask to lend a chat's key to this server: the request the device answers",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.finish",
+        "summary": "lend a chat's key: the keys wrapped to the request, held in memory only",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.lock",
+        "summary": "wipe a chat's key from this server's memory",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.status",
+        "summary": "whether a chat is sealed, its ring epoch, and whether its key is lent",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.rename",
+        "summary": "rename a chat you are in: its record and every run agree",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.move",
+        "summary": "move a chat you are in to another Project",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.situation",
+        "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.space-brief",
+        "effect": "read",
+        "reach": "modules"
+      },
+      {
+        "name": "work.team.context",
+        "summary": "what a teammate starts with for a project, minus sealed fields",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.team.add",
+        "summary": "add an assistant teammate from a Kit role, with grants no wider than the adder's",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.team.doing",
+        "summary": "what each teammate is doing right now",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.search",
+        "summary": "search records, events and session lines by meaning, only what the caller may read",
+        "reach": "anyone"
+      },
+      {
+        "name": "work.know.answer",
+        "summary": "answer a question from the Space's own records and history, with citations",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.know.suggestions",
+        "summary": "facts memory proposes for a record, with the lines they came from",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.capture",
+        "summary": "keep a session's lines so the Space's memory can answer from what was said; first-party modules only",
+        "reach": "modules",
+        "projectArg": "project",
+        "projectIsRecord": true
+      },
+      {
+        "name": "work.know.forget",
+        "summary": "erase a session's lines and the index rows made from them; first-party modules only",
+        "reach": "modules"
+      },
+      {
+        "name": "work.know.accept",
+        "summary": "accept a proposed fact onto its record",
+        "reach": "person",
+        "effect": "write"
+      }
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "cli": []
+  },
+  "needs": {
+    "kernel": {
+      "work": true,
+      "attrs": true,
+      "actions": [
+        "tasks.request",
+        "records.read",
+        "records.create",
+        "records.update",
+        "records.remove",
+        "events.read",
+        "drive.write",
+        "grants.list",
+        "drive.read"
+      ],
+      "types": [
+        {
+          "name": "project",
+          "label": "Project",
+          "icon": "IconFolder",
+          "kind": "project",
+          "fields": [
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "Name",
+              "required": true
+            },
+            {
+              "name": "slug",
+              "kind": "text",
+              "label": "Short name used in addresses",
+              "unique": true
+            },
+            {
+              "name": "status",
+              "kind": "choice",
+              "label": "Status",
+              "options": [
+                "active",
+                "archived",
+                "moved"
+              ]
+            },
+            {
+              "name": "client",
+              "kind": "link",
+              "label": "Client",
+              "to": "contact"
+            },
+            {
+              "name": "owner",
+              "kind": "actor",
+              "label": "Owner"
+            },
+            {
+              "name": "due",
+              "kind": "date",
+              "label": "Due"
+            },
+            {
+              "name": "drive_path",
+              "kind": "text",
+              "label": "Drive folder"
+            },
+            {
+              "name": "repo",
+              "kind": "text",
+              "label": "Repository"
+            },
+            {
+              "name": "memory_scope",
+              "kind": "text",
+              "label": "Memory scope"
+            },
+            {
+              "name": "archived_at",
+              "kind": "datetime",
+              "label": "Archived"
+            },
+            {
+              "name": "moved_to",
+              "kind": "text",
+              "label": "Moved to (Space and project) when it left this Space"
+            },
+            {
+              "name": "moved_from",
+              "kind": "text",
+              "label": "Moved from (Space and project) when it came from another"
+            }
+          ]
+        },
+        {
+          "name": "chat-record",
+          "label": "Chat",
+          "icon": "IconMessage",
+          "fields": [
+            {
+              "name": "title",
+              "kind": "text",
+              "label": "Title"
+            },
+            {
+              "name": "project",
+              "kind": "link",
+              "label": "Project",
+              "to": "project"
+            },
+            {
+              "name": "chat",
+              "kind": "text",
+              "label": "Chat id",
+              "unique": true
+            },
+            {
+              "name": "people",
+              "kind": "text",
+              "label": "People"
+            },
+            {
+              "name": "agents",
+              "kind": "text",
+              "label": "Agents"
+            },
+            {
+              "name": "former",
+              "kind": "text",
+              "label": "Former participants (people and agents who could not move with it)"
+            },
+            {
+              "name": "started",
+              "kind": "datetime",
+              "label": "Started"
+            },
+            {
+              "name": "last_active",
+              "kind": "datetime",
+              "label": "Last active"
+            },
+            {
+              "name": "status",
+              "kind": "choice",
+              "label": "Status",
+              "options": [
+                "working",
+                "idle",
+                "stopped",
+                "failed"
+              ]
+            },
+            {
+              "name": "drive",
+              "kind": "text",
+              "label": "Project Drive folder"
+            },
+            {
+              "name": "location",
+              "kind": "text",
+              "label": "This chat's Drive folder"
+            }
+          ]
+        },
+        {
+          "name": "file-share",
+          "label": "Shared file",
+          "icon": "IconShare",
+          "fields": [
+            {
+              "name": "path",
+              "kind": "text",
+              "label": "File path",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "daemon": [
+      "flowsHost"
+    ]
+  },
+  "teaches": {}
+}

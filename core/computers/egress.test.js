@@ -2,6 +2,7 @@
 // egress on its own: the PAC script, run the way Chrome runs it (a function of url and host),
 // the strict site check against inputs built to break out of it, and the env a computer gets.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";

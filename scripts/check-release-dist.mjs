@@ -2,6 +2,7 @@
 // check-release-dist: what a release folder must be, for the updater that will read it. The release job runs this on dist/ before it signs
 // or publishes anything; the rehearsal runs it on a dry run's artifact.
 //   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--installer] [--mac] [--setup] [--pubkey <spki-base64>]
+//   --modules   modules.json (scripts/modules-manifest.mjs) must be in the release, listed in SHA256SUMS, { v: 1, counter, release, modules } with the counter scripts/release-counter.mjs makes from VERSION
 //   --setup     setup.json (scripts/setup-hashes.mjs) must be in the release, listed in SHA256SUMS and { v: 1, files: [...] }: what scripts/check-served.mjs checks vyre.run against
 //   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
 //   --mac       the Lumen Mac app (Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, stable names) must be in the release
@@ -12,13 +13,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SEAMS } from "./strip-wrapper.mjs";
+import { releaseCounter } from "./release-counter.mjs";
 
 const DIGEST_REF = /^ghcr\.io\/vyre-ai\/[a-z-]+@sha256:[0-9a-f]{64}$/;
 const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$/;
 const REQUIRED = ["install-box.sh", "install-mac-server.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
-export function check(dir, { pulled = false, pubkey = "", installer = false, mac = false, setup = false } = {}) {
+export function check(dir, { pulled = false, pubkey = "", installer = false, mac = false, setup = false, modules = false } = {}) {
   const problems = [];
   const read = f => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } };
   for (const f of REQUIRED) if (read(f) === null) problems.push(`missing ${f}`);
@@ -48,6 +50,53 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, mac
   // The Lumen Mac app: the stable names the site's picker links to, one per architecture, listed in SHA256SUMS.
   if (mac) {
     for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) if (!listed.has(f)) problems.push(`the Mac app ${f} is not in the release`);
+  }
+
+  // appbuild.json: the signed list of the web app's files (lib/app-build.js), listed in SHA256SUMS, naming this version, every hash a sha256 and index.html on it.
+  if (modules) {
+    const raw = read("appbuild.json");
+    if (raw === null || !listed.has("appbuild.json")) problems.push("appbuild.json is not in the release");
+    else {
+      try {
+        const j = JSON.parse(raw.toString("utf8"));
+        const v = read("VERSION").toString("utf8").trim();
+        if (!j || j.v !== 1 || !j.files || typeof j.files !== "object" || !j.files["index.html"]) problems.push("appbuild.json is not { v: 1, release, files: {...} } with index.html");
+        else {
+          if (j.release !== v || j.version !== v) problems.push(`appbuild.json says release ${j.release}, VERSION says ${v}`);
+          if (j.counter !== releaseCounter(v)) problems.push(`appbuild.json counter is ${j.counter}, this version makes ${releaseCounter(v)}`);
+          if (!/^[0-9a-f]{64}$/.test(String(j.tree))) problems.push("appbuild.json has no tree hash");
+          for (const [f, h] of Object.entries(j.files)) if (!/^[0-9a-f]{64}$/.test(String(h)) || f.startsWith("/") || f.split("/").includes("..")) problems.push(`appbuild.json has a bad entry for ${f}`);
+        }
+      } catch (e) { problems.push(`appbuild.json cannot be read: ${/** @type {Error} */ (e).message}`); }
+    }
+  }
+
+  // modules.json: the signed list of first-party modules, listed in SHA256SUMS (so the release key signs it), at the counter this version makes.
+  if (modules) {
+    const raw = read("modules.json");
+    if (raw === null || !listed.has("modules.json")) problems.push("modules.json is not in the release");
+    else {
+      try {
+        const j = JSON.parse(raw.toString("utf8"));
+        const v = read("VERSION").toString("utf8").trim();
+        if (!j || j.v !== 1 || !j.modules || typeof j.modules !== "object" || !Object.keys(j.modules).length) problems.push("modules.json is not { v: 1, counter, release, modules: {...} } with modules");
+        else {
+          if (j.release !== v) problems.push(`modules.json says release ${j.release}, VERSION says ${v}`);
+          if (j.counter !== releaseCounter(v)) problems.push(`modules.json counter is ${j.counter}, this version makes ${releaseCounter(v)}`);
+        }
+      } catch (e) { problems.push(`modules.json cannot be read: ${/** @type {Error} */ (e).message}`); }
+    }
+    // shell.json carries the module list (and the app record) as exact text, for an old updater that knows only shell.json (lib/release-shell.js): it must be listed, and its text must be the files' bytes.
+    const shellRaw = read("shell.json");
+    if (shellRaw === null || !listed.has("shell.json")) problems.push("shell.json is not in the release (a 0.2.x server updated to it would receive no module list)");
+    else {
+      try {
+        const sj = JSON.parse(shellRaw.toString("utf8"));
+        if (raw !== null && sj.modulesJson !== raw.toString("utf8")) problems.push("shell.json does not carry modules.json as exact text");
+        const ab = read("appbuild.json");
+        if (ab !== null && sj.appbuildJson !== ab.toString("utf8")) problems.push("shell.json does not carry appbuild.json as exact text");
+      } catch { problems.push("shell.json is not JSON"); }
+    }
   }
 
   // setup.json: the hashes of what vyre.run serves for the setup page and the install line, signed by being listed in SHA256SUMS.
@@ -109,7 +158,7 @@ if (process.argv[1] && process.argv[1].endsWith("check-release-dist.mjs")) {
   const dir = args.find(a => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--pubkey");
   if (!dir) { console.error("usage: node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]"); process.exit(2); }
   const pubkey = args.includes("--pubkey") ? args[args.indexOf("--pubkey") + 1] : "";
-  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), mac: args.includes("--mac"), setup: args.includes("--setup"), pubkey });
+  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), mac: args.includes("--mac"), setup: args.includes("--setup"), modules: args.includes("--modules"), pubkey });
   for (const p of problems) console.error(`release-dist: ${p}`);
   if (problems.length) process.exit(1);
   console.log(`release-dist: ${dir} is what the updater needs`);

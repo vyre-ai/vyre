@@ -3,6 +3,7 @@
 // dtach terminals once vyred is gone. A compose `init: true` on a service that runs the vyre image
 // would put docker-init in front of it and make tini a second init. The runtime check (PID 1 is
 // tini in a booted container) is ci's box-image smoke; this guards the files.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -37,7 +38,7 @@ test("box: the image's ENTRYPOINT is tini, and its CMD the spawner, which runs t
   assert.match(df, /apt-get install[^\n]*\btini\b/);
 });
 
-for (const f of ["box/compose.yml", "box/compose.egress.yml"]) {
+for (const f of ["box/compose.yml"]) {
   test(`box: no service on the vyre image in ${f} sets init: true, so tini is PID 1`, () => {
     const all = services(read(f));
     const onVyre = Object.entries(all).filter(([, lines]) => lines.some(l => /^\s+image:.*vyre-ai\/vyre/.test(l)));
@@ -85,7 +86,7 @@ test("box: /work is closed to every uid but vyre and the shared group (2770), in
 });
 
 test("box: every base image a Dockerfile builds from is pinned by digest (FROM and COPY --from), so a source build cannot be handed other bytes", () => {
-  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile"]) {
+  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile", "relay/Dockerfile"]) {
     const text = read(f);
     const refs = [...text.matchAll(/^FROM\s+(\S+)/gm)].map(m => m[1]).concat([...text.matchAll(/^COPY\s+--from=(\S+)/gm)].map(m => m[1]));
     assert.ok(refs.length > 0, `${f} has a FROM`);

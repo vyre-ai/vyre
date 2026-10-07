@@ -30,16 +30,19 @@ import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { span, byLink, resolve as resolveSession, rolloverOf } from "./turns.js";
 import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
+import { scanIndex, scrubIndex, scrubLog } from "./sealed.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
+import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -84,10 +87,12 @@ export default {
     // <home>/synced holds one folder per device that sent its sessions (ADR 0008, amendment), each
     // in Claude Code's own layout: read afresh each time, since a device can be added or revoked.
     const syncedRoot = ctx.paths?.root ? path.join(ctx.paths.root, "synced") : null;
-    const folders = () => configured.flatMap(f => {
+    // <home>/mirror holds the conversation of every thread a provider other than Claude ran (core/switchboard mirror()), in Claude Code's own layout: Recall indexes it like any session.
+    const mirrorRoot = ctx.paths?.root ? path.join(ctx.paths.root, "mirror") : null;
+    const folders = () => [...configured.flatMap(f => {
       if (!syncedRoot || path.resolve(f) !== path.resolve(syncedRoot)) return [f];
       try { return fs.readdirSync(f, { withFileTypes: true }).filter(e => e.isDirectory() && /^[A-Za-z0-9._-]{1,80}$/.test(e.name)).map(e => path.join(f, e.name)).sort(); } catch { return []; }
-    });
+    }), ...(mirrorRoot ? [mirrorRoot] : [])];
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });
@@ -99,7 +104,20 @@ export default {
       // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
       // A rewrite moves the generation, and the index rebuilds itself on the next search.
       onVector: item => dense.add(item),
+      // The capture port: after a batch of a session's turns is indexed (already scrubbed), the work module's engine keeps the same lines for the Space's memory, once, in chunks of
+      // at most 2000. A session whose turns were rewritten is forgotten there first. No work module, or a refusal, is not an error: the Space just has no memory of conversations.
+      capture: async ({ session, rewritten, lines, cwd }) => {
+        if (rewritten) await ctx.call("work.know.forget", { session });
+        // The project the session's folder belongs to: the work module reads a session's lines under that project's record, so a teammate granted the project covers its sessions.
+        const of = cwd ? await ctx.call("projects.of", { cwd }).catch(() => null) : null;
+        const project = of && of.data && typeof of.data.slug === "string" ? of.data.slug : null;
+        for (let i = 0; i < lines.length; i += 2000) {
+          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000), ...(project ? { project } : {}) });
+          if (r && r.error) { if (!captureWarned) { captureWarned = true; ctx.log(`recall: the Space's memory takes no conversations (${r.error.code || "refused"})`); } return; }
+        }
+      },
     });
+    let captureWarned = false;
 
     let stopped = false;
     const isStopped = () => stopped;
@@ -220,14 +238,12 @@ export default {
     // and agents.projects) rather than diverging here.
     /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
      * (module boundary) — this is memory's teach.js `within`, restated. */
-    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
-    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
-    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
-     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
+    /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
+    const unnamedModel = caller => modelKey(caller) === "caller:mcp";
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
      * session, or a named agent — reach() below tells those apart and scopes the latter). Not
@@ -267,12 +283,46 @@ export default {
      * they must agree. When agents cannot be checked, a named agent is refused.
      * @param {string|undefined} agent @param {string|undefined} caller
      */
-    const reach = async (agent, caller) => {
-      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+    const reach = async (agent, caller, meta = {}) => {
+      // A kernel session token (set by the daemon from a vouched socket only, never by the call) says which person this is and which agent it runs as: the route a person's own Claude takes.
+      // [person] or [person, assistant] with the person the home's owner is the person: all of it. [person, <named agent>] is that agent, scoped below. Anything else: not the person.
+      let tokenAgent = null;
+      if (ctx.kernel && typeof ctx.kernel.chain === "function" && meta && typeof meta.token === "string" && meta.token) {
+        const c = await ctx.kernel.chain(meta).catch(() => null);
+        const hops = c && Array.isArray(c.hops) ? c.hops : [];
+        const first = hops[0] && hops[0].actor;
+        const canon = typeof ctx.kernel.canonicalPerson === "function" ? (/** @type {string} */ id) => ctx.kernel.canonicalPerson(id) : (/** @type {string} */ id) => id;
+        if (first && first.kind === "person" && canon(first.id) === canon(String(ctx.kernel.owner)) && !hops.slice(1).some((/** @type {any} */ h) => h.actor.kind === "person") && !(c.room)) {
+          const rest = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent");
+          const named = rest.map((/** @type {any} */ h) => String(h.actor.id)).filter((/** @type {string} */ n) => n !== "assistant");
+          if (!named.length && hops.slice(1).every((/** @type {any} */ h) => h.actor.kind === "agent")) return { all: true, agent: null, folders: [] };
+          if (named.length === 1) tokenAgent = named[0];
+        }
+      }
+      const said = tokenAgent || /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
-        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        if (owner(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        // An unnamed model session (`mcp`, `mcp:thread:<id>`: every model's shell) is never the person (MS-1, KW-1): it reads its OWN thread's project and nothing else, held to that project's
+        // folders like a named agent with one project. A bare `mcp` with no thread of its own has no project, so no folders, so no read.
+        if (unnamedModel(caller)) {
+          // The thread is what the DAEMON vouched (meta.thread, set from the session's own socket or key), never the `:thread:<id>` text of the label: a model sends any label it likes (RC-1).
+          const thread = typeof meta.thread === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(meta.thread) ? meta.thread : null;
+          /** @type {string[]} */ let folders = [];
+          if (thread) {
+            const t = await ctx.call("threads.get", { thread, limit: 1 });
+            const rec = t && !t.error && t.data && t.data.thread ? t.data.thread : null;
+            if (rec && rec.project) folders = (await projectList()).filter(p => p.slug === String(rec.project)).flatMap(p => p.folders);
+            else if (rec && rec.cwd) folders = [String(rec.cwd)];
+            else {
+              // A terminal session bound to its claude process is no Vyre thread: its own transcript says where it runs, so it reads that project (or just that folder).
+              const row = /** @type {any} */ (sessionRow(db, thread));
+              if (row && row.cwd) { const inP = (await projectList()).filter(p => inFolders(String(row.cwd), p.folders)); folders = inP.length ? inP.flatMap(p => p.folders) : [String(row.cwd)]; }
+            }
+          }
+          return { all: false, agent: "an unnamed model session", folders };
+        }
         throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
       }
       const r = await ctx.call("agents.list", {});
@@ -281,6 +331,8 @@ export default {
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
       const assistant = a.kind === "assistant";
+      // "Claude Code on <this computer>": an agent the person granted their memory and every project's sessions to READ, once (agents `personal`, projects "*"). Reads only; it is never the person.
+      if (a.personal === true && a.projects === "*") return { all: true, agent: who, folders: [] };
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
@@ -292,13 +344,13 @@ export default {
       return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
     };
     /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
-    const scopeQuery = async (q, caller) => {
-      const r = await reach(q.agent, caller);
+    const scopeQuery = async (q, caller, meta = {}) => {
+      const r = await reach(q.agent, caller, meta);
       delete q.agent;
       if (r.all) return r;
       const requested = (q.project_cwds || []).map(String);
       if (requested.length) {
-        const outside = requested.filter(c => !within(c, r.folders));
+        const outside = requested.filter(c => !inFolders(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
         if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
@@ -309,54 +361,58 @@ export default {
     const agentField = { agent: { type: "string" } };
 
     ctx.tool("recall.search", {
+      effect: "read",
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
+        links: { type: "array", items: { type: "object", required: ["ref"], properties: { kind: { type: "string", enum: ["file", "read", "commit", "url"] }, ref: { type: "string" } } },
+          description: "keep only turns that touched these (a file path or name, a commit hash, a url), or sit next to one that did" },
       } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, ...q } = input;
         // sessions widens a scope, so only a module or the person's own surface may name them: a
         // model's scope is its folders (the MCP server holds an agent to its projects' folders).
         if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
         // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
         // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
-        const scopeR = await scopeQuery(q, caller);
+        const scopeR = await scopeQuery(q, caller, meta);
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
-        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
           const e = q.hybrid === false || !any ? null : await embedder();
           return scoped((await search(db, q, e, dense)).hits);
         };
-        if (!wantsMacs(ctx, input, caller)) return here();
+        if (!(await wantsMacs(ctx, input, caller, meta))) return here();
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
         return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.related", {
+      effect: "read",
       description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
       callers: OWNERS_ONLY,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
         // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
         // the same way recall.search's does.
-        if (!(await reach(undefined, caller)).all) return { hits: [] };
+        if (!(await reach(undefined, caller, meta)).all) return { hits: [] };
         const text = String(input.text || "").trim();
         const cwds = [...new Set((input.project_cwds || []).map(String).filter(Boolean))];
         if (!text || !cwds.length) return { hits: [] };
         // Never an unmapped folder: at least one given folder must be a real project's own (or
         // inside one), never a raw path a caller made up.
         const projects = await projectList();
-        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        const mapped = cwds.filter(c => projects.some(p => inFolders(c, p.folders)));
         if (!mapped.length) return { hits: [] };
         const limit = Math.max(1, Math.min(3, input.limit || 3));
         const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -366,32 +422,33 @@ export default {
       },
     });
     ctx.tool("recall.thread", {
+      effect: "read",
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
         source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, agent, ...q } = input;
-        const r = await reach(agent, caller);
+        const r = await reach(agent, caller, meta);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
-        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        const gate = row => { if (!r.all && !inFolders(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
         // Resolved among only what this caller may read, so an id or prefix outside its grant
         // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
         // told a scoped agent such a session exists before the gate above ever ran).
         const resolveScoped = session => {
           if (r.all) return session;
           const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
-          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          if (exact) { if (!inFolders(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
           const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
-            .filter(row => within(row.cwd, r.folders));
+            .filter(row => inFolders(row.cwd, r.folders));
           if (!like.length) throw new Error(`no session ${session}`);
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
         };
-        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
@@ -408,7 +465,67 @@ export default {
         throw Object.assign(new Error(answers.length && !asleep ? `no session ${q.session} (${why})` : `That session is on a Mac that isn't connected. (${why})`), { code: "not_found" });
       },
     });
+    /**
+     * A session id this caller may read, resolved among only what it may read: an id or prefix outside its grant never surfaces, not even as "more than one session starts with X".
+     * Thrown as "not found", so a scoped agent learns nothing about a session it may not read (recall.thread's rule, shared by the tools below).
+     * @param {{ all: boolean, folders: string[] }} r @param {string} session
+     */
+    const readableSession = (r, session) => {
+      if (r.all) return resolveSession(db, session);
+      const gone = () => Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+      const exact = /** @type {any} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE id = ?").get(session));
+      if (exact) { if (!inFolders(exact.cwd, r.folders)) throw gone(); return resolveSession(db, exact.id); }
+      const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session)).filter(x => inFolders(x.cwd, r.folders));
+      if (!like.length) throw gone();
+      if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+      return resolveSession(db, like[0].id);
+    };
+    ctx.tool("recall.turn", {
+      effect: "read",
+      description: "A span of one past session, word for word: the turns themselves, no summary, each with its pointer (session:seq), its time, and what it touched (files, commits, urls). Name the turn with seq, and before and after for the turns around it, or give from with to or span. A turn the search index had to cut is read whole from the transcript. Redacted like everything Recall holds.",
+      input: { type: "object", required: ["session"], properties: {
+        session: { type: "string", description: "a session id, or an unambiguous prefix of one" },
+        seq: { type: "integer", minimum: 0 }, before: { type: "integer", minimum: 0, maximum: 60 }, after: { type: "integer", minimum: 0, maximum: 60 },
+        from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0 }, span: { type: "integer", minimum: 1, maximum: 60 },
+        full: { type: "boolean", description: "false: give a long turn as the index holds it (cut) instead of reading the transcript" }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const row = readableSession(r, String(session || ""));
+        return span(db, { ...q, session: row.id });
+      },
+    });
+    ctx.tool("recall.links", {
+      effect: "read",
+      description: "The turns that touched something, newest first: a file (ref is a path or just its name; kind file for changes, read for reads, both by default), a commit (kind commit, a short or full hash), or a url (kind url). Each is a pointer (session:seq) for recall.turn, with a snippet.",
+      input: { type: "object", required: ["ref"], properties: { ref: { type: "string" }, kind: { type: "string", enum: ["file", "read", "commit", "url"] },
+        session: { type: "string" }, since: { type: "integer", description: "ms since epoch" }, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const id = session ? readableSession(r, String(session)).id : undefined;
+        const rows = byLink(db, { ...q, ...(id ? { session: id } : {}), limit: (q.limit || 30) * (r.all ? 1 : 4) });
+        const keep = r.all ? rows : rows.filter(x => inFolders(x.cwd, r.folders));
+        return keep.slice(0, Math.max(1, Math.min(200, q.limit || 30)));
+      },
+    });
+    ctx.tool("recall.pointers", {
+      effect: "read",
+      description: "For a rollover (Vyre's own, when a session's window fills): the windows of one thread (session ids, oldest first) indexed now, then the one split Vyre's seed makes of them: the last turns, newest window first, whose text adds up to tail_chars, word for word (a long turn cut, with the pointer that reads it whole), and, for every turn before them, an index of pointers: the person's own requests as lines (session:turn, who, when, the start of what was said), the files touched and the commits made. Pointers read back with recall.turn. A person's surface or a module asks, for the sessions of a thread it runs; never an agent.",
+      input: { type: "object", required: ["sessions"], properties: { sessions: { ...stringArray, maxItems: 24 }, tail_chars: { type: "integer", minimum: 0, maximum: 400000 }, lines: { type: "integer", minimum: 1, maximum: 60 } } },
+      callers: OWNERS_ONLY,
+      run: async input => {
+        const ids = [...new Set((input.sessions || []).map(String))].slice(0, 24);
+        for (const id of ids) await indexNow(id);
+        const have = ids.filter(id => db.prepare("SELECT 1 FROM recall_sessions WHERE id = ?").get(id));
+        const out = rolloverOf(db, have, { tailChars: Math.max(0, Number(input.tail_chars) || 0), cap: Math.max(1, Math.min(60, Number(input.lines) || 30)) });
+        return { ...out, indexed: have, missing: ids.filter(id => !have.includes(id)) };
+      },
+    });
     ctx.tool("recall.transcript", {
+      effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
@@ -416,9 +533,9 @@ export default {
       // A person's surfaces only: tool output can hold anything the session read, so it is never
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return transcript(q);
+        if (!(await wantsMacs(ctx, input, caller, meta))) return transcript(q);
         // On the box, for the person: a session the box does not have, or one the caller says is
         // on the Mac, is read from the Macs, as recall.thread does. The blocks go back to the
         // caller and are never stored here.
@@ -465,6 +582,7 @@ export default {
     // The same people as recall.transcript: the text of every turn goes by, redacted.
     const own = ["cli", "local", "deck", "capsule", "module"];
     ctx.tool("recall.watch", {
+      effect: "write",
       description: "Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "string" }, watch: { type: "string" } } },
@@ -472,41 +590,72 @@ export default {
       run: async input => watches.watch(input),
     });
     ctx.tool("recall.unwatch", {
+      effect: "write",
       description: "Stop following a session (a watch id from recall.watch).",
       input: { type: "object", required: ["watch"], properties: { watch: { type: "string" } } },
       callers: own,
       run: async input => watches.unwatch(input),
     });
     ctx.tool("recall.sessions", {
+      effect: "read",
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
-        const r = await reach(agent, caller);
-        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        const r = await reach(agent, caller, meta);
+        if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
-        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
-        if (!wantsMacs(ctx, input, caller)) return scoped(sessions(db, q));
+        const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
         return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
       },
     });
     ctx.tool("recall.forget", {
+      effect: "write",
       internal: true,
       description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      callers: ["module"],
       input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
-      run: async ({ sessions: ids }) => { const n = indexer.forget(ids.map(String)); dense.invalidate(); return { forgot: n }; },
+      run: async ({ sessions: ids }) => {
+        const n = indexer.forget(ids.map(String)); dense.invalidate();
+        // The Space's memory forgets what it kept of them too (a refusal or no work module is fine: there is nothing to forget).
+        for (const id of ids.map(String)) { try { await ctx.call("work.know.forget", { session: id }); } catch { /* nothing kept */ } }
+        return { forgot: n };
+      },
+    });
+    ctx.tool("recall.sealscan", {
+      description: "One look at what Recall's index already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, and how many search vectors were made from them, never a value. It changes nothing. New turns are scrubbed on the way in.",
+      callers: ["cli", "local", "deck", "capsule"],
+      input: { type: "object", properties: {} },
+      run: async () => ({ ...scanIndex(db), log: scrubLog(db), note: "Counts only. Nothing was changed. A value that is sealed in a record today can only be matched by the sealing process's ledger, which Recall does not hold." }),
+    });
+    ctx.tool("recall.sealscrub", {
+      description: "Rewrite what Recall's index already holds that has the shape of a sealed value: each matched span becomes a placeholder, nothing else in a turn, title or name changes, and the search vectors made from a changed turn are dropped and made again. Only the person, with presence. One log row (counts and classes) is kept.",
+      callers: ["cli", "local", "deck", "capsule"],
+      presence: { summary: () => "Replace values shaped like an SSN, card or bank number in your searchable history with placeholders" },
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const r = scrubIndex(db);
+        if (r.turns) dense.invalidate();
+        ctx.log(`recall: sealed-class scrub rewrote ${r.turns} turns, ${r.titles} titles, ${r.names} names; dropped ${r.vectors} vectors`);
+        ctx.events.emit("recall.scrubbed", { turns: r.turns, titles: r.titles, names: r.names, vectors: r.vectors, classes: r.classes });
+        return r;
+      },
     });
     ctx.tool("recall.index", {
+      effect: "write",
       description: "Index new and changed transcripts now. Returns what the pass did.",
+      callers: own,
       input: { type: "object", properties: {} },
       run: async () => pass(),
     });
     ctx.tool("recall.status", {
+      effect: "read",
       description: "How much is indexed, when the last pass ran, and whether search can rank by meaning.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -525,7 +674,9 @@ export default {
     });
 
     ctx.tool("recall.setup", {
+      effect: "write",
       description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      callers: ["cli", "local", "deck", "capsule"],
       input: { type: "object", properties: {} },
       run: async () => {
         if (opts.vectors === false) return { ready: false, why: vec.why };
@@ -538,7 +689,9 @@ export default {
     });
 
     ctx.tool("recall.eval", {
+      effect: "read",
       description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      callers: own,
       input: { type: "object", required: ["queries"], properties: {
         queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
         nonsense: stringArray, k: { type: "integer" } } },
@@ -565,8 +718,26 @@ export default {
         chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
-    const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
-      ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); })];
+    /** Index one session now, on the pass chain, and wait for it. @param {string} id */
+    const indexNow = id => {
+      chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+      return chain;
+    };
+    // A thread another provider runs has no Claude Code Stop hook: when one of its turns finishes, its mirror (core/switchboard mirror()) is indexed, from the mirror folder alone.
+    const indexMirror = (/** @type {any} */ e) => {
+      const thread = e && e.thread;
+      if (stopped || !mirrorRoot || typeof thread !== "string" || !thread) return;
+      const id = `m-${thread}`;
+      clearTimeout(soon.get(id));
+      soon.set(id, setTimeout(() => {
+        soon.delete(id);
+        chain = chain.then(() => (stopped ? null : indexer.session([mirrorRoot], id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+      }, SOON_MS));
+    };
+    const offs = [ctx.events.on("thread.finished", indexMirror), ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
+      ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); }),
+      // A deleted session is erased from the Space's memory too (work.know.forget); Recall's own rows follow the transcript file, which a provider keeps.
+      ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const id = e?.payload?.thread; if (typeof id === "string" && id) Promise.resolve(ctx.call("work.know.forget", { session: id })).catch(() => {}); })];
 
     // After start returns, so vyred's startup never waits on a pass.
     const first = setTimeout(() => { pass().catch(() => {}); }, 0);
@@ -585,9 +756,10 @@ export default {
         await chain;
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
-        if (vec.loading) await within(vec.loading.catch(() => null), 5000);
-        const e = /** @type {any} */ (vec.embedder);
-        if (e && typeof e.close === "function") e.close();
+        // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
+        // test that started one, never exited.) The embedder is closed whatever the wait does.
+        try { if (vec.loading) await within(vec.loading.catch(() => null), 5000); }
+        finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };
   },

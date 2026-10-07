@@ -1,114 +1,136 @@
-# Vyre
+<p align="center">
+  <img src="docs/images/readme/vyre-mark.svg" width="96" alt="Vyre">
+</p>
 
-[![node](https://github.com/vyre-ai/vyre/actions/workflows/node.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/node.yml)
-[![capsule-mac](https://github.com/vyre-ai/vyre/actions/workflows/capsule-mac.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/capsule-mac.yml)
-[![ios](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/ios.yml)
-[![android](https://github.com/vyre-ai/vyre/actions/workflows/android.yml/badge.svg)](https://github.com/vyre-ai/vyre/actions/workflows/android.yml)
+<h1 align="center">Vyre</h1>
 
-**Your agents live on your server. Reach them from your Mac or your phone.**
+<p align="center"><b>Your team and your AI agents, working together on a server you own.</b><br>
+Open source. Self-hosted. Any model.</p>
 
-Vyre is an open-source, self-hosted home for your AI agents. They run on a server you own and keep working when your laptop is closed. On your Mac you reach them with Vyre Lumen: press Option-Space in any app, ask, and send work to an agent. On your phone, open Vyre from your Home Screen.
+<p align="center">
+  <a href="https://vyre.run">Website</a> ·
+  <a href="docs/get-started/install.md">Install</a> ·
+  <a href="docs/index.md">Docs</a> ·
+  <a href="docs/known-gaps.md">Known gaps</a>
+</p>
 
-Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
+<p align="center">
+  <a href="https://github.com/vyre-ai/vyre/actions/workflows/node.yml"><img src="https://github.com/vyre-ai/vyre/actions/workflows/node.yml/badge.svg" alt="tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="Apache 2.0"></a>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-now.dark.png">
-  <img src="docs/using/shots/deck-now.png" alt="The Deck's Now page: what needs you, and which agents are working, for the Harlow Legal and Northwind Bakery projects" width="640">
-</picture>
+<p align="center">
+  <img src="docs/images/readme/vyre-demo.gif" width="860" alt="Press Option-Space in any app and ask your assistant: it hands the work to the right agent, reports back when it is done, and the three emails wait for your Face ID before they go out.">
+</p>
 
-## Set up
+AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same client your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.
 
-Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI, connecting Tailscale and adding your phone.
+Vyre is the place where they can. Your people, your agents and the work they share live on one server you own. You ask from your phone, your Mac or a browser, the right agent does the work with the right context, and everything that leaves your server waits for a person's yes.
 
-- **The server** is a Linux machine with Docker, or a Mac that stays on.
-- **Tailscale** is required. The free plan is enough.
-- **Your Mac** (Node 22.5 or newer, Tailscale signed in) pairs with your server and gets Vyre Lumen:
+## What you get
 
+- **A team of agents, not a chat box.** Give each agent a role and its own instructions, or let your assistant hand work to the one best placed for it. Agents work on your server while you get on with your day, and report back when they are done.
+- **Any model, your own accounts.** Claude, Codex, Grok, or hundreds of models through OpenRouter. Sign in with the subscription you already pay for, or use an API key. Switch models in the middle of a conversation, or ask two at once.
+- **One shared picture of the work.** Clients, contacts, projects, tasks, emails and meetings are linked records that people and agents read from the same place. An agent working on a client sees that client's history, not a copy someone pasted.
+- **Conversations with people and agents together.** @ a teammate or an agent, # a record, and keep the whole thread, with exact recall of anything said before.
+- **Automations that do the same thing every time.** Watch for an email, a form or a date, then run declared steps: sort it with a model, update a record, assign a task, draft the reply.
+- **A yes for anything that leaves.** Emails, posts, payments and deletes wait for Face ID or Touch ID on your phone, and the approval covers that one act, once.
+- **Keys your agents can use but never see.** A built-in vault holds your passwords and API keys, encrypted on your server, and hands them over only where they are allowed to go.
+
+<p align="center">
+  <img src="docs/images/readme/vyre-tour.gif" width="860" alt="A tour of the Vyre app: what needs you today, a conversation where an agent runs the tests and fixes a failure, the vault showing which agents used a login without seeing it, your projects, and your automations.">
+</p>
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph You["You and your team"]
+    P["Phone"]
+    M["Mac (Option-Space)"]
+    W["Windows / browser"]
+  end
+  subgraph Server["Your server"]
+    K["Rules and approvals<br/>(one check for every call)"]
+    R["Records, chats,<br/>files, memory"]
+    V["Vault"]
+    A["Agents and<br/>automations"]
+  end
+  L["Model providers<br/>Claude · Codex · Grok · OpenRouter"]
+  P & M & W -- "end-to-end encrypted" --> K
+  K --- R
+  K --- V
+  K --- A
+  A -- "your accounts" --> L
 ```
-npm install -g https://vyre.run/box/vyre.tgz
-vyre up
-vyre capsule install
-```
 
-`vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
+Every call, whether it comes from a person's phone, an agent or an automation, goes through one check on your server. It decides what the caller may read and change, holds anything outward for a person, and writes changes and approvals to the log. Agents run in their own sandboxes on the same server, with the records and files their task needs.
 
-The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
+## Bring any model
 
-## On your Mac: Vyre Lumen
+| Provider | Runs | Sign in with |
+|---|---|---|
+| Claude | Claude Code | your Claude subscription, or an Anthropic API key |
+| Codex | Codex, over the open Agent Client Protocol | your ChatGPT sign-in, or an OpenAI API key |
+| Grok | Grok Build, over the Agent Client Protocol | your Grok sign-in, or an xAI API key |
+| OpenRouter | hundreds of models | an OpenRouter API key |
 
-Press Option-Space in any app. Ask a question, send work to one of your agents, or run a `vyre` command. Answers show which past session they came from, and Lumen knows which project you are working in.
+Your conversations, memory and files belong to Vyre, not to a provider, so changing the model doesn't mean starting over. Each reply shows which provider wrote it. Your prompts go only to the provider you choose.
 
+## How the vault works
 
-## On your phone
+1. **You add a key or a password** from the app or the terminal. It is encrypted at rest on your server, and you say where it may be sent, for example only to `api.stripe.com`.
+2. **You grant it** to an agent, an automation or a connected service, by name.
+3. **The agent uses it without seeing it.** It asks to call the service, and Vyre attaches the credential to that one request on the way out. The value never enters the agent's context, a log or an event.
+4. **Showing or copying a value** needs you, in person: Face ID, Touch ID or a passkey.
 
-Vyre on your phone is the web app, added to your Home Screen from your server's address. Your phone needs Tailscale signed in. The setup page shows a ring to scan with your phone to pair it, shows your server's name and fingerprint, and pairs only after you tap Pair.
+The vault is also a password manager for your team: logins with one-time codes, cards, notes, API keys and SSH keys. You share an item with a teammate and revoke it when they leave. Sensitive fields in your records, such as a social security number, work the same way: an agent sees a placeholder, never the value.
 
-<picture>
-  <img src="docs/images/readme/wink-confirm.png" alt="The phone's pairing success screen, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
-</picture>
+## Security
 
-## On Windows
+- **Your data stays on your server.** Records, chats, files, memory and keys never leave it, except what a step sends to the provider you chose.
+- **Encrypted chats.** A chat with a person in it is never stored in the clear. Its key lives on the participants' devices and is lent to the server only while a session runs.
+- **Signed code.** Vyre's own modules are checked by signature. An add-on runs in a sandbox and can only reach what it declares. Releases are signed, and Vyre verifies them before it updates.
+- **No open door.** Your devices reach the server through an end-to-end encrypted relay, or a direct path your router agreed to. The one port the server publishes is a TLS door for its own name, and nothing listens there until the server has a name and a certificate.
 
-There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, and it updates itself. Its installer, VyreSetup.exe, comes with each release on GitHub.
+## Quick start
 
-## Your agents, your accounts
+You need a server (a Linux machine with Docker, or a Mac that stays on) and an account with at least one model provider.
 
-- **Sessions that belong to Vyre, not to one model.** A session keeps its memory and files when you change the model. Choose the provider, account, model and effort from the picker in the composer, or add `@codex` or `@grok` to a single message and the session stays where it is. A line in the thread says "Switched to Grok" when it changes, and each reply carries its provider's own mark.
-- **Images and video.** What a model generates is saved in the project as an artifact, with its provider, prompt and session, and shows up in a Generated folder in Drive. "Use in" hands an image to another model.
-- **Artifacts.** Documents, charts, diagrams and decks run with no scripts. An interactive page says "Runs its own code and can reach the internet" before it runs. In Safari, on a Mac or an iPhone, a page that navigates itself is a known gap that is fixed in 0.2.1: until then open interactive pages only from agents you trust. See [Known gaps](docs/known-gaps.md).
-- **Memory across sessions.** Vyre searches what you and your agents said before and shows the session each answer came from.
-- **Teammates.** Give each project its own named agents with their own duties and notes; they pick up where they left off.
-- **GitHub.** Connect with a short code. Commits carry your identity, and each session works in its own copy of the repo, so parallel sessions don't collide.
-- **Watchers.** Small jobs that watch for something and tell you, scoped to the project that made them.
-- **Agent computers.** An agent that gets its own computer is held to that computer, and only you can resume a paused one.
-- **Vyre for Chrome.** An extension that lets your agents use Chrome in a tab group of their own. It learns how sites work so later runs are faster, which you can see and forget under Memory, and it says plainly what it does not block. See [Learning](docs/using/learning.md).
-- **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
+1. Install the Vyre app on your phone and claim your name.
+2. Run the line it shows on your server:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-chat.dark.png">
-  <img src="docs/using/shots/deck-chat.png" alt="The Deck showing a session in the Harlow Legal project, with the thread and each reply's author" width="640">
-</picture>
+   ```sh
+   curl -fsSL vyre.run/i | sh
+   ```
 
-## Updates
+3. Pair the server from the app: scan the code, paste it, or type the short code.
 
-Releases are signed (an Ed25519 signature on the release files, and cosign on the server image) and Vyre checks both before it installs one. The stable channel ignores prereleases.
+On our test server the workspace was ready about two minutes after the install finished. Step by step: [Install](docs/get-started/install.md).
 
-## What stays private
+## Words you'll see in the app
 
-- Your keys, memory and sessions stay on your server.
-- Your prompts go to the provider you choose (Anthropic, OpenAI, xAI or OpenRouter), the same as when you use that provider on its own.
-- Your server publishes no port to the internet. You reach it over Tailscale.
-- Vyre's relay at relay.vyre.run carries setup progress and phone pairing. That traffic is end-to-end encrypted, so the relay can see that a server and a device talk, and when, but never what they say.
+| Word | What it is |
+|---|---|
+| Space | Your team's workspace: its members, records, chats and files. You also get a Personal one. |
+| Assistant | Your own agent. It answers you and hands work to the others. |
+| Agent | An AI teammate with a role, its own instructions and the access you gave it. |
+| Flow | An automation: something to watch for, and the steps to run. |
+| Kit | A ready-made set of record types and stages, for example for a law firm. |
+| Lumen | Vyre on your Mac, opened with Option-Space. |
 
-## Not in 0.2.0
+## Contributing
 
-Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safari fix above, faster Chrome routing and parallel tabs, "give it to two" (one question, two models, side by side) and per-provider blocks for each model's plans and diffs. Coming in 0.2.5: Spaces (team spaces and sharing between people), memory rollover, and putting idle sessions to sleep.
+Vyre needs Node 22.5 or newer, and the server has no build step.
 
-## Questions
-
-**What is Vyre?** A daemon and a set of apps that give your AI agents a permanent home on a server you own: Vyre Lumen for your Mac, an app for your phone and one for Windows. It runs your Claude, Codex and Grok agents with your own accounts.
-
-**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), Tailscale, and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
-
-**What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
-
-**Is it secure?** Your server publishes no port, your keys are encrypted at rest, relay traffic is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Releases are signed.
-
-**How do I add my phone?** Open the setup page or your server's address on the phone, scan the ring, check the name and fingerprint, and tap Pair.
-
-## Develop
-
-Needs Node 22.5 or newer. No build step, no dependencies.
-
-```
+```sh
 npm test
 VYRE_HOME=$(mktemp -d) bin/vyre up
 bin/vyre call system.echo '{"text":"hi"}'
-bin/vyre down
 ```
 
-Write a module: [docs/MODULES.md](docs/MODULES.md). What each team is building now: [docs/work/](docs/work/).
+Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). Security reports go through [private advisories](https://github.com/vyre-ai/vyre/security/advisories/new).
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE). Vyre is free; you pay your model providers as you do today.

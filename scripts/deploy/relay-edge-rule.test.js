@@ -1,3 +1,4 @@
+import "../mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { edgeRule, mergeRules, upsert } from "./relay-edge-rule.mjs";

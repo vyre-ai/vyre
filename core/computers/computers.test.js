@@ -6,6 +6,7 @@
 // standing in for the real binary, so threads.lease has an actual row to hold a lease on. The
 // clock is the pool's own now(), moved by the test; the real sweep timer is off (sweepMs 0).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -16,6 +17,7 @@ import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { FakeDriver } from "./driver/fake.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE_CLAUDE, 0o755);
@@ -213,7 +215,7 @@ test("computers: shield refuses every read and action, over pause and take-over 
 test("computers: take-over through the lease, chatting that does not pause, and the lease ending it", async t => {
   const s = await boot(t);
   // The user chats with kit from the Deck: the lease moves, kit keeps working.
-  await s.d.registry.call("threads.lease", { thread: s.kitThread, surface: "deck:laptop" }, "local");
+  await s.cli("threads.lease", { thread: s.kitThread, surface: "deck:laptop" });
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "chrome.click" })).data, { ok: true });
   // Now they take over from Glass.
   const r = await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
@@ -224,7 +226,7 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true);
   assert.equal((await s.cli("computers.get", { agent: "kit" })).data.takeover, "glass:laptop");
   // They pick up the phone: the take-over moves with the lease.
-  await s.d.registry.call("threads.lease", { thread: s.kitThread, surface: "phone:pocket" }, "local");
+  await s.cli("threads.lease", { thread: s.kitThread, surface: "phone:pocket" });
   assert.equal(s.h.keyboard.canType("kit", "phone:pocket"), true);
   assert.equal((await s.module("computers.may-act", { agent: "kit" })).data.holder, "phone:pocket");
   // The phone gives back.
@@ -232,7 +234,7 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
   // Taken over again, and the lease released from elsewhere ends it.
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
-  await s.d.registry.call("threads.release", { thread: s.kitThread, surface: "glass:laptop" }, "local");
+  await s.cli("threads.release", { thread: s.kitThread, surface: "glass:laptop" });
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
   // And once more, left to expire.
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });

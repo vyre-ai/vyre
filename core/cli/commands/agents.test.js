@@ -4,6 +4,7 @@
 // (core/switchboard/testing/fake-claude.js) for the agents' threads, the fake computer driver,
 // and `present` as the presence verifier so no dialog is ever shown.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -13,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import { FakeDriver } from "../../computers/driver/fake.js";
-import { tempHome, present } from "../../../test/helpers.js";
+import { tempHome, present, asOwner } from "../../../test/helpers.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
@@ -51,6 +52,7 @@ async function world(t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], vault: { keystore: "file" },
     computers: { driver: "fake", sweepMs: 0, waitMs: 100 }, modules: { disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, presence: present, log: () => {} });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   t.after(() => d.stop());
   const tool = (name, input = {}) => call(name, input, { root, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
@@ -179,7 +181,7 @@ test("agents cli: --view draws the agents as a table and a computer as a card, w
   const f = frames(l.stdout);
   assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.title], ["agents list", "table", "Agents"]);
   assert.deepEqual(f[0].view.columns.map(c => c.key), ["name", "kind", "status", "doing", "projects"]);
-  assert.deepEqual(f[0].view.rows.map(r => r.id), ["juno", "kit"]);
+  assert.deepEqual(f[0].view.rows.map(r => r.id).sort(), ["engineer", "juno", "kit"]); // the built-in Engineer is listed beside the two the world makes
   assert.deepEqual(f[0].data, JSON.parse((await vyre("agents", "--json")).stdout));
   assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
 

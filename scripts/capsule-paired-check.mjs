@@ -5,7 +5,7 @@
 //   node scripts/capsule-paired-check.mjs [path/to/Vyre.app]
 //
 // One node process runs a box vyred and a Mac vyred in temp homes, paired through the link's seams and a simulated tailnet
-// (test/link-harness.js, the harness the link tests and deck/test/mac-world.js use). The box has an assistant called "kit"; the
+// (test/link-harness.js, the harness the link tests and web/test/mac-world.js use). The box has an assistant called "kit"; the
 // Mac has none. The built Lumen is pointed at the Mac's socket in drive mode (nothing is posted to the system) and must:
 //   - know it is linked to the box and offer agents.ask,
 //   - list "kit" for "@" and for a question, from the box, and never say "no assistant on this Vyre",

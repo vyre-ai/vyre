@@ -5,6 +5,7 @@
 // real, mapped project: project_cwds must name a real project's own folder, or it gets nothing,
 // never the whole corpus and never an unmapped folder.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +13,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 /** The fixture corpus, moved under a real work dir so a real project can own its folder (as
  * core/recall/scope.test.js does for the same reason). */
@@ -29,7 +30,7 @@ async function world(t) {
   await call("recall.index", {}, opts);
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  { const made = await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] }); assert.equal(made.error, undefined, JSON.stringify(made)); }
   return { d, opts, work };
 }
 

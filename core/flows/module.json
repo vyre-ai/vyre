@@ -1,0 +1,36 @@
+{
+  "name": "flows",
+  "version": "0.1.0",
+  "description": "Flows and Kits: write, approve and run a Flow, with its triggers, waits and tasks. The assembly lives in the daemon (core/daemon/flows-host.js); this module registers the tools over it, each running under the caller's own chain.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "daemon": ["flowsHost"], "kernel": { "actions": ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], "prefixes": ["*"] } },
+  "does": {
+    "tools": [
+      { "name": "flows.define", "effect": "write", "reach": "anyone" },
+      { "name": "flows.approve", "effect": "write", "reach": "person" },
+      { "name": "flows.propose", "effect": "write", "reach": "anyone" },
+      { "name": "flows.card", "effect": "read", "reach": "anyone" },
+      { "name": "flows.get", "effect": "read", "reach": "anyone" },
+      { "name": "flows.list", "effect": "read", "reach": "anyone" },
+      { "name": "flows.code", "effect": "read", "reach": "anyone" },
+      { "name": "flows.compile-text", "effect": "read", "reach": "anyone" },
+      { "name": "flows.graph", "effect": "read", "reach": "anyone" },
+      { "name": "flows.simulate", "effect": "read", "reach": "anyone" },
+      { "name": "flows.start", "effect": "write", "reach": "anyone" },
+      { "name": "flows.pause", "effect": "write", "reach": "person" },
+      { "name": "flows.resume", "effect": "write", "reach": "person" },
+      { "name": "flows.runs", "effect": "read", "reach": "anyone" },
+      { "name": "flows.run", "effect": "read", "reach": "anyone" },
+      { "name": "flows.budget", "effect": "write", "reach": "anyone" },
+      { "name": "flows.retry", "effect": "write", "reach": "anyone" },
+      { "name": "flows.kit.card", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.propose", "effect": "write", "reach": "anyone" },
+      { "name": "flows.kit.remove", "effect": "write", "reach": "person" },
+      { "name": "flows.kit.list", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.diff", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.library", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.library.get", "effect": "read", "reach": "anyone" }
+    ]
+  }
+}

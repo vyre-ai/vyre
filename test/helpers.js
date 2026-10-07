@@ -16,6 +16,10 @@ import { setPeerHosting } from "../core/daemon/peer.js";
 process.env.VYRE_TEST_HOSTED = "1"; // for a vyred a test starts as a child (see peerHosting)
 setPeerHosting(true);
 
+// A ring ticket (relay.pair.ticket) is confirmed with three words by the Wink module once that module is up (X-1, 4 Oct 2026): the redeemer is a waiting pairing until the
+// person picks the right words. Tests of the relay's own pairing run with no one to confirm, so they take the one-step ring; test/wink.test.js unsets this and tests the gate.
+if (process.env.VYRE_TEST_UNGATED_RING === undefined) process.env.VYRE_TEST_UNGATED_RING = "1";
+
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
 // that needs Tailscale sets its own fake, which replaces this.
@@ -134,7 +138,19 @@ export function writeModule(root, name, manifest, source) {
 export const present = {
   required: () => false,
   verify: async () => ({ ok: true, method: "test" }),
+  // The daemon asks the real verifier for the Capsule's pin when it cannot classify a caller (a call from an ssh session with no terminal); a fixture pins nothing.
+  capsulePin: () => null,
   challenge: async () => ({ error: { code: "bad_input", message: "presence is not checked in this test" } }),
+};
+
+/**
+ * A presence verifier that finds NO person at any call, for tests that a denied proof stops a tool that declares presence: every presence-guarded tool answers
+ * `presence_required` and nothing it would have done happens. Pass it as `start({ root, presence: absent })`. Tools that declare no presence are unaffected.
+ */
+export const absent = {
+  required: (/** @type {string} */ _tool, /** @type {any} */ def) => Boolean(def && def.presence),
+  verify: async () => ({ ok: false, code: "presence_required", message: "no person is here to approve this", methods: [] }),
+  challenge: async () => ({ error: { code: "presence_required", message: "no person is here to approve this" } }),
 };
 
 /**
@@ -169,4 +185,36 @@ async function upFixture(home, fixture, env = process.env) {
     if (child.exitCode !== null) break;
   }
   return { code: 1 };
+}
+
+/**
+ * Calls as the Space owner's own enrolled device, with the kernel's development stand-in proof: what a paired app sends. Granting a project to an agent is a kernel grant (lib/project-reach.js), a
+ * person's act with the kernel's own proof, so a test that makes an agent with `projects` makes it through this and not through the plain HTTP client. The stand-in needs the file
+ * `dev-presence-stand-in` in the home (a development build reads it).
+ * @param {any} d a started daemon @param {string} root its home @param {string} [caller]
+ * @returns {(tool: string, input?: any) => Promise<any>}
+ */
+/**
+ * A test daemon whose plain registry calls from a person's local surfaces (cli, deck, local, capsule) arrive as the owner's own enrolled device, as they do through the real socket (the daemon sets the
+ * kernel facts of a surface it verified). A call with no person chain on a run in a chat is refused (core/switchboard chatGate fails closed), so a kernel-on test that calls threads.* as "cli" with
+ * no meta uses this once after `start`. Calls that already carry a token, facts or a caller of another class are untouched.
+ * @param {any} d @param {string} root @returns {any} d
+ */
+export function asOwner(d, root) {
+  const meta = (() => { kernelCaller(d, root); return { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } }; })();
+  const orig = d.registry.call.bind(d.registry);
+  d.registry.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => {
+    const person = /^(cli|deck|local|capsule)$/.test(String(caller));
+    // a call whose only meta is an idempotency key still arrives as the owner's device; any other meta (an explicit {} for "no facts") is the test's own and is kept
+    const keyOnly = m && typeof m === "object" && Object.keys(m).length === 1 && typeof m.idempotencyKey === "string";
+    return orig(tool, input, caller, m === undefined ? (person ? meta : undefined) : person && keyOnly ? { ...meta, ...m } : m);
+  };
+  return d;
+}
+
+export function kernelCaller(d, root, caller = "cli") {
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  try { d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone"); } catch { /* no relay table in this home: the call carries its facts anyway */ }
+  const meta = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } };
+  return (tool, input = {}) => d.registry.call(tool, input, caller, meta);
 }

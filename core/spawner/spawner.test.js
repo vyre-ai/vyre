@@ -3,12 +3,13 @@
 // environment it passes, and kill. The uid change itself (setpriv) is checked in the box image by
 // scripts/e2e-headscale.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
-import { spawnAsAgent, wipeAccount } from "./client.js";
+import { spawnAsAgent, wipeAccount, shareTranscript } from "./client.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 async function setup(t) {
@@ -147,4 +148,23 @@ test("spawner accounts: seed files are for an account, stay inside its HOME, and
   const p = await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2000, seed: { ".grok/config.toml": "x = 1\n" } });
   await exited(p);
   assert.deepEqual(written, [[path.join(acct, "2000"), 2000, { ".grok/config.toml": "x = 1\n" }]]);
+});
+
+test("spawner share: only one .jsonl under the account's own .claude/projects is made group-readable; any other path, account or shape is refused", async t => {
+  const shared = [];
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true }); fs.mkdirSync(path.join(acct, "2001"), { recursive: true });
+  const stat = d => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, share: (home, who, file) => shared.push([who.uid, file]) } });
+  t.after(() => srv.close());
+  const good = path.join(acct, "2000", ".claude", "projects", "p", "s1.jsonl");
+  assert.equal(await shareTranscript(2000, good, { socket }), true);
+  assert.deepEqual(shared, [[2000, good]]);
+  await assert.rejects(shareTranscript(2001, good, { socket }), /only a \.jsonl under the account's own/);   // another account's file
+  await assert.rejects(shareTranscript(2000, path.join(acct, "2000", ".claude", "projects", "p", "s1.txt"), { socket }), /only a \.jsonl/);
+  await assert.rejects(shareTranscript(2000, path.join(acct, "2000", ".claude", ".credentials.json"), { socket }), /only a \.jsonl/);
+  await assert.rejects(shareTranscript(2000, path.join(acct, "2000", ".claude", "projects", "..", "..", "x.jsonl"), { socket }), /only a \.jsonl/);
+  await assert.rejects(shareTranscript(2999, good, { socket }), /account must be a uid/);
+  assert.equal(shared.length, 1, "nothing else was shared");
 });

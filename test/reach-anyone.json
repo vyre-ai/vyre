@@ -157,6 +157,22 @@
    "module": "assistant",
    "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
   },
+  "bridges.continue": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.copy": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.resolve": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.view.read": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
   "chrome.act": {
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
@@ -376,6 +392,86 @@
   "files.stat": {
    "module": "files",
    "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
+  },
+  "flows.budget": {
+   "module": "flows",
+   "reason": "read: anyone in the Space reads the AI allowance; setting it (tokens_per_day, context_tokens) is refused in the tool unless the caller is an owner or an admin of the Space"
+  },
+  "flows.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.code": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.compile-text": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.define": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.get": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.graph": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.diff": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.library": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
+  },
+  "flows.kit.library.get": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
+  },
+  "flows.kit.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.propose": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.propose": {
+   "module": "flows",
+   "reason": "callers list names the person's surfaces and model sessions; the kernel chain decides who may propose and a proposal is only a draft until a person approves it"
+  },
+  "flows.retry": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.run": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.runs": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.simulate": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.start": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
   "gate.approve": {
    "module": "gate",
@@ -645,6 +741,10 @@
    "module": "harness",
    "reason": "own-session check (own(), core/harness): a verified hook names only its own session; an unverified SessionStart brief only informs (it warns a terminal resuming a live headless thread), so it may name any session; it reads and says, never drains"
   },
+  "harness.end": {
+   "module": "harness",
+   "reason": "a mutating verb, guarded as every Harness hook: HOOK_CALLERS and own() refuse a caller that is not the session's own hook; it only says thread.stopped once for that session"
+  },
   "harness.enrich": {
    "module": "harness",
    "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
@@ -777,6 +877,30 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
+  "memory.identity.lock": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.status": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.begin": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.space.file": {
+   "module": "memory",
+   "reason": "the kernel's memory.file grant on the caller's chain decides (kernel/gateway/memory.js): a member holds none by default and an agent only by an explicit grant; the facts' source must be one the filer may read"
+  },
+  "memory.space.recall": {
+   "module": "memory",
+   "reason": "the kernel's memory.read grant on the caller's chain decides, asked again for each fact (kernel/gateway/memory.js): a fact the chain may not read is absent"
+  },
+  "memory.space.retire": {
+   "module": "memory",
+   "reason": "the kernel's memory.retire grant decides (kernel/gateway/memory.js): the filer or a person with the right"
+  },
   "names.check": {
    "module": "names",
    "reason": "read-only: whether a name is free; no side effect"
@@ -785,33 +909,17 @@
    "module": "names",
    "reason": "the steward check in the tool: a callers list of the person's surfaces plus module, narrowed by name to module:onboard and module:launch; refuses an agent claim, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
   },
-  "names.connect": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
-  "names.fallback": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
-  "names.owner": {
-   "module": "names",
-   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:network for the owner adoption during a live setup; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
   "names.status": {
    "module": "names",
    "reason": "read-only; no secret, no side effect"
   },
-  "network.tailscale.login": {
+  "network.wink.status": {
    "module": "network",
-   "reason": "the positive callers check allowed() in the tool: the person's surfaces, their devices, module:onboard and their own session; refuses a guest, another agent, an added module and anonymous"
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the work is the Wink module's wink.network.status, reach modules and callable only as module:network (core/network/wink.test.js)"
   },
-  "network.tailscale.peers": {
+  "network.wink.whois": {
    "module": "network",
-   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
-  },
-  "network.tailscale.status": {
-   "module": "network",
-   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the answer comes from the identity list and the connections the node host admitted, never from a tag or host name a peer sets (core/network/wink.test.js)"
   },
   "planner.add": {
    "module": "planner",
@@ -820,6 +928,10 @@
   "planner.agenda": {
    "module": "planner",
    "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.bin": {
+   "module": "planner",
+   "reason": "read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
   },
   "planner.calendar.create": {
    "module": "planner",
@@ -869,6 +981,14 @@
    "module": "planner",
    "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
   },
+  "pluginagent.ask": {
+   "module": "pluginagent",
+   "reason": "callers list in code (the person's surfaces, mcp and harness); it only files one pending request for the person to approve with presence (pluginagent.grant), one at a time, and changes nothing else"
+  },
+  "pluginagent.status": {
+   "module": "pluginagent",
+   "reason": "read-only: whether Claude Code on this computer has been granted, and one plain sentence"
+  },
   "presence.capsule.pin": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
@@ -885,6 +1005,14 @@
    "module": "presence",
    "reason": "read-only, scoped by the module itself"
   },
+  "presence.person.pair-challenge": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels; it answers a challenge for the paired grant (random for a device with no grant, so it says nothing about whether one exists) and only the confirmed key can sign it"
+  },
+  "presence.person.rotate": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels; the new secret is signed by the paired device's key and the old one stops working"
+  },
   "presence.person.sessions": {
    "module": "presence",
    "reason": "callers limited in code to capsule, cli, deck, local"
@@ -892,6 +1020,10 @@
   "presence.person.start": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.person.start-paired": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels (a paired device presenting its own key, never a model, agent or assistant); the signature over the grant's challenge with the key the owner confirmed is the proof"
   },
   "presence.remove": {
    "module": "presence",
@@ -913,9 +1045,13 @@
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local"
   },
-  "projects.access.migrate": {
+  "projects.access.pending": {
    "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local"
+   "reason": "callers limited in code to capsule, cli, deck, local; read only"
+  },
+  "projects.access.restore": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local; a grant needs the person's own proof, which only the person's own call carries"
   },
   "projects.archive": {
    "module": "projects",
@@ -957,6 +1093,70 @@
    "module": "providers",
    "reason": "read-only: names and states, never a value"
   },
+  "publish.approve": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.create": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.domain.add": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.domain.verify": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.down": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.up": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.flow": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.list": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.plan": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.preview": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.publish": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.rollback": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.secret.grant": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.secret.revoke": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.status": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
   "relay.pair.first": {
    "module": "relay",
    "reason": "callers list in the tool: only the onboarding page's caller, and the tool refuses once a device is paired or an owner exists"
@@ -997,10 +1197,6 @@
    "module": "relay",
    "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
   },
-  "relay.tailnet.status": {
-   "module": "relay",
-   "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
-  },
   "releases.cert": {
    "module": "releases",
    "reason": "callers limited in code to cli, deck, local, tailnet"
@@ -1008,6 +1204,14 @@
   "releases.sign": {
    "module": "releases",
    "reason": "callers limited in code to cli, local, module"
+  },
+  "runner.place": {
+   "module": "runner",
+   "reason": "read-only: answers where a session would run from the grants and this computer's state; starts nothing"
+  },
+  "runner.status": {
+   "module": "runner",
+   "reason": "read-only: reports whether this computer can run a space's sessions and what is running"
   },
   "screen.context": {
    "module": "screen",
@@ -1112,6 +1316,22 @@
   "sight.watch": {
    "module": "sight",
    "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "spaces.code.submit": {
+   "module": "spaces",
+   "reason": "the pairing code is the guard: its hash is held here, five tries, ten minutes, checked in the lib; it is the one tool a relay caller may use and refuses a spent or timed-out code"
+  },
+  "spaces.invites.redeem": {
+   "module": "spaces",
+   "reason": "the signed invite token, the person's own signature checked against the directory's current list for their name, and the use count are the authority; a forged, used or revoked invite is refused"
+  },
+  "stream.export-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
+  "stream.import-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
   },
   "sync.consent": {
    "module": "sync",
@@ -1237,6 +1457,18 @@
    "module": "threads",
    "reason": "callers list (harness) plus a check in the daemon route: the pid must be the caller's own process or one above it, where the OS can tell; claudeOf needs a running claude; a live session bound to another process is refused"
   },
+  "threads.chat-of": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; it names a run's chat and nothing in it"
+  },
+  "threads.chat-stop": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
+  "threads.chat-switch": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
   "threads.commands": {
    "module": "threads",
    "reason": "read-only: the slash commands a thread offers"
@@ -1249,6 +1481,10 @@
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
+  "threads.export-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
   "threads.fork": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
@@ -1256,6 +1492,10 @@
   "threads.get": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.import-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
   },
   "threads.interrupt": {
    "module": "threads",
@@ -1277,6 +1517,10 @@
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
+  "threads.of-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the module (work.chat.get) has already checked that the person is in the chat"
+  },
   "threads.queue": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
@@ -1284,6 +1528,10 @@
   "threads.release": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.rename": {
+   "module": "threads",
+   "reason": "guarded: guard() refuses callers that may not rename sessions and mayReach() refuses a thread outside the caller's reach, as for threads.archive"
   },
   "threads.rewind": {
    "module": "threads",
@@ -1352,6 +1600,10 @@
   "vault.account.unlock": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.account.unlock-phone": {
+   "module": "vault",
+   "reason": "callers list in code (mobile and device only: no model, module or browser caller); the password and a presence proof are both required"
   },
   "vault.agent.grant": {
    "module": "vault",
@@ -1645,6 +1897,10 @@
    "module": "vault",
    "reason": "read-only: names and states, never a value"
   },
+  "vault.state": {
+   "module": "vault",
+   "reason": "callers list limits it to the person's surfaces and their own devices (cli, local, deck, capsule, mobile, device); it returns the vault's lock state only"
+  },
   "vault.sweep": {
    "module": "vault",
    "reason": "read-only: places and item names, never a value; presence proof (callers list in code)"
@@ -1708,6 +1964,94 @@
   "watchers.test": {
    "module": "watchers",
    "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+  },
+  "work.call": {
+   "module": "work",
+   "reason": "held at the Gate: the call goes through the generated tool surface, so the caller's own grants decide and an outward act is held as a task for a person or asks for presence; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.chat.change": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
+  },
+  "work.chat.create": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
+  },
+  "work.chat.get": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; read-only"
+  },
+  "work.chat.history-import": {
+   "module": "work",
+   "reason": "guarded: the caller must be in the chat (the kernel's chat read on their own chain), the file is read under their own chain (drive.read), and the writes go to the stream's and the switchboard's module-only import tools"
+  },
+  "work.chat.list": {
+   "module": "work",
+   "reason": "read-only: the chat rows the caller may read through Records (title, project, who, when, status, where it lives); `open` comes from the kernel's chat read, never from the record's people; the kernel: every call is authorized with the chain the kernel builds for the caller"
+  },
+  "work.chat.move": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
+  },
+  "work.chat.rename": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
+  },
+  "work.chat.span": {
+   "module": "work",
+   "reason": "read-only: the kernel's chats.read on the caller's own chain is the one gate (a person in the chat, or an assistant it lists); a non-member gets not_found, the same answer as for a chat that does not exist, and no word comes from a run outside the chat"
+  },
+  "work.chat.upgrade-move": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain in both Spaces (records, chats and Drive under it); only the chats the kernel's chat read says the caller is in move"
+  },
+  "work.chat.upgrade-plan": {
+   "module": "work",
+   "reason": "read-only: counts of the caller's own chats, from the chats the kernel says the caller is in, under the caller's own chain; the kernel: every call is authorized with the chain the kernel builds for the caller"
+  },
+  "work.know.answer": {
+   "module": "work",
+   "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"
+  },
+  "work.know.search": {
+   "module": "work",
+   "reason": "read-only: each hit is authorized per source for the caller's chain, a source the caller may not read is dropped; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.know.suggestions": {
+   "module": "work",
+   "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.project.move": {
+   "module": "work",
+   "reason": "a mutating verb, guarded: the kernel's compound move act (one presence proof bound to the plan hash, verified in the source Space's sealing process) is required, and both Spaces' role checks run under the caller's own chain in each; refused as unavailable until that act exists"
+  },
+  "work.project.move-plan": {
+   "module": "work",
+   "reason": "read-only: the plan is read under the caller's own chain in both Spaces"
+  },
+  "work.project.ref": {
+   "module": "work",
+   "reason": "callers list in code (cli, local, deck, capsule, device, module): never a model, a hook or an anonymous caller; the record is read again under the caller's own chain, so a Project the person may not read is not found, and a module is first-party or the registry's own door call"
+  },
+  "work.project.rename": {
+   "module": "work",
+   "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
+  },
+  "work.situation": {
+   "module": "work",
+   "reason": "read-only: built from records the caller may read; sealed fields appear as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.team.context": {
+   "module": "work",
+   "reason": "read-only: records read under the caller's chain, sealed fields as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.team.doing": {
+   "module": "work",
+   "reason": "read-only: one plain line per teammate from events the caller may read; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.tools": {
+   "module": "work",
+   "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   }
  }
 }

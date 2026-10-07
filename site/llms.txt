@@ -2,19 +2,20 @@
 
 > Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
 
-Current release: 0.2.2. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
+Current release: 0.2.9. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
 
 ## Start here
 - [Home](https://vyre.run/): what Vyre is and what it does
-- [Set up Vyre](https://vyre.run/setup/): the setup page, which gives one install line with a one-time code
+- [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Get started](https://vyre.run/start/): the steps in order
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
+- [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
 - [Mac: Vyre Lumen](https://vyre.run/mac/): Option-Space ask window, built on your Mac
 - [Windows: Vyre Lumen](https://vyre.run/windows/): tray app with an Alt+Space panel
 - [Linux server](https://vyre.run/linux/): where Vyre runs
-- [Phone](https://vyre.run/phone/): the Deck installed to the Home Screen
+- [Phone](https://vyre.run/phone/): the Vyre web app added to the Home Screen
 
 ## Machine-readable
 - [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full

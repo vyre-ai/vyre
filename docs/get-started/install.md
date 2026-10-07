@@ -1,6 +1,6 @@
 ---
 title: Install
-summary: Put Vyre on a server you own, finish setup at vyre.run/setup, and end at your own address with the Lumen on your Mac and Vyre on your phone, one numbered step at a time.
+summary: Put Vyre on a server you own from the Vyre app, pair the server with a code and three words, and end with Vyre on your phone and the Lumen on your Mac, one numbered step at a time.
 audience: users, operators
 owner: integrator
 status: stable
@@ -8,114 +8,119 @@ status: stable
 
 # Install
 
-Vyre runs your agents on a server you own. You open Vyre from the Lumen on your Mac, from your
-phone and from any browser on your tailnet, and the agents keep working when your Mac is asleep.
-Setup starts in your browser at <https://vyre.run/setup>: it gives you one line to paste on the
-server, watches the install, and finishes at your own address, such as `https://alex.vyre.run`.
-The whole path takes about fifteen minutes. Other ways to install are at the end, in
-[Other ways to install](#other-ways-to-install).
+Vyre runs your agents on a server you own. You open Vyre from the Vyre app on your phone, from the
+Lumen on your Mac and from any browser, and the agents keep working when your Mac is asleep.
+Setup starts in the Vyre app: you choose your name, create a space, run one line on the server, and
+pair the server with a code and three words. The whole path takes about fifteen minutes. Other ways
+to install are at the end, in [Other ways to install](#other-ways-to-install).
 
 > [!WHY] Why a server, and not just my Mac?
 > Your assistant and agents keep working when your Mac is asleep or closed, and your phone can
 > reach them from anywhere. A small VPS is enough. A Mac that stays on can be the server too
-> (step 2), and on a Mac you can also try Vyre with no server at all, in
-> [Other ways to install](#other-ways-to-install).
+> (step 3).
 
 ## Before you start
 
 - [ ] A Linux server you can open a terminal on, with an account that can use `sudo`. Docker is
-      installed for you if it is missing, after you say yes. It needs a `/dev/net/tun` device,
-      which most servers have. Or a Mac that stays on and plugged in.
-- [ ] A Tailscale account. Signing in with Google, GitHub, Apple or Microsoft makes one, and the
-      free plan is enough. Setup needs it: Vyre reaches your server over Tailscale, and only over
-      Tailscale. New to Tailscale? See [Tailscale, from zero](tailscale.md).
-- [ ] Tailscale on the computer you set up from, signed in to that same account. Get it from
-      <https://tailscale.com/download>. Your address only opens on devices on your tailnet.
-- [ ] A Claude, ChatGPT (Codex) or Grok account. One is enough to go on, and you can add the
-      others later.
-- [ ] A current browser for the setup page: Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer, or Firefox 130 or newer.
-- [ ] A phone. You open Vyre on it after setup.
+      installed for you if it is missing, after you say yes. Or a Mac that stays on and plugged in.
+- [ ] Size: one space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow. If a server has too little free memory for Twenty, the installer says so and Vyre offers the small built-in store instead.
+- [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok
+      account if you want them. You can add them later in Settings.
+- [ ] A phone or a Mac with the Vyre app. In some browsers you start from your phone, and a browser
+      otherwise connects to a Vyre that is already set up.
 
-> [!WHY] Why Tailscale?
-> Your server never opens a port to the internet. Tailscale puts your server, computer and phone
-> on one private network (your tailnet), and Vyre only answers devices on it. Vyre also uses your
-> Tailscale login to know it is you, so there is no Vyre password to steal. More in
-> [Tailscale, from zero](tailscale.md#what-tailscale-is).
+> [!WHY] Do I need a VPN or another network app?
+> No. Vyre has its own private network built in, so your server, your computers and your phone
+> find each other with nothing to install and nothing to sign in to. Where a direct path is not
+> possible, Vyre's relay carries the connection, end-to-end encrypted.
 
-## 1. Start at vyre.run/setup
+## 1. Open the Vyre app and choose your name
 
-Open <https://vyre.run/setup>. The page asks where Vyre will live: **A Linux server** or **A Mac
-that stays on**. Choose one.
+Open the Vyre app on your phone, or the Lumen on your Mac. The Vyre phone apps for iPhone and
+Android are built from the repository today (see [On your phone](../using/mobile.md)). The first
+screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do you have your own server, or are you joining a team?* Either
+answer starts with your name on a device that has none.
 
-The page makes a one-time key in your browser and shows an install line that holds a one-time
-code. The code works for one hour and for one server, and your browser keeps the key, so keep
-this tab open until you reach step 8. Vyre does not host your server and does not see what runs
-on it.
+First choose your Vyre name. It is how people find you. Vyre makes a key for the name on this
+device, and the key stays here. A name needs at least three letters, and the app tells you as you
+type whether `<name>.vyre.run` is taken or yours to take. Press **Create my name**.
 
-## 2. Run the line on your server
+![Choose your Vyre name, with alex-rivera typed and "is yours to take" under it](shots/first-run-claim.png "Your name")
 
-Open a terminal on the server as yourself, not as root, and paste the line the page shows. On a
-Linux server it looks like this:
+The app then shows a **recovery code** and says it is the only way back in if you lose every
+device. It is shown once, and anyone who holds it can get back into your name, so keep it
+somewhere only you can reach. Press **I saved it**.
+
+- **I have my own server** carries on to **Set up My Cloud** (step 2).
+- **I am joining a team** carries on to **Your spaces**, where you can join a space or create one
+  (step 5).
+
+If you already have a name, press **I already have Vyre** and scan a code from a device that has
+it. A device that already holds a name goes straight to **Set up My Cloud**. The key on a new
+device cannot be rebuilt from the name alone.
+
+## 2. Set up My Cloud
+
+**Set up My Cloud** says My Cloud runs on a computer or a server that stays on, and that your
+phones and browsers connect to it. A computer or browser shows the install line in a box on this
+same page. A phone shows **Send me the setup link**, which shares <https://vyre.run> for you to open
+on a computer, because a phone is never shown an install line. The same page has the field for the
+server's code, under **Or paste the long code**, and the camera on a phone.
+
+## 3. Run the line on your server
+
+Open a terminal on the server as yourself, not root, and paste the line the app shows (on the
+**Set up My Cloud** page, or on **Run this on your server** when you create a space on a server). On a Linux server it looks like this:
 
 ```sh
-curl -fsSL https://vyre.run/i | VYRE_CODE=... sh
+curl -fsSL vyre.run/i | sh
 ```
+
+A prerelease build of the app shows a different line, one that fetches that release's own installer from GitHub; a stable build shows the line above. On **Run this on your server**, press **I ran it** when it has finished.
 
 The installer asks for `sudo` itself, only for what needs it: Docker, the `/srv/vyre` folder and
 `/usr/local/bin/vyre`. It asks before it installs anything. If Docker is missing it asks
 `Docker is not installed. Install it now with: curl -fsSL https://get.docker.com | sh ?`.
 
-It works through five steps, and the page shows each one as it happens:
+It works through five steps, and the terminal shows each one as it happens:
 
-1. **Checking Docker**: Docker with Compose 2.24 or newer, and the TUN device.
+1. **Checking Docker**: Docker with Compose 2.24 or newer.
 2. **Downloading and verifying**: every file is checked against a published list of checksums,
    and the Vyre image's signature is checked against Vyre's release workflow before the image is
    pulled by its digest. A failed check stops the install, and nothing skips it.
 3. **Laying out /srv/vyre**: the stack goes in that folder, owned by your account.
 4. **Installing the vyre command**: `/usr/local/bin/vyre`.
-5. **Starting Vyre**: two containers start, one for Tailscale and one for Vyre.
+5. **Starting Vyre**: Vyre starts in a container on your server.
 
-Near the end the terminal prints four words:
+Near the end the terminal asks you to pair this server from your Vyre app:
 
 ```output
-  Check words: marble tiger lantern ocean
-  They should match the four on your screen.
+  Pair this server from your Vyre app: scan this with your phone,
+  or paste the long code into the app on a computer.
+  <the QR, drawn in the terminal>
+  Long code: <one long line, good for one use>
+  It is good for five minutes.
 ```
 
-and finishes with `Your server is ready.` and `Done. Back to your browser.` The four words are
-the ones on your screen in step 3. Yours will differ.
-
-> [!SNAG] "Another server already used this code. Your browser is not connected to this server."
-> The code works for one server. Go back to <https://vyre.run/setup> and start again for a new
-> line.
-
-> [!SNAG] "that setup code does not look right. Copy the install line from your browser again."
-> The code in the line was cut short. Copy the whole line again, with the Copy button.
-
-> [!SNAG] This server has no /dev/net/tun, which the Tailscale container needs
-> Nothing was changed. On your own server run `sudo modprobe tun`. On a VPS or an LXC container,
-> turn on TUN in the provider's control panel. Then run the line again.
-
 > [!SNAG] "this Docker came from snap", "this Docker runs rootless", or "Podman answering as docker"
-> The Tailscale container needs the regular Docker Engine. Install it with
+> Vyre needs the regular Docker Engine. Install it with
 > `curl -fsSL https://get.docker.com | sh`, then run the line again.
 
 > [!SNAG] "Vyre is already running in /srv/vyre, so this installer leaves it alone."
 > An earlier install is running here. `vyre update` updates it. To start over, run
 > `vyre uninstall --keep-data`, then paste the line again. Your data stays.
 
-> [!SNAG] The page keeps saying "Waiting for your server"
-> Check the line finished in the terminal. The code lasts one hour; after that, press **Start
-> again** on the page for a fresh line.
+> [!SNAG] **Pair your server** shows nothing to scan
+> Check the line finished in the terminal, then run the line again, or run `vyre call
+> wink.server.code '{"qr":true}'` on the server.
 
 ::: tabs
 ::: tab A Mac that stays on
-Paste the line in Terminal on that Mac, as yourself, not root. The page says it asks for your Mac
+Paste the line in Terminal on that Mac, as yourself, not root. The installer asks for your Mac
 password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in.
 The installer downloads a Node and checks it against a pinned checksum, installs Colima (the
 small Linux machine your agents' computers run in) and the GitHub command line tool, and checks
-the Vyre release's signature before it installs anything. It ends with `Vyre is running. Back in
-your browser, it will find this Mac.`
+the Vyre release's signature before it installs anything. Near the end it prints `Vyre is running. Pair it from your Vyre app: run <bin>/vyre call wink.server.code '{"qr":true}' here, then scan the QR or paste the long code.` Then continue at step 4.
 
 After a power cut: with FileVault on, the Mac waits for someone to unlock it at the screen, and
 Vyre is off until then. With FileVault off, anyone who takes the Mac can read Vyre's files,
@@ -127,127 +132,113 @@ it plugged in. The installer reads these two settings and tells you which applie
 The steps above are the Linux path.
 :::
 
-## 3. Check the four words
 
-The page finds your server and says **Found your server**, with its name. It then shows four
-words and asks whether they match the ones your server's terminal printed. Anyone who saw the
-install line could answer this page, so the words are how you know it is your server. If they
-match, press **These match my server's terminal**. If they differ, press **They don't match**
-and start again from step 1.
+## 4. Pair your server
 
-## 4. Choose your address
+The server prints a QR code and a long code. On a phone, scan the QR; on a computer, paste the long
+code into the field on the **Set up My Cloud** page (or on **Pair your server**, when you create a
+space).
 
-Type a name for your server. Its address is that name followed by `.vyre.run`, and it is yours
-for good. The page tells you as you type whether the address is free, such as `alex is free`, and
-**Claim this address** turns on when it is.
+![Pair your server: the server's terminal shows a long code, and the phone has a field to paste it](shots/first-run-pair-code.png "Pair your server")
 
-A name is 3 to 32 letters, digits or dashes, starts with a letter, and has no dash at either end
-and no double dash. Vyre's own service names, well-known company names and look-alikes of them
-are reserved, so `login` and `google-login` are refused.
+The app then shows **Pair your server**, with three words, and waits. The server's terminal shows three words for each way in
+and asks you to pick the set the app shows. Say yes at the server only if it shows the same words,
+or press **Not the same** in the app:
 
-> [!SNAG] "that name is reserved"
-> Pick another name. Names such as `app`, `login`, `vault` and any name with a well-known
-> company's name in it are not given out.
+```output
+  <Name> is asking to pair this server. Pick the three words your app shows:
+    1) <three words>
+    2) <three words>
+    3) <three words>
+  Which one? (1, 2 or 3, Enter to refuse)
+```
 
-The page then shows a **recovery code**. Save it somewhere safe: it is shown once, and if you
-ever reinstall, it takes this address back. If you close the page before pressing **I saved
-it**, it is gone. Copying it puts it on your clipboard, where a clipboard history tool may keep
-it, so clear that afterwards or write it down.
+A wrong pick prints `Those were not the words the app shows, so nothing was paired.` and offers to
+try again. If five minutes pass before a device asks, it prints `The code ran out before a device
+asked. Nothing was paired.` and asks `Make a new code? [y/N]`. When it works, the install finishes with `Your server is ready.`, a line about your keys
+(the sealing key is a file owned by the sealing process's own user, so root on this server, or a
+stolen disk, can read it), and `Connected to <name>. Finish setting up on your <device>.` (the name is your space's name as the server reports it, address included; with no device name it says "device"). Run with
+`--yes`, or with no terminal, it prints the QR and the long code and then `Finish setting up on
+your device once it has paired.` To show the code again later, run `vyre call wink.server.code
+'{"qr":true}'` on the server. A server has no first-run page: there is no browser link and no tunnel.
 
-If you ever give the name up with `vyre name release`, it stays reserved: a name that was pointed at a server cannot be claimed again, by you or anyone else.
+> [!SNAG] "Another server already used this code. Run the install line again to get a new code."
+> The code works for one server. Run the install line on the server again for a new code.
 
-Below that is **Use a domain of your own too**, which you can skip. To use a domain you own as
-well, type it (for example `harlowlegal.com`) and the page shows one DNS record to add, a CNAME,
-then looks it up when you press **Check**. DNS can take a few minutes to show it. The address
-`alex.vyre.run` keeps working either way.
+> [!SNAG] The app says the code ran out, or was already used
+> Run the install line on your server again, or `vyre call wink.server.code '{"qr":true}'` if it
+> is already installed, and use the new code.
 
-Press **Continue**.
+> [!SNAG] The app cannot reach the server
+> Check that the server is on and online. Nothing was paired. Run `vyre status` on the server.
 
-## 5. Sign in to your AI
+## 5. Create a space and finish setting it up
 
-Press **Sign in with Claude**, **Sign in with ChatGPT (Codex)** or **Sign in with Grok**. Each
-signs in on its own provider's page, in any browser, and Vyre never sees your password. The page
-shows a link to the sign-in page, and then either a code to enter there or a box to paste the
-code the provider shows you. One signed-in account is enough to go on, and you can add the others
-later. Press **Continue**.
+**Your spaces** offers **Create a space** and **Join a space**. Create a space asks for three
+things: its name, the name to claim for it (its address is that name followed by `.vyre.run`; people
+and spaces share one set of names, so a space cannot take its owner's name), and **Who it is for**:
+**A team**, **A client** or **Just me**. A team and a client then get a step to invite people; **Just
+me** skips it.
 
-> [!SNAG] The sign-in does not finish
-> A sign-in nobody finishes ends after a while and the page says so. Press the provider's button
-> again for a fresh one.
+![Create a space: the name field filled in, its claimed address under it, and "A team" chosen](shots/first-run-space.png "Create a space")
 
-## 6. Connect Tailscale
+On a Mac the app first asks **Where should Vyre run?**: **On this Mac** (only while the Mac stays
+on) or **On a server** (it shows the one line to run there). A computer app asks **Where will it
+live?** with **On a server you have** (one command) or **On this computer** (only while it stays
+on, and unreachable while the computer sleeps or is off). A phone is never asked: it makes the
+space on the Vyre it is connected to. Choosing a server shows **Run this on your server** (step 3)
+and then **Pair your server** (step 4).
 
-Press **Connect my server**. The page shows a link to Tailscale's sign-in page. Sign in there
-with the same account as your computer. The page notices when your server joins, says which
-tailnet it joined and as whom, then **Publishing your address**, and finally `Your address is
-live`. Press **Continue**.
+Setup carries on by itself on the device it started on. The AI, tools and Kit screens can be skipped (**Later**, or **Start empty** for a Kit), and the
+look and members screens have only **Continue**:
 
-If the tailnet is a work network, the page says so: your company's admins can see and reach this
-server, and a personal Tailscale account is usually what you want. If your tailnet asks for
-approval of new devices, the page says `Waiting for approval in your Tailscale admin`: approve
-the server in the Tailscale admin console, under
-[Machines](https://login.tailscale.com/admin/machines).
+- **Give the space a look.** Pick a colour (Violet, Amber, Sky, Sage or Rose) for how its mark
+  shows on every screen. You can change it later.
+- **Who is in it?** You are the owner. Invites are made in Spaces and members, where you choose
+  each person's role. A **Just me** space skips this.
+- **Connect your AI accounts.** Your assistant works on your own AI account. Connect Claude now,
+  or later from Settings.
+- **Connect your tools.** Pick the ones you will use. Nothing connects yet: each asks for its own
+  sign-in when you set it up.
+- **Start with a Kit.** A Kit adds record types, Flows and views in one step. Pick one, or **Start
+  empty**.
 
-> [!SNAG] The address could not be published
-> The page shows the reason on the same screen. Fix what it names, then press **Connect my
-> server** again.
+If setup is still unfinished on another of your devices, this one shows **Setup in progress on your
+<device>** with **Continue here**. A device that has not finished setup shows a **Finish setting up
+Vyre** banner.
 
-## 7. Add your phone, or skip it
+To join someone else's space instead, choose **Join a space** on the spaces screen, scan the invite
+or paste its link, and press **Open invite**. The app shows the space's name and who invited you.
+An invite from a link outside Vyre carries a warning to check the space name first.
 
-The page offers a ring that you scan with the Vyre app's camera on your phone. The ring works
-once, for five minutes, and the page can make only one. The Vyre phone apps for iPhone and
-Android are built from the repository today (see [On your phone](../using/mobile.md)), so most
-people press **Skip for now** here and add the phone in step 9. You can add phones later from
-your server's own page.
+A chat is where you work with your assistant and your agents, and Now shows your day: the next
+call, the spaces you are in, and the things that need you. Until a space has an assistant, Now shows **Create your assistant** to its owner or admin.
 
-## 8. Open your server
+![The first chat, "Fix the intake date check", with the assistant editing and the composer below](shots/first-run-chat.png "First chat")
 
-The page says your server has its own address. Press **Get my link**, then open
-`alex.vyre.run`. The link works once, for two minutes. Open it in the browser you will use with
-your server, on a computer that is on your tailnet. It asks for your fingerprint, face or
-security key, and that makes you its owner. Nothing else can. A QR code on the page opens the same
-link on your phone.
+![Now, "Good morning, Alex", with the spaces All spaces, Mine and Juniper Studio, the next call and the things that need you](shots/first-run-now.png "Now")
 
-When it works, the page says **You're in**, and you carry on at your address. Now and Agents there
-show **Create your assistant**: give it a name such as `juno`, tick **Give it its own computer,
-from the pool** if you want it to browse and use apps you can watch in Glass, and press
-**Create**. The assistant sees every project and can drive any session.
+## 6. Open Vyre on your phone
 
-> [!WHY] Why a fingerprint, face or security key?
-> A passkey cannot be typed into a fake page or read by a program on your server. Vyre asks for
-> it before anything that matters: approving a new device, taking over a session, releasing a
-> secret. A Claude session running on the server can reach its terminal, but it cannot press
-> Touch ID.
+There is nothing to install and nothing to sign in to first.
 
-> [!SNAG] The link expired
-> Press **Get a new link** on the setup page.
+1. Open the Vyre app on your phone and scan the code your server or a computer you are signed in
+   on shows, or paste its long code. Both screens show the same three words; say yes only if
+   they match. Or open `https://alex.vyre.run/now` in the phone's browser, which reaches your
+   server through the relay. On an iPhone, use Safari.
+2. In the browser, on an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On
+   Android, use Chrome's **Install app**. Open Vyre from the Home Screen: it runs full screen,
+   like an app.
 
-> [!SNAG] The address does not open in your browser
-> The browser must be on your tailnet: open the Tailscale menu on that computer and check it is
-> connected, as the same account you used in step 6. If it is, see
-> [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+If the owner removes this phone, it forgets everything it held (keys, pairing, settings, pins, cache and unsent writes) the next time it reaches Vyre, and asks to be paired again. A refused sign-in, a locked phone or an unreachable server does not do this.
 
-## 9. Open Vyre on your phone
-
-Your address only opens on your own devices on your tailnet, so the phone needs Tailscale too.
-
-1. Install Tailscale from your app store, sign in with the same account as your computer, and
-   turn its switch on ([iPhone and Android steps](tailscale.md#2-install-tailscale-on-each-device)).
-2. Open `https://alex.vyre.run/now` in the phone's browser. On an iPhone, use Safari.
-3. On an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On Android, use Chrome's
-   **Install app**. Open Vyre from the Home Screen: it runs full screen, like an app.
-
-![Now in the Deck on a phone: what needs you, with the tab bar at the bottom](../using/shots/phone-now.png)
-
-Now shows a **Set up this phone** card for notifications and a passkey. More in
-[On your phone](../using/mobile.md).
+More in [On your phone](../using/mobile.md).
 
 > [!SNAG] The phone says it cannot find the server, or the page never loads
-> Open the Tailscale app. Check three things: it is signed in as the same account as your
-> computer, the connection switch (the VPN) is on, and your phone is listed in Tailscale. Then
-> reload the page. On iPhone, allow the VPN configuration when iOS asks.
+> Check the phone has a connection, then reload the page. If it still fails, run `vyre status` on
+> the server.
 
-## 10. Put the Lumen on your Mac
+## 7. Put the Lumen on your Mac
 
 The Lumen is Vyre's command bar on the Mac: press Control twice, anywhere. It lives on the Mac
 you work on, not on the server. It comes with the `vyre` command, so install that first. This
@@ -262,27 +253,17 @@ vyre --version
 0.2.0
 ```
 
-Then pair the Mac with your server and open the Lumen. Give `vyre up` your address:
+Then pair the Mac with your server and open the Lumen. `vyre up --connect` only saves your server's
+address. Pairing is `vyre link pair` with the code the server shows (the install prints it, and
+`vyre call wink.server.code` on the server shows it again):
 
 ```sh
 vyre up --connect https://alex.vyre.run
+vyre link pair <code>
 ```
 
-It asks the server to pair this Mac and shows a code:
-
-```output
-  Approve this Mac on your phone at https://alex.vyre.run, or in the Deck on this Mac
-  The Deck there names this Mac (alex-mac) and asks for your passkey. Code: 482-913
-  vyre link shows when it is done.
-```
-
-(The Mac must be on your tailnet. Plain `vyre up` looks for a Vyre server on your tailnet
-instead, and asks which one to pair with when it finds more than one.)
-
-Approve it in the Deck. On your phone, Now shows a card, "A Mac wants to pair: alex-mac". Type
-the code, press **Approve**, and confirm with Face ID or your fingerprint. The same card is on Now
-in the Deck on the Mac itself, where the Mac can approve its own request only with a passkey made
-on that Mac, confirmed with Touch ID. Run `vyre up` again afterwards and it ends with the block
+The server's terminal asks you to pick the three words the pairing device shows, as in step 4.
+Run `vyre up` again afterwards and it ends with the block
 that says it is ready (`your assistant` names the assistant once you have made one, and says `none
 yet` before that):
 
@@ -293,10 +274,6 @@ yet` before that):
     your assistant  juno
     next            vyre      (your projects and threads)
 ```
-
-> [!SNAG] "The Mac that is asking can approve itself only with a passkey."
-> You approved on the Mac with no passkey, or with one made on another device. Approve again and
-> use Touch ID with a passkey made on this Mac, or approve from your phone.
 
 `vyre up` also builds and opens the Lumen. To build it yourself, or when it did not open:
 
@@ -324,21 +301,16 @@ keeps the Lumen's permissions across updates.
 > Grant Input Monitoring to Vyre in System Settings, Privacy & Security, then run `vyre capsule`
 > again. Option-Space opens it meanwhile.
 
-> [!SNAG] "the box serves alex@example.com, and this Mac is signed in to Tailscale as ..."
-> The Mac and the server are on different Tailscale accounts. Sign the Mac in to Tailscale as the
-> account the server names, then run `vyre up`.
-
 That is the whole install. Next: [Your first day](first-day.md).
 
 ## A Windows PC
 
-A Windows PC is a device you use Vyre from, not a server: the server is Linux (including inside
-WSL2 on a Windows PC), or a Mac that stays on. The Windows app is a tray app. It is not
+In 0.2.9 a Windows PC uses the Vyre app only: it is a device you use Vyre from, not a home. The home
+runs on a Mac, Linux or a server, and the Windows home comes in 0.3.0. The Windows app is a tray app. It is not
 code-signed at 0.2.0, so Windows says it does not recognize the app: choose **More info**, then
 **Run anyway**. Its installer, `VyreSetup.exe`, is on the latest release at
 <https://github.com/vyre-ai/vyre/releases>, and it is checked against the release's published
-checksums. You can also use your server from any browser on the PC, at your address, once
-Tailscale is installed and signed in there. The app, the CLI and WSL2 are in [Windows](../using/windows.md).
+checksums. You can also use your server from any browser on the PC, at your address. The app and the CLI are in [Windows](../using/windows.md).
 
 ## Looking after the box
 
@@ -359,67 +331,15 @@ that passphrase: keep the two apart. The steps are in [Box care](../using/box-ca
 
 ## Other ways to install
 
-::: tabs
-::: tab From my Mac over SSH
-Use this when you would rather start on the Mac than at vyre.run/setup. It needs the `vyre`
-command on the Mac ([step 10](#10-put-the-lumen-on-your-mac)) and Tailscale on the Mac, signed
-in. It sets the server up over SSH and holds the SSH tunnel to the server's own setup page for
-you.
+**From my Mac over SSH.** Use this when you would rather start on the Mac than from the Vyre app.
+`vyre box add alex@192.0.2.10` copies the installer to the server over SSH and runs it, and the
+pairing question appears in that same terminal. It does not open a browser, tunnel a port or make a
+passkey link. At the end it prints `Your server is installed and not paired yet.` with how to pair, or
+`Your server is paired to <space>.` if it already is. Then pair the Mac as in
+[step 7](#7-put-the-lumen-on-your-mac).
 
-```sh
-vyre box add alex@192.0.2.10
-```
-
-```output
-  reaching alex@192.0.2.10
-  alex@192.0.2.10: Ubuntu 24.04 LTS, no Docker yet
-
-  Vyre will, on alex@192.0.2.10:
-    install Docker with get.docker.com
-    create /srv/vyre and put Vyre's stack in it
-    add /usr/local/bin/vyre
-    start Vyre, which waits for you to finish setting it up in your browser
-
-  Go ahead? [y/N]
-```
-
-Plain `vyre up` on a Mac that knows no server asks where Vyre should run: pick `1` and type the
-account and address you use with `ssh`. The plan is what Vyre found on your server, so yours may
-differ. Type `y`. Vyre copies its installer to the server and runs it there, then prints:
-
-```output
-  Finish in your browser. I'll wait here.
-
-    http://127.0.0.1:7300/onboard?t=...
-```
-
-Your browser opens that link. Leave the terminal open: it holds the tunnel the page runs
-through. The page here is the server's own setup, six screens that name you and your assistant,
-sign in to Claude and Tailscale, give the server an HTTPS address on your tailnet (such as
-`https://vyre.tail1234.ts.net`), read your Claude Code history and put Vyre on your devices.
-Each screen is described in [Onboarding](onboarding.md). With this path the address is on
-`ts.net`, not `vyre.run`, and Tailscale's HTTPS certificates must be on for your tailnet
-([Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates)).
-
-When the address works, the terminal opens a tab to make your passkey, asks the server to pair
-with this Mac, and prints the ready block. Approve the Mac in the Deck, as in
-[step 10](#10-put-the-lumen-on-your-mac).
-
-> [!SNAG] could not reach alex@192.0.2.10
-> Vyre uses your Mac's own `ssh`. Check that `ssh alex@192.0.2.10` works in a terminal first. If
-> the server has no SSH key for you, Vyre asks for the password once and reuses the connection.
-
-> [!SNAG] The plan says "add alex to the docker group"
-> Your account cannot use Docker without sudo, and sudo needs a password, which later steps over
-> SSH cannot type. Joining the `docker` group fixes that. It makes the account root-equivalent on
-> that server. Say no and nothing changes.
-
-> [!SNAG] You pressed Ctrl-C, or the terminal closed
-> Nothing is lost. Run `vyre box add alex@192.0.2.10` again. It looks at what the server has and
-> carries on from there.
-::: tab I already have a server
-Your server is set up (at vyre.run/setup, or from another Mac) and this is a new Mac. Install
-Vyre as in [step 10](#10-put-the-lumen-on-your-mac), then:
+**I already have a server.** Your server is set up and this is a new Mac. Install
+Vyre as in [step 7](#7-put-the-lumen-on-your-mac), then:
 
 ```sh
 vyre up
@@ -429,77 +349,22 @@ vyre up
 vyre up --connect https://alex.vyre.run
 ```
 
-It asks the server to pair this Mac and shows the code to approve in the Deck, as in step 10.
-Plain `vyre up` looks for a Vyre server on the Mac's tailnet and takes the one it finds, with a
-line such as `found your box on the tailnet: https://vyre.tail1234.ts.net`; with several it asks
-which one. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
+`vyre up --connect` only saves the address; pair with `vyre link pair <code>`, as in step 7. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.
-::: tab Only on this Mac
-No server: this Mac is the server. Your phone reaches it only while the Mac is awake. Pick `2`
-at the question `vyre up` asks, or run:
 
-```sh
-vyre up --box
-```
-
-```output
-  Open this link to set up Vyre (it works once, for an hour):
-
-    http://127.0.0.1:7300/onboard?t=...
-```
-
-The link opens in your browser. Follow the six screens in [Onboarding](onboarding.md). With this
-Mac as the server there is no other Mac to pair: on **Your devices**, use only the phone card.
-Running without Docker, and under systemd on Linux, is in [Without Docker](without-docker.md).
-::: tab Without the setup page
-You are already in a shell on the server and want the server's own setup instead of
-vyre.run/setup. Run the installer there without a code:
-
-```sh
-curl -fsSL https://vyre.run/install.sh | sh
-```
-
-On a terminal it asks `Paste the setup code from your browser (Enter to skip):`. Press Enter. It
-ends with the server's own setup link:
-
-```output
-  Open this link to set up Vyre (it works once, for an hour):
-
-    http://127.0.0.1:7300/onboard?t=...
-
-  This box is headless. On your own computer, run this first, then open the link there:
-    ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10
-```
-
-On your computer, run the `ssh -N -L` line and leave it running (it prints nothing), then open
-the link in that computer's browser. The six screens are in [Onboarding](onboarding.md). Then
-install Vyre on the Mac as in [step 10](#10-put-the-lumen-on-your-mac).
-
-> [!SNAG] The setup page will not load
-> Check the `ssh -N -L` line is still running, and open the link exactly as printed, with
-> `127.0.0.1:7300`. Do not change the port: the page answers "Not here." on any other.
-:::
+The server itself can also run without Docker, from the package: see [Without Docker](without-docker.md).
 
 ## If setup stops partway
 
 > [!SNAG] This code has expired. Start again.
-> The code lasts one hour. Open <https://vyre.run/setup> again for a fresh line. If the first
+> The pairing code lasts five minutes. Run the install line again for a fresh one. If the first
 > line already got as far as starting Vyre, the installer answers `Vyre is already running in
 > /srv/vyre, so this installer leaves it alone.` and a new line does nothing. Run `vyre uninstall --keep-data`
 > on the server, then paste the fresh line. Your data stays.
 
-> [!SNAG] The setup link has expired (the SSH and loopback paths)
-> The link works once, for an hour. From the Mac, run `vyre box add alex@192.0.2.10` again. On
-> the server, run `vyre up`. Either prints a fresh link, and the page keeps every step you
-> already finished.
-
-> [!SNAG] "Almost there: your box has no address yet."
-> You skipped the address screen on the SSH path, so there is nothing for your Mac or phone to
-> reach yet. Run `vyre box add alex@192.0.2.10` again and finish **Your address** in the browser.
-
 > [!SNAG] your box https://alex.vyre.run did not answer from here
-> The reason follows on the same line. "this Mac is not on the tailnet": sign in to Tailscale on
-> the Mac. "the box is offline or unreachable": on the server, run `vyre status`.
+> The reason follows on the same line. "the box is offline or unreachable": on the server, run
+> `vyre status`.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).

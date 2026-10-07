@@ -1,0 +1,39 @@
+{
+  "name": "records",
+  "version": "0.1.0",
+  "description": "The app's way into a Space's records: one tool per Store call over the kernel's gateway, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] }, "daemon": ["devStandIn"] },
+  "does": {
+    "tools": [
+      { "name": "records.workspace.create", "reach": "modules" },
+      { "name": "records.workspace.delete", "reach": "modules" },
+      { "name": "records.me", "effect": "read", "reach": "person" },
+      { "name": "records.actors", "effect": "read", "reach": "person" },
+      { "name": "records.types", "effect": "read", "reach": "person" },
+      { "name": "records.define", "effect": "write", "reach": "person" },
+      { "name": "records.list", "effect": "read", "reach": "person" },
+      { "name": "records.get", "effect": "read", "reach": "person" },
+      { "name": "records.reference", "effect": "read", "reach": "person" },
+      { "name": "records.create", "effect": "write", "reach": "person" },
+      { "name": "records.update", "effect": "write", "reach": "person" },
+      { "name": "records.linked", "effect": "read", "reach": "person" },
+      { "name": "records.roles", "effect": "read", "reach": "person" },
+      { "name": "records.holders", "effect": "read", "reach": "person" },
+      { "name": "records.kits.library", "effect": "read", "reach": "person" },
+      { "name": "records.kits.get", "effect": "read", "reach": "person" },
+      { "name": "records.forget", "effect": "write", "reach": "person" },
+      { "name": "records.forget.propose", "effect": "write", "reach": "person" },
+      { "name": "records.seal-put", "effect": "write", "reach": "person" },
+      { "name": "records.reveal", "effect": "write", "reach": "person" },
+      { "name": "records.sees-as", "effect": "write", "reach": "person" },
+      { "name": "records.events", "effect": "read", "reach": "person" },
+      { "name": "records.dev-seed", "effect": "write", "reach": "person" }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

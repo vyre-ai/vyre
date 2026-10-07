@@ -5,6 +5,7 @@
 // byte-offset ring (replay after an offset, trimmed at line ends, the cut marker), the fallback to a
 // plain pty without dtach, and with a real dtach a shell that survives a vyred stop and start.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,11 +15,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { encodeClientFrame } from "../computers/ws.js";
+import { encodeClientFrame } from "../../lib/ws.js";
 import { Ring } from "./ring.js";
 import { findDtach } from "./dtach.js";
 
@@ -41,6 +42,7 @@ const presence = {
  * o.dtach false starts it with no dtach, as on a Mac. Terminals still open at the end are closed,
  * so no shell outlives the test.
  */
+const busByRoot = new Map();
 async function registry(t, term = {}, o = {}) {
   const root = o.root || tempHome(t);
   const p = config.ensure(root);
@@ -52,7 +54,8 @@ async function registry(t, term = {}, o = {}) {
     t.after(() => fs.rmSync(w, { recursive: true, force: true }));
   }
   const db = open(p.db);
-  const events = new Events(db);
+  // The bus is the kernel's log, which outlives a restart: a "restart" over the same home keeps the same bus (and its events).
+  const events = (busByRoot.has(root) ? busByRoot : busByRoot.set(root, new Events())).get(root);
   const reg = new Registry({ db, events, config: { role: "box", files: { roots: [work] }, term: { shell: "/bin/sh", ...term } }, paths: p, log: () => {}, presence: /** @type {any} */ (presence) });
   const prev = process.env.VYRE_DTACH_BIN;
   if (o.dtach === false) process.env.VYRE_DTACH_BIN = "";

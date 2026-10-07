@@ -2,6 +2,7 @@
 // Facts other modules teach through ctx.memory.teach: checked, folded into the same graph as the
 // transcripts, sourced to {module, kind}, idempotent, and reachable only from modules.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -157,7 +158,7 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
         run: async ({ name }) => ({ taught: await ctx.memory.teach("people.person", { subject: name, rel: "works_at", object: "Northwind Bakery" }) }) });
       return {};
     } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, firstPartyRoots: [path.join(root, "modules")], log: () => {} });
   t.after(() => d.stop());
   assert.deepEqual((await call("people.add", { name: "Tomas Berg" }, { root })).data, { taught: true });
   await call("memory.curate", {}, { root });
@@ -170,7 +171,7 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
   assert.ok(!(await request("GET", "/v1/tools", undefined, { root })).data.some(x => x.name === "memory.teach"));
   // A module cannot teach in another module's name.
   const spoof = await d.registry.call("memory.teach", { kind: "people.person", fact: { subject: "A" }, from: "people" }, "module:other");
-  assert.match(spoof.error.message, /arrived as module:other/);
+  assert.match(spoof.error.message, /arrived as module:other|carries no kernel chain/); // with the kernel on, a bare module label has no chain and is refused first
   assert.ok(fs.existsSync(d.paths.db));
 });
 

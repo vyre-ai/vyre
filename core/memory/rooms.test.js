@@ -6,6 +6,7 @@
 // how sure it is, or what a short word means there. Every test builds a world where the naive,
 // global answer is the wrong one for a room.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -14,7 +15,7 @@ import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import fs from "node:fs";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 
@@ -221,13 +222,13 @@ test("rooms: vyred keeps the rooms in step with Projects, picks included, and gu
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
   // memory's guard now also checks projects.access (Vyre Drive step 3): seed it from what
   // agents.create just set, the way an upgrade would, so kit's grant keeps working here.
-  assert.ok(!(await call("projects.access.migrate", {}, opts)).error);
   await call("memory.curate", {}, opts);
   const nw = (await call("memory.facts", { room: "northwind" }, opts)).data.facts.map(f => f.text);
   assert.ok(nw.some(x => x.includes("Sam Okafor")) && !nw.some(x => x.includes("Harlow")), nw.join("\n"));

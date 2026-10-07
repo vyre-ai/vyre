@@ -11,6 +11,7 @@
 // the server's pings itself, and each whole message crosses the channel as one data frame,
 // `[1 text | 2 binary][message]`, never split.
 
+import { deviceIdOf } from "../../lib/caller.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { duplexPair } from "node:stream";
@@ -27,6 +28,22 @@ const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|
 const HOP = /^(connection|keep-alive|transfer-encoding|upgrade|strict-transport-security)$/;
 const MAX_HEAD = 16 * 1024;
 
+// The wink `peer` stream (SPIKE-wink.md verdict 5; lead's ruling 3 Oct 2026). When no direct path
+// and no DERP path exists between two homes, one home reaches the other as a paired device of the
+// relay and opens a stream with the head {peer: "wink", space: <space id>}. It carries only the
+// end-to-end encrypted bytes inside the device's Noise channel: the relay sees ciphertext and
+// nothing here parses them. Conditions: the channel is already authenticated to a paired device
+// (Noise static key, checked by the box before this bridge exists); `allow()` says that device may
+// open peer streams in this space; the head's space must be this box's space; and each device is
+// held to PEER_PER_MIN new peer streams a minute and PEER_OPEN open at once, counted per device
+// across all its channels, so reconnecting does not reset the count.
+export const PEER_PER_MIN = 30;
+export const PEER_OPEN = 8;
+/** @type {Map<string, { stamps: number[], open: number }>} */
+const peerUse = new Map();
+/** Forget all peer counters (tests). */
+export function resetPeerLimits() { peerUse.clear(); }
+
 const fail = (s, status, code, message) => {
   s.respond({ status, headers: { "content-type": "application/json" } });
   s.write(Buffer.from(JSON.stringify({ error: { code, message } })));
@@ -37,7 +54,12 @@ const fail = (s, status, code, message) => {
  * Serve one channel's streams through vyred's router as this caller.
  * @param {import("./channel.js").Channel} channel
  * @param {{ handler: (req: any, res: any, caller: string, peer: any) => any, caller: string, peer: any,
- *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void }} o
+ *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
+ *   oninvitee?: { opened: () => void, closed: () => void },
+ *   invitees?: { acceptInvitee: (stream: any, who: { inviteeId: string }, head: any) => void }, perMin?: number,
+ *   homes?: { acceptHome: (stream: any, who: { homeId: string }, head: any) => void }, onhome?: { opened: () => void, closed: () => void },
+ *   peers?: { space: string, serverId?: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
+ *     perMin?: number, open?: number, now?: () => number } }} o
  */
 export function bridge(channel, o) {
   const server = http.createServer((req, res) => o.handler(req, res, o.caller, o.peer));
@@ -53,7 +75,10 @@ export function bridge(channel, o) {
   channel.onstream = s => {
     const h = s.head || {};
     if (JSON.stringify(h).length > MAX_HEAD) return fail(s, 431, "bad_input", "request head too large");
+    if (/^invitee:/.test(String(o.caller)) && h.peer === undefined) return fail(s, 403, "denied", "an invite opens one door");
+    if (/^home:/.test(String(o.caller))) return h.peer !== undefined && !h.ws ? homeStream(s, h) : fail(s, 403, "denied", "another home opens one door");
     if (h.ws) return socketStream(s, h);
+    if (h.peer !== undefined) return peerStream(s, h);
     const method = String(h.method || "").toUpperCase();
     const path = String(h.path || "");
     if (!METHODS.has(method) || !path.startsWith("/") || path.startsWith("//") || /[\s\0]/.test(path)) return fail(s, 400, "bad_input", "a request needs a method and a path");
@@ -85,6 +110,101 @@ export function bridge(channel, o) {
     s.onreset = () => req.destroy();
   };
   channel.onclose = () => server.close();
+
+  /** A paired server's wink peer connection: hand the stream to the peer door, as this device. */
+  function peerStream(s, h) {
+    // An invitee's channel (caller `invitee:<id>`) has one door: a peer stream whose head carries the invitee's hello. The door checks the hello; here only the shape, the rate and the slot.
+    if (/^invitee:[a-z2-7]{16}$/.test(String(o.caller))) return inviteeStream(s, h);
+    if (/^invitee:/.test(String(o.caller)) || h.invitee !== undefined) return fail(s, 403, "denied", "this device has no peer access to that space");
+    const p = o.peers;
+    if (!p) return fail(s, 403, "denied", "this box does not serve peer streams");
+    if (h.peer !== "wink" || Object.keys(h).some(k => k !== "peer" && k !== "space") || typeof h.space !== "string") return fail(s, 400, "bad_input", "a peer stream is {peer: \"wink\", space}");
+    // a paired server of this home (caller `server:<id>`) names its own Wink device id; every other caller is a `device:` label
+    const device = (/^server:/.test(String(o.caller)) && typeof p.serverId === "string" ? p.serverId : deviceIdOf(o.caller)) || "";
+    if (!device || !/^[A-Za-z0-9_-]{1,64}$/.test(device)) return fail(s, 403, "denied", "peer streams are for paired devices");
+    if (h.space !== p.space) return fail(s, 403, "denied", "this device has no peer access to that space");
+    let ok = false;
+    try { ok = p.allow(device) === true; } catch { ok = false; }
+    if (!ok) return fail(s, 403, "denied", "this device has no peer access to that space");
+    const now = (p.now || Date.now)();
+    const u = peerUse.get(device) || { stamps: [], open: 0 };
+    peerUse.set(device, u);
+    u.stamps = u.stamps.filter(t => now - t < 60_000);
+    if (u.stamps.length >= (p.perMin ?? PEER_PER_MIN) || u.open >= (p.open ?? PEER_OPEN)) return fail(s, 429, "rate_limited", "too many peer streams; wait a minute");
+    u.stamps.push(now);
+    u.open++;
+    let released = false;
+    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (!u.open && !u.stamps.length) peerUse.delete(device); };
+    // Release the slot on every way a stream can finish: the remote's end or reset (whatever handler
+    // the accept hook installs, or none), and the hook ending or resetting the stream itself.
+    for (const name of /** @type {const} */ (["onend", "onreset"])) {
+      let h = s[name];
+      Object.defineProperty(s, name, { configurable: true, enumerable: true,
+        get: () => (/** @type {any[]} */ ...a) => { release(); return typeof h === "function" ? h.apply(s, a) : undefined; },
+        set: f => { h = f; } });
+    }
+    for (const name of /** @type {const} */ (["end", "reset"])) {
+      const f = s[name].bind(s);
+      s[name] = (/** @type {any[]} */ ...a) => { release(); return f(...a); };
+    }
+    s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
+    try { p.accept(s, { via: "relay", deviceId: device, space: p.space }); }
+    catch (e) { release(); s.reset("peer door failed"); return; }
+  }
+
+  /** Another home's pull stream: {peer: "wink", space: "home", pull: {space}} and nothing more; one stream at a time per channel. @param {any} s @param {any} h */
+  function homeStream(s, h) {
+    const door = /** @type {any} */ (o).homes;
+    if (!door) return fail(s, 403, "denied", "this box does not take homes");
+    if (h.peer !== "wink" || h.space !== "home" || !h.pull || typeof h.pull !== "object" || typeof h.pull.space !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(h.pull.space)
+      || Object.keys(h).some(k => k !== "peer" && k !== "space" && k !== "pull") || Object.keys(h.pull).some(k => k !== "space")) return fail(s, 400, "bad_input", "a pull stream is {peer: \"wink\", space: \"home\", pull: {space}}");
+    const id = String(o.caller).slice(5);
+    const u = peerUse.get(o.caller) || { stamps: [], open: 0 };
+    peerUse.set(o.caller, u);
+    if (u.open >= 1) return fail(s, 429, "rate_limited", "one pull stream at a time");
+    u.open++;
+    const tell = /** @type {any} */ (o).onhome;
+    if (tell && typeof tell.opened === "function") { try { tell.opened(); } catch { /* the pool must not break the stream */ } }
+    let released = false;
+    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (!u.open) peerUse.delete(o.caller); if (tell && typeof tell.closed === "function") { try { tell.closed(); } catch { /* gone */ } } };
+    for (const name of /** @type {const} */ (["onend", "onreset"])) {
+      let hh = s[name];
+      Object.defineProperty(s, name, { configurable: true, enumerable: true,
+        get: () => (/** @type {any[]} */ ...a) => { release(); return typeof hh === "function" ? hh.apply(s, a) : undefined; },
+        set: f => { hh = f; } });
+    }
+    for (const name of /** @type {const} */ (["end", "reset"])) { const f = s[name].bind(s); s[name] = (/** @type {any[]} */ ...a) => { release(); return f(...a); }; }
+    s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
+    try { door.acceptHome(s, { homeId: id }, h); } catch (e) { release(); s.reset("home door failed"); }
+  }
+
+  /** @param {any} s @param {any} h */
+  function inviteeStream(s, h) {
+    const door = /** @type {any} */ (o).invitees;
+    if (!door) return fail(s, 403, "denied", "this box does not take invitees");
+    if (h.peer !== "wink" || h.space !== "home" || !h.invitee || typeof h.invitee !== "object" || Object.keys(h).some(k => k !== "peer" && k !== "space" && k !== "invitee")) return fail(s, 400, "bad_input", "an invitee stream is {peer: \"wink\", space: \"home\", invitee}");
+    const id = String(o.caller).slice(8);
+    const now = Date.now();
+    const u = peerUse.get(o.caller) || { stamps: [], open: 0 };
+    peerUse.set(o.caller, u);
+    u.stamps = u.stamps.filter(t => now - t < 60_000);
+    if (u.stamps.length >= 10 || u.open >= 2) return fail(s, 429, "rate_limited", "too many invite streams; wait a minute");
+    u.stamps.push(now);
+    u.open++;
+    let released = false;
+    const tell = /** @type {any} */ (o).oninvitee;
+    if (tell && typeof tell.opened === "function") { try { tell.opened(); } catch { /* the pool must not break the stream */ } }
+    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (tell && typeof tell.closed === "function") { try { tell.closed(); } catch { /* gone */ } } };
+    for (const name of /** @type {const} */ (["onend", "onreset"])) {
+      let hh = s[name];
+      Object.defineProperty(s, name, { configurable: true, enumerable: true,
+        get: () => (/** @type {any[]} */ ...a) => { release(); return typeof hh === "function" ? hh.apply(s, a) : undefined; },
+        set: f => { hh = f; } });
+    }
+    for (const name of /** @type {const} */ (["end", "reset"])) { const f = s[name].bind(s); s[name] = (/** @type {any[]} */ ...a) => { release(); return f(...a); }; }
+    s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
+    try { door.acceptInvitee(s, { inviteeId: id }, h.invitee); } catch (e) { release(); s.reset("invitee door failed"); }
+  }
 
   /** A device's WebSocket: upgrade through the stream router, then carry whole messages. */
   function socketStream(s, h) {

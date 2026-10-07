@@ -27,9 +27,9 @@ export const DEFAULT_TIMEOUT_S = 60;
 /**
  * A watcher's spec. `on` and `where` are for schedule "event": the event type it runs on, and the
  * payload fields that must match for it to run (hook.received needs a route).
- * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
+ * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number, memory?: boolean,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
- *   net: Record<string, { vault?: string, credential?: string, field?: string, header: string, scheme: string }>|null,
+ *   net: Record<string, { vault?: string, credential?: string, google?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, params: Record<string, any>|null, summary: { when: string, check?: string, do: string }|null,
  *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
@@ -93,6 +93,7 @@ function check(raw, name, problems) {
     if (ok) params = raw.params; else problems.push("params is a small object of strings, numbers, booleans and short lists of strings, at most 2000 characters; it is a preset's settings, never a credential");
   }
   const summary = checkSummary(raw.summary, problems);
+  if (raw.memory !== undefined && typeof raw.memory !== "boolean") problems.push("memory is true or false: false files the items without teaching them to Memory (a log of mail is for the records, not for recall)");
   let ask = null;
   if (raw.ask !== undefined) {
     const a = raw.ask;
@@ -102,13 +103,13 @@ function check(raw, name, problems) {
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
   if (raw.act !== undefined && !owner) problems.push("act is for a teammate's duty or a watcher that wakes a session: it needs owner");
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source"].includes(k));
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source", "memory"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under net`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) { if (h.vault) needed.add(h.vault); if (h.credential) needed.add(h.credential); }
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, memory: raw.memory !== false, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
 }
 
@@ -181,7 +182,7 @@ const HEADER = /^[A-Za-z][A-Za-z0-9-]{0,40}$/;
  * `net`: the hosts a watcher reads, each optionally with the vault item the parent attaches to
  * requests for that host only: { "api.harlow.example": { "vault": "harlow-feed", "header":
  * "Authorization", "scheme": "Bearer" } }, or an api-credential the vault calls the API with
- * itself, reads only: { "gmail.googleapis.com": { "credential": "google-personal" } }. With net, a watcher reaches those hosts
+ * itself, reads only: { "api.example.com": { "credential": "example-key" } }, or a Google account connected to Vyre, read only through the google module: { "gmail.googleapis.com": { "google": "home" } }. With net, a watcher reaches those hosts
  * exact host names) and no others; without it, no network at all. The watcher's own code
  * never handles the value.
  * @returns {Spec["net"]}
@@ -197,9 +198,10 @@ function checkNet(net, problems) {
     if (h.vault !== undefined && (typeof h.vault !== "string" || !VAULT_NAME.test(h.vault))) { problems.push(`net.${host}.vault must be a vault item name`); continue; }
     if (h.header !== undefined && (typeof h.header !== "string" || !HEADER.test(h.header))) { problems.push(`net.${host}.header must be a header name like Authorization`); continue; }
     if (h.credential !== undefined && (typeof h.credential !== "string" || !VAULT_NAME.test(h.credential) || h.vault !== undefined)) { problems.push(`net.${host}.credential must be the name of an api-credential, and not together with vault`); continue; }
-    const bad = Object.keys(h).filter(k => !["vault", "credential", "field", "header", "scheme"].includes(k));
+    if (h.google !== undefined && (typeof h.google !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(h.google) || h.vault !== undefined || h.credential !== undefined)) { problems.push(`net.${host}.google must be the name of a connected Google account, and not together with vault or credential`); continue; }
+    const bad = Object.keys(h).filter(k => !["vault", "credential", "google", "field", "header", "scheme"].includes(k));
     if (bad.length) { problems.push(`net.${host} has keys the runtime does not read: ${bad.join(", ")}`); continue; }
-    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.credential ? { credential: h.credential } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
+    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.credential ? { credential: h.credential } : {}), ...(h.google ? { google: h.google } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
   }
   return out;
 }

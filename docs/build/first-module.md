@@ -86,7 +86,7 @@ Save this as `module.json` in the folder:
 > [!NOTE] Coming in phase 1
 > Today the loader accepts `apiVersion` and `settings` but does not act on them. From phase 1 of
 > [ADR 0033](../adr/0033-hackable-vyre.md), the loader checks `apiVersion` and refuses a module
-> that asks for a newer module API, and each setting gets a row in the Deck's Settings. Declaring
+> that asks for a newer module API, and each setting gets a row in the Vyre app's Settings. Declaring
 > both now means the module needs no change when that lands.
 
 Also save a `package.json` beside it, so Node reads `index.js` as an ES module on every version
@@ -187,7 +187,7 @@ What each part does:
 - A thrown error with a `code` of lowercase letters and underscores reaches the caller as that
   code: `bad_count`.
 - `ctx.events.emit` writes `bake.logged` to the event log. The payload carries the id and the
-  count, not the item alex typed, because every module and the Deck can read the log.
+  count, not the item alex typed, because every module and the Vyre app can read the log.
 - `ctx.log` writes a line to vyred's log, prefixed `[bake]`.
 - `start` returns a handle whose `stop()` vyred calls on shutdown. This module holds no timers
   or sockets, so it has nothing to close.

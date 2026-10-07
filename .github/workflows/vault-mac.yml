@@ -8,13 +8,10 @@
 name: vault-mac
 on:
   push:
-    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
-      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
-      "test/hygiene*.js", ".github/workflows/vault-mac.yml"]
+    branches: ["main", "work/vault*", "work/sealing*"]
+    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*", ".github/workflows/vault-mac.yml"]
   pull_request:
-    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
-      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
-      "test/hygiene*.js"]
+    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,9 +42,13 @@ jobs:
           known=""
           files=$(ls core/vault/*.test.js core/vault/**/*.test.js lib/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
           for f in $files; do
+            # a file on test/known-red.json is left out, as the main suite's runner leaves it out (its owner and reason are listed there)
+            if node -e 'process.exit(require("./test/known-red.json")[process.argv[1]] ? 0 : 1)' "$f"; then echo "skip $f (known-red)"; continue; fi
             start=$(date +%s)
-            if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
+            if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
+              # Names of every test, so a skip or a canary shows by name (spec reporter marks: ✔ ran, ﹣ skipped).
+              case "$f" in core/vault/*) grep -E "^\s*(✔|✖|﹣|ℹ (pass|fail|skipped))" /tmp/one.log | sed 's/^/     /';; esac
             else
               echo "FAIL $f ($(( $(date +%s) - start ))s)"; sed -n '/failing tests:/,$p' /tmp/one.log | grep -vE "^\s+at " | head -70
               case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac

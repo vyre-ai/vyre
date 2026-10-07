@@ -2,6 +2,7 @@
 // The Harness plugin as Claude Code runs it: hook processes fed JSON on stdin, and the MCP
 // server spoken to over stdio, against a real vyred in a temp home.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -9,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { call } from "../core/daemon/client.js";
 import { interactiveFrom } from "../core/harness/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { socketPath } from "../core/config/index.js";
@@ -33,7 +35,7 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, "hooks", "hooks.json"), "utf8")).hooks;
-  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]);
   assert.match(hooks.PostToolUse[0].matcher, /\bBash\b/, "PostToolUse hears Bash too");
   assert.match(hooks.PostToolUseFailure[0].matcher, /\bBash\b/);
   for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
@@ -82,7 +84,10 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
-  assert.deepEqual(await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env), { code: 0, out: "" }, "outside a project the brief is empty");
+  // outside a project the brief carries only the person's time (the time-zone line every session gets), nothing of a project
+  const outside = await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env);
+  assert.equal(outside.code, 0);
+  assert.match(JSON.parse(outside.out).hookSpecificOutput.additionalContext, /^Time: it is [^\n]*$/, "outside a project the brief is only the time");
 });
 
 test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {
@@ -111,7 +116,7 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id);
+  assert.ok((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id);
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
   const payload = {
     session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
@@ -131,8 +136,8 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
 test("hooks: with vyred down, the accepted lessons still hold, from the snapshot in the home", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
-  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" })).data.id, 2);
+  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
+  assert.equal((await call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, { root, caller: "cli", timeout: 20_000 })).data.id, 2);
   await d.stop();
   const env = { VYRE_HOME: root };
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
@@ -161,7 +166,7 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
 test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
+  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
   await d.stop();
   fs.rmSync(path.join(root, "lessons.json"));
   const env = { VYRE_HOME: root };
@@ -223,6 +228,11 @@ let out = ""; p.stdout.on("data", c => { out += c; }); p.on("close", () => fs.wr
 
 test("hooks: a plain yes accepts a lesson only when a person typed it into an interactive claude", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
   const root = tempHome(t);
+  // HD-4b: the person's "yes" counts only when the session's own transcript has it as the last user line; Claude Code writes that line, a model cannot.
+  const projects = path.join(root, "claude-projects");
+  fs.mkdirSync(path.join(projects, "-w"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-w", "s1.jsonl"), JSON.stringify({ type: "user", sessionId: "s1", cwd: "/w", message: { role: "user", content: "yes" } }) + "\n");
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [projects] }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root, VYRE_THREAD: "", VYRE_AGENT: "" };
@@ -246,8 +256,21 @@ test("hooks: a plain yes accepts a lesson only when a person typed it into an in
   assert.match(await tellThenYes({ tty: true, env: { VYRE_THREAD: "s1" } }), refused, "our own headless thread");
   assert.match(await tellThenYes({ tty: false }), refused, "no terminal");
   assert.equal(status(), "proposed");
-  assert.match(await tellThenYes({ tty: true }), /The user said yes: lesson 1 is in force now/, "a person at an interactive claude");
-  assert.equal(status(), "active");
+  // RC1 (lead ruling, reviewer-3 on HOLD): with the kernel on a plain yes never accepts a lesson, not even from a person at an interactive claude. The hook reaches vyred as `harness`, and a model's shell
+  // can replay the last user line through that path, so typedBy is never set from it. A lesson is kept by a tap in the app or by `vyre learn accept`. An unforgeable hook proof is BACKLOG 0.3.1.
+  const kernelOn = Boolean(d.kernel);
+  const answered = await tellThenYes({ tty: true });
+  if (kernelOn) {
+    assert.match(answered, refused, "a person at an interactive claude: still not accepted, the kernel is on");
+    assert.equal(status(), "proposed");
+    for (const caller of ["mcp", "cli", "hook", "module:x", "tailnet:alex", "mcp:agent:kit", "harness:agent:juno", "deck", "harness"]) {
+      await d.registry.call("harness.enrich", { session: "s1", cwd: "/w", prompt_id: `p-x-${caller}`, prompt: "yes", interactive: true }, caller);
+      assert.equal(status(), "proposed", `${caller} cannot make a plain yes count`);
+    }
+  } else {
+    assert.match(answered, /The user said yes: lesson 1 is in force now/, "a person at an interactive claude (kernel off)");
+    assert.equal(status(), "active");
+  }
 });
 
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {

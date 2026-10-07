@@ -3,6 +3,7 @@
 // against core's keys, never its own presence_keys (which a model's shell can write on a Mac),
 // and refuses to enroll or remove a key itself.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -34,10 +35,12 @@ async function world(t) {
   const socket = path.join(dir, "c.sock");
   const c = await startCore({ socket, dataDir: path.join(dir, "core"), ownerUid: uid, peerCred: async () => ({ pid: process.pid, uid }) });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   // vyred's own store: the person's uid can write it, a model's shell included.
   const db = open(path.join(dir, "vyred", "vyre.db"));
   t.after(() => db.close());
   const vyred = new Presence({ db, role: "local", touchid: null, writeTty: () => {}, who: async () => [], env: {}, core: coreLink({ socket, uid }) });
+  vyred.softwareOk = () => true; // vyred's own side is a development-kind server here (PW-1)
   return { c, db, vyred, socket, dir };
 }
 

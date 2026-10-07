@@ -1,4 +1,5 @@
 // The one-app tokens: one JSON, rendered for the Capsule (Swift), the app (TS) and the Deck (CSS).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -68,8 +69,8 @@ test("tokens: every output names the root folder that must exist before it is wr
 // ---- Deck v2 ----
 import { cssV2 } from "../scripts/lib/tokens.js";
 import { checkV2, tokens as shippedTokens } from "../lib/theme/index.js";
-import { emblem } from "../deck/vendor/vyrecode/emblem.js";
-import { PROJECT_COLORS } from "../deck/vendor/vyrecode/identity.js";
+import { emblem } from "../lib/wink-code/emblem.js";
+import { PROJECT_COLORS } from "../lib/wink-code/identity.js";
 
 test("tokens v2: both schemes name the same roles, every one a colour, and v1 is untouched", () => {
   assert.deepEqual(Object.keys(t.v2.color.dark), Object.keys(t.v2.color.paper));
@@ -92,7 +93,7 @@ test("tokens v2: the CSS has the Deck's names, both schemes, and the phone sizes
     "--fs-caption:", "--lh-display:", "--fs-label:", "--s-1:", "--s-16:", "--r-card:", "--r-sheet:", "--elev-1:", "--elev-3:", "--dur-4:", "--spring:", "--rail-w:", "--row-h:"])
     assert.ok(c.includes(name), name);
   assert.match(c, /--elev-2: 0 1px 0 var\(--edge-top\) inset, 0 8px 24px -8px rgba\(0,0,0,\.6\), 0 2px 6px rgba\(0,0,0,\.35\);/);
-  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{ --fs-body: 16px; --lh-body: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 26px; --fs-page: 28px; --lh-page: 34px; --control: 44px; --control-sm: 36px; --row-h: 64px; \}/);
+  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{ --fs-secondary: 15px; --lh-secondary: 20px; --fs-body: 16px; --lh-body: 22px; --fs-headline: 17px; --lh-headline: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 25px; --fs-page: 28px; --lh-page: 34px; --fs-display: 34px; --lh-display: 41px; --fs-control: 15px; --lh-control: 20px; --control: 44px; --control-sm: 36px; --row-h: 64px; \}/);
   assert.equal(cssV2(t), c, "stable output");
 });
 

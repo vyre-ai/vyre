@@ -2,6 +2,7 @@
 // api.learn / api.catalog / api.call over a fake ctx: catalog from the net buffer, storage by
 // origin, calls made from inside the page, credentials never returned, acting rules for writes.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import api from "./extension/caps/api.js";

@@ -1,4 +1,4 @@
-# The real-device rehearsal matrix (e2e2, docs/work/e2e2.md). Every target is a fresh hosted
+# The real-device rehearsal matrix (e2e2, team/archive/work-journals/e2e2.md). Every target is a fresh hosted
 # runner: nothing here ever reaches the user's server or Mac. Dispatch it for a branch:
 #   gh workflow run matrix.yml --ref work/<team> -f journeys=J0 -f on=all
 name: matrix

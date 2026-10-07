@@ -4,6 +4,7 @@
 // Every test names its rule. Timings are shortened (a 300 ms heartbeat, a 50 ms backoff) so the
 // file runs in seconds; the behaviour is the same at 15 s and 2 s.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -28,11 +29,11 @@ async function until(fn, what, ms = 8_000) {
 /** A module with a write that counts itself in the event log, so the count survives restarts. */
 function chaosModule(root) {
   writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow", "chaos.key", "chaos.read"] }, watches: { emits: ["chaos.added", "chaos.started"] } }, `export default { async start(ctx) {
-    ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
-    ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
+    ctx.tool("chaos.add", { effect: "read", input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
+    ctx.tool("chaos.slow", { effect: "read", input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
       run: async i => { ctx.events.emit("chaos.started", { n: i.n }); await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
-    ctx.tool("chaos.read", { input: { type: "object", properties: {} }, run: async () => ({ last_event: ctx.events.latestId() }) });
-    ctx.tool("chaos.key", { input: { type: "object", properties: {} }, run: async (i, meta) => ({ key: meta.idempotencyKey ?? null }) });
+    ctx.tool("chaos.read", { effect: "read", input: { type: "object", properties: {} }, run: async () => ({ last_event: ctx.events.latestId() }) });
+    ctx.tool("chaos.key", { effect: "read", input: { type: "object", properties: {} }, run: async (i, meta) => ({ key: meta.idempotencyKey ?? null }) });
     return {};
   } };`);
 }
@@ -40,14 +41,14 @@ function chaosModule(root) {
 async function world(t, paths = 1) {
   const root = tempHome(t);
   chaosModule(root);
-  let d = await start({ root, log: () => {} });
+  let d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   const proxies = [];
   for (let i = 0; i < paths; i++) proxies.push(await proxy(d.paths.socket));
   const w = {
     root, proxies, get d() { return d; },
     applied: () => d.events.since(0, { type: "chaos.added", limit: 1000 }).map(e => e.payload.n),
     emit: n => d.events.emit("test", "thread.text", { n }),
-    async restart() { await d.stop(); d = await start({ root, log: () => {} }); },
+    async restart() { await d.stop(); d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] }); },
   };
   t.after(async () => { for (const p of proxies) await p.close(); await d.stop(); });
   return w;

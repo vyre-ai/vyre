@@ -16,18 +16,18 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
 
 /**
  * Exactly what the setup channel may call (condition 3, tailnet plan 3.6b). Any addition is posted
- * in the team's CHAT.md and added to the plan first. `relay.pair.ticket` is allowed once, by the
+ * in the team's CHAT.md and added to the plan first. `relay.pair.ticket` is REFUSED here since 4 Oct (one pairing path); it was allowed once, by the
  * gate below; `relay.setup.end` and `relay.setup.begin` are internal tools and never reachable
  * from a channel, whatever this list says.
  */
 export const SETUP_TOOLS = Object.freeze(new Set([
-  "relay.pair.ticket", "relay.setup.status",
+  "relay.setup.status",
   "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
 ]));
-/** The Tailscale tools the channel may call, by exact name: a later tool (logout, an auth key) is not exposed by being added. */
-export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|status|peers)$/]);
+/** The network tool the channel may call, by exact name: a later tool is not exposed by being added. */
+export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);
 /** The events the setup page may follow, one type per stream. */
-export const SETUP_EVENTS = Object.freeze(new Set(["tailscale.changed", "relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
+export const SETUP_EVENTS = Object.freeze(new Set(["relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
 
 // Tools added later (the sessions sign-in tool, for "Sign in to your AI") come from the registry,
 // not from a call: a shipped module lists them under "setupTools" in its module.json. Nothing under
@@ -160,7 +160,7 @@ const send = (res, status, body) => { res.writeHead(status, { "content-type": "a
  * The setup device's handler (condition 3): an allowlist, not owner powers. It sits in front of
  * vyred's router, which is given a policy of its own (tools by name, a few paths, one event type
  * per stream) as a second layer. Beyond the list:
- *   - relay.pair.ticket works once for the session, only while no owner exists, only within the
+ *   - relay.pair.ticket is refused (it used to work once for the session, only while no owner exists, only within the
  *     session's hour, and only counts when it succeeded. It never reaches the router: presence
  *     there means a person session, which no one has before the claim. The channel itself is the
  *     proof: it was admitted only for a hello signed by the page key over this Noise key, so every
@@ -190,36 +190,11 @@ export function setupGate(o) {
     // Compared as the router will read it (percent-decoded), so no spelling of the name skips the one-ticket rule.
     let tool = "";
     try { if (url.pathname.startsWith("/v1/tools/")) tool = decodeURIComponent(url.pathname.slice("/v1/tools/".length)); } catch { return send(res, 400, { error: { code: "bad_input", message: "bad path" } }); }
+    // One pairing path in 0.3 (lead ruling, 4 Oct 2026): the setup page no longer mints a ticket. A device that redeemed it was paired at the relay with no three-word confirm (a row of kind
+    // app, a presence key), and no owner exists yet to confirm it. The first device pairs by the code the installer prints (a gated server pairing, confirmed with three words).
     if (method === "POST" && tool === "relay.pair.ticket") {
-      if (o.ownerExists()) return send(res, 403, { error: { code: "denied", message: "this box already has an owner; the setup page can pair no more devices" } });
-      if (s.ticket !== "none") return send(res, 403, { error: { code: "denied", message: "the setup page has already made its one pairing ticket" } });
-      s.ticket = "busy";
       req.resume();
-      o.mintTicket().then(
-        data => { s.ticket = "minted"; send(res, 200, { data }); },
-        e => { s.ticket = "none"; send(res, 502, { error: { code: typeof e?.code === "string" ? e.code : "failed", message: String(e?.message || e).slice(0, 200) } }); });
-      return;
-    }
-    // N7: a reinstalled box has no owner yet, so the recovery code is its authority. The gate calls
-    // names.recover.code itself, as the module, once at a time and five times a session at most.
-    if (method === "POST" && tool === "names.recover") {
-      if (o.ownerExists()) return send(res, 403, { error: { code: "denied", message: "this box already has an owner" } });
-      if (!o.recoverCode) return send(res, 404, { error: { code: "not_found", message: `${method} ${url.pathname}` } });
-      if (s.recovering) return send(res, 429, { error: { code: "busy", message: "a recovery attempt is already running" } });
-      if ((s.recoverTries || 0) >= 5) return send(res, 429, { error: { code: "rate_limited", message: "too many recovery attempts in this setup" } });
-      let raw = "";
-      req.on("data", c => { if (raw.length < 4096) raw += c; });
-      req.on("end", () => {
-        let input;
-        try { input = JSON.parse(raw); } catch { return send(res, 400, { error: { code: "bad_input", message: "bad json" } }); }
-        if (!input || typeof input.name !== "string" || typeof input.code !== "string") return send(res, 400, { error: { code: "bad_input", message: "name and code are needed" } });
-        s.recovering = true; s.recoverTries = (s.recoverTries || 0) + 1;
-        Promise.resolve().then(() => o.recoverCode({ name: input.name, code: input.code })).then(
-          data => send(res, 200, { data }),
-          e => send(res, 400, { error: { code: typeof e?.code === "string" ? e.code : "failed", message: String(e?.message || e).slice(0, 200) } }),
-        ).finally(() => { s.recovering = false; });
-      });
-      return;
+      return send(res, 403, { error: { code: "denied", message: "this box is paired with the code its installer prints, confirmed with three words; the setup page mints no pairing ticket" } });
     }
     return tools()(req, res, caller, peer);
   };

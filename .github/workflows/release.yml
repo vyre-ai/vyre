@@ -123,7 +123,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows .github/actions scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -190,6 +190,9 @@ jobs:
           path: signing-diff/whole-diff.txt
           if-no-files-found: ignore
           retention-days: 14
+      # The saved Twenty database a new Space starts from rides in the release: built here, before the pack, pinned to the Twenty image's digest and hashed (stores/twenty/provision.js findGolden refuses a dump whose
+      # hash is not the one the build recorded). Without it a first Space migrates Twenty from an empty database, which takes minutes and has failed on small servers.
+      - uses: ./.github/actions/twenty-golden
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh
@@ -198,8 +201,24 @@ jobs:
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+          # the signed list of first-party modules (scripts/modules-manifest.mjs, by build-site.sh): one more file in the list SHA256SUMS covers
+          [ -f site/box/modules.json ] && cp site/box/modules.json dist/ || { echo "build-site made no modules.json"; exit 1; }
+          # the signed list of the web app's files (scripts/appbuild-manifest.mjs, lib/app-build.js): the daemon serves /app/ only from files on it
+          [ -f site/box/appbuild.json ] && cp site/box/appbuild.json dist/ || { echo "build-site made no appbuild.json"; exit 1; }
+          # shell.json carries the module list and the app record as exact text (scripts/shell-hashes.mjs, lib/release-shell.js): the one file an OLD updater fetches and publishes, so a 0.2.x server updated to this release still receives them
+          [ -f site/box/shell.json ] && cp site/box/shell.json dist/ || { echo "build-site made no shell.json"; exit 1; }
           # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
           node scripts/setup-hashes.mjs dist
+      - name: The Wink node program for a Mac server (wink-forwarder-darwin-<arch>), built in the pinned Go image the box image uses
+        run: |
+          # The Mac installer (scripts/install-mac-server.sh setup_wink_net) takes it from the signed SHA256SUMS like every file. Same Go image digest as box/Dockerfile's winknode stage.
+          img=$(sed -n 's/^FROM \(golang:[^ ]*\) AS winknode$/\1/p' box/Dockerfile)
+          [ -n "$img" ] || { echo "box/Dockerfile has no winknode stage"; exit 1; }
+          for a in arm64 amd64; do
+            docker run --rm -v "$PWD/wink/forwarder:/src:ro" -v "$PWD/dist:/out" -w /src -e CGO_ENABLED=0 -e GOOS=darwin -e GOARCH=$a "$img" \
+              go build -trimpath -ldflags="-s -w" -o /out/wink-forwarder-darwin-$a .
+          done
+          ls -l dist/wink-forwarder-darwin-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared
@@ -272,6 +291,9 @@ jobs:
           outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.COMPUTER_IMAGE) || 'type=docker,name=vyre-computer:dry' }}
           cache-from: type=gha,scope=release-computer-${{ matrix.arch }}
           cache-to: type=gha,scope=release-computer-${{ matrix.arch }},mode=max
+      - name: The box image carries the saved Twenty database (a fresh Space must not migrate Twenty from empty, #91)
+        if: needs.prepare.outputs.publish != 'true'
+        run: docker run --rm --entrypoint node vyre-box:dry -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: A dry run boots the box image it built
         if: needs.prepare.outputs.publish != 'true'
         run: |
@@ -516,6 +538,18 @@ jobs:
           node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
           grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
           grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
+      - name: The signed module list matches the tarball and the BUILT image (one byte of difference bricks that module on every box)
+        run: |
+          # The list is made from the unpacked vyre.tgz; the image is built from a context that is not the tarball. The kernel's own check (kernel/modules/release-list.js
+          # verifyTrees) runs on both, and the release fails on any difference. On a dry run there is no pushed image: the packaged-boot job covers the image.
+          d=$(mktemp -d); tar -xzf dist/vyre.tgz -C "$d" --strip-components=1
+          node scripts/verify-list-trees.mjs "$d" dist/modules.json
+          if [ "$PUBLISH" = true ] && [ -n "$BOX" ]; then
+            docker pull -q "$BOX" >/dev/null
+            id=$(docker create "$BOX"); mkdir -p "$RUNNER_TEMP/image-root"
+            docker cp "$id:/opt/vyre/." "$RUNNER_TEMP/image-root/"; docker rm "$id" >/dev/null
+            node scripts/verify-list-trees.mjs "$RUNNER_TEMP/image-root" dist/modules.json
+          fi
       - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
@@ -535,9 +569,9 @@ jobs:
         run: |
           # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer --setup ${MAC_FLAG:-}
+            node scripts/check-release-dist.mjs dist --modules --installer --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

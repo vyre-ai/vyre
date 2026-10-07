@@ -25,7 +25,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 /** The loader's own files: the page, its module and the device client it imports. */
 /** The scanner the installed app opens to on its first launch (pairing.js): the camera page's own files, shipped under their repo paths. */
-export const SCANNER_ENTRIES = ["relay/wink/page.js", "deck/js/scan.js", "deck/js/haptics.js", "deck/js/scan-worker.js"];
+export const SCANNER_ENTRIES = ["relay/wink/page.js", "web/js/scan.js", "web/js/haptics.js", "web/js/scan-worker.js"];
 export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "fragment.js", "pairing.js", "manifest.js",
   // What makes "Add to Home Screen" install the app and not a bookmark: the web app manifest and its icons (the Deck's own).
   "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
@@ -138,13 +138,13 @@ export async function loader(o) {
   const files = {};
   for (const f of LOADER_FILES) {
     const icon = /\.png$/.test(f);
-    const src = icon ? path.join(HERE, "..", "..", "deck", f) : f.startsWith("client/") ? path.join(HERE, "..", f) : path.join(HERE, "loader", f === "manifest.js" ? "../manifest.js" : f);
+    const src = icon ? path.join(HERE, "..", "..", "web", f) : f.startsWith("client/") ? path.join(HERE, "..", f) : path.join(HERE, "loader", f === "manifest.js" ? "../manifest.js" : f);
     if (icon) { files[f] = new Uint8Array(fs.readFileSync(src)); continue; }
     let text = fs.readFileSync(src, "utf8");
     // In the served tree the loader's modules sit beside the client's: fix the one relative import.
     if (f === "manifest.js") text = text.replace('"../client/bytes.js"', '"./client/bytes.js"');
     // pairing.js loads the shipped scanner from its repo paths: in the served tree they sit beside the loader.
-    if (f === "pairing.js") text = text.replaceAll('"../../wink/', '"./relay/wink/').replaceAll('"../../../deck/', '"./deck/');
+    if (f === "pairing.js") text = text.replaceAll('"../../wink/', '"./relay/wink/').replaceAll('"../../../web/', '"./web/');
     files[f] = new Uint8Array(Buffer.from(text));
   }
   const ROOT = path.resolve(HERE, "..", "..");

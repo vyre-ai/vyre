@@ -47,7 +47,7 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
    without its declaration throws an error with code `undeclared`. The install card is built from
    these declarations, so declare only what you use.
 9. **Plain words and the sample world.** Summaries are one lowercase line. No em dash, no section
-   sign. Example people and businesses are only alex, Harlow Legal, Northwind Bakery, juno and
+   sign. Example people and businesses are only alex, Juniper Studio, Northwind Bakery, juno and
    kit, and example hosts end in `.example`.
 
 ## The steps
@@ -177,7 +177,7 @@ ctx.tool("bakery.add", {
   description: "Record an order: who it is for and how many items",
   input: { type: "object", required: ["customer", "items"], additionalProperties: false,
     properties: { customer: { type: "string", minLength: 1 }, items: { type: "integer", minimum: 1 } } },
-  examples: [{ input: { customer: "Harlow Legal", items: 24 } }],
+  examples: [{ input: { customer: "Juniper Studio", items: 24 } }],
   run: async ({ customer, items }) => {
     const id = Number(insert.run(today(), customer, items, Date.now()).lastInsertRowid);
     ctx.events.emit("bakery.order-added", { id, items, big: items >= 20 });
@@ -271,7 +271,7 @@ test("bakery.flour is held for an agent and runs for the person", async t => {
 | `... was still running after stop; clear it in stop()` | Clear every timer and unsubscribe every listener in `stop`. |
 | `a second start changed the schema` | Never change a migration step that ran; add a new step. |
 | `has an em dash` / `has a section sign` | Rewrite with a colon, a comma or two sentences. |
-| `names a real person or business` | Use the sample world: alex, Harlow Legal, Northwind Bakery, juno, kit. |
+| `names a real person or business` | Use the sample world: alex, Juniper Studio, Northwind Bakery, juno, kit. |
 
 ## What a module must never do
 

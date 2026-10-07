@@ -2,6 +2,7 @@
 // scripts/check-release-dist.mjs against a release folder built the way the release job builds it (build-site.sh's box files, release.json, SHA256SUMS,
 // the stripped wrapper). The compose.yml pin is done both ways: the integrator's first sed, which keeps `${VYRE_IMAGE:-<digest>}` (refused), and the literal lines
 // the updater requires (accepted).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -64,15 +65,13 @@ test("release dist: an unstripped wrapper, a missing or wrong signature, a tampe
 
 test("pin-release-compose: makes every image line literal from the real compose.yml, refuses what it cannot, and the result passes the checker", t => {
   const source = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
-  const tsDefault = /\$\{VYRE_TAILSCALE_IMAGE:-([^}]*)\}/.exec(source)?.[1] || "";
-  const real = /@sha256:[0-9a-f]{64}$/.test(tsDefault) ? source : source.replace(/\$\{VYRE_TAILSCALE_IMAGE:-[^}]*\}/, `\${VYRE_TAILSCALE_IMAGE:-${TS}}`);
-  const tsPinned = /@sha256:[0-9a-f]{64}$/.test(tsDefault) ? tsDefault : TS;
-  const pinned = pin(real, BOX, COMPUTER);
+  const pinned = pin(source, BOX, COMPUTER);
   assert.ok(!/image:.*\$/.test(pinned), "no image line keeps a variable");
-  assert.ok(pinned.includes(`image: ${BOX}`) && pinned.includes(`image: ${tsPinned}`) && pinned.includes(`\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`));
-  // A third-party default that is still a tag, and a ref that is not a digest, stop the build.
-  assert.throws(() => pin(source.replace(/\$\{VYRE_TAILSCALE_IMAGE:-[^}]*\}/, "${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}"), BOX, COMPUTER), /is not pinned by digest in the source/);
-  assert.throws(() => pin(real, "ghcr.io/vyre-ai/vyre:latest", COMPUTER), /must be ghcr\.io\/vyre-ai/);
+  assert.ok(pinned.includes(`image: ${BOX}`) && pinned.includes(`\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`));
+  assert.ok(!/tailscale/i.test(source.replace(/^\s*#.*$/gm, "")), "the box compose has no tailscale service or image");
+  // A third-party default that is still a tag stops the build.
+  assert.throws(() => pin(source.replace("services:", "services:\n  extra:\n    image: ${VYRE_EXTRA_IMAGE:-someone/else:stable}"), BOX, COMPUTER), /is not pinned by digest in the source/);
+  assert.throws(() => pin(source, "ghcr.io/vyre-ai/vyre:latest", COMPUTER), /must be ghcr\.io\/vyre-ai/);
   assert.throws(() => pin("services: {}\n", BOX, COMPUTER), /no `image: \$\{VYRE_IMAGE/);
 });
 
@@ -128,4 +127,49 @@ test("release dist: install-mac-server.sh is a required release file, so it is s
   fs.rmSync(path.join(d, "install-mac-server.sh"));
   const problems = check(d, {});
   assert.ok(problems.some(p => /missing install-mac-server\.sh/.test(p)), problems.join("\n"));
+});
+
+test("release dist --modules: modules.json must be in the release, listed in SHA256SUMS, at the release's own version and the counter that version makes", async t => {
+  const { releaseCounter } = await import("../scripts/release-counter.mjs");
+  const make = (/** @type {any} */ over = {}, listed = true) => {
+    const dir = dist(t, { sign: false });
+    const body = JSON.stringify({ v: 1, counter: releaseCounter("0.2.0"), release: "0.2.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } }, ...over });
+    if (body !== "null") fs.writeFileSync(path.join(dir, "modules.json"), body);
+    // The web app's signed file list (MW-5): present beside the module list in a release.
+    if (body !== "null") fs.writeFileSync(path.join(dir, "appbuild.json"), JSON.stringify({ v: 1, release: "0.2.0", version: "0.2.0", counter: releaseCounter("0.2.0"), tree: "c".repeat(64), base: "/app/", files: { "index.html": "b".repeat(64) } }));
+    // shell.json carries both as exact text (lib/release-shell.js), for an old updater that knows only shell.json.
+    if (body !== "null") fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify({ v: 1, version: "0.2.0", files: [], modulesJson: fs.readFileSync(path.join(dir, "modules.json"), "utf8"), appbuildJson: fs.readFileSync(path.join(dir, "appbuild.json"), "utf8") }));
+    if (listed) {
+      const names = fs.readdirSync(dir).filter(f => !/^SHA256SUMS/.test(f) && f !== "notes.md").sort();
+      fs.writeFileSync(path.join(dir, "SHA256SUMS"), names.map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex")}  ${f}\n`).join(""));
+    }
+    return dir;
+  };
+  assert.deepEqual(check(make(), { pulled: true, modules: true }), []);
+  assert.match(check(make({ counter: 5 }), { pulled: true, modules: true }).join("\n"), /counter is 5, this version makes/);
+  assert.match(check(make({ release: "0.2.1" }), { pulled: true, modules: true }).join("\n"), /says release 0.2.1, VERSION says 0.2.0/);
+  assert.match(check(make({ modules: {} }), { pulled: true, modules: true }).join("\n"), /with modules/);
+  assert.match(check(dist(t, { sign: false }), { pulled: true, modules: true }).join("\n"), /modules\.json is not in the release/);
+  const noApp = make(); fs.rmSync(path.join(noApp, "appbuild.json"));
+  assert.match(check(noApp, { pulled: true, modules: true }).join("\n"), /appbuild\.json is not in the release/);
+  const unlisted = make({}, false);
+  fs.appendFileSync(path.join(unlisted, "modules.json"), " ");
+  assert.ok(check(unlisted, { pulled: true, modules: true }).length > 0, "a list SHA256SUMS does not carry is refused");
+});
+
+test("release dist --modules: shell.json must carry modules.json and appbuild.json as exact text, and be listed", async t => {
+  const { releaseCounter } = await import("../scripts/release-counter.mjs");
+  const dir = dist(t, { sign: false });
+  const modules = JSON.stringify({ v: 1, counter: releaseCounter("0.2.0"), release: "0.2.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } } });
+  const app = JSON.stringify({ v: 1, release: "0.2.0", version: "0.2.0", counter: releaseCounter("0.2.0"), tree: "c".repeat(64), base: "/app/", files: { "index.html": "b".repeat(64) } });
+  fs.writeFileSync(path.join(dir, "modules.json"), modules); fs.writeFileSync(path.join(dir, "appbuild.json"), app);
+  const seal = () => { const names = fs.readdirSync(dir).filter(f => !/^SHA256SUMS/.test(f) && f !== "notes.md").sort(); fs.writeFileSync(path.join(dir, "SHA256SUMS"), names.map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex")}  ${f}\n`).join("")); };
+  seal();
+  assert.match(check(dir, { pulled: true, modules: true }).join("\n"), /shell\.json is not in the release/);
+  fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify({ v: 1, files: [], modulesJson: modules + " ", appbuildJson: app })); seal();
+  assert.match(check(dir, { pulled: true, modules: true }).join("\n"), /does not carry modules\.json as exact text/);
+  fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify({ v: 1, files: [], modulesJson: modules, appbuildJson: "x" })); seal();
+  assert.match(check(dir, { pulled: true, modules: true }).join("\n"), /does not carry appbuild\.json as exact text/);
+  fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify({ v: 1, files: [], modulesJson: modules, appbuildJson: app })); seal();
+  assert.deepEqual(check(dir, { pulled: true, modules: true }), []);
 });

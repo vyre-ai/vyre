@@ -1,0 +1,53 @@
+{
+  "name": "approvals",
+  "version": "0.1.0",
+  "description": "Approve on your phone: a session that cannot give a presence proof (the web app's software key) asks, the paired phone shows what will happen and signs it with Face ID, and the asker takes the proof back to attach to its act.",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [],
+  "needs": {
+    "kernel": {
+      "actions": []
+    }
+  },
+  "does": {
+    "tools": [
+      {
+        "name": "approvals.request", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.ask", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.hold", "effect": "write",
+        "reach": "modules"
+      },
+      {
+        "name": "approvals.pending", "effect": "read",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.answer", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.status", "effect": "read",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "cli": []
+  },
+  "teaches": {
+    "tips": []
+  },
+  "settings": []
+}

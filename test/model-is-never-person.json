@@ -1,0 +1,22 @@
+{
+ "files": {
+  "core/computers/index.js": 2,
+  "core/hooks/index.js": 1,
+  "core/import/index.js": 1,
+  "core/link/mac.js": 1,
+  "core/memory/index.js": 4,
+  "core/memory/site.js": 1,
+  "core/memory/who.js": 1,
+  "core/memory/write.js": 2,
+  "core/names/index.js": 1,
+  "core/network/wink.js": 1,
+  "core/onboard/index.js": 3,
+  "core/projects/index.js": 1,
+  "core/relay/index.js": 1,
+  "core/settings/index.js": 2,
+  "core/switchboard/said.js": 1,
+  "core/undo/index.js": 1,
+  "kernel/remote/wink.js": 1,
+  "modules/hands-desktop/index.js": 1
+ }
+}

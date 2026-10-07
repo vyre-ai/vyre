@@ -23,6 +23,8 @@ dump() {
   for l in com.vyre.core com.vyre.vyred com.vyre.colima; do echo "--- $l"; sudo launchctl print "system/$l" 2>&1 | head -n 40 || true; done
   ls -la "/Library/Application Support/Vyre" 2>&1 || true
   for f in "${VYRE_HOME:-/nonexistent}"/logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 30 "$f"; }; done 2>/dev/null || true
+  # the service writes its output here (vyre: "its output is in ~/.vyre-proof/logs"), not under VYRE_HOME
+  for f in "$HOME/.vyre-proof/logs"/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 40 "$f"; }; done 2>/dev/null || true
   echo "::endgroup::"
 }
 trap dump EXIT

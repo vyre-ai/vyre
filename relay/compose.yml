@@ -1,0 +1,21 @@
+# Run your own Vyre relay and name directory:  docker compose -f relay/compose.yml up -d --build
+# Both ports are published on loopback only. Put a TLS reverse proxy in front (Caddy example in relay/README.md) and point the box at it:
+#   vyre config set relay.url wss://relay.example.com      names.directory https://names.example.com
+services:
+  relay:
+    build: { context: .., dockerfile: relay/Dockerfile }
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+    environment:
+      VYRE_TRUST_PROXY: "1"
+    volumes: [ "relay-data:/data" ]
+    read_only: true
+    tmpfs: [ /tmp ]
+    cap_drop: [ ALL ]
+    security_opt: [ "no-new-privileges:true" ]
+    pids_limit: 256
+    mem_limit: 512m
+volumes:
+  relay-data: {}

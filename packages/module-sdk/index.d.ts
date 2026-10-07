@@ -47,10 +47,14 @@ export interface ToolEntry {
   outward?: Outward;
   /** It spends money through the module's own model or API use. */
   cost?: "paid";
+  /** What the tool does to state: "read" changes nothing, "write" does. Undeclared, a read verb at the end of the name (list, get, status ...) is a read, else a write. A write with no `callers` list is open to the person's surfaces and modules only; declare `callers` to open it to anyone else. */
+  effect?: "read" | "write";
   /** The input field (or fields) holding a project: an agent calling for a project it is not granted is refused (not_found) before the tool runs, and the tool gets meta.reach for listings. */
   projectArg?: string | string[];
   /** The input field (or fields) holding a folder: mapped to its project, and refused for an agent not granted that project (or for a folder in no project). */
   cwdArg?: string | string[];
+  /** The tool keys by the Project record's id: the registry checks an agent's grant on the short name as usual but hands the tool the id (or address) that was given. */
+  projectIsRecord?: true;
   /** Built in only, for an asked tool: an internal tool of this module that answers { to: [string] }, what one call acts on, so the person's yes binds that thing and not the whole tool. */
   target?: string;
   [experimental: `x-${string}`]: unknown;
@@ -125,10 +129,14 @@ export interface Manifest {
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];
+    /** The tools of this module that change nothing. A tool open to anyone that is not named here (or given effect: "read" on its entry) is a write: open to the person's surfaces and modules only until its callers list says otherwise. */
+    reads?: ToolName[];
     /** Session drivers (ADR 0030). Built in only in 0.2. */
     providers?: string[];
     /** Watcher preset files it ships (relative .json paths). A preset only describes; it runs no code. */
     watchers?: string[];
+    /** Kit files it ships (relative .json paths): record types and their parts, installed only when the person approves. */
+    kits?: string[];
     /** @planned Harness points, each served by one of this module's tools. pretool only tightens. */
     hooks?: { brief?: ToolName; enrich?: ToolName; pretool?: ToolName; stop?: ToolName };
     /** @deprecated Mark the tool outward instead. Gate sender types: type name to the tool that sends after the Gate approved. */
@@ -166,6 +174,10 @@ export interface Manifest {
     connections?: { provider: string; purpose: string }[];
     /** Its default daily cap on core/spend. */
     spend?: { dailyUsd: number };
+    /** Daemon services handed to a built in module (names the loader knows: kernelSession, kernelThreads, sandbox, flowsHost, credentials, dataStores, devStandIn, modulesListReset, modulesListResetPayload). */
+    daemon?: string[];
+    /** The record types and Drive folders it may reach, as narrow verbs on `ctx.kernel` (an added module; shown on the install card). Not the kernel handle: no defining types, no removing records. */
+    kernel?: { records?: string[]; files?: string[] };
     /** @planned Tools it calls with ctx.call, or "module.*". */
     tools?: string[];
     /** @planned Hosts it talks to. A declaration the person approves, not a wall, while in process. */
@@ -328,8 +340,16 @@ export interface ModuleEvents {
   emit<P = any>(type: EventType, payload?: P, where?: { project?: string; thread?: string }): VyreEvent<P>;
   /** Subscribe to a type, "noun.*" or "*". Returns an unsubscribe function. */
   on(pattern: EventPattern, fn: (event: VyreEvent) => void): () => void;
+  /** The caller class the running call came from, past module hops, or undefined when nothing is running. A module that stores work for later stores this beside it (RG-2). */
+  origin(): string | undefined;
+  /** Run `fn` as the call `origin` came from (the origin stored with a job or an event), so what it calls is judged as that caller class. With no origin it just runs `fn`. */
+  withOrigin<T>(origin: string | undefined, fn: () => T): T | Promise<T>;
   /** Events after an id, oldest first. */
   since(id?: number, opts?: { type?: string; project?: string; limit?: number }): VyreEvent[];
+  /** One thread's own events, oldest first (an indexed read of the log). */
+  ofThread(thread: string, opts?: { types?: string[]; limit?: number; tail?: boolean }): VyreEvent[];
+  /** @internal Built in only: delete every event of a thread (the threads module's alone, when the person deletes it). */
+  eraseThread(thread: string): number;
   /** The id a read is current to, so a view can follow the stream from it with no gap. */
   latestId(): number;
   /** @internal Delete this module's own redundant events of a declared type. */
@@ -420,10 +440,30 @@ export interface ModuleContext {
    * built in module's tables are prefixed in vyre.db.
    */
   store: {
-    /** A node:sqlite DatabaseSync. Write only your own tables; use tools for anyone else's. */
-    db: any;
-    /** Ordered SQL steps, forward only, each applied once. */
-    migrate(steps: string[]): void;
+    /** A node:sqlite DatabaseSync, for a built in module in the daemon. A module installed from outside runs in a sandbox and has no `db`: use `exec`, `query` and `migrate`, which work everywhere. */
+    db?: any;
+    /** Ordered SQL steps, forward only, each applied once. Tables start with the module's name and an underscore. */
+    migrate(steps: string[]): void | Promise<void>;
+    /** Run one statement with `?` parameters. Answers { changes, lastInsertRowid }. */
+    exec(sql: string, params?: unknown[]): Promise<{ changes: number; lastInsertRowid: number }>;
+    /** Run one query with `?` parameters. Answers the rows. */
+    query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
+  };
+  /**
+   * What `needs.kernel` declared, as narrow verbs for the Space's own records and Drive (an added module; never the kernel's handle). They run under the person who installed the module, with the module
+   * beside them as an outside hop, and only on the declared record types and folders. Present only when declared.
+   */
+  kernel?: {
+    records?: {
+      create(type: string, data: Record<string, unknown>): Promise<{ urn: string; id: string; type: string; data: Record<string, unknown>; version: number }>;
+      get(urn: string): Promise<{ urn: string; data: Record<string, unknown>; version: number } | null>;
+      list(type: string, opts?: { filter?: unknown; limit?: number }): Promise<{ rows: Array<{ urn: string; data: Record<string, unknown>; version: number }>; next_cursor: string | null }>;
+      update(urn: string, patch: Record<string, unknown>, baseVersion: number): Promise<{ urn: string; data: Record<string, unknown>; version: number }>;
+    };
+    files?: {
+      /** Write a file into a declared Drive folder as a new version: `{ path, text }` or `{ path, base64 }`, at most 8 MB. */
+      write(file: { path: string; text?: string; base64?: string }): Promise<{ path: string; version: number; size: number }>;
+    };
   };
   /** @internal Every path but data is for built in modules. */
   paths: {
@@ -484,6 +524,8 @@ export interface ModuleContext {
   /** @internal The registered drivers, for the Switchboard. */
   providers: { get(name: string): SessionDriver | null; list(): string[] };
   /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
+  /** Offer a value to the modules that asked for it, once (a name another module reads); the loader refuses a second provider of the same name. */
+  provide(name: string, value: unknown): void;
   declaredSettings(): (SettingDef & { module: string })[];
   /** @internal The tools shipped modules list under setupTools, for the relay's pre-claim setup channel. Only a built-in module's field counts. */
   declaredSetupTools(): string[];

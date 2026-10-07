@@ -4,6 +4,7 @@
 // agent is refused, an agent must post a plan, the floor and Esc apply, a held act becomes a Gate
 // card and is released (or refused as changed), and results arrive redacted.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discover, Registry, validate } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeApp } from "../hands-mac/fake.js";
 import { fakeExtension, until } from "./fake-extension.js";
@@ -25,8 +26,8 @@ const PLAN = { steps: [{ id: "1", text: "Read the intake page" }, { id: "2", tex
 /** A stand-in Gate: records gate.offer and gate.request, hands back an id. */
 const GATE_JS = `export default { async start(ctx) {
   const seen = globalThis.__gate = { offers: [], requests: [] };
-  ctx.tool("gate.offer", { description: "x", input: { type: "object" }, run: async i => { seen.offers.push(i); return { ok: true }; } });
-  ctx.tool("gate.request", { description: "x", input: { type: "object" }, run: async i => {
+  ctx.tool("gate.offer", { effect: "read", description: "x", input: { type: "object" }, run: async i => { seen.offers.push(i); return { ok: true }; } });
+  ctx.tool("gate.request", { effect: "read", description: "x", input: { type: "object" }, run: async i => {
     seen.requests.push(i);
     // A person's own words or a standing permission cover it: the real Gate releases at once, from inside gate.request, before any id is returned.
     if (globalThis.__gateSaid) { const r = await ctx.call("chrome.release", { id: "sent-1", to: [i.to], content: i.content }); return r.error ? { id: "sent-1", state: "held", error: r.error.message } : { id: "sent-1", state: "sent", result: r.data }; }
@@ -569,7 +570,8 @@ test("module: a model cannot approve its own write by passing writeOk (or asked)
   await reg.call("hands.grant.add", { agent: "kit" }, "cli");
   await reg.call("chrome.plan", PLAN, KIT);
   const r = await reg.call("chrome.api", { action: "call", entry: "a", tab: 1, writeOk: true, asked: true }, KIT);
-  assert.equal(r.data.held, true, "still held: no plan covers it and the model's own claim counts for nothing");
+  // The registry refuses keys the schema does not list from a client before the module strips them (group D); either way the claim counts for nothing.
+  assert.ok((r.error && r.error.code === "bad_input") || (r.data && r.data.held === true), "refused or still held: no plan covers it and the model's own claim counts for nothing");
   assert.ok(x.ops("api.call").every((/** @type {any} */ o) => (o.trust || {}).writeOk !== true), "writeOk never reached the extension");
 });
 
@@ -613,11 +615,13 @@ test("module: a batch or recipe may make the writes an approved plan covers with
   await reg.call("chrome.plan", PLAN, KIT);
   await reg.call("chrome.tabs", { action: "list" }, KIT);
   // no plan: no budget, and a model's own budget is stripped
-  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  const stripped = await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  assert.equal(stripped.error && stripped.error.code, "bad_input", "a model's own budget is refused by the schema before the module could strip it");
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
   assert.equal(seen[0].writeBudget, undefined);
   const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "drafts", count: 2 }], tab: 1 }, KIT);
   await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
-  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
   assert.deepEqual(seen[1].writeBudget, { create: 2, edit: 0, tab: 1, tabOrigin: "https://app.one.example" }, "the plan's remaining count bound to its tab and site, not the model's");
   const s = await reg.call("chrome.summary", {}, KIT);
   assert.equal(s.data.counts.create, 2, "what the batch covered is counted and listed");

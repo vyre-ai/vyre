@@ -1,9 +1,11 @@
 // @ts-check
 // client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
 
+import { ZONE_HEADER, systemZone } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import http from "node:http";
 import * as config from "../config/index.js";
+import { readSession } from "../../lib/cli-session.js";
 
 /**
  * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
@@ -14,6 +16,7 @@ import * as config from "../config/index.js";
  * @param {string} method @param {string} path @param {any} [payload]
  * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string>, socket?: string }} [opts]
  */
+
 export function request(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
   // Inside a session Vyre started, VYRE_SOCKET is that session's own socket (ADR 0030 phase 3):
   // vyred binds the caller there, so what this says it is changes nothing. An explicit root or
@@ -27,8 +30,12 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     const key = /(?:^|[\s:])agent:/.test(caller) && process.env.VYRE_AGENT_KEY ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY } : {};
     // A caller in a bound session says which one, with the key its SessionStart hook was given.
     const bound = session && session.id && session.key ? { "x-vyre-session": session.id, "x-vyre-session-key": session.key } : {};
+    // The command line's sign-in (`vyre signin`): its credential rides on the CLI's own calls to its own home. The daemon honours it only from the terminal login it was made for.
+    const cliToken = /^cli$/.test(caller) && !socket && !headers.authorization ? readSession(root) : null;
+    const signedIn = cliToken ? { authorization: `Vyre ${cliToken}` } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { ...headers, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      // The zone of the device making the call (a person on the move is in the zone of the device in hand): lib/time reads it as `meta.zone`.
+      headers: { [ZONE_HEADER]: systemZone(), ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });

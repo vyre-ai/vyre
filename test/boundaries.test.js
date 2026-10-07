@@ -13,6 +13,7 @@
 // 2026-09-27; it only shrinks. A new edge needs the lead's OK. An entry nothing uses any more
 // fails too, so a fixed edge comes off the list. docs/architecture/boundaries.md explains each.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,7 +21,7 @@ import path from "node:path";
 import { SCRATCH } from "./scratch.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const KERNEL = new Set(["config", "store", "events", "modules", "presence", "daemon"].map(n => "core/" + n));
+const KERNEL = new Set(["config", "store", "modules", "presence", "daemon"].map(n => "core/" + n));
 const TREES = ["core", "local", "modules", "lib"];
 
 /**
@@ -42,24 +43,20 @@ export const ALLOW = {
     why: "vyre voice, push-to-talk from a terminal until the native Capsule has voice" },
   "core/daemon -> core/harness": { files: ["core/harness/rules.js"], next: "lib",
     why: "the kernel runs the security floor on every call's input; the floor belongs in the kernel" },
-  "core/daemon -> core/names": { files: ["core/names/guests.js"], next: "ctx.call",
-    why: "the router asks whether a tailnet caller is a guest before it reaches the registry" },
+  "core/files -> core/link": { files: ["core/link/transport.js"], next: "lib",
+    why: "the legacy folder-as-a-disk path looks up a program the Mac may have (drive.js); it goes with that path when VyreDrive's mount lands" },
+  "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js", "core/runner/lent-home.js"], next: "lib",
+    why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session; and the home's checkpoint store for an own-server session's per-turn seal (core/daemon/ownserver-host.js; moves to lib with the store)" },
+  "core/daemon -> core/sessions": { files: ["core/sessions/drivers/openrouter.js"], next: "lib",
+    why: "the daemon hands the kernel's inference door its providers: the API-key chat drivers' door side (the door scans first, this only makes the call with the key the session passes); one-way, the drivers import nothing from the daemon" },
+  "core/daemon -> core/spawner": { files: ["core/spawner/client.js", "core/spawner/confine.js"], next: "lib",
+    why: "a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start (ruling 4 Oct, b); it asks the root spawner, which is not a module" },
   "core/daemon -> core/switchboard": { files: ["core/switchboard/sessions.js"], next: "ctx.call",
     why: "the router resolves which Claude Code session a call comes from" },
-  "core/files -> core/link": { files: ["core/link/transport.js"], next: "lib",
-    why: "Mac to box file transfer over the tailnet transport" },
-  "core/files -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
-    why: "runs the tailscale CLI (Taildrive); tailscale.js is the one place that does" },
-  "core/hooks -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
-    why: "runs the tailscale CLI" },
-  "core/link -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
-    why: "finds the box on the tailnet through the tailscale CLI" },
-  "core/names -> core/link": { files: ["core/link/transport.js"], next: "lib",
-    why: "names and link import each other: transport belongs in a small lib both use" },
-  "core/network -> core/names": { files: ["core/names/guests.js", "core/names/identity.js", "core/names/tailscale.js"], next: "lib",
-    why: "the listeners identify tailnet peers (ADR 0002); identity and tailscale are shared helpers" },
-  "core/onboard -> core/names": { files: ["core/names/service.js", "core/names/tailscale.js"], next: "ctx.call",
-    why: "onboarding reserves the name and starts the tailnet listener in-process" },
+  "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js", "core/wink/homemove.js"], next: "lib",
+    why: "the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js): the peer wire's session framing is the one remote path" },
+  "core/onboard -> core/names": { files: ["core/names/service.js"], next: "ctx.call",
+    why: "onboarding checks a name with the same rule the claim uses" },
   "core/recall -> core/transcripts": { files: ["core/transcripts/index.js"], next: "lib",
     why: "transcripts is the one reader of Claude Code's files, a library with no feature state" },
   "core/watchers -> core/spawner": { files: ["core/spawner/client.js"], next: "lib",
@@ -76,16 +73,12 @@ export const ALLOW = {
     why: "sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0" },
   "core/switchboard -> core/transcripts": { files: ["core/transcripts/sanitize.js"], next: "lib",
     why: "keeps credentials out of what it builds from transcripts" },
-  "core/term -> core/computers": { files: ["core/computers/ws.js"], next: "lib",
-    why: "the RFC 6455 framing sliver Glass wrote; a pure helper" },
   "core/term -> core/files": { files: ["core/files/safety.js"], next: "ctx.call",
     why: "the path gate every file path passes through" },
   "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
     why: "vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2); permanent by design, lead's OK pending" },
   "core/vault -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "vault relay between the Mac and the box" },
-  "core/vault -> core/names": { files: ["core/names/identity.js", "core/names/tailscale.js"], next: "lib",
-    why: "who is on the other end of a vault relay, and the tailscale CLI" },
   "local/capsule -> core/cli": { files: ["core/cli/commands/capsule-native.js"], next: "lib",
     why: "where the native Capsule app is built, shared with vyre capsule" },
   "local/hands-mac -> local/screen-mac": { files: ["local/screen-mac/floor.js"], next: "lib",

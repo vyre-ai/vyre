@@ -1,0 +1,40 @@
+{
+  "name": "bridges",
+  "version": "0.1.0",
+  "description": "Lets one Space share with another on purpose: a shared view, a reference, an event projection, a copy, a Kit or a hand-off task. Both Spaces agree, nothing sealed crosses, and either side can stop it at once.",
+  "roles": ["box", "local"],
+  "requires": ["spaces"],
+  "does": {
+    "tools": [
+      { "name": "bridges.propose-view", "effect": "write", "reach": "person", "summary": "Offer another Space a live, read-only view of chosen fields." },
+      { "name": "bridges.propose-reference", "effect": "write", "reach": "person", "summary": "Let another Space show the names of chosen records." },
+      { "name": "bridges.propose-projection", "effect": "write", "reach": "person", "summary": "Send chosen fields of chosen events to another Space." },
+      { "name": "bridges.accept", "effect": "write", "reach": "person", "summary": "Accept what another Space offered to share." },
+      { "name": "bridges.revoke", "effect": "write", "reach": "person", "summary": "Stop a share at once, from either side." },
+      { "name": "bridges.list", "effect": "read", "reach": "person", "summary": "The shares a Space is part of, on both sides." },
+      { "name": "bridges.get", "effect": "read", "reach": "person", "summary": "One share a Space is part of." },
+      { "name": "bridges.view.read", "effect": "read", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Read a shared view through its source Space." },
+      { "name": "bridges.resolve", "effect": "read", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Look up the name behind a reference to another Space." },
+      { "name": "bridges.copy", "effect": "write", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Copy a record into another Space you belong to." },
+      { "name": "bridges.project", "reach": "modules", "summary": "Deliver one event through a projection." },
+      { "name": "bridges.kit.export", "outward": true, "effect": "read", "reach": "person", "summary": "Package definitions as a Kit." },
+      { "name": "bridges.kit.plan", "effect": "read", "reach": "person", "summary": "List everything a Kit would add to a Space." },
+      { "name": "bridges.kit.install", "effect": "write", "reach": "person", "summary": "Install a Kit after its plan was approved." },
+      { "name": "bridges.continue", "effect": "write", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Hand work to another Space as a task that points back." },
+      { "name": "bridges.session.policy", "reach": "modules", "summary": "The rules of a session that draws on more than one Space." },
+      { "name": "bridges.merge.links", "effect": "read", "reach": "person", "summary": "One link per Space a person belongs to, for a device to read and merge itself." }
+    ],
+    "actions": ["references.share", "references.resolve", "views.share", "views.read", "records.copy", "copy.sealed", "events.project", "kits.install", "tasks.continue", "bridges.accept", "bridges.revoke"]
+  },
+  "watches": {
+    "emits": [
+      "view.proposed", "view.accepted", "view.read", "view.revoked",
+      "reference.proposed", "reference.accepted", "reference.resolved", "reference.revoked",
+      "projection.proposed", "projection.accepted", "projection.delivered", "projection.revoked",
+      "record.copied", "kit.installed", "task.continued", "bridge.revoked"
+    ]
+  },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

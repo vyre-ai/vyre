@@ -1,13 +1,14 @@
 // @ts-check
 // mentions: one search over every provider's names, grouped, fail-soft, as the asking person.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { discover, Registry, validate } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const HERE = import.meta.dirname;
@@ -59,8 +60,8 @@ test("mentions: a provider searches as the person who asked; a model cannot sear
   const orig = reg.call.bind(reg);
   reg.call = (tool, input, caller, meta) => { if (tool === "vault.find") seen.push(caller); return orig(tool, input, caller, meta); };
   await reg.call("mentions.search", { q: "" }, "deck");
-  await reg.call("mentions.search", { q: "" }, "tailnet:alex@example.com");
-  assert.deepEqual(seen, ["deck", "tailnet:alex@example.com"]);
+  await reg.call("mentions.search", { q: "" }, "capsule");
+  assert.deepEqual(seen, ["deck", "capsule"]);
   for (const c of ["mcp", "mcp:agent:kit", "harness", "module:sessions"]) assert.notEqual((await reg.call("mentions.search", { q: "" }, c)).data?.groups?.length, 1, c);
   assert.ok((await reg.call("mentions.search", { q: "" }, "mcp")).error, "mcp is refused");
 });

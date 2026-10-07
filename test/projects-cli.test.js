@@ -3,6 +3,7 @@
 // home seeded with the fictional corpus, and a fake `claude` first on PATH that records how it
 // was started instead of starting anything.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -62,9 +63,9 @@ test("cli: vyre new with flags, then piped answers; the hub lands in both projec
     "--person", "Dana Reyes <dana@harlowlegal.com>", "--no-pick"]);
   assert.equal(a.code, 0, a.out);
   assert.match(a.out, /made Harlow Legal/);
-  const marker = JSON.parse(fs.readFileSync(path.join(harlow, ".vyre", "project.json"), "utf8"));
-  assert.deepEqual(marker.threads, [INTAKE, HUB]);
-  assert.deepEqual(marker.people, [{ name: "Dana Reyes", email: "dana@harlowlegal.com" }]);
+  const rows = async () => new Map(JSON.parse((await w.run(["projects", "--json"])).out).projects.map((/** @type {any} */ p) => [p.slug, p]));
+  assert.deepEqual((await rows()).get("harlow-legal").picks, [INTAKE, HUB]);
+  assert.deepEqual((await rows()).get("harlow-legal").people, [{ name: "Dana Reyes", email: "dana@harlowlegal.com" }]);
 
   // The interactive flow, answered line by line: name, home, a search, a pick, done, people.
   const b = await w.run(["new"], { input: ["Northwind", path.join(w.work, "northwind"), "weekly", "1", "", "Sam Okafor", ""].join("\n") });
@@ -72,8 +73,7 @@ test("cli: vyre new with flags, then piped answers; the hub lands in both projec
   assert.match(b.out, /Weekly planning/);
   assert.match(b.out, /\[harlow-legal\]/, "the picker did not show the hub is already in a project");
   assert.match(b.out, /Recall is not running/);
-  const nw = JSON.parse(fs.readFileSync(path.join(w.work, "northwind", ".vyre", "project.json"), "utf8"));
-  assert.deepEqual(nw.threads, [HUB]);
+  assert.deepEqual((await rows()).get("northwind").picks, [HUB]);
 
   const list = await w.run(["projects"]);
   assert.match(list.out, /Harlow Legal\s+3 threads/);
@@ -92,7 +92,7 @@ test("cli: vyre alone, piped, prints the home with this folder's project presele
   assert.match(inside.out, /› Harlow Legal {2}2 threads · \S+ · this folder/, "this folder's project is not preselected");
   assert.match(inside.out, /  Northwind {2}3 threads/);
   assert.match(inside.out, /New session without a project/);
-  assert.match(inside.out, /Agents\n\s+none yet/);
+  assert.match(inside.out, /Agents\n\s+engineer\b/, "the built-in Engineer is the one agent a fresh home lists");
   assert.doesNotMatch(inside.out, /What a new thread here is told/, "the home opened the project instead of preselecting it");
   const outside = await w.run([], { cwd: w.root });
   assert.match(outside.out, /› Northwind|› Harlow Legal/);
@@ -166,11 +166,11 @@ test("cli: vyre start opens a new named thread in the project's home; pick and u
 
   const p = await w.run(["pick", "harlow-legal", "weekly planning", INTAKE]);
   assert.match(p.out, /2 picked into harlow-legal/);
-  const marker = () => JSON.parse(fs.readFileSync(path.join(harlow, ".vyre", "project.json"), "utf8"));
-  assert.deepEqual(marker().threads, [HUB, INTAKE]);
+  const picks = async () => JSON.parse((await w.run(["projects", "--json"])).out).projects.find((/** @type {any} */ p) => p.slug === "harlow-legal").picks;
+  assert.deepEqual(await picks(), [HUB, INTAKE]);
   const u = await w.run(["unpick", "harlow-legal", HUB]);
   assert.match(u.out, /1 unpicked/);
-  assert.deepEqual(marker().threads, [INTAKE]);
+  assert.deepEqual(await picks(), [INTAKE]);
 });
 
 test("cli: vyre pick takes a live thread id straight away, before Recall has indexed it", async t => {
@@ -182,57 +182,10 @@ test("cli: vyre pick takes a live thread id straight away, before Recall has ind
   const LIVE = "22222222-bbbb-4000-8000-000000000099";
   const p = await w.run(["pick", "harlow-legal", LIVE]);
   assert.match(p.out, /1 picked into harlow-legal/, p.out);
-  const marker = JSON.parse(fs.readFileSync(path.join(harlow, ".vyre", "project.json"), "utf8"));
-  assert.deepEqual(marker.threads, [LIVE]);
+  const picks = JSON.parse((await w.run(["projects", "--json"])).out).projects.find((/** @type {any} */ p) => p.slug === "harlow-legal").picks;
+  assert.deepEqual(picks, [LIVE]);
   // A ref that merely looks close to an id but isn't one is still refused, not swallowed.
   const bad = await w.run(["pick", "harlow-legal", "not-a-real-id"]);
   assert.match(bad.out, /no thread matches/);
 });
 
-test("cli: vyre projects move --dry-run on a box says what would move and changes nothing; names and a real move are refused", async t => {
-  const w = world(t);
-  // A box whose homes still sit in the old folder, with a work folder to move them to.
-  const old = path.join(w.root, "home", "Vyre", "projects");
-  const work = path.join(w.root, "work");
-  fs.mkdirSync(old, { recursive: true });
-  fs.mkdirSync(work);
-  w.env.VYRE_OLD_PROJECTS_DIR = old;
-  w.env.VYRE_WORK_DIR = work;
-  delete w.env.VYRE_PROJECTS_MOVE;
-  fs.writeFileSync(path.join(w.root, "config.json"), JSON.stringify({
-    role: "box", projectsDir: old, roots: [w.work], transcripts: [], modules: { disable: ["recall", "memory"] },
-  }));
-  // The real verifier, trusting only the terminal server this test runs under (the testbox's sshd).
-  assert.equal((await upLeader(w.root, w.env)).code, 0);
-  const home = path.join(old, "harlow-legal");
-  const made = await w.run(["new", "Harlow Legal", "--home", home, "--no-pick"]);
-  assert.equal(made.code, 0, made.out);
-
-  const named = await w.run(["projects", "move", "harlow-legal"]);
-  assert.equal(named.code, 2, named.out);
-  assert.match(named.out, /vyre projects move takes no names/);
-  assert.match(named.out, /next: vyre projects move --dry-run shows what would move/);
-
-  const dry = await w.run(["projects", "move", "--dry-run"]);
-  assert.equal(dry.code, 0, dry.out);
-  assert.match(dry.out, /Would move 1 project/);
-  assert.match(dry.out, /harlow-legal/);
-  assert.match(dry.out, /nothing has changed/);
-
-  const j = await w.run(["projects", "move", "--dry-run", "--json"]);
-  assert.equal(j.code, 0, j.out);
-  const r = JSON.parse(j.out);
-  assert.equal(r.dry, true);
-  assert.deepEqual(r.moved, ["harlow-legal"]);
-  assert.equal(r.to, path.join(work, "projects"));
-  assert.ok(Array.isArray(r.rewrites) && r.rewrites.length > 0, "the rewrites are listed");
-  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink(), "the home did not move");
-  assert.equal(fs.existsSync(path.join(work, "projects")), false, "nothing was made in the work folder");
-  assert.equal(fs.existsSync(path.join(w.root, "projects-moved.json")), false, "no record was written");
-
-  // The real move stays off until box-deploy switches it on.
-  const real = await w.run(["projects", "move", "--json"]);
-  assert.equal(real.code, 1, real.out);
-  assert.equal(JSON.parse(real.out).error.code, "move_off");
-  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink());
-});

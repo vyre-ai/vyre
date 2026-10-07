@@ -3,6 +3,8 @@
 // a node:crypto DER signature converted and checked by crypto.subtle.verify, the plain SHA-256
 // Hermes uses, the JWK from x and y, a session over a DER signer (as the native module is), and
 // the HUMAN_ONLY mirror against the box's own list. No native module, no app packages.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +12,7 @@ import { createHash, createPublicKey, generateKeyPairSync, sign as nodeSign, ver
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 const enc = new TextEncoder();
 
 /** @param {number} n @param {number} fill */

@@ -3,6 +3,7 @@
 // JSON bodies, a device key made here and enrolled with a one-time code, and a Gate approval
 // signed with it. The world runs as its own process, as the apps' test runs start it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -15,8 +16,9 @@ import { inputHash } from "../../core/presence/index.js";
 const WORLD = path.join(path.dirname(fileURLToPath(import.meta.url)), "world.js");
 
 /** Start the world on a free port and wait for its URL. */
+// The phone signs with a device key on a development-kind daemon, which takes it only behind this switch (PW-1, 1ad4691e6); the release rule is in test/presence-strength.test.js.
 async function world(t) {
-  const p = spawn(process.execPath, [WORLD, "0"], { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(process.execPath, [WORLD, "0"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_SEAL_SOFTWARE: "1" } });
   let out = "";
   p.stderr.on("data", c => (out += c));
   const exited = new Promise(r => p.on("exit", r));
@@ -67,7 +69,7 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   assert.equal((await w.tool("gate.held", {}, { origin: "https://evil.example.com" })).status, 403);
 
   const projects = await w.tool("projects.list");
-  assert.deepEqual(projects.body.data.projects.map(p => p.name).sort(), ["Harlow Legal", "Northwind Bakery"]);
+  assert.deepEqual(projects.body.data.projects.map(p => p.name).sort(), ["General", "Harlow Legal", "Northwind Bakery"]); // every Space has General
   const held = await w.tool("gate.held");
   assert.equal(held.body.data.length, 2, JSON.stringify(held.body));
 
@@ -106,7 +108,8 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   assert.ok((await w.tool("gate.held")).body.data.some(x => x.id === hold.body.data.id));
   const ask = await w.post("/__test/ask");
   assert.equal(ask.status, 200, JSON.stringify(ask.body));
-  const asks = await w.tool("threads.asks");
+  // read as the owner's paired device: this world's phone is a tailnet login, which the chat gate does not count as a person (the tailnet goes in 0.3.0; a Wink-paired phone is test/wink-paired.test.js)
+  const asks = await w.post("/__test/asks");
   assert.ok(asks.body.data.some(a => a.id === ask.body.data.ask), JSON.stringify(asks.body));
 
   w.proc.kill("SIGTERM");

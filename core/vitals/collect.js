@@ -4,7 +4,7 @@
 // Every read here is something the OS already answers to an unprivileged process (no root, no
 // permission prompt): cgroup v2 files and /proc on Linux, ioreg and pmset on the Mac, perf
 // counters and WMI on Windows. Each platform's IO (readFileSync, execFile) is a thin wrapper
-// around a pure parser, the same split core/names/tailscale.js uses for `status --json` (run vs
+// around a pure parser, the same split other readers use for a program's output (run vs
 // parseStatus): the parsers are what tests exercise; the IO wrappers are one line each so there
 // is as little unverified surface as possible (docs/design/vitals.md, "Depends on" 4).
 //

@@ -2,6 +2,7 @@
 // Web Push: the crypto checked against an independent reading of the RFCs (WebCrypto, as a
 // browser would decrypt), and the module in a real vyred against a fake push service.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -184,7 +185,7 @@ test("push: devices subscribe, the moments reach them as kind, title and path on
 });
 
 test("push: devices are keyed by endpoint, so two subscriptions of the same push service upsert to one device, never two", async t => {
-  // The /app/ -> / migration (docs/work/pwa.md) leans on this: the app's own launch-time
+  // The /app/ -> / migration (team/archive/work-journals/pwa.md) leans on this: the app's own launch-time
   // pushManager.getSubscription() re-sends the same endpoint the Deck already holds (same
   // browser, same push service registration), and push.unsubscribe by endpoint has to actually
   // reach the row that ring, not a stray duplicate.
@@ -292,7 +293,8 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   await until(() => svc.got.length === 9, "the milestone push");
   const milestone = JSON.parse((await decrypt(phone, svc.got[8].body)).toString());
   assert.deepEqual([milestone.kind, milestone.title, milestone.path, milestone.tag, milestone.body],
-    ["goal", "A milestone is done", "/goals/g_1", "goal-milestone-g_1-0", "Draft the intake form"]);
+    ["goal", "A milestone is done", "/goals/g_1", "goal-milestone-g_1-0", undefined], "the milestone's words never ride in the push (issue 72)");
+  assert.ok(!JSON.stringify(milestone).includes("intake"), JSON.stringify(milestone));
   d.events.emit("goals", "goal.done", { goal: "g_1" }, {});
   await until(() => svc.got.length === 10, "the goal-done push");
   const done = JSON.parse((await decrypt(phone, svc.got[9].body)).toString());
@@ -521,4 +523,40 @@ test("push: settings.loosened is a loud notice with one fixed sentence, not coun
   const own = await deck("push.settings", { kinds: { notice: false } });
   assert.ok(own.error && /cannot be turned off/.test(own.error.message), JSON.stringify(own));
   assert.equal((await deck("push.settings")).data.kinds.notice, true);
+});
+
+test("push: no payload carries thread, goal, message or teammate text: every sender is checked with free text in every field (issue 72)", async () => {
+  const { NOTES, outgoing, PROACTIVE_TITLES, PROACTIVE_GENERIC } = await import("./index.js");
+  const WORDS = "SENTINEL-free-text-the-client-typed";
+  const text = i => `${WORDS}-${i}`;
+  const events = {
+    "ask.raised": { ask: "a1", tool: text(1), summary: text(2), destination: text(3), question: text(4) },
+    "gate.held": { id: "g1", summary: text(1), tool: text(2), title: text(3) },
+    "thread.watched": { watch: "w1", reason: text(1), title: text(2), text: text(3) },
+    "lesson.proposed": { lesson: "l1", text: text(1), title: text(2) },
+    "planner.fired": { firing: "f1", item: "i1", kind: "reminder", due: 1_790_000_000_000, title: text(1), key: "planner-i1-1" },
+    "goal.milestone": { goal: "g_1", index: 0, text: text(1), title: text(2), summary: text(3) },
+    "goal.done": { goal: "g_1", text: text(1), title: text(2) },
+    "push.proactive": { title: text(1), path: "/threads/t1", tag: "p1", body: text(2), text: text(3) },
+    "settings.loosened": { change: "chg_1", key: "vault.lock_on_sleep", label: "Lock when the Mac sleeps", value: text(1), by: text(2) },
+    "identity.entry-added": { seq: 1, eid: "e1", entry: { eid: "e1", label: text(1) } },
+    "identity.recovered": { seq: 2, label: text(1) },
+    "identity.device-removed": { eid: "e2", label: text(1) },
+  };
+  for (const type of Object.keys(NOTES)) assert.ok(type in events, `${type} has no free-text probe: add one`);
+  for (const [type, payload] of Object.entries(events)) {
+    const made = NOTES[type]({ type, payload, thread: "t-1" }, { planner_label: false });
+    assert.ok(made, type);
+    const wire = JSON.stringify(outgoing({ ...made, at: 0 }));
+    assert.ok(!wire.includes("SENTINEL"), `${type} put free text in the push: ${wire}`);
+  }
+  // A proactive source's own title is replaced by the generic line unless it is one of the fixed sentences.
+  assert.equal(NOTES["push.proactive"]({ payload: { title: "kit finished the intake form" } }, {}).title, PROACTIVE_GENERIC);
+  for (const title of PROACTIVE_TITLES) assert.equal(NOTES["push.proactive"]({ payload: { title } }, {}).title, title);
+  // The one exception is the person's own choice: the planner label, only when push.settings planner_label is on.
+  const on = outgoing({ ...NOTES["planner.fired"]({ payload: events["planner.fired"] }, { planner_label: true }), at: 0 });
+  assert.equal(on.body, text(1));
+  // Whatever a sender puts in a message, only the fixed fields are sent.
+  const wire = outgoing({ kind: "goal", title: "t", path: "/goals/g", tag: "x", at: 0, body: text(1), text: text(2), summary: text(3), thread: text(4) });
+  assert.deepEqual(Object.keys(wire).sort(), ["at", "kind", "path", "tag", "title"]);
 });

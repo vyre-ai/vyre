@@ -1,4 +1,5 @@
 // The kinds of session a model can be set for are one list: the config's, the CLI's, and threads.start's own enum.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

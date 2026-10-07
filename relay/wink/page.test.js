@@ -1,11 +1,12 @@
 // @ts-check
 // The camera page, with a fake camera, relay and navigation. Platform's ruling on iOS is a real test here: from an iPhone in
 // Safari the seed is never read, stored or sent; from the installed app, Android or a desktop, a first scan hands off to the app.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { install, text as allText } from "../../deck/test/fake-dom.js";
+import { install, text as allText } from "../../web/test/fake-dom.js";
 
 install();
 const { mountWink } = await import("./page.js");

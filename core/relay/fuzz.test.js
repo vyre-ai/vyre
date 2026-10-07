@@ -1,6 +1,7 @@
 // @ts-check
 // The relay's frames come from a phone or whoever holds a paired key: whatever they send, the
 // box's channel closes or ignores it and never throws.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { keyPair } from "./noise.js";

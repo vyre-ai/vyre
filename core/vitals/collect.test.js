@@ -4,6 +4,7 @@
 // same split core/names/tailscale.js uses for run() vs parseStatus(). Nothing here touches the
 // real /proc, /sys or the network.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

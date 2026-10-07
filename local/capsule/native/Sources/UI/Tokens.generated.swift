@@ -245,7 +245,9 @@ public enum Tokens {
             public static let buttonTouch: CGFloat = 12
             public static let row: CGFloat = 10
             public static let card: CGFloat = 14
-            public static let cardPhone: CGFloat = 14
+            public static let cardPhone: CGFloat = 16
+            public static let cardHero: CGFloat = 16
+            public static let cardHeroPhone: CGFloat = 20
             public static let sheet: CGFloat = 20
             public static let full: CGFloat = 999
         }
@@ -275,21 +277,29 @@ public enum Tokens {
         /// [size, line height] in points: desktop and the Capsule, then a phone.
         public enum TypeScale {
             public static let caption: (size: CGFloat, line: CGFloat) = (12, 16)
+            public static let secondary: (size: CGFloat, line: CGFloat) = (13, 18)
             public static let body: (size: CGFloat, line: CGFloat) = (14, 20)
+            public static let headline: (size: CGFloat, line: CGFloat) = (15, 20)
             public static let read: (size: CGFloat, line: CGFloat) = (15, 23)
             public static let title: (size: CGFloat, line: CGFloat) = (18, 24)
             public static let page: (size: CGFloat, line: CGFloat) = (24, 30)
             public static let display: (size: CGFloat, line: CGFloat) = (32, 38)
+            public static let control: (size: CGFloat, line: CGFloat) = (14, 20)
+            public static let micro: (size: CGFloat, line: CGFloat) = (11, 14)
             public static let label: CGFloat = 11
         }
 
         public enum PhoneTypeScale {
             public static let caption: (size: CGFloat, line: CGFloat) = (12, 16)
+            public static let secondary: (size: CGFloat, line: CGFloat) = (15, 20)
             public static let body: (size: CGFloat, line: CGFloat) = (16, 22)
+            public static let headline: (size: CGFloat, line: CGFloat) = (17, 22)
             public static let read: (size: CGFloat, line: CGFloat) = (17, 25)
-            public static let title: (size: CGFloat, line: CGFloat) = (20, 26)
+            public static let title: (size: CGFloat, line: CGFloat) = (20, 25)
             public static let page: (size: CGFloat, line: CGFloat) = (28, 34)
-            public static let display: (size: CGFloat, line: CGFloat) = (32, 38)
+            public static let display: (size: CGFloat, line: CGFloat) = (34, 41)
+            public static let control: (size: CGFloat, line: CGFloat) = (15, 20)
+            public static let micro: (size: CGFloat, line: CGFloat) = (11, 14)
             public static let label: CGFloat = 11
         }
 
@@ -342,8 +352,8 @@ public enum Tokens {
             }
             public enum Paper {
                 public static let e1: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 1, blur: 2, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.08), inset: false)]
-                public static let e2: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 8, blur: 24, spread: -8, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.22), inset: false), Layer(x: 0, y: 2, blur: 6, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.1), inset: false)]
-                public static let e3: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 28, blur: 64, spread: -20, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.3), inset: false), Layer(x: 0, y: 6, blur: 18, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.12), inset: false)]
+                public static let e2: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 8, blur: 24, spread: -8, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.18), inset: false), Layer(x: 0, y: 2, blur: 6, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.08), inset: false)]
+                public static let e3: [Layer] = [Layer(x: 0, y: 28, blur: 64, spread: -20, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.28), inset: false), Layer(x: 0, y: 6, blur: 18, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.1), inset: false)]
             }
         }
 

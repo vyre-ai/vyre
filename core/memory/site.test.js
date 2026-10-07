@@ -1,6 +1,7 @@
 // @ts-check
 // site.*: the store for what Vyre for Chrome learns. Fictional data only (a made-up GoHighLevel-like app).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -490,8 +491,8 @@ test("memory.site.list returns what was forgotten in the last 24 hours and can b
   assert.equal((await w.call("memory.site.list", {}, "mcp:agent:juno")).code, "denied");
 });
 
-test("the docs world's sample site (deck/test/site-sample.js) is kept whole: a family, three controls, a flow that has run, one thing that used to work", async t => {
-  const { seedSites, SAMPLE_ORIGIN } = await import("../../deck/test/site-sample.js");
+test("the docs world's sample site (web/test/site-sample.js) is kept whole: a family, three controls, a flow that has run, one thing that used to work", async t => {
+  const { seedSites, SAMPLE_ORIGIN } = await import("../../web/test/site-sample.js");
   const w = await world(t);
   await seedSites({ cli: (tool, input) => w.call(tool, input, "cli").then(r => { assert.ok(!r.error, `${tool}: ${r.error}`); return r.data; }), at: ms => { w.clock.now = ms; }, now: NOW });
   const origin = (await w.call("memory.site.detail", { key: SAMPLE_ORIGIN }, "deck")).data;

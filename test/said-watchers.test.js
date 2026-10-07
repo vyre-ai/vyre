@@ -4,6 +4,7 @@
 // refused. The real registry runs the real reach: "asked" gate against a fake watchers module (its
 // own target tool, like github's) and a fake vault.said.match built on lib/said/match.js.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -13,7 +14,7 @@ import { matches } from "../lib/said/match.js";
 import { createTarget, presetTarget } from "../core/watchers/targets.js";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome, writeModule } from "./helpers.js";
 
 const CARDS = [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail", state: "draft" }, { name: "repo-watch", hash: "cccc2222dddd", state: "draft" }];
@@ -22,7 +23,7 @@ const K = (name, hash) => `watchers.create:harlow-legal/${name}@${hash}`;
 
 const WATCHERS = `export default { async start(ctx) {
   ctx.tool("watchers.create.target", { internal: true, run: async ({ tool, input }) => { if (!input.hash) throw new Error("no hash"); return { to: [tool + ":harlow-legal/" + input.name + "@" + input.hash] }; } });
-  ctx.tool("watchers.create", { run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
+  ctx.tool("watchers.create", { effect: "read", run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
   return {};
 } };`;
 const VAULT = `export default { async start(ctx) {

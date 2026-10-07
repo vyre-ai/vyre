@@ -5,6 +5,7 @@
 // IDs: P-M7 (reviews/vault.md M7, the RSA branch), P-CAP (a Capsule key is ES256 and nothing else), P-PROOF (replay, age, binding),
 // P-CODE (one-time codes), P-GRANT (the first-passkey grant), P-SESSION (a session proves only what and where it should).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -25,7 +26,7 @@ function setup(t, opts = {}) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
   let clock = 1_000_000;
-  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, now: () => clock, ...opts });
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, now: () => clock, softwareOk: () => true, ...opts });
   return { p, db, now: () => clock, tick: ms => { clock += ms; } };
 }
 

@@ -13,8 +13,10 @@ import { onConnection } from "./connection";
 import { answerCall, answerOutcome, applyNeedsEvent, hydrate, merge, type Decision, type Need, type NeedsContext } from "./needs-model";
 import { needsStore, setNeeds } from "./needs";
 import { threadsStore, toThreads, type ThreadRow } from "./threads";
+import { MOCK } from "../real/box";
+import { startUnlockAnswerer } from "../personal/answerer";
 
-/** Who the box hears typing and answering from (apps/CONTRACT.md 3.2: always the same explicit surface). */
+/** Who the box hears typing and answering from (team/archive/CONTRACT-native-apps.md 3.2: always the same explicit surface). */
 export const SURFACE: string = Platform.OS === "web" ? "web" : Platform.OS;
 
 const NEEDS_KEY = "needs";
@@ -148,6 +150,8 @@ export const answers = createAnswers({
 
 /** Paint from the cache, read the box, follow its events. Once per app. */
 export function startLive(): void {
+  // The sample world (EXPO_PUBLIC_VYRE_MOCK=1) has no box to read from: its screens draw from the sample store, and a read here would only log 404s.
+  if (MOCK) return;
   if (started) return;
   started = true;
   void viewCache.get(NEEDS_KEY).then((v) => {
@@ -160,6 +164,7 @@ export function startLive(): void {
   });
   listen(onEvent, () => void read());
   void read();
+  if (!MOCK) startUnlockAnswerer();
 
   // An answer the outbox holds for a proof would block the queue behind it: its row comes back
   // with the reason instead of sitting collapsed.

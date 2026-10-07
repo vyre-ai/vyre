@@ -2,6 +2,7 @@
 // The fetch-site rule (c): every raw route a module registers says whether it only reads or which writing methods it answers, and a
 // route answers only those. A GET can be made by any page the person opens, so one with a side effect must never answer GET.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,18 +13,18 @@ import { start } from "../core/daemon/index.js";
 test("a route with no declaration is refused at registration, and a writing route does not answer GET", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.noop", "probe.refused"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.noop", { input: { type: "object" }, run: async () => ({}) });
+    ctx.tool("probe.noop", { effect: "read", input: { type: "object" }, run: async () => ({}) });
     ctx.route("reads", (req, res) => { res.writeHead(200); res.end("read"); }, { readOnly: true });
     ctx.route("writes", (req, res) => { res.writeHead(200); res.end("wrote"); }, { methods: ["PUT"] });
     let refused = "";
     try { ctx.route("undeclared", () => {}); } catch (e) { refused = e.message; }
     try { ctx.route("both", () => {}, { readOnly: true, methods: ["PUT"] }); } catch (e) { refused += "|" + e.message; }
     try { ctx.route("getter", () => {}, { methods: ["GET"] }); } catch (e) { refused += "|" + e.message; }
-    ctx.tool("probe.refused", { input: { type: "object" }, run: async () => ({ refused }) });
+    ctx.tool("probe.refused", { effect: "read", input: { type: "object" }, run: async () => ({ refused }) });
     return {};
   } };`);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const r = await d.registry.call("probe.refused", {}, "cli");
   assert.match(String(r.data && r.data.refused), /undeclared must say \{ readOnly: true \}/);

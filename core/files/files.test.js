@@ -3,6 +3,7 @@
 // direction a path can arrive, preview, chunked fetch, and the Mac's federated search and pull
 // across a fake link to a second, box-role registry in the same process.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -101,7 +102,7 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
     t.after(() => globalThis.__filesLinks.delete(root));
     writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote"] } },
       `export default { async start(ctx) {
-        ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
+        ctx.tool("link.remote", { effect: "read", run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
         return { async stop() {} };
       } };`);
     fp.push(mods);
@@ -144,14 +145,16 @@ const refusedAs = async (reg, agent, tool, input, msg = /not available/) => {
   assert.match(r.error.message, msg);
 };
 
-test("files: the manifest loads and offers its four tools to every caller", async t => {
+test("files: the manifest loads and offers its five tools to every caller", async t => {
   const { work, vyreHome } = workspace(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
   // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js. agents.list,
   // projects.list and projects.access.check are the always-installed fake-reach fixture
   // (test/fixtures/fake-reach.js), not one of the files module's own tools.
   const names = reg.listTools("mcp").map(x => x.name).filter(n => n.startsWith("files.") && !n.startsWith("files.drive.")).sort();
-  assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.recent", "files.search", "files.stat"]);
+  assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.search", "files.stat"]);
+  // files.recent lists the folders other sessions worked in, so a model is not offered it (group D, kernel-declare).
+  assert.ok(!reg.listTools("mcp").some(x => x.name === "files.recent"));
 });
 
 test("files: box search finds by name and by content, and never returns what the guard refuses", async t => {

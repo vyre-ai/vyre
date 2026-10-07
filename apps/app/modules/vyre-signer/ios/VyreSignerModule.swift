@@ -9,6 +9,7 @@
 // converts it to P1363. The simulator has no Secure Enclave: there, and only there, the key is a
 // software keychain key, and info() says secureHardware false.
 
+import DeviceCheck
 import ExpoModulesCore
 import LocalAuthentication
 import Security
@@ -27,12 +28,19 @@ final class SignerException: GenericException<(code: String, message: String)> {
 }
 
 private let personAlias = "vyre.person"
+private let agreeAlias = "vyre.agree"
 
 private func b64url(_ data: Data) -> String {
   data.base64EncodedString()
     .replacingOccurrences(of: "+", with: "-")
     .replacingOccurrences(of: "/", with: "_")
     .replacingOccurrences(of: "=", with: "")
+}
+
+private func fromB64url(_ s: String) -> Data? {
+  var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+  while t.count % 4 != 0 { t += "=" }
+  return Data(base64Encoded: t)
 }
 
 private func fail(_ code: String, _ message: String) -> SignerException {
@@ -112,6 +120,28 @@ public class VyreSignerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("VyreSigner")
 
+    // The agreement key (ECDH, no prompt per use): a P-256 key in the Secure Enclave (a software Keychain key in the simulator, the same API), no biometry flag, usable while the phone is unlocked.
+    // `agree(epk)` is the 32-byte shared secret, the raw X coordinate; HKDF and AES-GCM stay portable code in the app (lib/keywrap.js). Its public point goes in the identity entry as `agree`.
+    AsyncFunction("agreePublic") { (create: Bool) throws -> String in
+      var found = findKey(agreeAlias)
+      if found == nil && create { found = try makeKey(agreeAlias, biometric: false) }
+      guard let key = found else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      guard let pub = SecKeyCopyPublicKey(key) else { throw fail("ERR_NO_KEY", "the key has no public half") }
+      var error: Unmanaged<CFError>?
+      guard let raw = SecKeyCopyExternalRepresentation(pub, &error) as Data?, raw.count == 65, raw.first == 0x04 else { throw fail("ERR_NO_KEY", "the public key is not an uncompressed P-256 point: \(describe(error))") }
+      return b64url(raw)
+    }
+
+    AsyncFunction("agree") { (epk: String) throws -> String in
+      guard let point = fromB64url(epk), point.count == 65, point.first == 0x04 else { throw fail("ERR_INPUT", "that is not a public key") }
+      guard let key = findKey(agreeAlias) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      var error: Unmanaged<CFError>?
+      let attrs: [String: Any] = [kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeyClass as String: kSecAttrKeyClassPublic, kSecAttrKeySizeInBits as String: 256]
+      guard let peer = SecKeyCreateWithData(point as CFData, attrs as CFDictionary, &error) else { throw fail("ERR_INPUT", "that is not a public key") }
+      guard let secret = SecKeyCopyKeyExchangeResult(key, .ecdhKeyExchangeStandard, peer, [:] as CFDictionary, &error) as Data?, secret.count == 32 else { throw fail("ERR_AGREE", "the key could not open that: \(describe(error))") }
+      return b64url(secret)
+    }
+
     AsyncFunction("ensureKey") { (alias: String, options: EnsureOptions) throws -> [String: String] in
       let key = try findKey(alias) ?? makeKey(alias, biometric: options.biometric)
       return try coordinates(key)
@@ -147,6 +177,35 @@ public class VyreSignerModule: Module {
         kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
       ]
       return SecItemDelete(query as CFDictionary) == errSecSuccess
+    }
+
+    // Apple App Attest (vault's verifier checks these in the sealing process). The key lives in the Secure Enclave and is made by the OS; JS keeps only its id.
+    // Not available in the simulator or on a device without the capability: appAttestSupported() says so and the others reject with ERR_APPATTEST.
+    AsyncFunction("appAttestSupported") { () -> Bool in
+      DCAppAttestService.shared.isSupported
+    }
+
+    AsyncFunction("appAttestGenerateKey") { (promise: Promise) in
+      guard DCAppAttestService.shared.isSupported else { return promise.reject(fail("ERR_APPATTEST", "App Attest is not supported here")) }
+      DCAppAttestService.shared.generateKey { keyId, error in
+        if let keyId { promise.resolve(keyId) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "generateKey failed")) }
+      }
+    }
+
+    // clientDataHash is the 32 byte SHA-256, base64url. Returns the CBOR attestation object, base64url.
+    AsyncFunction("appAttestAttest") { (keyId: String, clientDataHash: String, promise: Promise) in
+      guard let hash = fromB64url(clientDataHash) else { return promise.reject(fail("ERR_INPUT", "clientDataHash is not base64url")) }
+      DCAppAttestService.shared.attestKey(keyId, clientDataHash: hash) { object, error in
+        if let object { promise.resolve(b64url(object)) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "attestKey failed")) }
+      }
+    }
+
+    // An assertion over clientDataHash (SHA-256 of the proof bytes, base64url). The counter inside it rises with every call. Returns the CBOR assertion, base64url.
+    AsyncFunction("appAttestAssert") { (keyId: String, clientDataHash: String, promise: Promise) in
+      guard let hash = fromB64url(clientDataHash) else { return promise.reject(fail("ERR_INPUT", "clientDataHash is not base64url")) }
+      DCAppAttestService.shared.generateAssertion(keyId, clientDataHash: hash) { object, error in
+        if let object { promise.resolve(b64url(object)) } else { promise.reject(fail("ERR_APPATTEST", error?.localizedDescription ?? "generateAssertion failed")) }
+      }
     }
 
     Function("info") { () -> [String: Any] in

@@ -1,6 +1,7 @@
 // Generated media: an image, a video or a sound a provider made is kept as an artifact with its provider,
 // model, prompt and session, reached through the same project permission as any artifact, served with its
 // own type and Range, handed to another model by copy, and never mistaken for a page.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { MEDIA, mediaFormatOf, parseRange, MAX_MEDIA } from "./media.js";
@@ -18,8 +19,8 @@ import { _test } from "./index.js";
 
 const THREADS = `
   const T = { t1: { project: "harlow-legal", agent: "juno", provider: "grok" }, t2: { project: "harlow-legal", agent: "kit", provider: "codex" }, t3: { project: "northwind", agent: "nia", provider: "codex" } };
-  export default { async start(ctx) { ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) }); return {}; } };`;
-const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "nia", kind: "agent" }] }); return {}; } };`;
+  export default { async start(ctx) { ctx.tool("threads.get", { effect: "read", run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) }); return {}; } };`;
+const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { effect: "read", run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "nia", kind: "agent" }] }); return {}; } };`;
 
 // Real enough bytes for each format's magic check.
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fake png body ".repeat(50))]);

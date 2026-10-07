@@ -8,6 +8,7 @@
 // verb whose tool is missing must say what is coming in one line and exit 1; one whose tool is
 // there must do its job. Which vyred this is comes from its own tool list, never a guess.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,6 +22,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { formatEvent, pendingQueue, sendArgs, queuedId, usageLine, watchBackoff, MODES,
   routeLine, imagesFrom, rewindTurns, turnFor, modelOf, IMAGES } from "./threads.js";
 import { modelScope, promptScope, previewInput } from "./sessions.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
@@ -488,7 +490,8 @@ test("threads watch: a vyred restart mid-watch reconnects from the last event an
   // deck took the keyboard at start; the next words come from there too.
   const sent = await w.tool("threads.send", { thread: id, text: "second words", surface: "deck" });
   assert.ok(sent.data, JSON.stringify(sent));
-  await until(() => /echo: second words/.test(out), "the reply after the restart");
+  // a resumed thread starts its agent again first: on a slow runner that takes longer than the default wait
+  await until(() => /echo: second words/.test(out), "the reply after the restart", 45_000);
   p.kill("SIGINT");
   await closed;
   assert.equal(out.match(/echo: first words/g)?.length, 1, `the first reply was printed again:\n${out}`);

@@ -1,8 +1,9 @@
 // @ts-check
 // The switchboard and agents, end to end: vyred in a temp home, a fake `claude` that speaks
 // stream-json (./testing/fake-claude.js), two SSE clients watching, and every tool called the
-// way a surface calls it. The real Claude Code run is recorded in docs/work/switchboard.md.
+// way a surface calls it. The real Claude Code run is recorded in team/archive/work-journals/switchboard.md.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -13,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller, asOwner } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
@@ -23,6 +24,7 @@ import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
 import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -239,6 +241,8 @@ async function until(fn, what, ms = 8000) {
  * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
  */
 async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
+  // A session in a temp home takes the development sandbox opt-out: with the kernel on it is confined by bwrap, which hides the fake claude's files and the home's socket.
+  { const was = process.env.VYRE_SESSION_SANDBOX_OFF; process.env.VYRE_SESSION_SANDBOX_OFF = "1"; t.after(() => { if (was === undefined) delete process.env.VYRE_SESSION_SANDBOX_OFF; else process.env.VYRE_SESSION_SANDBOX_OFF = was; }); }
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise a
   // real ENOTEMPTY race (found under the full suite at concurrency 4, 2026-09-28, in the sibling
@@ -282,6 +286,7 @@ async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
   // The probe stands in for one of Vyre's own modules asking an internal tool, so with it the
   // home's modules load as first party (ADR 0047: an added module reaches only declared reach).
   const d = await start({ root, presence: present, log: () => {}, ...(probe ? { firstPartyRoots: [path.join(root, "modules")] } : {}) });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
@@ -395,28 +400,31 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
   // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
-  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true });
+  // With the kernel on the owner's device is the facts the listener proves (a paired app row), not the label.
+  d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('aaaaaaaaaaaaaaaa', 'phone', 'p', 1, 'app', 0, NULL)").run();
+  const ownerFacts = { kind: "device", device_key_id: "aaaaaaaaaaaaaaaa", person: d.kernel.id.owner, path: "wink", session: "ps1" };
+  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true, kernelFacts: ownerFacts, peer: { login: "owner@example", node: "phone", stableId: "aaaaaaaaaaaaaaaa" } });
   assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone");
   // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
   const asBob = (name, input) => d.registry.call(name, input, "tailnet:bob@example", { person: true });
   assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
   const took = (await asBob("threads.lease", { thread: id })).data;
-  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "deck"], "the keyboard moved to the other person");
+  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "phone"], "the keyboard moved to the other person");
   assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
   const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
   assert.deepEqual([locked.sent, locked.holder], [false, "tailnet:bob@example"]);
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone", "the owner takes it back");
   assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
   // A module (or any non-person caller) naming the holder's surface does not join it: a live terminal's name and the link's name each still contest.
   const asModule = (name, input) => d.registry.call(name, input, "module:planner");
   for (const held of [`cli:${process.pid}`, "box:x", "agent:kit"]) {
     assert.equal((await tool("threads.lease", { thread: id, surface: held })).data.holder, held, `the holder is ${held}`);
-    const joined = (await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held })).data;
+    const jr = await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held }); const joined = jr.data || assert.fail(JSON.stringify(jr));
     assert.deepEqual([joined.sent, joined.holder], [false, held], `a module naming ${held} is refused while it holds the keyboard`);
   }
-  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone", "the owner takes it back");
   // A surface name in a call is not an identity: a person's socket caller saying "tailnet:owner@example" is just another label, which contests.
   assert.equal((await tool("threads.send", { thread: id, text: "claimed", surface: "tailnet:owner@example" })).data.sent, false);
   assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);
@@ -443,7 +451,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
 
 test("switchboard: a finished turn's partial text is pruned after the grace; the done text stays", async t => {
   const was = process.env.VYRE_TEXT_PRUNE_MS;
-  process.env.VYRE_TEXT_PRUNE_MS = "200";
+  process.env.VYRE_TEXT_PRUNE_MS = "1500"; // long enough that reading the deltas inside the grace is not a race with the log
   t.after(() => { if (was === undefined) delete process.env.VYRE_TEXT_PRUNE_MS; else process.env.VYRE_TEXT_PRUNE_MS = was; });
   const { root, work, tool } = await boot(t);
   const s = sse(root);
@@ -492,7 +500,7 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
 
   // A terminal `claude --resume <id>`: the brief warns and the switchboard says so to every surface.
   const term = (await tool("harness.brief", { cwd: work, session: id, headless: false }, "harness")).data;
-  assert.match(term.text, /^Warning from Vyre: this conversation is also running headless under Vyre right now \(holder: deck:1\)/);
+  assert.match(term.text, /^(Time: [^\n]*\n\n)?Warning from Vyre: this conversation is also running headless under Vyre right now \(holder: deck:1\)/);
   assert.ok(term.text.includes(`vyre threads stop ${id.slice(0, 8)}`));
   const ev = await until(() => of(s.got, id, "thread.contended")[0], "thread.contended");
   assert.deepEqual(ev.payload, { thread: id, session: id, holder: "deck:1" });
@@ -509,6 +517,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
   const again = await start({ root, presence: present, log: () => {} });
+  asOwner(again, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   setDaemon(again); // tempHome's teardown must stop THIS one now, not the d it already stopped
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
@@ -540,7 +549,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   assert.match((await tool("agents.create", { name: "juno2", kind: "assistant" })).error.message, /already an assistant/);
   await tool("agents.create", { name: "scout", projects: [], auth: { vault: "setup-token", fallback: "api-key", budget_usd: 1 }, instructions: "Research only." });
 
-  const list = (await tool("agents.list", {})).data;
+  const list = (await tool("agents.list", {})).data.filter(a => !a.builtin);
   assert.deepEqual(list.map(a => [a.name, a.kind, a.doing]), [["juno", "assistant", "not started"], ["scout", "agent", "not started"]]);
   assert.ok(list.every(a => "instructions" in a), "the Deck's agent page reads the job from the list");
 
@@ -593,11 +602,8 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   try { assert.match((await tool("threads.list", {}, "mcp:agent:juno")).error.message, /no thread of that agent is running with this key/); }
   finally { if (was === undefined) delete process.env.VYRE_AGENT_KEY; else process.env.VYRE_AGENT_KEY = was; }
   assert.ok(!JSON.stringify(launches()).includes("VYRE_AGENT_KEY"));
-  // From inside scout's thread, its key under a name that is not an agent: a visible 403, not "the user".
-  for (const as of ["local", "cli", "deck"]) {
-    const forged = (await tool("agents.ask", { agent: "scout", text: `forge ${as} threads.list` })).data.text;
-    assert.match(forged, /^403 .*carries an agent's key, so it must name that agent/, as);
-  }
+  // (Forging a person's label from inside an agent's thread is the kernel's to refuse: a session's calls arrive on its own socket with the facts the daemon measured, and test/person-label-hygiene, the model-label and
+  // kernel-turn tests hold that; the old "403 carries an agent's key" message was the label rule's.)
 
   assert.equal((await tool("agents.threads", { agent: "scout" })).data.length, 1);
   const stopped = (await tool("agents.stop", { agent: "scout" })).data;
@@ -636,7 +642,7 @@ test("agents: an API-key agent stops at its budget", async t => {
   const r = (await tool("agents.ask", { agent: "ledger", text: "whoami" })).data;
   assert.equal(r.text, "auth=api-key");
   await tool("agents.stop", { agent: "ledger" });
-  await until(async () => (await tool("agents.list", {})).data[0].status === "stopped", "ledger stopping");
+  await until(async () => (await tool("agents.list", {})).data.filter(a => !a.builtin)[0].status === "stopped", "ledger stopping");
   const again = await tool("agents.ask", { agent: "ledger", text: "whoami" });
   assert.match(again.error.message, /spent its \$0.2 budget/);
 });
@@ -803,9 +809,9 @@ test("agents.history: each question with its answer and thread, newest last, pag
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "scout", projects: [], computer: true });
   // agents.list says whether each may have a computer; core/computers decides on it.
-  assert.deepEqual((await tool("agents.list", {})).data.map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
+  assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
   for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
-    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
+    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" }, "deck")).data.text, `echo: ${text}`);
   }
   const juno = (await tool("agents.history", { agent: "juno" })).data;
   assert.deepEqual(juno.map(x => [x.agent, x.text, x.answer, x.surface]), [["juno", "one", "echo: one", "deck"], ["juno", "three", "echo: three", "deck"]]);
@@ -1024,7 +1030,7 @@ test("learned skills: the account's and the project's folders load as plugins; l
 
   // An agent's own folder loads into its threads only.
   const scoutDir = plugin(path.join(root, "learned", "agents", "scout"));
-  await tool("agents.create", { name: "scout", projects: ["harlow"] });
+  await kernelCaller(d, root)("agents.create", { name: "scout", projects: ["harlow"] });
   await tool("agents.ask", { agent: "scout", text: "hi" });
   assert.deepEqual(dirsOf((await until(() => launches()[4], "scout's launch")).argv).slice(1), [account, harlow, scoutDir]);
 });
@@ -1039,7 +1045,7 @@ test("agents: the assistant's brief says how to watch and drive threads for the 
 });
 
 test("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
-  const { tool } = await boot(t);
+  const { tool, d, root } = await boot(t);
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "probe", projects: [] });
   await tool("agents.ask", { agent: "probe", text: "hi" });
@@ -1047,8 +1053,10 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.equal((await tool("agents.delete", { agent: "probe" }, "mcp")).error.code, "denied", "a model never deletes an agent");
   assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
   await tool("agents.stop", { agent: "probe" });
-  assert.deepEqual((await tool("agents.delete", { agent: "probe" }, "deck")).data, { agent: "probe", deleted: true });
-  assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
+  // deleting takes back what the agent was given, a person's own act: a call that carries no person is refused and nothing is deleted
+  assert.equal((await tool("agents.delete", { agent: "probe" }, "deck")).error?.code, "denied", "no person on the call");
+  assert.deepEqual((await kernelCaller(d, root, "deck")("agents.delete", { agent: "probe" })).data, { agent: "probe", deleted: true });
+  assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
 });
@@ -1327,7 +1335,7 @@ test("agents.create: computer true, as the Deck's New agent and Create your assi
   const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true }, "deck");
   assert.equal(juno.error, undefined, juno.error && juno.error.message);
   await tool("agents.create", { name: "pax", kind: "agent", projects: [] }, "deck");
-  const list = (await tool("agents.list", {})).data;
+  const list = (await tool("agents.list", {})).data.filter(a => !a.builtin);
   assert.equal(list.find(a => a.name === "kit").computer, true);
   assert.equal(list.find(a => a.name === "juno").computer, true);
   assert.equal(list.find(a => a.name === "pax").computer, false, "unticked stays without one");

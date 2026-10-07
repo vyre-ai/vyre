@@ -1,0 +1,4 @@
+{
+ "_comment": "Every tool that declares flowAction (a Flow's call step may run it), with the guard it relies on inside the tool: the check it makes on the person's chain (ctx.kernel.chain(meta)). The runner does not ask the kernel about a Flow tool, so the tool must gate itself. A flowAction tool with no line here, a line that names no guard, or a stale line fails test/flow-action-guards.test.js.",
+ "tools": {}
+}

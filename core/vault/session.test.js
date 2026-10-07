@@ -2,6 +2,7 @@
 // session tests: a fake clock and fake timers, so idle and lifetime limits are exact and nothing
 // waits. The token must never appear in an event, and a session never covers a reprompt item.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Sessions, duration, lockConfig, reprompt } from "./session.js";

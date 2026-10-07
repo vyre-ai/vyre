@@ -1,13 +1,14 @@
 // Generated media in Drive, against the REAL artifacts module (core/artifacts), not a stand-in: a provider's image is
 // kept by artifacts.media.register, and the project's folder in files.drive.list then shows it under Generated and
 // reads its bytes through artifacts.media.read. The call shapes are artifacts' own.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
@@ -26,7 +27,7 @@ async function boot(t) {
   fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ role: "box", files: { roots: [work], drive: { shares: { projects: null, work } } } }));
   const mods = path.join(home, "mods");
   // The threads module artifacts asks which project and agent a thread belongs to; agents and projects come from the shared fixture.
-  writeModule(mods, "threads", { does: { tools: ["threads.get"] } }, `
+  writeModule(mods, "threads", { does: { tools: [{ name: "threads.get", reach: "modules" }] } }, `
     const T = { t1: { project: "harlow-legal", agent: "juno", provider: "grok" }, t3: { project: "northwind", agent: "nia", provider: "codex" } };
     export default { async start(ctx) { ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) }); return {}; } };`);
   installFakeReach(mods, home, { agents: [{ name: "juno", kind: "agent", projects: ["harlow-legal"] }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }, { name: "nia", kind: "agent", projects: ["northwind"] }],

@@ -3,6 +3,7 @@
 // request, teammate and setting acts; on any other tool "asked" refuses every agent and module for good,
 // even when the person did ask. This fails when a manifest declares "asked" for a tool that
 // test/asked-recorders.json does not tie to a recorder file that exists. It reads files only.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

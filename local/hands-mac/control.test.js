@@ -2,6 +2,7 @@
 // The floor, the hold, the commit, the stop: everything that decides whether an act happens at
 // all, driven with a fake app and a fake overlay so no screen is needed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -14,7 +15,7 @@ import { makeOverlay, center } from "./overlay.js";
 import mod from "./index.js";
 import { discover, Registry } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeApp, fakeOverlay } from "./fake.js";
 
@@ -155,15 +156,18 @@ test("commit: through the Registry it is marked presence, refused without proof,
   assert.equal(listed["hands.act"].presence, undefined);
 
   const input = { selector: { role: "AXButton", name: "Send" }, kind: "press" };
-  const held = await reg.call("hands.act", input, "mcp");
+  // The model is a named agent holding a grant (an unnamed mcp is every model's shell and holds none); its send is held and only commit with a person's proof does it.
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  const KIT = "mcp:agent:kit";
+  const held = await reg.call("hands.act", input, KIT);
   assert.equal(held.data.held, true);
-  const refused = await reg.call("hands.commit", input, "mcp");
+  const refused = await reg.call("hands.commit", input, KIT);
   assert.equal(refused.error?.code, "presence_required");
   assert.equal(counts(f.calls, "act"), 0, "commit acted without a person");
   assert.equal(shown[0], `Press "Send" in Messages, window "juno"`);
 
   allow = true;
-  const done = await reg.call("hands.commit", input, "mcp");
+  const done = await reg.call("hands.commit", input, KIT);
   assert.equal(done.data?.verified, true, JSON.stringify(done));
   assert.equal(counts(f.calls, "act"), 1);
 });
@@ -239,11 +243,11 @@ test("stop: hands.stop through the Registry stops, and the next act is refused w
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: nosleep, overlay: fakeOverlay() } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
   const input = { selector: { role: "AXButton", name: "Attach" }, kind: "press" };
-  await reg.call("hands.act", input, "mcp");
-  assert.deepEqual((await reg.call("hands.stop", {}, "mcp")).data, { stopped: true, app: "Messages", by: "tool" });
-  const refused = await reg.call("hands.act", input, "mcp");
+  await reg.call("hands.act", input, "cli");
+  assert.deepEqual((await reg.call("hands.stop", {}, "cli")).data, { stopped: true, app: "Messages", by: "tool" });
+  const refused = await reg.call("hands.act", input, "cli");
   assert.equal(refused.error?.code, "stopped");
-  assert.equal((await reg.call("hands.act", { ...input, resume: true }, "mcp")).data?.acted, true);
+  assert.equal((await reg.call("hands.act", { ...input, resume: true }, "cli")).data?.acted, true);
   const types = reg.deps.events.since(0).map(e => e.type);
   assert.ok(types.includes("hands.stopped") && types.includes("hands.resumed"), types.join(","));
 });

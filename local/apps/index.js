@@ -88,6 +88,8 @@ export default {
     };
 
     ctx.tool("apps.list", {
+      effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
       description: "Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it: connector, intents, script, or ax for its UI); actions and nests (has things inside to pick) when Vyre has words for the app. Filter with q; names that start with q come first.",
       input: { type: "object", properties: { q: str, limit: { type: "integer", description: `Most rows, default 20, at most ${LIST_MAX}.` } } },
       async run({ q = "", limit = 20 }) {
@@ -105,6 +107,8 @@ export default {
     });
 
     ctx.tool("apps.targets", {
+      effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
       description: "Things inside one app a person can pick: notes in Notes, lists in Reminders. Each has an id to pass back in args. Empty for an app with none.",
       input: { type: "object", required: ["app"], properties: { app: str, q: str, limit: { type: "integer", description: "Most rows, default 20." } } },
       async run({ app, q = "", limit = 20 }) {
@@ -256,6 +260,7 @@ export default {
     };
 
     ctx.tool("apps.route", {
+      effect: "write",
       description: "Turn a person's words into one app action without running it: {app, action, args, sends, said, gated?}, or {ambiguous, reason}. gated: run it with apps.act, then approve the held item (gate.approve). \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, to: str, model: { type: "boolean" } } },
       run: async input => gatedMark(await routeWords(input)),
@@ -287,6 +292,7 @@ export default {
     }
 
     ctx.tool("apps.setup", {
+      effect: "write",
       description: "An app's one-time setup, run when a person first asks for something that needs it. For Clock: writes Vyre's Timer and Alarm shortcuts, signs them and opens each in Shortcuts, where one click adds it. Returns steps (plain words to show) and files. ready: true when there is nothing to do.",
       input: { type: "object", required: ["app"], properties: { app: str } },
       // Only the surfaces a person drives: it signs files and opens import windows, which a
@@ -305,6 +311,7 @@ export default {
     });
 
     ctx.tool("apps.act", {
+      effect: "write",
       description: "Do one thing in an app that sends nothing as the person: a Clock timer or alarm, a note, a reminder, the weather. Returns said, one line to show, and the action's data. An action that sends, posts or pays is refused here with code sends: use apps.send. A gated send (Slack) runs here and comes back as { held: {id, message}, preview }: nothing is sent until the person approves the held item with gate.approve.",
       input: actInput,
       async run({ app, action, args = {} }) {
@@ -318,8 +325,11 @@ export default {
     });
 
     ctx.tool("apps.send", {
+      effect: "write",
       description: "Do one thing in an app that sends, posts or pays as the person. Every call needs a person's proof, shown the preview (\"WhatsApp → juno: running late\"). Returns said and the action's data.",
       input: actInput,
+      // Listed so a first-party module may call it (the floor asks every non-module caller for a person's proof); a model that asks is held for a person.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
       presence: {
         // Every send may ride a session; the floor's SESSIONABLE list is what allows it at all.
         session: () => true,

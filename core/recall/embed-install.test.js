@@ -2,6 +2,7 @@
 // The search model's library is installed on first use, not by npm i -g. These run a fake npm
 // that writes a fake library, so nothing is downloaded.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -93,4 +94,9 @@ test("embed: recall.setup installs through a real vyred, says so in status, then
   do { v = (await call("recall.status", {}, { root })).data.vectors; } while (v.pending && Date.now() < deadline && await new Promise(r => setTimeout(r, 50, true)));
   assert.equal(v.ready, true);
   assert.equal(v.pending, 0, "every turn got a vector");
+  // Stopping the daemon closes the embedder's process (a stop that threw before closing it left the child alive and the whole run, and any suite that started a daemon, never ended).
+  await d.stop();
+  const gone = Date.now() + 5000;
+  while (process.getActiveResourcesInfo().includes("ProcessWrap") && Date.now() < gone) await new Promise(r => setTimeout(r, 50));
+  assert.equal(process.getActiveResourcesInfo().includes("ProcessWrap"), false, "no embedder process is left running");
 });

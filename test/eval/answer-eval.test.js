@@ -1,10 +1,11 @@
 // @ts-check
-// memory.answer, measured (docs/work/memory-iq.md). Runs scripts/eval-answer.js on the synthetic
+// memory.answer, measured (team/archive/work-journals/memory-iq.md). Runs scripts/eval-answer.js on the synthetic
 // personal world in this process. The harness itself must always work: the world seeded, every
 // question asked, the metrics computed for today's Capsule path. Once the memory module has a
 // memory.answer tool, it must also clear the bar: overall 0.9 or more, no confident wrong answer,
 // and p95 under 150 ms a question.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runEval, correct } from "../../scripts/eval-answer.js";

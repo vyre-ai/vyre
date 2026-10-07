@@ -2,37 +2,38 @@
 // The assistant module against fake waiting, agents, memory, settings and context modules in a
 // temp home. Nothing here reads real memory, real agents or a real clock.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { allowed, recent, patterns, phrase } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const AGENTS = `export default { async start(ctx) {
-  ctx.tool("agents.list", { run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
+  ctx.tool("agents.list", { effect: "read", run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
   return {};
 } };`;
 
 const WAITING = `export default { async start(ctx) {
-  ctx.tool("waiting.count", { run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
+  ctx.tool("waiting.count", { effect: "read", run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
   return {};
 } };`;
 
 const MEMORY = `export default { async start(ctx) {
-  ctx.tool("memory.facts", { run: async () => ({ facts: globalThis.__facts || [] }) });
+  ctx.tool("memory.facts", { effect: "read", run: async () => ({ facts: globalThis.__facts || [] }) });
   return {};
 } };`;
 
 const SETTINGS = `export default { async start(ctx) {
-  ctx.tool("settings.get", { run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
+  ctx.tool("settings.get", { effect: "read", run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
   return {};
 } };`;
 
 const CONTEXT = `export default { async start(ctx) {
-  ctx.tool("context.now", { run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
+  ctx.tool("context.now", { effect: "read", run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
   return {};
 } };`;
 
@@ -64,6 +65,10 @@ test("allowed: person surfaces, the user's own session, and the assistant itself
   globalThis.__agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }];
   const c = (tool, input) => call(tool, input, "module:test");
   for (const caller of ["cli", "local", "deck", "capsule", "mcp", "mcp:thread:abc123"]) assert.equal(await allowed(caller, c), true, caller);
+  // The daemon's vouched meta decides, not the label text (RC-1).
+  assert.equal(await allowed("mcp:thread:abc123", c, { thread: "abc123" }), true, "a vouched session");
+  assert.equal(await allowed("mcp:thread:fake", c, { agent: "kit" }), false, "a vouched named agent that is not the assistant");
+  assert.equal(await allowed("mcp:agent:kit", c, { thread: "t1" }), true, "an agent label no one vouched for claims nothing: it is the session itself");
   assert.equal(await allowed("mcp:agent:juno", c), true, "the assistant");
   assert.equal(await allowed("mcp:agent:kit", c), false, "a project-scoped agent");
   assert.equal(await allowed("tailnet:alex@example.com", c), false);

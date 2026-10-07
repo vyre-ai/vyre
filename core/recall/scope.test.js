@@ -6,6 +6,7 @@
 // still see everything; only a named agent is scoped, by agents.projects intersected with
 // projects.access (deny by default).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -13,7 +14,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 const NORTHWIND_SESSION = "11111111-aaaa-4000-8000-000000000003";
 const HARLOW_SESSION = "11111111-aaaa-4000-8000-000000000001";
@@ -32,12 +33,13 @@ async function world(t, extra = []) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [dir], recall: { every: 0 } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   await call("recall.index", {}, opts);
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   // This worktree predates federation's projects.access module (still on work/federation,
   // d897210d): reach() calls projects.access.check and, per its own no_such_tool fallback (the
   // same one core/memory/index.js's reach() uses), falls back to agents.projects alone where
@@ -49,8 +51,9 @@ async function world(t, extra = []) {
 
 test("recall.search: a named agent reads only its granted project, never the whole corpus", async t => {
   const { d } = await world(t);
-  // Bare "mcp" (a model's own session, not a named agent) is unchanged: still unrestricted.
-  assert.ok((await d.registry.call("recall.search", { q: "intake form" }, "mcp")).data.length > 0);
+  // Bare "mcp" (every model's shell, no name, no thread of its own) is NOT the person: it has no project, so it reads nothing (MS-1, reviewer-2's recall verdict).
+  const bare = await d.registry.call("recall.search", { q: "intake form" }, "mcp");
+  assert.equal(bare.error && bare.error.code, "denied", JSON.stringify(bare));
   // kit is granted only northwind: a Harlow-only term finds nothing, silently (not an error —
   // the same as any other search with no matches).
   assert.equal((await d.registry.call("recall.search", { q: "intake form" }, "mcp:agent:kit")).data.length, 0);
@@ -106,8 +109,9 @@ test("recall.sessions: a named agent lists only its granted project's sessions",
 
 test("recall: taking an agent's project away narrows its reach immediately", async t => {
   const { d, opts } = await world(t);
+  const kcall = kernelCaller(d, opts.root);
   assert.ok((await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:kit")).data.length > 0);
-  assert.ok(!(await call("agents.update", { name: "kit", projects: [] }, opts)).error);
+  assert.ok(!(await kcall("agents.update", { name: "kit", projects: [] }, opts)).error);
   const after = await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:kit");
   assert.match(after.error?.message || "", /kit is not granted any project yet/);
 });
@@ -158,4 +162,16 @@ test("recall.thread: a prefix that matches sessions inside and outside the grant
   // ungranted session shares the prefix.
   const forKit = await d.registry.call("recall.thread", { session: prefix }, "mcp:agent:kit");
   assert.equal(forKit.data?.turns?.[0]?.text, "A colliding-prefix session, in scope.");
+});
+
+test("an unnamed model session cannot list or read another project's session; the person's surface can", async t => {
+  const { d, opts } = await world(t);
+  for (const [tool, input] of [["recall.sessions", {}], ["recall.sessions", { cwd: "/anywhere" }], ["recall.thread", { session: NORTHWIND_SESSION }], ["recall.thread", { session: HARLOW_SESSION }], ["recall.search", { q: "bakery" }]]) {
+    for (const caller of ["mcp", "mcp:thread:t-none"]) {
+      const r = await d.registry.call(tool, input, caller);
+      assert.ok(r.error || (Array.isArray(r.data) && r.data.length === 0), `${caller} ${tool} must be refused or empty: ${JSON.stringify(r).slice(0, 160)}`);
+    }
+  }
+  assert.ok((await call("recall.sessions", {}, opts)).data.length > 0, "the person's surface lists every session");
+  assert.ok((await call("recall.thread", { session: NORTHWIND_SESSION }, opts)).data.turns.length > 0);
 });

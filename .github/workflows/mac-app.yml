@@ -23,7 +23,13 @@ on:
         type: boolean
         default: false
   workflow_dispatch:
+    inputs:
+      version:
+        description: The version to stamp and name the files with (a rehearsal, for example 0.3.0-rc.1). Empty reads package.json.
+        type: string
+        default: ""
   push:
+    branches: ["main", "work/capsule*", "work/mac-*", "work/lumen*"]
     paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
 permissions:
   contents: read
@@ -45,6 +51,13 @@ jobs:
         run: |
           arch=${{ matrix.arch }}; [ "$arch" = aarch64 ] && arch=arm64
           VYRE_CAPSULE_ARCH=$arch sh local/capsule/native/build.sh app
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: matrix.arch == 'aarch64'
+        with:
+          node-version: 22
+      - name: The Mac installer's tests (box-url, rc channel source, fake sudo and launchctl; no real service)
+        if: matrix.arch == 'aarch64'
+        run: node --test --test-reporter=spec test/install-mac-server.test.js
       - name: The binary is for ${{ matrix.arch }}
         run: |
           archs="$(lipo -archs local/capsule/native/.build/Vyre.app/Contents/MacOS/Vyre)"
@@ -58,10 +71,34 @@ jobs:
           name: mac-unsigned-${{ matrix.arch }}
           path: unsigned/Vyre.app.zip
           retention-days: 2
+  # web: the app's web export (apps/app, no secrets, no install scripts), carried inside the Mac app (Contents/Resources/app).
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app
+        working-directory: apps/app
+        run: |
+          # What this exports goes inside the signed app, so it is exactly apps/app/package-lock.json (npm ci fails on any drift from it, and no install script runs);
+          # a lockfile change is listed for the release approver (release.yml "apps/app dependency changes").
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-web-app
+          path: apps/app/dist
+          retention-days: 2
   # package: a fresh checkout that runs only scripts/mac-app-package.sh on the uploaded app. On a publish (`sign: true`) it runs in the "apple"
   # environment and only the package step receives the secrets; no build tool and no repo build script runs in this job.
   package:
-    needs: build
+    needs: [build, web]
     runs-on: macos-latest
     timeout-minutes: 45
     environment: ${{ inputs.sign && 'apple' || '' }}
@@ -95,9 +132,14 @@ jobs:
           na=$ARCH; [ "$na" = aarch64 ] && na=arm64 || na=x64
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/node.tgz" "https://nodejs.org/dist/$v/node-$v-darwin-$na.tar.gz"
           echo "tgz=$RUNNER_TEMP/node.tgz" >> "$GITHUB_OUTPUT"; echo "Node $v for $na"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mac-web-app
+          path: ${{ runner.temp }}/web
       - name: Package, sign if there is an identity, notarize if there is a credential
         env:
           VYRE_NODE_TGZ: ${{ steps.node.outputs.tgz }}
+          VYRE_APP_WEB_DIR: ${{ runner.temp }}/web
           APPLE_DEVELOPER_ID_P12: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12 || '' }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12_PASSWORD || '' }}
           APPLE_DEVELOPER_ID_IDENTITY: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_IDENTITY || '' }}
@@ -128,12 +170,20 @@ jobs:
           ls -l "$app/Contents/Resources/setup"; cat "$app/Contents/Resources/setup/setup.json"
           test -x "$app/Contents/Resources/setup/install-mac-server.sh"
           test -x "$app/Contents/Resources/setup/vyre-sudo-check"
+          test -f "$app/Contents/Resources/app/index.html" && echo "dmg holds the web app"
+          ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"; echo "app version $ver"
+          [ "$ver" = "${{ steps.v.outputs.version }}" ]
+          case "$ver" in
+            *-*) test -f "$app/Contents/Resources/setup/box-url" && cat "$app/Contents/Resources/setup/box-url" ;;
+            *) test ! -e "$app/Contents/Resources/setup/box-url" && echo "stable: no box-url, the installer uses vyre.run/box" ;;
+          esac
           codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
           hdiutil detach "$mnt" >/dev/null
       - name: Status
         env:
           ARCH: ${{ matrix.arch }}
         run: |
+          case "${{ steps.v.outputs.version }}" in *-*) echo "note: this is a prerelease build; its box-url names https://github.com/vyre-ai/vyre/releases/download/v${{ steps.v.outputs.version }}/, which 404s until that release is cut (a rehearsal)" | tee -a "$GITHUB_STEP_SUMMARY" ;; esac
           cat dist-mac/mac-app-*.status
           { echo "### Lumen Mac app ($ARCH)"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

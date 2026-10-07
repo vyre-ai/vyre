@@ -1,6 +1,6 @@
 // @ts-check
 // hands-desktop: the module layer over act.js, snapshot.js and client.js — an agent's AT-SPI
-// hands, wired to a real computer through core/computers (docs/work/computers.md, ADR 0003).
+// hands, wired to a real computer through core/computers (team/archive/work-journals/computers.md, ADR 0003).
 //
 // Everything that decides whether a click is safe to try lives in act.js and consequence.js
 // already; this file only finds the agent's computer (computers.endpoint), speaks computerd
@@ -25,6 +25,8 @@ const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+/** The person's own surfaces and modules, plus an agent's own hands (a model session): resolveAgent refuses a model that names no agent of its own. */
+const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {
@@ -60,6 +62,8 @@ export default {
         else if ((await kindOf(self)) === "assistant") agent = input.agent;
         else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
       } else {
+        // A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no computer of its own.
+        if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
         if (!input.agent) throw new Error("say which agent's computer: agent is required");
         agent = input.agent;
       }
@@ -109,7 +113,8 @@ export default {
       }
     };
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    /** tree, apps and screenshot only look; act drives the desktop. */
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: CALLERS, effect: name === "hands-desktop.act" ? "write" : "read" });
 
     tool("hands-desktop.tree", "The accessibility tree of an app in the agent's computer, shaped into the controls the hands can act on.",
       obj({ agent: str, thread: str, app: str }, ["agent"]),

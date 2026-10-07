@@ -3,6 +3,7 @@
 // person's hand edit applies, a bad one is named and kept out, one that widens what Claude may do
 // waits for the person, a broken file is kept aside, and a session can't touch it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,12 +21,14 @@ async function world(t, { before } = /** @type {{ before?: (root: string) => voi
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".vyre", "project.json"), JSON.stringify({ name: "Northwind Bakery", slug: "northwind" }));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, projectsDir: projects, settings: { claude_dir: path.join(root, "claude") } }));
   before?.(root);
-  const d = await start({ root, log: () => {} });
+  // The oven and friends are written for the in-process API, so the home's folder is trusted by path (a third-party module runs in the sandbox with the kernel on).
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
+  await d.registry.call("projects.create", { name: "Northwind", home }, "cli");
+  await d.registry.call("projects.rename", { project: "northwind", name: "Northwind Bakery" }, "cli");
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   const file = path.join(root, "hub.json");
   const hub = () => JSON.parse(fs.readFileSync(file, "utf8"));
@@ -131,7 +134,7 @@ function oven(/** @type {string} */ root, { slow = false } = {}) {
   const dir = path.join(root, "modules", "oven");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "oven", version: "0.1.0", roles: ["box", "local"],
-    does: { tools: ["oven.check", "oven.presets", "oven.chip.get", "oven.chip.set"] }, settings: [
+    does: { tools: [{ name: "oven.check", reach: "modules" }, "oven.presets", "oven.chip.get", "oven.chip.set"] }, settings: [
       { key: "oven.look", group: "appearance", label: "Look", type: "enum", enum: ["crust", "crumb"], default: "crust", levels: ["account", "device"], apply: "live" },
       { key: "oven.recipe", group: "appearance", label: "Recipe", type: "string", default: "sourdough", levels: ["account", "device"], apply: "live",
         check: { tool: "oven.check" }, choicesFrom: { tool: "oven.presets", read: "presets" } },
@@ -151,6 +154,13 @@ export default { async start(ctx) {
 } };`);
 }
 
+// With the kernel on the phone is the facts the listener proves (a paired app row and a person session), not its label.
+const phoneMeta = (/** @type {any} */ d) => {
+  if (!d.kernel) return { person: { id: "p1" } };
+  d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run("aaaaaaaaaaaaaaaa");
+  return { person: { id: "p1" }, kernelFacts: { kind: "device", device_key_id: "aaaaaaaaaaaaaaaa", person: d.kernel.id.owner, path: "wink", session: "p1" } };
+};
+
 test("a device's value beats the account's for that device only; the owner's device reads its own by default", async t => {
   const { d, c, hub, edit } = await world(t, { before: root => oven(root) });
   assert.ok(!(await c("settings.set", { key: "oven.look", value: "crumb", device: "tailnet:alex-phone" })).error);
@@ -158,9 +168,9 @@ test("a device's value beats the account's for that device only; the owner's dev
   assert.equal((await c("settings.get", { key: "oven.look", device: "tailnet:alex-phone" })).data.value, "crumb");
   assert.equal((await c("settings.get", { key: "oven.look", device: "mac:alex-mbp" })).data.value, "crust", "another device keeps the account's");
   // The phone over the tailnet, signed in, names no device and still reads its own.
-  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "tailnet:alex-phone", { person: { id: "p1" } });
+  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "tailnet:alex-phone", phoneMeta(d));
   assert.deepEqual([phone.data.value, phone.data.source, phone.data.device_id], ["crumb", "device", "tailnet:alex-phone"]);
-  const snap = await d.registry.call("settings.snapshot", {}, "tailnet:alex-phone", { person: { id: "p1" } });
+  const snap = await d.registry.call("settings.snapshot", {}, "tailnet:alex-phone", phoneMeta(d));
   assert.equal(snap.data.device, "tailnet:alex-phone", "the id it resolved is echoed");
   assert.equal(snap.data.values["oven.look"], "crumb");
   assert.equal(snap.data.sources["oven.look"], "device");

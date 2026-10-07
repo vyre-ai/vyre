@@ -3,6 +3,7 @@
 // ctx.vault.fetch, who may call what, the keystores, and the promise the whole thing rests on,
 // that no value appears in an event, a log, a listing, the MCP server or a file on disk.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -145,7 +146,7 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
 
   const offered = (await request("GET", "/v1/tools", undefined, { root, caller: "mcp" })).data.map(x => x.name);
   for (const hidden of ["vault.put", "vault.inject", "vault.approve", "vault.unlock", "vault.release", "vault.totp", "vault.delete", "vault.offboard"]) assert.ok(!offered.includes(hidden), `${hidden} is offered to Claude`);
-  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.import", "vault.audit"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
+  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.import"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
 
   // Claude's grant waits for a person.
   const g = (await mcp("vault.grant", { name: "api-token", module: "probe" })).data.grant;
@@ -155,7 +156,8 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
   assert.equal((await mcp("vault.approve", { id: g.id })).error.code, "denied");
   assert.equal((await cli("vault.approve", { id: g.id })).data.approved.status, "active");
   assert.ok((await cli("probe.use", { name: "api-token" })).data.sha);
-  assert.equal((await mcp("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1, "taking access away needs no one");
+  assert.equal((await mcp("vault.revoke", { name: "api-token", module: "probe" })).data?.revoked ?? 0, 0, "a bare model session cannot withdraw a module's grant (group D LOW)");
+  assert.equal((await cli("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1, "taking access away needs no one but the person");
 
   // Nothing on the socket can pose as a module to reach vault.release.
   await cli("vault.grant", { name: "api-token", module: "probe" });

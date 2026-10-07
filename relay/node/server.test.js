@@ -1,7 +1,10 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelay } from "./server.js";
+import { relayLink } from "../../core/relay/link.js";
+import { keyPair } from "../../core/relay/noise.js";
 import { newRouteKey, routeId, authMessage, signRoute, CLOSE, ticketSeal } from "../../core/relay/wire.js";
 
 /** A WebSocket that queues what it receives, so a test can await the next message or the close. */
@@ -43,7 +46,7 @@ test("a box that signs its route is served, and device frames reach it both ways
   const b = await box(base);
   const ready = await b.s.json();
   assert.equal(ready.t, "ready");
-  assert.deepEqual(ready.features, ["registered", "revoke"], "the relay says it answers registrations, so a box can tell silence from an older relay");
+  assert.deepEqual(ready.features, ["registered", "revoke", "code"], "the relay says it answers registrations, so a box can tell silence from an older relay");
 
   const dev = sock(`${base}/v1/device?route=${b.route}`);
   await dev.open();
@@ -347,4 +350,273 @@ test("/v1/pair charges only misses to an address: a spent miss budget still reso
   a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: ticketSeal(Buffer.alloc(8, 3), JSON.stringify({ v: 1, name: "alex" })), mac: "m".repeat(43), exp }));
   assert.equal((await a.s.json()).status, 200);
   assert.equal((await resolve(loc)).status, 200, "a hit is served even with the miss budget spent");
+});
+
+// ---- the typed Wink code's rendezvous (spec 6.5) ----
+
+const CODE_BODY = { error: "that code did not work" };
+const step = (http, body, ip = "198.51.100.1") => fetch(`${http}/v1/wink/code`, { method: "POST", headers: { "content-type": "application/json", "x-test-ip": ip }, body: JSON.stringify(body) });
+const byHeader = req => String(req.headers["x-test-ip"] || req.socket.remoteAddress);
+const SID = "A".repeat(22);
+/** A connected box that has asked for a code. */
+async function codeBox(base, key) {
+  const b = await box(base, key);
+  await b.s.json();
+  b.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+  const a = await b.s.json();
+  return { ...b, a };
+}
+
+test("code: a box is given a free rendezvous for 10 minutes, one live code per box, and a new ask replaces the old", async t => {
+  const relay = createRelay({ code: { graceMs: 0 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  assert.equal(a.a.t, "code.allocated");
+  assert.match(a.a.rv, /^[0-9A-HJKMNP-TV-Z]{2}$/);
+  assert.ok(Math.abs(a.a.exp - (Date.now() + 10 * 60_000)) < 5000);
+  assert.equal(relay.stats().codes, 1);
+  a.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+  const again = await a.s.json();
+  assert.equal(relay.stats().codes, 1, "one live code per box");
+  const b = await codeBox(base);
+  assert.notEqual(b.a.rv, again.rv, "two boxes never share a rendezvous");
+  assert.equal(relay.stats().codes, 2);
+  // Nothing allocated: a release frees it, and so does the box leaving.
+  b.s.ws.send(JSON.stringify({ t: "code.release" }));
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(relay.stats().codes, 1);
+  a.s.ws.close();
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(relay.stats().codes, 0);
+  void http;
+});
+
+test("code: a box whose control socket drops and reconnects keeps the code its screen shows, and a box that stays gone loses it after the grace", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { graceMs: 200 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const key = newRouteKey();
+  const a = await codeBox(base, key);
+  // the link flaps: the old socket dies, the same box (same route key) comes back before the grace is up
+  a.s.ws.close();
+  await new Promise(r => setTimeout(r, 40));
+  const back = await box(base, key);
+  await back.s.json();
+  assert.equal(relay.stats().codes, 1, "the rendezvous survived the reconnect");
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  const got = await back.s.json();
+  assert.equal(got.t, "code.msg");
+  assert.equal(got.rv, a.a.rv);
+  back.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
+  assert.equal((await p).status, 200, "a typed code still redeems after the box's link was re-made");
+  // a box that does not come back loses the code once the grace has passed
+  back.s.ws.close();
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(relay.stats().codes, 1, "still held during the grace");
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(relay.stats().codes, 0, "released after the grace");
+  assert.equal((await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.77")).status, 404);
+});
+
+test("code: the relay forwards a typist's message only to the route that holds the rendezvous, and its answer back", async t => {
+  const relay = createRelay({ clientAddress: byHeader });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base), b = await codeBox(base);
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  const got = await a.s.json();
+  assert.deepEqual({ ...got, q: "q" }, { t: "code.msg", q: "q", rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+  // B's socket saw nothing, and B cannot answer A's request.
+  b.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "forged" }));
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(relay.stats().codeRequests, 1, "a reply from another route is ignored");
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
+  const res = await p;
+  assert.equal(res.status, 200);
+  const answer = await res.json();
+  assert.ok(Number.isFinite(answer.exp) && answer.exp > Date.now(), "and the code's end, in epoch ms");
+  assert.deepEqual({ m: answer.m, route: answer.route }, { m: "Ysecond", route: a.route }, "the typist is told the route, for the transcript");
+  assert.equal(relay.stats().codeRequests, 0);
+  const none = await Promise.race([b.s.next(), new Promise(r => setTimeout(() => r("quiet"), 50))]);
+  assert.equal(none, "quiet", "the other box was never told");
+});
+
+test("code: unknown, released, expired, refused and silent all get the same answer, and a miss creates no state", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { waitMs: 150 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const free = [...("0123456789ABCDEFGHJKMNPQRSTVWXYZ")].map(c => c + "0").find(rv => rv !== a.a.rv) || "00";
+  const out = [];
+  out.push(await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "198.51.100.10"));
+  assert.equal(relay.stats().codes, 1, "an unknown rendezvous creates nothing");
+  // refused by the box (no m)
+  let p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.11");
+  let got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q }));
+  out.push(await p);
+  // silent
+  out.push(await step(http, { rv: a.a.rv, s: SID, n: 3, m: "Y" }, "198.51.100.12"));
+  await a.s.json();
+  // released
+  a.s.ws.send(JSON.stringify({ t: "code.release" }));
+  await new Promise(r => setTimeout(r, 30));
+  out.push(await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.13"));
+  // expired
+  const b = await codeBox(base);
+  const real = Date.now;
+  Date.now = () => real() + 6 * 60_000;
+  try { out.push(await step(http, { rv: b.a.rv, s: SID, n: 1, m: "Y" }, "198.51.100.14")); } finally { Date.now = real; }
+  const bodies = [];
+  for (const r of out) { assert.equal(r.status, 404); bodies.push(await r.json()); }
+  for (const x of bodies) assert.deepEqual(x, CODE_BODY);
+  assert.equal(relay.stats().codeRequests, 0);
+});
+
+test("code: the preflight answers any origin, a bad request is 400 whatever is live", async t => {
+  const relay = createRelay({ clientAddress: byHeader });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const pre = await fetch(`${http}/v1/wink/code`, { method: "OPTIONS", headers: { origin: "https://alex.vyre.run" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  const a = await codeBox(base);
+  for (const bad of [{ rv: "UU", s: SID, n: 1, m: "Y" }, { rv: a.a.rv, s: "short", n: 1, m: "Y" }, { rv: a.a.rv, s: SID, n: 2, m: "Y" }, { rv: a.a.rv, s: SID, n: 1, m: "" }, { rv: a.a.rv, s: SID, n: 1, m: "x".repeat(300) }, { rv: a.a.rv, s: SID, n: 1, m: "a b" }]) {
+    assert.equal((await step(http, bad)).status, 400, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.equal(relay.stats().codeRequests, 0, "nothing was forwarded");
+});
+
+test("code: sessions are charged per address (10 a minute), another address is untouched, and there is no global budget", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { waitMs: 80 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const statuses = [];
+  for (let i = 0; i < 12; i++) statuses.push((await step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.5")).status);
+  assert.deepEqual(statuses.slice(0, 10), Array(10).fill(404), "ten sessions served (the silent box times out)");
+  assert.deepEqual(statuses.slice(10), [429, 429], "the eleventh is refused");
+  // Another address is served at once, and a spent address does not block it.
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.6");
+  // drain the ten forwarded to the box, then answer the newest
+  let last;
+  for (let i = 0; i < 11; i++) last = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: last.q, m: "Yb" }));
+  assert.equal((await p).status, 200, "another address is not charged for this one's");
+});
+
+test("code: a miss is charged again to its own address (30 a minute), and a hit is still served after that", async t => {
+  const relay = createRelay({ clientAddress: byHeader, code: { sessionPerMin: 1000, stepPerMin: 1000 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await codeBox(base);
+  const free = "ZZ" === a.a.rv ? "ZY" : "ZZ";
+  let last = 0;
+  for (let i = 0; i < 40; i++) last = (await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.9")).status;
+  assert.equal(last, 429, "its misses ran out");
+  const p = step(http, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.9");
+  const got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Yb" }));
+  assert.equal((await p).status, 200, "a live code is served to an address whose miss budget is spent");
+  assert.equal((await step(http, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.10")).status, 404, "another address still gets the plain miss");
+});
+
+test("publish tunnel: a visitor to a served name reaches the box's data socket as raw bytes, the box hears the name and address on its control channel, and every end frees its slot", async t => {
+  const net = await import("node:net");
+  const tls = await import("node:tls");
+  const names = new Map();
+  const relay = createRelay({ tunnel: { resolve: async host => (names.has(host) ? { route: names.get(host) } : null) } });
+  const base = await relay.listen();
+  const { tls: tlsPort, http: httpPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const b = await box(base);
+  const ready = await b.s.json();
+  assert.ok(ready.features.includes("tunnel"), "a relay with the tunnel says so");
+  names.set("harlow.vyre.run", b.route);
+
+  // a visitor starts a TLS handshake for the name; the box is told on its control channel
+  const visitor = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "harlow.vyre.run", rejectUnauthorized: false });
+  visitor.on("error", () => {});
+  const open = await b.s.json();
+  assert.equal(open.t, "tunnel");
+  assert.equal(open.host, "harlow.vyre.run");
+  assert.match(open.ip, /^127\.0\.0\.1$/);
+  // the box opens a data socket for it; what arrives is the visitor's ClientHello, byte for byte, with nothing in front
+  const data = sock(`${base}/v1/box?route=${b.route}&c=${open.c}&t=${encodeURIComponent(ready.ticket)}`);
+  await data.open();
+  const first = /** @type {Buffer} */ (await data.next());
+  assert.equal(first[0], 0x16, "a TLS handshake record");
+  assert.ok(first.includes(Buffer.from("harlow.vyre.run")));
+  assert.equal(relay.stats().conns, 1);
+  // the box answers with bytes (a stand-in for the server hello) and they reach the visitor's socket as they are
+  const seen = new Promise(res => visitor.once("error", e => res(String(e.code || e.message))));
+  data.ws.send(Buffer.from([0x15, 3, 3, 0, 2, 2, 40])); // a TLS alert: the visitor's handshake ends with a TLS error, proving the bytes arrived raw
+  assert.match(String(await seen), /ERR_SSL|SSL|alert|ERR_TLS/i);
+  await data.closed();
+  for (let i = 0; i < 50 && relay.stats().conns; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(relay.stats().conns, 0, "the slot is free");
+
+  // a name nobody serves, a visitor with no name, and port 80 never reach the box
+  const stranger = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "evil.vyre.run", rejectUnauthorized: false });
+  stranger.on("error", () => {});
+  await new Promise(r => stranger.once("close", r));
+  const redirect = await new Promise(res => { const c = net.connect(httpPort, "127.0.0.1"); let out = ""; c.on("data", d => { out += d; }); c.on("close", () => res(out)); c.write("GET / HTTP/1.1\r\nHost: harlow.vyre.run\r\n\r\n"); });
+  assert.match(String(redirect), /^HTTP\/1\.1 308 /);
+  const ctl = await Promise.race([b.s.next(), new Promise(r => setTimeout(() => r("quiet"), 300))]);
+  assert.equal(ctl, "quiet", "the box heard nothing for the stranger or the plain-HTTP request");
+});
+
+test("publish tunnel: a box that does not answer an open, or is not connected, closes the visitor and leaves no slot", async t => {
+  const tls = await import("node:tls");
+  const relay = createRelay({ tunnel: { resolve: async host => ({ route: host === "gone.vyre.run" ? "r".repeat(26) : routeOfLater.route }), limits: { openMs: 800 } } });
+  const routeOfLater = { route: "" };
+  const base = await relay.listen();
+  const { tls: tlsPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const closedAfter = async name => { const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: name, rejectUnauthorized: false }); v.on("error", () => {}); await new Promise(r => v.once("close", r)); };
+  await closedAfter("gone.vyre.run"); // no box at that route
+  const b = await box(base);
+  await b.s.json();
+  routeOfLater.route = b.route;
+  const asked = b.s.json();
+  const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "late.vyre.run", rejectUnauthorized: false });
+  v.on("error", () => {});
+  assert.equal((await asked).t, "tunnel");
+  await new Promise(r => v.once("close", r)); // the box never opens its data socket
+  assert.equal(relay.stats().conns, 0);
+  assert.equal(relay.tunnel?.open(), 0);
+});
+
+test("publish tunnel: the box's own link takes a tunnel stream as a duplex with the visitor's address, bytes both ways, and a link with no tunnel end ignores it", async t => {
+  const net = await import("node:net");
+  const tls = await import("node:tls");
+  const key = newRouteKey(), route = routeId(key.pub);
+  const relay = createRelay({ tunnel: { resolve: async host => (host === "harlow.vyre.run" ? { route } : null) } });
+  const base = await relay.listen();
+  const { tls: tlsPort } = await relay.listenTunnel();
+  t.after(() => relay.close());
+  const got = [];
+  /** @type {(v: any) => void} */ let handed = () => {};
+  const seen = new Promise(res => { handed = res; });
+  const link = relayLink({ url: base, route, routeKey: key, boxKey: keyPair(), admit: async () => ({ v: 1 }), onchannel: () => {},
+    ontunnel: (stream, visitor) => { stream.on("data", d => { got.push(d); stream.write(Buffer.from([0x15, 3, 3, 0, 2, 2, 40])); }); handed({ visitor, stream }); } });
+  t.after(() => link.stop());
+  assert.equal(await link.ready(), true);
+  const v = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "harlow.vyre.run", rejectUnauthorized: false });
+  const failed = new Promise(res => v.once("error", e => res(String(e.code || e.message))));
+  const { visitor, stream } = /** @type {any} */ (await Promise.race([seen, new Promise((_, rej) => setTimeout(() => rej(new Error("the box was never handed a stream")), 8000))]));
+  assert.equal(visitor.host, "harlow.vyre.run");
+  assert.match(visitor.ip, /^127\.0\.0\.1$/);
+  assert.match(String(await failed), /SSL|alert|TLS/i, "the box's bytes reached the visitor raw");
+  assert.equal(got[0][0], 0x16, "and the visitor's hello reached the box raw");
+  stream.destroy();
+  void net;
 });

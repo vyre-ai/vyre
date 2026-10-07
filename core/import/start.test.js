@@ -2,6 +2,7 @@
 // import.start / stop / cancel: the person's consent goes to the server through federation's
 // door, the plan's sessions go through federation's sender a batch at a time, and nothing is ever
 // deleted unless the person asks. The import module against a stand-in for core/sync.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -61,8 +62,8 @@ test("import.start: consent through core/sync, then the plan's sessions in batch
   const up = await settle(call, r.data.run);
   assert.deepEqual([up.done, up.total, up.failed, up.quarantined, up.state], [30, 30, 0, 3, "done"]);
   const consent = calls.find(c => c.tool === "sync.consent");
-  assert.deepEqual([consent.input.machine, consent.input.on, consent.input.mode], ["alex-macbook", true, "once"]);
-  assert.match(consent.input.plan, /^[0-9a-f]{64}$/, "the consent carries the plan's hash");
+  assert.deepEqual([consent.input.machine, consent.input.on], ["alex-macbook", true]);
+  assert.match(consent.input.planHash, /^[0-9a-f]{64}$/, "the consent carries the plan's hash under the key sync.consent reads (planHash)");
   const sends = calls.filter(c => c.tool === "sync.send");
   assert.deepEqual(sends.map(s => s.input.files.length), [25, 5], "a batch at a time");
   const f = sends[0].input.files[0];

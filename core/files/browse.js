@@ -1,7 +1,7 @@
 // @ts-check
 // browse: looking inside a VyreDrive share and reading a file from it, through the box.
 //
-// A phone cannot mount a share (Taildrive has no phone client), and a page in a browser cannot
+// A phone cannot mount a share (a mounted share has no phone client), and a page in a browser cannot
 // speak WebDAV to it either. So the box answers two plain calls: files.drive.list (what is in
 // this folder) and files.drive.read (one chunk of this file). The phone's Files view, the Deck and
 // the Windows app's panel all use them. Both hold to the same rules as sharing itself: only a
@@ -39,7 +39,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     if (!Object.prototype.hasOwnProperty.call(map, String(share))) throw nope();
     rel = String(rel || "").replace(/^\/+/, "");
     if (rel.includes("\0") || rel.split(/[\\/]+/).includes("..") || path.isAbsolute(rel)) throw refuse("path must be inside the share, with no ..", "bad_input");
-    const scope = await reach(ctx, meta && meta.caller);
+    const scope = await reach(ctx, meta && meta.caller, meta);
     const raw = path.join(map[share], rel);
     // A file the person tagged in a chat is readable in that chat, one file and nothing around it.
     const tag = !scope.all && file && meta && meta.thread ? tagged(String(meta.thread), String(share), rel.replace(/\/+$/, "")) : null;

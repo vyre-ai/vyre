@@ -7,12 +7,14 @@
 // (testing/boot.js). The tests marked "sdk" need the pinned SDK installed somewhere
 // (VYRE_SESSIONS_SDK_DIR, as on testbox) and are skipped without it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { call } from "../daemon/client.js";
 import { noSdk, until, boot, terminalSession } from "./testing/boot.js";
+// A model caller (mcp) on a person's chat is refused by the chat gate before the tool's own check: it is told the thread is not there (not_found), never that it exists and is refused.
 
 // ------------------------------------------------------------ on either driver
 
@@ -177,7 +179,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(argv[argv.indexOf("--effort") + 1], "high");
     assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.effort, "high");
     assert.equal((await w.tool("threads.start", { cwd: w.work, prompt: "hello", effort: "huge" })).error.code, "bad_input");
-    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "not_found");
     assert.deepEqual((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "deck")).data, { thread: th.id, effort: "low" });
     await until(() => w.launches().some(l => l.effort === "low"), "the effort to reach Claude Code");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.effort, "low");
@@ -188,7 +190,7 @@ for (const driver of ["cli", "sdk"]) {
     argv = w.launches().filter(x => x.argv).at(-1).argv;
     assert.equal(argv[argv.indexOf("--effort") + 1], "low", "a resume keeps it");
     // The Capsule's Cmd-Return: deeper, on the same thread, in one send.
-    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "not_found");
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", surface: "deck", model: "sonnet", effort: "max" }, "deck")).data.sent, true);
     await w.finished(th.id, 3);
     const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
@@ -202,8 +204,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x" })).error.code, "no_such_tool", "internal: modules only");
     const a = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
     assert.deepEqual([a.text, a.ok, a.warm], ["echo: who is kit", true, false]);
-    // The spare for the next question is started behind it; wait for it to be up.
-    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && ["idle", "starting"].includes(r.status) && r.id !== a.thread);
+    // The spare for the next question is started behind it; wait for it to be up and waiting (a spare still starting is not warm yet).
+    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && r.status === "idle" && r.id !== a.thread);
     await until(async () => (await quickLive()).length === 1, "the spare");
     const b = (await asker.ask({ purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
     assert.deepEqual([b.text, b.warm], ["echo: who is juno", true], "a fresh session that never heard the first question");
@@ -279,7 +281,7 @@ for (const driver of ["cli", "sdk"]) {
     const again = lines().find(l => l.type === "user" && l.message.content === "two, but shorter");
     assert.equal(again.parentUuid, two.parentUuid, "the new message hangs where the old one did");
     assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[0].uuid })).data.rewound, false, "the first message starts a new session instead");
-    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "not_found");
   });
 
   // native-core: Claude Code parity item 3, "fork from any turn" - rewind's other menu item.
@@ -348,7 +350,7 @@ for (const driver of ["cli", "sdk"]) {
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     const key = "deck-retry-1";
-    const send = () => call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, { root: w.root, caller: "deck", headers: { "idempotency-key": key } });
+    const send = () => w.d.registry.call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, "deck", { idempotencyKey: key });
     const a = await send();
     assert.equal(a.data.sent, true);
     await w.finished(th.id, 2);
@@ -477,7 +479,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(() => w.launches().some(l => l.model === "sonnet"), "the switch to reach Claude Code");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.model, "sonnet");
     assert.ok((await w.events(th.id)).some(e => e.type === "model.switched" && e.payload.model === "sonnet"));
-    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "not_found");
     // The / menu
     const cmds = (await w.tool("threads.commands", { thread: th.id })).data.commands;
     assert.deepEqual(cmds.map(c => c.name), ["compact", "review"]);

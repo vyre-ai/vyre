@@ -1,0 +1,517 @@
+{
+  "kind": "kit",
+  "sdk": 1,
+  "id": "base",
+  "version": 1,
+  "label": "Base",
+  "description": "The objects any business starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, and a Project with stages.",
+  "types": [
+    {
+      "name": "contact",
+      "label": "Contact",
+      "icon": "IconUser",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "email",
+          "kind": "text",
+          "label": "Email",
+          "unique": true
+        },
+        {
+          "name": "phone",
+          "kind": "text",
+          "label": "Phone",
+          "unique": true
+        },
+        {
+          "name": "other_emails",
+          "kind": "emails",
+          "label": "Other emails"
+        },
+        {
+          "name": "other_phones",
+          "kind": "phones",
+          "label": "Other phones"
+        },
+        {
+          "name": "job_title",
+          "kind": "text",
+          "label": "Job title"
+        },
+        {
+          "name": "time_zone",
+          "kind": "text",
+          "label": "Time zone"
+        },
+        {
+          "name": "organization",
+          "kind": "link",
+          "label": "Organization",
+          "to": "organization",
+          "inverse": {
+            "name": "contacts",
+            "label": "Contacts"
+          }
+        },
+        {
+          "name": "address",
+          "kind": "address",
+          "label": "Address"
+        },
+        {
+          "name": "notes",
+          "kind": "rich_text",
+          "label": "Notes"
+        },
+        {
+          "name": "source",
+          "kind": "choice",
+          "label": "How they found us",
+          "options": [
+            "Website",
+            "Referral",
+            "Ad",
+            "Event",
+            "Phone",
+            "Other"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lead",
+      "label": "Lead",
+      "icon": "IconUserPlus",
+      "fields": [
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact",
+          "inverse": {
+            "name": "leads",
+            "label": "Leads"
+          }
+        },
+        {
+          "name": "source",
+          "kind": "choice",
+          "label": "Source",
+          "options": [
+            "Website",
+            "Referral",
+            "Ad",
+            "Event",
+            "Phone",
+            "Other"
+          ]
+        },
+        {
+          "name": "summary",
+          "kind": "rich_text",
+          "label": "What they need"
+        },
+        {
+          "name": "lost_reason",
+          "kind": "text",
+          "label": "Why we lost them",
+          "required_if": "stage == \"Lost\"",
+          "visible_if": "stage == \"Lost\""
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "New",
+            "Contacted",
+            "Meeting booked",
+            "Qualified",
+            "Converted",
+            "Lost"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "New"
+        },
+        {
+          "name": "Contacted"
+        },
+        {
+          "name": "Meeting booked"
+        },
+        {
+          "name": "Qualified"
+        },
+        {
+          "name": "Converted"
+        },
+        {
+          "name": "Lost"
+        }
+      ],
+      "role": {
+        "link": "contact",
+        "ended": [
+          "Converted",
+          "Lost"
+        ]
+      }
+    },
+    {
+      "name": "appointment",
+      "label": "Appointment",
+      "icon": "IconCalendarEvent",
+      "fields": [
+        {
+          "name": "title",
+          "kind": "text",
+          "label": "Title",
+          "required": true
+        },
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact",
+          "inverse": {
+            "name": "appointments",
+            "label": "Appointments"
+          }
+        },
+        {
+          "name": "kind",
+          "kind": "choice",
+          "label": "Kind",
+          "options": [
+            "Meeting",
+            "Follow-up",
+            "Call",
+            "Other"
+          ]
+        },
+        {
+          "name": "starts",
+          "kind": "datetime",
+          "label": "Starts",
+          "required": true
+        },
+        {
+          "name": "ends",
+          "kind": "datetime",
+          "label": "Ends"
+        },
+        {
+          "name": "where",
+          "kind": "text",
+          "label": "Where or link"
+        },
+        {
+          "name": "outcome",
+          "kind": "text",
+          "label": "Outcome",
+          "visible_if": "stage == \"Completed\" or stage == \"No show\""
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Status",
+          "options": [
+            "Scheduled",
+            "Completed",
+            "No show",
+            "Cancelled"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Scheduled"
+        },
+        {
+          "name": "Completed"
+        },
+        {
+          "name": "No show"
+        },
+        {
+          "name": "Cancelled"
+        }
+      ]
+    },
+    {
+      "name": "client",
+      "label": "Client",
+      "icon": "IconUserCheck",
+      "fields": [
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact",
+          "inverse": {
+            "name": "clients",
+            "label": "Clients"
+          }
+        },
+        {
+          "name": "since",
+          "kind": "date",
+          "label": "Client since"
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "Onboarding",
+            "Active",
+            "Closed"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Onboarding"
+        },
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Closed"
+        }
+      ],
+      "role": {
+        "link": "contact",
+        "ended": [
+          "Closed"
+        ]
+      }
+    },
+    {
+      "name": "subscriber",
+      "label": "Subscriber",
+      "icon": "IconMailOpened",
+      "fields": [
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact",
+          "inverse": {
+            "name": "subscriptions",
+            "label": "Subscriptions"
+          }
+        },
+        {
+          "name": "list",
+          "kind": "choice",
+          "label": "List",
+          "options": [
+            "Newsletter",
+            "Updates",
+            "Events"
+          ]
+        },
+        {
+          "name": "source",
+          "kind": "text",
+          "label": "Where they signed up"
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "Subscribed",
+            "Unsubscribed"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Subscribed"
+        },
+        {
+          "name": "Unsubscribed"
+        }
+      ],
+      "role": {
+        "link": "contact",
+        "ended": [
+          "Unsubscribed"
+        ]
+      }
+    },
+    {
+      "name": "project",
+      "label": "Project",
+      "icon": "IconFolder",
+      "kind": "project",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "slug",
+          "kind": "text",
+          "label": "Short name used in addresses",
+          "unique": true
+        },
+        {
+          "name": "status",
+          "kind": "choice",
+          "label": "Status",
+          "options": [
+            "active",
+            "archived",
+            "moved"
+          ]
+        },
+        {
+          "name": "client",
+          "kind": "link",
+          "label": "Client",
+          "to": "contact",
+          "inverse": {
+            "name": "projects",
+            "label": "Projects"
+          }
+        },
+        {
+          "name": "owner",
+          "kind": "actor",
+          "label": "Owner"
+        },
+        {
+          "name": "due",
+          "kind": "date",
+          "label": "Due"
+        },
+        {
+          "name": "drive_path",
+          "kind": "text",
+          "label": "Drive folder"
+        },
+        {
+          "name": "repo",
+          "kind": "text",
+          "label": "Repository"
+        },
+        {
+          "name": "memory_scope",
+          "kind": "text",
+          "label": "Memory scope"
+        },
+        {
+          "name": "archived_at",
+          "kind": "datetime",
+          "label": "Archived"
+        },
+        {
+          "name": "moved_to",
+          "kind": "text",
+          "label": "Moved to (Space and project) when it left this Space"
+        },
+        {
+          "name": "moved_from",
+          "kind": "text",
+          "label": "Moved from (Space and project) when it came from another"
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "New",
+            "Active",
+            "Review",
+            "Done"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "New"
+        },
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Review"
+        },
+        {
+          "name": "Done"
+        }
+      ]
+    }
+  ],
+  "templates": [],
+  "roles": [],
+  "flows": [],
+  "views": [
+    {
+      "name": "leads_board",
+      "type": "board",
+      "of": "lead",
+      "label": "Leads by stage",
+      "groupBy": "stage",
+      "columns": [
+        "contact",
+        "source"
+      ]
+    },
+    {
+      "name": "appointments_calendar",
+      "type": "calendar",
+      "of": "appointment",
+      "label": "Appointments",
+      "dateField": "starts",
+      "filter": "stage != \"Cancelled\""
+    },
+    {
+      "name": "clients_list",
+      "type": "list",
+      "of": "client",
+      "label": "Clients",
+      "columns": [
+        "contact",
+        "stage",
+        "since"
+      ],
+      "sort": {
+        "field": "since",
+        "dir": "desc"
+      }
+    },
+    {
+      "name": "projects_board",
+      "type": "board",
+      "of": "project",
+      "label": "Projects by stage",
+      "groupBy": "stage",
+      "columns": [
+        "name",
+        "client",
+        "owner",
+        "due"
+      ]
+    }
+  ],
+  "codeSteps": []
+}

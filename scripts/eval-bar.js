@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-// eval-bar: the 0.2 memory quality bar (the 0.2 plan, section 0; docs/work/iq.md, task 1).
+// eval-bar: the 0.2 memory quality bar (the 0.2 plan, section 0; team/archive/work-journals/iq.md, task 1).
 // Memory ships in 0.2 only if every measure passes; this is how every later change is measured.
 //
 //   node scripts/eval-bar.js                 the open 0.2 world, as a report

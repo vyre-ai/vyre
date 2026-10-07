@@ -4,6 +4,7 @@
 // would receive, and that a container without our labels is refused before any request that
 // changes it is sent.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

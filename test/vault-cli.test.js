@@ -4,6 +4,7 @@
 // the credential through a relayed pass, loses it the moment the pass is revoked, and when
 // offboarded leaves behind exactly one thing to rotate: the item they were sent sealed.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -34,7 +35,7 @@ function vyre(home, args, input) {
 }
 
 const PROBE = `export default { async start(ctx) {
-  ctx.tool("probe.use", { input: { type: "object", properties: { name: { type: "string" } } },
+  ctx.tool("probe.use", { effect: "read", input: { type: "object", properties: { name: { type: "string" } } },
     run: async ({ name }) => { const v = await ctx.vault.fetch(name);
       const c = await import("node:crypto"); return { sha: c.createHash("sha256").update(v).digest("hex") }; } });
   return { async stop() {} };

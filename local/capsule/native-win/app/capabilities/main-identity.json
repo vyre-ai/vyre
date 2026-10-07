@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-identity",
+  "description": "The main panel (the person's own server's page) may use the identity key and the TPM key, and nothing else. Each command also refuses any page that is not on the pinned origin.",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "https://*"
+    ]
+  },
+  "permissions": [
+    "allow-identity-public",
+    "allow-identity-sign",
+    "allow-enclave-public",
+    "allow-enclave-sign",
+    "allow-agree-public",
+    "allow-agree-secret"
+  ]
+}

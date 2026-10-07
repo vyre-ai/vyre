@@ -4,14 +4,14 @@
   "roles": ["box"],
   "requires": [],
   "does": {
-    "tools": [{ "name": "hands-desktop.tree", "reach": "anyone" }, { "name": "hands-desktop.apps", "reach": "anyone" }, { "name": "hands-desktop.screenshot", "reach": "anyone" }, { "name": "hands-desktop.act", "reach": "anyone" }]
+    "tools": [{ "name": "hands-desktop.tree", "reach": "anyone", "effect": "read" }, { "name": "hands-desktop.apps", "reach": "anyone", "effect": "read" }, { "name": "hands-desktop.screenshot", "reach": "anyone", "effect": "read" }, { "name": "hands-desktop.act", "reach": "anyone", "effect": "write" }]
   },
   "watches": { "emits": ["desktop.acted"] },
   "shows": { "deck": [], "capsule": [], "cli": ["hands-desktop"] },
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "desktop", "text": "Give kit a computer and it drives desktop apps there too, not only Chrome.", "surfaces": ["deck", "glass"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/glass.md#give-an-agent-a-computer"},
+      {"id": "desktop", "text": "Give kit a computer and it drives desktop apps there too, not only Chrome.", "surfaces": ["deck", "glass"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"},
       {"id": "no-sends", "text": "kit will not press Send, Pay or Delete in desktop apps. Take over and press it yourself.", "surfaces": ["glass"], "level": "power", "trigger": "on-use", "since": "0.1.0"}
     ]
   }

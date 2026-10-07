@@ -11,6 +11,7 @@
 // of ~80 real subprocess-spawning tests sat right at the edge of the full suite's 90s file
 // timeout under concurrency-4 contention; two files parallelize instead of raising the ceiling.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -19,7 +20,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
@@ -34,6 +35,9 @@ import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
+// The module harness here has no inference door: providers run on the legacy direct path. The door path is lib/door-bridge.test.js.
+process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+
 
 // ------------------------------------------------------------ pure parts
 
@@ -203,7 +207,8 @@ for (const driver of ["cli", "sdk"]) {
     const argv = w.launches().at(-1).argv;
     const i = argv.indexOf("--append-system-prompt");
     assert.ok(i >= 0, "appended");
-    assert.equal(argv[i + 1], "Vyre's own words.\n\nAnswer alex in short paragraphs.");
+    assert.ok(argv[i + 1].startsWith("[Vyre environment]"), "the environment first");
+    assert.ok(argv[i + 1].endsWith("[/Vyre environment]\n\nVyre's own words.\n\nAnswer alex in short paragraphs."));
 
     // A bad edit, undone: a new version holding the old text.
     await set("assistant", "Something worse.");
@@ -219,7 +224,9 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(b.id);
     const argv2 = w.launches().at(-1).argv;
     assert.ok(!argv2.includes("--append-system-prompt"));
-    assert.equal(argv2[argv2.indexOf("--system-prompt") + 1], "You are juno, and nothing else.\n\nVyre's own words.");
+    const replaced = argv2[argv2.indexOf("--system-prompt") + 1];
+    assert.ok(replaced.startsWith("[Vyre environment]"), "a replacing prompt replaces only the role layer");
+    assert.ok(replaced.endsWith("[/Vyre environment]\n\nYou are juno, and nothing else.\n\nVyre's own words."));
     const p = (await w.tool("sessions.prompt.preview", {})).data;
     assert.equal(p.mode, "replace");
   });
@@ -361,6 +368,52 @@ for (const driver of ["cli", "sdk"]) {
     await w.tool("threads.stop", { thread: th.id });
     const back = await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" });
     assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
+  });
+
+  test(`${driver}: account.changed is announced when an AI account becomes usable or goes, with no credential in it, and never for a label edit`, { skip }, async t => {
+    const w = await boot(t, { driver, vault: { "work-token": "fake-work-value" } });
+    /** @type {any[]} */ const seen = [];
+    const off = w.d.events.on("*", /** @type {any} */ e => { if (e.type === "account.changed") seen.push(e.payload); });
+    t.after(() => { if (typeof off === "function") off(); });
+    const added = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
+    assert.deepEqual(seen.at(-1), { provider: "claude", account: added.id, signed_in: true, why: "added" });
+    // a login account has not signed in yet: nothing is announced until its sign-in ends
+    const n = seen.length;
+    const login = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).data;
+    assert.equal(seen.length, n, "a login that has not signed in announces nothing");
+    // a scope or default edit changes nothing about whether the account works
+    assert.equal((await w.tool("sessions.accounts.bind", { id: added.id, is_default: true })).error, undefined);
+    assert.equal(seen.length, n, "a bind on a working account announces nothing");
+    assert.equal((await w.tool("sessions.accounts.remove", { id: added.id })).error, undefined);
+    assert.deepEqual(seen.at(-1), { provider: "claude", account: added.id, signed_in: false, why: "removed" });
+    assert.ok(!JSON.stringify(seen).includes("fake-work-value"), "no credential in an event");
+    assert.equal((await w.tool("sessions.accounts.remove", { id: login.id })).error, undefined);
+  });
+
+  test(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null);
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: "*" })).error, undefined);
+    assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
+    const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
+    // the person's own call passes the input check with each of them
+    const asAgent = await w.tool("threads.start", { cwd: w.work, agent: "kit", agent_kind: "agent", prompt: "hello", surface: "deck" });
+    assert.equal(asAgent.error, undefined, JSON.stringify(asAgent.error));
+    assert.equal((await w.tool("threads.get", { thread: asAgent.data.id })).data.thread.agent, "kit");
+    const onAccount = await w.tool("threads.start", { cwd: w.work, account: acct.id, prompt: "hello", surface: "deck" });
+    assert.equal(onAccount.error, undefined, JSON.stringify(onAccount.error));
+    assert.equal((await w.tool("threads.get", { thread: onAccount.data.id })).data.thread.account, acct.id);
+    // a model's call (a plain session, a label, the assistant's own session) naming any of them is bad_input, whatever else it passes
+    const th = onAccount.data.id;
+    for (const [caller, meta] of [["mcp", {}], [`mcp:thread:${th}`, { thread: th }], ["mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: th }]]) {
+      for (const extra of [{ agent: "kit" }, { agent_kind: "assistant" }, { account: acct.id }]) {
+        const r = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "x", ...extra }, caller, meta);
+        assert.ok(r.error && r.error.code !== undefined, `${caller} ${JSON.stringify(extra)}: ${JSON.stringify(r)}`);
+        assert.ok(["bad_input", "denied"].includes(r.error.code), `${caller} ${JSON.stringify(extra)}: ${JSON.stringify(r.error)}`);
+      }
+    }
+    const named = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "x", account: acct.id }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: th });
+    assert.equal(named.error && named.error.code, "bad_input", JSON.stringify(named));
   });
 
   test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
@@ -1231,11 +1284,13 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [];
+    const PROJECT_RECORD = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f"; // the Project record's id: team's rows (and so its asked-for keys) are keyed by it
     let roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [{ id: "d1", teammate: "harlow-legal-design", title: "inbox triage", hash: "h1a2b3c", enabled: false, started: false }] };
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
       if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
-      if (tool === "team.roster") return roster ? { data: roster } : { error: { code: "no_such_tool" } };
+      if (tool === "work.project.ref") return { data: { id: PROJECT_RECORD, urn: `vyre://spc/project/${PROJECT_RECORD}`, slug: input.project, name: "Harlow Legal" } };
+      if (tool === "team.roster") return roster && input.project === PROJECT_RECORD ? { data: roster } : { error: { code: "no_such_tool" } };
       if (tool === "agents.list") return { data: [{ name: "juno", kind: "assistant", projects: "*" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }, { name: "sam", kind: "agent", projects: ["other"] }] };
       return realCall(tool, input, caller, meta);
     };
@@ -1248,15 +1303,15 @@ for (const driver of ["cli", "sdk"]) {
       await w.finished(th.id, turns + 1);
     };
     await say("Retire the design teammate.");
-    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.retire:harlow-legal/design"]]]);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", [`team.retire:${PROJECT_RECORD}/design`]]]);
     recorded.length = 0;
     await say("Add a researcher teammate to this project.");
-    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.add:harlow-legal/researcher"]]]);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", [`team.add:${PROJECT_RECORD}/researcher`]]]);
     recorded.length = 0;
     await say("Add a design teammate.");                // already live in this project
     assert.equal(recorded.length, 0);
     await say("Fill the design role with kit.");
-    assert.deepEqual(recorded.map(r => r.to), [["team.role.fill:harlow-legal/design/kit"]]);
+    assert.deepEqual(recorded.map(r => r.to), [[`team.role.fill:${PROJECT_RECORD}/design/kit`]]);
     recorded.length = 0;
     await say("Fill the design role with sam.");      // sam is not one of the project's agents; the assistant is never a filler
     await say("Fill the design role with juno.");
@@ -1309,12 +1364,14 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     const lineage = id => w.d.registry.call("threads.lineage", { thread: id }, "module:vyred").then(r => r.data.lineage);
     assert.deepEqual(await lineage(root.id), [], "a person's own thread has none");
     // A session starting a thread (its calls carry the thread vyred verified) is that thread's parent.
-    const mate = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${root.id}`, { thread: root.id })).data;
-    const sub = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${mate.id}`, { thread: mate.id })).data;
+    // (an unnamed model session starts nothing since the 5 Oct ruling; a first-party module starts a teammate's thread for a person's, naming the thread it is for)
+    const mate = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate", parent: root.id }, "module:team")).data;
+    const sub = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate", parent: mate.id }, "module:team")).data;
     assert.deepEqual(await lineage(sub.id), [mate.id, root.id]);
     assert.equal((await w.tool("threads.get", { thread: sub.id })).data.thread.parent, mate.id);
     // A claim in the input is dropped: the person's surface and a plain session cannot name a parent.
@@ -1361,7 +1418,7 @@ for (const driver of ["cli", "sdk"]) {
     await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
     t.after(() => { srv.closeAllConnections?.(); srv.close(); });
     const saved = process.env.VYRE_OPENROUTER_URL;
-    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
     t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value", "or-key": "sk-or" } });
     const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Fallback", kind: "api-key", vault_item: "or-key" });
@@ -1383,7 +1440,7 @@ for (const driver of ["cli", "sdk"]) {
     await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
     t.after(() => { srv.closeAllConnections?.(); srv.close(); });
     const saved = process.env.VYRE_OPENROUTER_URL;
-    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
     t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
     const w = await boot(t, { driver, vault: { "or-key": "sk-or" } });
     assert.equal((await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Router", kind: "api-key", vault_item: "or-key" })).error, undefined);
@@ -1396,19 +1453,21 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(gone.error, undefined, JSON.stringify(gone));
     assert.ok((await w.tool("threads.get", { thread: th.id })).error, "the thread is gone");
     assert.equal(rows("sessions_openrouter"), 0, "its stored conversation went with it");
-    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE thread = ?").get(th.id).n, 0);
-    assert.ok(db.prepare("SELECT 1 FROM events WHERE type = 'thread.deleted'").get(), "thread.deleted was said");
+    assert.equal(w.d.events.ofThread(th.id).length, 0);
+    assert.ok(w.d.events.since(0, { type: "thread.deleted" }).length, "thread.deleted was said");
     assert.ok((await w.tool("threads.delete", { thread: th.id })).error, "a second delete finds nothing");
   });
 
   test(`${driver}: accounts: an agent is refused, the assistant may only start an account (project-scoped, pending, unusable until the person finishes), remove is the person's, bind is limited to the asked project`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
     const body = JSON.stringify({ provider: "grok", label: "Sneaky", kind: "setup-token", vault_item: "work-token" });
     const say = async agent => {
-      const th = (await w.tool("threads.start", { cwd: w.work, agent, prompt: `vyre-sock sessions.accounts.add ${body}`, surface: "deck" })).data;
+      // (an agent's session is started by the agents module, as it is in the product; the person's own threads.start names no agent)
+      const th = (await w.d.registry.call("threads.launch", { cwd: w.work, agent, agent_kind: "agent", purpose: "agent", prompt: `vyre-sock sessions.accounts.add ${body}`, surface: "deck" }, "module:agents")).data;
       await w.finished(th.id);
       return JSON.parse((await w.said(th.id)).at(-1));
     };
@@ -1450,7 +1509,9 @@ for (const driver of ["cli", "sdk"]) {
     for (const [name, dir] of [["Harlow Legal", "harlow"], ["Northwind Bakery", "northwind"]]) assert.equal((await w.tool("projects.create", { name, home: path.join(w.work, dir) })).error, undefined);
     const mk = async o => { const th = (await w.tool("threads.start", { prompt: "hello", surface: "deck", ...o })).data; await w.finished(th.id); return th.id; };
     const a1 = await mk({ project: "harlow-legal" }), a2 = await mk({ project: "harlow-legal" }), b1 = await mk({ project: "northwind-bakery" }), loose = await mk({ cwd: w.work });
-    const as = (id, tool, input) => w.d.registry.call(tool, input, `mcp:thread:${id}`, { thread: id });
+    // (a tool takes only the keys it declares, and refuses others as bad_input before it looks at who asks: send each tool its own keys so the refusal under test is the guard's)
+    const takes = (tool, input) => { const p = w.d.registry.tools.get(tool)?.input?.properties; return p ? Object.fromEntries(Object.entries(input).filter(([k]) => k in p)) : input; };
+    const as = (id, tool, input) => w.d.registry.call(tool, takes(tool, input), `mcp:thread:${id}`, { thread: id });
     for (const other of [b1, loose]) {
       for (const tool of ["threads.get", "threads.items", "threads.queue", "threads.asks"]) assert.equal((await as(a1, tool, { thread: other })).error?.code, "denied", `${tool} reads no other project's thread`);
     }
@@ -1462,8 +1523,9 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await as(a1, "threads.get", { thread: a2 })).error, undefined, "a same-project thread, read only");
     const ids = (await as(a1, "threads.list", { all: true })).data.map(r => r.id);
     assert.ok(ids.includes(a1) && ids.includes(a2) && !ids.includes(b1) && !ids.includes(loose), `the list is its project's: ${ids}`);
-    // A child it started is its to stop.
-    const child = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${a1}`, { thread: a1 })).data;
+    // An unnamed model session starts nothing (it has no agent grants of its own); a child is started for it by a first-party module naming its parent, and is its to stop.
+    assert.equal((await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate" }, `mcp:thread:${a1}`, { thread: a1 })).error?.code, "denied", "an unnamed session starts no child");
+    const child = (await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", purpose: "teammate", parent: a1 }, "module:team")).data;
     await w.finished(child.id);
     assert.equal((await as(a1, "threads.stop", { thread: child.id })).error, undefined, "a child it started");
     // A plain mcp caller with no verified thread or agent never mutates.
@@ -1475,12 +1537,16 @@ for (const driver of ["cli", "sdk"]) {
     for (const [tool, input] of [["threads.stop", { thread: a2 }], ["threads.archive", { thread: a2 }], ["threads.delete", { thread: a2 }], ["threads.rewind", { thread: a2, uuid: "x" }], ["threads.send", { thread: a2, text: "x" }]]) {
       assert.equal((await plain(tool, input)).error?.code, "denied", `${tool} from a plain mcp caller on another's thread`);
     }
-    const mine = await plain("threads.start", { cwd: w.work, prompt: "hello", starter: "mcp:1:1" });
-    assert.equal(mine.error, undefined, "a plain mcp caller starts threads");
+    // (a plain mcp caller is nobody's assistant and starts nothing now; a thread it is recorded as having started, one from before that rule, is built by a module setting the starter as vyred
+    // does from the socket peer, and the handling rules below are unchanged)
+    assert.equal((await plain("threads.start", { cwd: w.work, prompt: "hello" })).error?.code, "denied", "a plain mcp caller starts no thread");
+    const mine = await w.d.registry.call("threads.launch", { cwd: w.work, prompt: "hello", surface: "mcp", starter: "mcp:4242:9001" }, "module:agents");
+    assert.equal(mine.error, undefined, JSON.stringify(mine));
     await w.finished(mine.data.id);
-    assert.equal((await w.tool("threads.get", { thread: mine.data.id })).data.thread.starter, "mcp:4242:9001", "vyred records the peer's own session; a claimed starter is dropped");
-    const forged = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", starter: "mcp:4242:9001" })).data;
-    assert.equal((await w.tool("threads.get", { thread: forged.id })).data.thread.starter, null);
+    assert.equal((await w.tool("threads.get", { thread: mine.data.id })).data.thread.starter, "mcp:4242:9001", "the thread records the peer's own session");
+    // a claimed starter is refused outright now (an undeclared key), so a person's thread can never be taken for a terminal session's
+    const forged = await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", starter: "mcp:4242:9001" });
+    assert.equal(forged.error?.code, "bad_input", JSON.stringify(forged));
     assert.equal((await plain("threads.send", { thread: mine.data.id, text: "again" })).error, undefined, "into a thread this session started");
     assert.equal((await plain("threads.stop", { thread: mine.data.id }, other)).error?.code, "denied", "another terminal session cannot handle it");
     assert.equal((await plain("threads.stop", { thread: mine.data.id }, {})).error?.code, "denied", "an unverifiable session handles nothing");
@@ -1497,15 +1563,15 @@ for (const driver of ["cli", "sdk"]) {
     // The verified assistant (meta.agent from vyred), and the person, are not narrowed.
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     assert.equal((await w.tool("agents.ask", { agent: "juno", text: "hello", wait: true })).error, undefined); // the assistant has a thread, as it always does
-    assert.equal((await w.d.registry.call("threads.get", { thread: b1 }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined);
-    assert.equal((await w.d.registry.call("threads.stop", { thread: loose }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined);
+    assert.equal((await w.d.registry.call("threads.get", { thread: b1 }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: a1 })).error, undefined);
+    assert.equal((await w.d.registry.call("threads.stop", { thread: loose }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: a1 })).error, undefined);
     assert.equal((await w.tool("threads.get", { thread: b1 })).error, undefined);
     // agents.stop: not another session's to do; a plain caller never.
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, `mcp:thread:${a1}`, { thread: a1 })).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp", {})).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.ask", { agent: "kit", text: "hi" }, "mcp", {})).error?.code, "denied");
-    assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined, "the verified assistant");
+    assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: a1 })).error?.code, "denied", "stopping an agent is the person's, the assistant's included");
   });
 
   test(`${driver}: thread.taint: a tool result from outside or from the person's private things flags the thread for good, per what the tool is; a fork inherits it; nothing clears it`, { skip }, async t => {
@@ -1612,6 +1678,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Second", kind: "login" })).data;
     const dir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "abc", "images"); fs.mkdirSync(dir, { recursive: true });
     const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
@@ -1650,6 +1717,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: a generated file from a Grok account is registered with that account's privacy mode (zdr when on, off when off)`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     withGrok(t, w);
     noMemoryBlocks(w);
     const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
@@ -1662,7 +1730,9 @@ for (const driver of ["cli", "sdk"]) {
     };
     for (const [on, want] of [[true, "zdr"], [false, "off"]]) {
       assert.equal((await w.tool("sessions.accounts.set", { account: g.id, privacy: on })).error, undefined);
-      const th = (await w.tool("threads.start", { cwd: w.work, provider: "grok", account: g.id, prompt: "imagecodex", surface: "deck" })).data;
+      const thr = await w.tool("threads.start", { cwd: w.work, provider: "grok", account: g.id, prompt: "imagecodex", surface: "deck" });
+      if (thr.error) throw new Error(JSON.stringify(thr.error));
+      const th = thr.data;
       await w.finished(th.id);
       for (let i = 0; i < 50 && registered.length < (on ? 1 : 2); i++) await new Promise(r => setTimeout(r, 40));
       assert.equal(registered.at(-1).privacy, want);
@@ -1690,16 +1760,19 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     for (const [tool, input] of [["threads.list", {}], ["threads.start", { cwd: w.work, prompt: "x" }], ["threads.stop", { thread: th.id }], ["agents.list", {}], ["agents.stop", { agent: "kit" }]]) {
+      // (stopping an agent is the person's own stop over what they run, so even the verified assistant is refused it; the label-only caller is refused for the same reason it always was)
       const forged = await w.d.registry.call(tool, input, "mcp:agent:juno", {});
       assert.ok(forged.error, `${tool} by a label alone is refused`);
       assert.doesNotMatch(String(forged.error.code), /^(no_such_tool|bad_input)$/, `${tool}: refused for who it is, not for its shape`);
-      const real = await w.d.registry.call(tool, input, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: th.id });
-      assert.equal(real.error, undefined, `${tool} by the verified assistant: ${JSON.stringify(real.error)}`);
+      const real = await w.d.registry.call(tool, input, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: th.id });
+      if (tool === "agents.stop") assert.equal(real.error?.code, "denied", `${tool}: the person's, the assistant's included`);
+      else assert.equal(real.error, undefined, `${tool} by the verified assistant: ${JSON.stringify(real.error)}`);
     }
     // A verified ordinary agent is refused, and a label naming the assistant over an ordinary agent's verified meta is too.
     const kit = await w.d.registry.call("threads.list", {}, "mcp:agent:kit", { agent: "kit", agentKind: "agent", thread: th.id });
@@ -1751,7 +1824,7 @@ for (const driver of ["cli", "sdk"]) {
     const bin = path.join(w.root, "fakebin");
     fs.mkdirSync(bin);
     const calls = path.join(w.root, "terminal.jsonl");
-    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nprocess.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
     const PATH = process.env.PATH;
     process.env.PATH = bin + path.delimiter + PATH;
     t.after(() => { process.env.PATH = PATH; });
@@ -1787,7 +1860,8 @@ for (const driver of ["cli", "sdk"]) {
     await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
     assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
     for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) {
-      for (const mode of ["plan", "bypassPermissions"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode }, caller)).error.code, "denied", `${caller} ${mode}`);
+      // What else an assistant may set is the reach list's (platform); "Doesn't ask" is the person's alone, whoever is calling.
+      assert.equal((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" }, caller)).error.code, "denied", `${caller} bypassPermissions`);
     }
     await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
     await w.finished(th.id, 2);
@@ -1861,7 +1935,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
     const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
       export default { async start(ctx) {
-        ctx.tool("whoami.me", { input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
+        ctx.tool("whoami.me", { callers: ["mcp"], input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
         return { async stop() {} };
       } };` };
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
@@ -1870,7 +1944,7 @@ for (const driver of ["cli", "sdk"]) {
     const sock = w.launches().at(-1).socket;
     assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
     assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
-    assert.equal(fs.statSync(sock).mode & 0o777, 0o660);
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o600, "a private socket is the owner's alone (0600); the box's shared folder keeps 0660");
     // It said "cli"; vyred bound it to the thread.
     assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
     // A person's tool is refused on it, whatever the session says it is.
@@ -1893,13 +1967,17 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: an agent's calls carry the grant vyred stored for it, whatever the session's own env or input says`, { skip }, async t => {
     const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
       export default { async start(ctx) {
-        ctx.tool("whoami.me", { input: { type: "object" }, run: async (i, meta) => ({ agent: meta.agent || null, granted: meta.granted ?? null, kind: meta.agentKind ?? null, said: i.projects ?? null }) });
+        ctx.tool("whoami.me", { callers: ["mcp"], input: { type: "object" }, run: async (i, meta) => ({ agent: meta.agent || null, granted: meta.granted ?? null, kind: meta.agentKind ?? null, said: i.projects ?? null }) });
         return { async stop() {} };
       } };` };
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
-    assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
-    const th = (await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" })).data;
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
+    // (an agent's session is started by the agents module, as it is in the product; the person's own threads.start names no agent)
+    const thr = await w.d.registry.call("threads.launch", { cwd: w.work, agent: "kit", agent_kind: "agent", purpose: "agent", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" }, "module:agents");
+    if (thr.error) throw new Error(JSON.stringify(thr.error));
+    const th = thr.data;
     await w.finished(th.id);
     // The input said "*"; the daemon says what agents_agents holds.
     const first = JSON.parse((await w.said(th.id)).at(-1));
@@ -1922,8 +2000,9 @@ for (const driver of ["cli", "sdk"]) {
     const l = w.launches().at(-1);
     assert.ok(!l.argv.includes("--append-system-prompt"), "nothing of Claude Code's own prompt is kept");
     const sys = l.argv[l.argv.indexOf("--system-prompt") + 1];
+    // The prompt may end with the one time line every model call carries (lib/time).
     assert.match(sys, /^You are Vyre Memory/);
-    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"$/);
+    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"(\n\nTime: [^\n]*)?$/);
     assert.doesNotMatch(sys, /no tools here|in markdown|What the user's own notes say/, "the Capsule's old instructions are gone");
     assert.doesNotMatch(sys, /\u2014/, "no em dash in the prompt itself");
     assert.equal(l.max_thinking, "0", "thinking off");
@@ -1937,7 +2016,7 @@ for (const driver of ["cli", "sdk"]) {
     const r = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule" })).data;
     await w.finished(r.id);
     const sys2 = w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--system-prompt") + 1];
-    assert.match(sys2, /^You are Vyre Memory[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
+    assert.match(sys2, /^You are Vyre Memory[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)(\n\nTime: [^\n]*)?$/);
     assert.equal((await w.events(r.id)).find(e => e.type === "thread.started").payload.prompt, "capsule@own-1");
     const p = (await w.tool("sessions.prompt.preview", { purpose: "capsule" })).data;
     assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 2, true], ["capsule", 1, false]]);

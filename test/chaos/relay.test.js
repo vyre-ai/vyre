@@ -7,6 +7,7 @@
 // names its rule. Timings are short (a 300 ms heartbeat, a 50 ms backoff); everything is on
 // 127.0.0.1.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -46,8 +47,8 @@ const PROOF = { proof: { method: "passkey", id: "x" } };
 /** The write chaos.test.js uses: it counts itself in the event log. @param {string} root */
 function chaosModule(root) {
   writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow"] }, watches: { emits: ["chaos.added"] } }, `export default { async start(ctx) {
-    ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
-    ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
+    ctx.tool("chaos.add", { effect: "read", input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
+    ctx.tool("chaos.slow", { effect: "read", input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
       run: async i => { await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
     return {};
   } };`);
@@ -86,7 +87,7 @@ async function world(t) {
   chaosModule(root);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url: r.url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const first = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
   assert.ok(first.data, JSON.stringify(first.error));

@@ -177,7 +177,7 @@ surface team adds its own client to the harness by pointing it at the proxy.
 ## Consequences
 
 - Every surface team has work to meet R1 to R6; the resilience workstream tracks it in
-  `docs/work/resilience.md` and does the shared pieces: the SSE changes, the idempotency layer,
+  `team/archive/work-journals/resilience.md` and does the shared pieces: the SSE changes, the idempotency layer,
   the drain on stop, the chaos harness and a reference client (stream plus outbox) in
   `core/resilience/` that the CLI and the Mac link use in Node (`node.js`), and the Deck, the
   hosted web app and the Expo web target use in a browser (`web.js`: a fetch transport and

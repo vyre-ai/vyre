@@ -452,10 +452,17 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
     // a uid other than 0 is not offered: a model's.
     if (trustedLeader(p)) return { inside: false };
     const at = p ? started(top.pid) : (uid(top.pid) === 0 ? started(top.pid) : null);
-    if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at } };
+    // An exe the kernel will not show an unprivileged process is a root daemon's (sshd listener, login): name it by what the same kernel does show of ANY process, its uid (status), its
+    // `comm` and its command line, so isLoginServer can tell a root-owned sshd from a user process called sshd. Only root sets a uid 0, so the name is believed only with it.
+    if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at, uid: uid(top.pid), ...(p ? {} : { comm: commOf(top.pid), cmd: row.args }) } };
     return bad;
   }
   return bad;
+}
+
+/** The kernel's short name for a process (Linux: /proc/<pid>/comm, readable for any pid), null elsewhere. @param {number} pid @returns {string|null} */
+export function commOf(pid) {
+  try { return process.platform === "linux" ? fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim() : null; } catch { return null; }
 }
 
 /** @param {number} pid @returns {string|null} */

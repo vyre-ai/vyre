@@ -4,6 +4,7 @@
 // files guard on a share's folder, the audit of who else the policy lets in, and the Mac's URL,
 // mount, open and path mapping through seams, so nothing is ever mounted or opened.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule, removeHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -117,7 +118,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     globalThis.__driveMedia = globalThis.__driveMedia || new Map();
     globalThis.__driveMedia.set(root, media);
     t.after(() => globalThis.__driveMedia.delete(root));
-    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone" }, { name: "artifacts.media.read", reach: "modules" }] } },
+    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone", effect: "read", projectArg: "project" }, { name: "artifacts.media.read", reach: "modules" }] } },
       `export default { async start(ctx) {
         const m = () => globalThis.__driveMedia.get(ctx.paths.root);
         ctx.tool("artifacts.list", { run: async ({ kind, project }) => ({ artifacts: m().filter(a => a.kind === kind && a.project === project).map(({ bytes_b64, ...a }) => a) }) });
@@ -137,7 +138,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     globalThis.__driveLinks = globalThis.__driveLinks || new Map();
     globalThis.__driveLinks.set(root, link);
     t.after(() => globalThis.__driveLinks.delete(root));
-    writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote", "link.status"] } },
+    writeModule(mods, "link", { roles: ["local"], does: { tools: [{ name: "link.remote", reach: "modules" }, { name: "link.status", reach: "anyone" }] } },
       `export default { async start(ctx) {
         const l = () => globalThis.__driveLinks.get(ctx.paths.root);
         ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await l().remote(tool, input) }) });
@@ -168,7 +169,11 @@ const ok = async (reg, tool, input = {}, caller = "cli", meta = {}) => {
 const no = async (reg, tool, input, caller, code, meta = {}) => {
   const r = await reg.call(tool, input, caller, meta);
   assert.ok(r.error, `${tool} by ${caller} should have been refused`);
-  assert.equal(r.error.code, code, r.error.message);
+  // An agent's call to a tool the agent-reach table says asks first (files.drive.share, offer, url) is held at the Gate and, with no Gate wired, answers `held_unavailable`: nothing ran, which is the refusal.
+  const heldAgent = code === "denied" && /(^|[:\s])agent:/.test(caller) && r.error.code === "held_unavailable";
+  // A claimed person with no proven session is refused by the person-session gate before the tool runs: `person_session_required` is the same refusal.
+  const noSession = code === "denied" && r.error.code === "person_session_required";
+  assert.equal(heldAgent || noSession ? code : r.error.code, code, r.error.message);
   return r.error;
 };
 
@@ -253,6 +258,22 @@ test("drive: without drive:share the box says why and how to fix it, and never r
   assert.ok(!ts.calls().some(c => c[0] === "drive"));
   const e = await no(reg, "files.drive.share", { name: "projects" }, "cli", "drive_off");
   assert.match(e.detail.fix, /drive:share/);
+});
+
+test("drive: a box with no Tailscale at all still answers files.drive.status (shared folders off, no error), and says the Space Drive's own state", async t => {
+  stoppers(t);
+  const prev = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = path.join(tempHome(t), "no-such-tailscale");
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
+  const { work } = boxWorld(t);
+  const { reg } = await registry(t, { role: "box", cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
+  const s = await ok(reg, "files.drive.status");
+  assert.equal(s.enabled, false);
+  assert.equal(s.tailnet, false);
+  assert.match(s.why, /does not mount folders as disks/);
+  assert.deepEqual(s.list, []);
+  assert.deepEqual(s.shares.map(x => x.shared), [false]);
+  assert.ok(s.space && "enabled" in s.space, "the Space Drive's own state is in the answer");
 });
 
 test("drive: with drive:share, status lists what is shared; share runs drive share on the real folder and audits", async t => {

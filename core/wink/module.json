@@ -1,0 +1,380 @@
+{
+  "name": "wink",
+  "version": "0.1.0",
+  "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [
+    "relay"
+  ],
+  "does": {
+    "tools": [
+      {
+        "name": "wink.network.status",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.network.whois",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.network.join",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.network.leave",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.home-move.open",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.home-move.close",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.home.call",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.code.open",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.code.redeem",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.code.carry",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.code.status",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.code.ack",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.cancel",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.invite",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.approve",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.decline",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.share",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.access",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.offers",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.card",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.pair.targets",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.pair.server",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.pair.status",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.server.code",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.confirm",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.pairing",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.server.status",
+        "effect": "read",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.pair.answer",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.adopt",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.retarget",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.release",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.reset.begin",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.reset.confirm",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.device.key",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.relay.apply",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.phone.open",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.phone.scan",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.phone.pairing",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.phone.pair.answer",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.phone.wait",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.offer.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.discover",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.storage.pick",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.pair",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.card",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.storage.offers",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.storage.status",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.storage.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.bridge",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.bridge.accept",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.storage.bridge.drive",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.server.handover",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.server.owned",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.peer.allow",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.record",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.enclave-live",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.server.probe",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.owner",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "wink.server.paired",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.server.channel",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.paired",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.home.id",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.call",
+        "reach": "modules"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "wink.offered",
+      "wink.found",
+      "wink.confirmed",
+      "wink.joined",
+      "wink.declined",
+      "wink.expired",
+      "wink.removed",
+      "wink.shared",
+      "wink.code-opened",
+      "wink.code-replaced",
+      "wink.code-closed",
+      "wink.code-wrong",
+      "wink.code-ack",
+      "wink.code-done",
+      "wink.code-unavailable",
+      "grant.created",
+      "grant.revoked",
+      "wink.pair-waiting",
+      "wink.pair-done",
+      "wink.pair-asked",
+      "wink.pair-confirm",
+      "wink.pair-answered",
+      "wink.pair-failed",
+      "wink.server-adopted",
+      "wink.server-paired",
+      "wink.server-released",
+      "wink.server-reset",
+      "wink.server-release",
+      "wink.offer-changed",
+      "storage.paired",
+      "storage.removed",
+      "storage.unreachable",
+      "wink.relay-applied",
+      "wink.network-changed",
+      "wink.device-needs-repair"
+    ],
+    "on": [
+      "relay.code-asked",
+      "relay.invite-redeemed",
+      "device.paired",
+      "device.removed"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {
+    "vault": [
+      "per-storage"
+    ],
+    "daemon": [
+      "dataStores"
+    ]
+  }
+}

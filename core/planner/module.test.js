@@ -2,6 +2,7 @@
 // The planner inside a real vyred: found among the core modules, reached through the real
 // registry and its callers, and ringing on a fake clock into the event log every surface reads.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,6 +13,10 @@ import { tempHome } from "../../test/helpers.js";
 import { seams } from "./index.js";
 
 test("planner module: discovered, callers enforced by the registry, and a firing in the event log", async t => {
+  // The kernel on, with this development tree counted as first party (the rule the daemon tests of records.* use): the planner keeps its records there.
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, planner: { timezone: "Asia/Karachi" } }));
@@ -20,7 +25,7 @@ test("planner module: discovered, callers enforced by the registry, and a firing
   let timer = null;
   seams.set(root, { now: () => clock.t, setTimer: (fn, ms) => (timer = { fn, at: clock.t + ms }), clearTimer: () => { timer = null; } });
   t.after(() => seams.delete(root));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
 
   const mod = d.registry.status().find(m => m.name === "planner");

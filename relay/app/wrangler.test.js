@@ -1,6 +1,7 @@
 // The three Workers' wrangler.toml files: workers.dev off and exactly one custom-domain route each, as TOP-LEVEL keys.
 // Keys written after a [table] header belong to that table, which silently unbinds the route and leaves workers.dev on.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,7 +27,7 @@ for (const [file, domain] of [["relay/worker/wrangler.toml", "relay.vyre.run"], 
   });
 }
 
-for (const file of ["relay/worker/wrangler.toml", "names/worker/wrangler.toml"]) {
+for (const file of ["relay/worker/wrangler.toml", "names/worker/wrangler.toml", "relay/app/wrangler.toml"]) {
   test(`${file}: Cloudflare request logs are off (they keep addresses Vyre does not need, #70)`, () => {
     const text = fs.readFileSync(path.join(ROOT, file), "utf8").split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
     assert.match(text, /^\[observability\]\s*\nenabled\s*=\s*false\s*$/m);

@@ -1,4 +1,5 @@
 // peerIdentity: who a plain mcp caller is, from the kernel. Linux reads /proc; elsewhere the test is skipped (the macOS path is lsof and ps).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -19,4 +20,13 @@ test("peerIdentity: no claude above the peer verifies nothing, and an unknown pl
   const look = pid => ({ 7: { ppid: 1, args: "node server.js" } })[pid] || null;
   assert.deepEqual(peerIdentity(7, look, "linux"), { session: null, cwd: null });
   assert.deepEqual(peerIdentity(process.pid, () => ({ ppid: 1, args: "claude" }), "win32"), { session: null, cwd: null });
+});
+
+test("LB-3: where the platform cannot read a peer (Windows: a named pipe, no pid, no ancestry) nothing is verified about who is calling, so no person can come from a label there", async () => {
+  const peer = await import("./peer.js");
+  assert.equal(peer.canReadPeers, process.platform === "darwin" || process.platform === "linux", "peers are readable on macOS and Linux only");
+  // a process table in which a claude process is the peer's parent: on win32 the folder and the session start are never read, so nothing is verified
+  const look = (/** @type {number} */ pid) => (pid === 10 ? { pid: 10, ppid: 5, args: "node mcp.js" } : pid === 5 ? { pid: 5, ppid: 1, args: "claude" } : null);
+  const w = peer.peerIdentity(10, /** @type {any} */ (look), "win32");
+  assert.deepEqual(w, { session: null, cwd: null });
 });

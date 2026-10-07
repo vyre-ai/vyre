@@ -98,7 +98,7 @@ A module runs on both a box and a Mac unless its manifest sets `roles` to `["box
   the moment you emit it, so the tool call that emitted it fails.
 - Event names read `noun.past-verb`: `note.added`, `watcher.fired`.
 - Event payloads never carry secrets, and the log refuses anything that looks like one. Leave
-  out what the user typed, too: every module and the Deck can read the log. That is why
+  out what the user typed, too: every module and the Vyre app can read the log. That is why
   `note.added` above carries the note's id, not its text.
 - Input is checked against the tool's schema before `run` sees it.
 - If `start` throws, the module is marked failed and the rest keep running. `vyre modules` shows

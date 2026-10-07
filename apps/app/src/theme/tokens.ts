@@ -287,7 +287,8 @@ export const tokens = {
         400,
         500,
         600
-      ]
+      ],
+      "system": "Inter on the web (bundled), SF on Apple, Roboto on Android"
     },
     "type": {
       "desktop": {
@@ -295,8 +296,16 @@ export const tokens = {
           12,
           16
         ],
+        "secondary": [
+          13,
+          18
+        ],
         "body": [
           14,
+          20
+        ],
+        "headline": [
+          15,
           20
         ],
         "read": [
@@ -315,6 +324,14 @@ export const tokens = {
           32,
           38
         ],
+        "control": [
+          14,
+          20
+        ],
+        "micro": [
+          11,
+          14
+        ],
         "label": 11
       },
       "phone": {
@@ -322,8 +339,16 @@ export const tokens = {
           12,
           16
         ],
+        "secondary": [
+          15,
+          20
+        ],
         "body": [
           16,
+          22
+        ],
+        "headline": [
+          17,
           22
         ],
         "read": [
@@ -332,17 +357,157 @@ export const tokens = {
         ],
         "title": [
           20,
-          26
+          25
         ],
         "page": [
           28,
           34
         ],
         "display": [
-          32,
-          38
+          34,
+          41
+        ],
+        "control": [
+          15,
+          20
+        ],
+        "micro": [
+          11,
+          14
         ],
         "label": 11
+      },
+      "platform": {
+        "note": "ui-system.md section 2, [size, line height]. The phone table follows the platform: iOS text styles, Android Material roles; wide screens and the web use the web table. Weights 400, 500 and 600 only: titles 600, buttons 500, the rest 400.",
+        "ios": {
+          "display": [
+            34,
+            41
+          ],
+          "page": [
+            28,
+            34
+          ],
+          "title": [
+            20,
+            25
+          ],
+          "headline": [
+            17,
+            22
+          ],
+          "body": [
+            16,
+            22
+          ],
+          "read": [
+            17,
+            25
+          ],
+          "secondary": [
+            15,
+            20
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "control": [
+            15,
+            20
+          ],
+          "micro": [
+            11,
+            14
+          ],
+          "label": 11
+        },
+        "android": {
+          "display": [
+            36,
+            44
+          ],
+          "page": [
+            28,
+            36
+          ],
+          "title": [
+            22,
+            28
+          ],
+          "headline": [
+            16,
+            24
+          ],
+          "body": [
+            16,
+            24
+          ],
+          "read": [
+            16,
+            24
+          ],
+          "secondary": [
+            14,
+            20
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "control": [
+            15,
+            20
+          ],
+          "micro": [
+            11,
+            14
+          ],
+          "label": 11
+        },
+        "web": {
+          "display": [
+            32,
+            38
+          ],
+          "page": [
+            24,
+            30
+          ],
+          "title": [
+            18,
+            24
+          ],
+          "headline": [
+            15,
+            20
+          ],
+          "body": [
+            14,
+            20
+          ],
+          "read": [
+            15,
+            23
+          ],
+          "secondary": [
+            13,
+            18
+          ],
+          "caption": [
+            12,
+            16
+          ],
+          "control": [
+            14,
+            20
+          ],
+          "micro": [
+            11,
+            14
+          ],
+          "label": 11
+        }
       },
       "tracking": {
         "title": "-0.012em",
@@ -372,7 +537,9 @@ export const tokens = {
       "buttonTouch": 12,
       "row": 10,
       "card": 14,
-      "cardPhone": 14,
+      "cardPhone": 16,
+      "cardHero": 16,
+      "cardHeroPhone": 20,
       "sheet": 20,
       "full": 999
     },
@@ -567,7 +734,7 @@ export const tokens = {
             8,
             24,
             -8,
-            "rgba(20,19,17,0.22)",
+            "rgba(20,19,17,0.18)",
             false
           ],
           [
@@ -575,25 +742,17 @@ export const tokens = {
             2,
             6,
             0,
-            "rgba(20,19,17,0.1)",
+            "rgba(20,19,17,0.08)",
             false
           ]
         ],
         "e3": [
           [
             0,
-            1,
-            0,
-            0,
-            "edgeTop",
-            true
-          ],
-          [
-            0,
             28,
             64,
             -20,
-            "rgba(20,19,17,0.3)",
+            "rgba(20,19,17,0.28)",
             false
           ],
           [
@@ -601,7 +760,7 @@ export const tokens = {
             6,
             18,
             0,
-            "rgba(20,19,17,0.12)",
+            "rgba(20,19,17,0.10)",
             false
           ]
         ]
@@ -615,7 +774,7 @@ export const tokens = {
       "joins": "round"
     },
     "emblem": {
-      "note": "The project emblem (ux-research.md section 5.3): a rounded tile of four cells. Eight bytes of the project's seed (lib/avatar-seed projectBytes) choose everything, so every surface that draws a project draws the same tile. The Deck's renderer is deck/vendor/vyrecode/emblem.js; a test renders this spec and checks it draws the same SVG. Coordinates are in a 120 unit canvas; a cell is 60 units and its shapes are drawn in the cell's own 0 to 60 space.",
+      "note": "The project emblem (ux-research.md section 5.3): a rounded tile of four cells. Eight bytes of the project's seed (lib/avatar-seed projectBytes) choose everything, so every surface that draws a project draws the same tile. The Deck's renderer is web/vendor/vyrecode/emblem.js; a test renders this spec and checks it draws the same SVG. Coordinates are in a 120 unit canvas; a cell is 60 units and its shapes are drawn in the cell's own 0 to 60 space.",
       "canvas": 120,
       "cell": 60,
       "corner": 30,
@@ -804,6 +963,200 @@ export const tokens = {
         }
       ]
     }
+  },
+  "v3": {
+    "note": "The six-primitives direction (team/0.3/tokens-v3.json, ui-primitives.md): what a space and a person may configure, and the allowed values. Resolution is defaults, then the space, then the person. Contrast is computed, never chosen. The Deck reads it through deck/ui/theme.js, which writes the custom properties below onto the root element.",
+    "accents": {
+      "violet": {
+        "label": "Violet",
+        "dark": "#B8A4FF",
+        "paper": "#5B3FC4"
+      },
+      "amber": {
+        "label": "Amber",
+        "dark": "#E3B26B",
+        "paper": "#9A6410"
+      },
+      "sky": {
+        "label": "Sky",
+        "dark": "#8FB7E8",
+        "paper": "#2F6AA8"
+      },
+      "sage": {
+        "label": "Sage",
+        "dark": "#A9CF9B",
+        "paper": "#3F7A30"
+      },
+      "rose": {
+        "label": "Rose",
+        "dark": "#E8A0C0",
+        "paper": "#A8386A"
+      }
+    },
+    "contrast": {
+      "text": 4.5,
+      "nonText": 3,
+      "grounds": {
+        "dark": "#141311",
+        "paper": "#F4F1EA"
+      }
+    },
+    "density": {
+      "default": "default",
+      "steps": {
+        "compact": {
+          "space": 0.8,
+          "control": 30,
+          "controlSm": 26,
+          "row": 44,
+          "body": [
+            13,
+            18
+          ]
+        },
+        "default": {
+          "space": 1,
+          "control": 36,
+          "controlSm": 30,
+          "row": 56,
+          "body": [
+            14,
+            20
+          ]
+        },
+        "comfortable": {
+          "space": 1.2,
+          "control": 42,
+          "controlSm": 34,
+          "row": 64,
+          "body": [
+            15,
+            22
+          ]
+        }
+      }
+    },
+    "font": {
+      "default": "sans",
+      "stacks": {
+        "sans": {
+          "label": "Instrument Sans",
+          "css": "'Instrument Sans', 'Helvetica Neue', Arial, sans-serif"
+        },
+        "system": {
+          "label": "System",
+          "css": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        },
+        "serif": {
+          "label": "Serif",
+          "css": "'Iowan Old Style', 'Palatino Linotype', Georgia, serif"
+        }
+      }
+    },
+    "corners": {
+      "default": "default",
+      "steps": {
+        "sharp": 0.4,
+        "default": 1,
+        "round": 1.5
+      },
+      "applies": [
+        "chip",
+        "field",
+        "button",
+        "row",
+        "card",
+        "cardHero",
+        "sheet"
+      ]
+    },
+    "spaceSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      10,
+      12
+    ],
+    "person": {
+      "theme": [
+        "dark",
+        "paper",
+        "system"
+      ],
+      "density": [
+        null,
+        "compact",
+        "default",
+        "comfortable"
+      ],
+      "reducedMotion": [
+        false,
+        true
+      ],
+      "largerText": [
+        false,
+        true
+      ]
+    },
+    "fixed": [
+      "ok",
+      "warn",
+      "err",
+      "washes of those",
+      "type scale ratios",
+      "elevation levels",
+      "icon family",
+      "focus ring"
+    ],
+    "components": [
+      "button",
+      "iconButton",
+      "chip",
+      "field",
+      "switch",
+      "segmented",
+      "tabs",
+      "avatar",
+      "row",
+      "card",
+      "askCard",
+      "banner",
+      "sheet",
+      "menu",
+      "toast",
+      "table",
+      "stageSteps",
+      "timelineItem",
+      "emptyState"
+    ],
+    "fieldKinds": [
+      "text",
+      "number",
+      "money",
+      "date",
+      "choice",
+      "stage",
+      "actor",
+      "link",
+      "file",
+      "address",
+      "phone",
+      "email",
+      "richText",
+      "rating",
+      "sealed"
+    ],
+    "views": [
+      "list",
+      "board",
+      "calendar",
+      "recordPage",
+      "dashboard"
+    ]
   }
 } as const;
 

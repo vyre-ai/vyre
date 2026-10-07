@@ -7,6 +7,7 @@
 name: box-image
 on:
   push:
+    branches: ["main", "work/v0.3", "work/launch-*", "work/box*"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -54,6 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      # The saved Twenty database a new Space starts from rides in the image (about 1 MB): built before the pack, cached on the Twenty ref and the core types.
+      - uses: ./.github/actions/twenty-golden
       # The context a deploy builds from: install-box.sh unpacks the npm pack tarball into src/
       # and compose.build.yml builds that, so a file missing from package.json "files" fails here.
       - name: Pack like a deploy
@@ -76,6 +79,10 @@ jobs:
           push: false
           cache-from: type=gha,scope=box-image
           cache-to: type=gha,scope=box-image,mode=max
+      # A fresh Space starts from the saved database in the image (stores/twenty/provision.js findGolden: the exact Twenty image, the recorded hash). An image without it migrates Twenty from empty on the
+      # first start, which takes minutes and has failed on small servers (#91): so the image is not accepted without it.
+      - name: The image carries the saved Twenty database
+        run: docker run --rm --entrypoint node vyre-box:ci -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: Account homes exist, are private, and vyre can walk into them
         run: |
           docker run --rm --entrypoint sh "$IMAGE" -c 'set -e
@@ -99,6 +106,14 @@ jobs:
           echo "$got" | tee -a "$GITHUB_STEP_SUMMARY"
           case "$got" in "gh version $want "*) ;; *) echo "gh is not the pinned $want"; exit 1 ;; esac
           docker run --rm --entrypoint sh "$IMAGE" -c 'command -v gh | grep -qx /usr/local/bin/gh && gh auth login --help >/dev/null'
+      - name: The built-in network's two programs are in the image, Headscale at the pinned version, and no Tailscale
+        run: |
+          want=$(sed -n 's/^ARG HEADSCALE_VERSION=//p' box/Dockerfile)
+          [ -n "$want" ]
+          got=$(docker run --rm --entrypoint headscale "$IMAGE" version | head -n 1)
+          echo "$got" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$got" = "headscale version v$want" ] || { echo "headscale is not the pinned $want"; exit 1; }
+          docker run --rm --entrypoint sh "$IMAGE" -c 'test -x /usr/local/bin/wink-forwarder && ! command -v tailscale && ! command -v tailscaled'
       - name: Image size
         run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -203,19 +218,17 @@ jobs:
 
       # The compose files must not add Docker's own init (init: true) to a service on this image:
       # then docker-init is PID 1 and tini runs as a child, warning "not running as PID 1". vyre
-      # boots for real (with its tailscale, which waits at NeedsLogin); docker-api and egress, under
+      # boots for real; docker-api, under
       # the computers profile, are created and inspected (no Init, the image's tini entrypoint).
       - name: Compose runs the image's tini as PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
         env:
           VYRE_IMAGE: vyre-box:ci
-          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
-          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
           COMPOSE_PROJECT_NAME: vyreci
         run: |
           export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
-          F="-f box/compose.yml -f box/compose.egress.yml"
-          docker compose $F up -d tailscale vyre
+          F="-f box/compose.yml"
+          docker compose $F up -d vyre
           i=0; until [ "$(docker compose $F ps -q vyre)" ] && docker exec "$(docker compose $F ps -q vyre)" cat /proc/1/comm >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 30 ] || { docker compose $F logs; exit 1; }; sleep 1; done
           sleep 3
           id=$(docker compose $F ps -q vyre)
@@ -224,8 +237,8 @@ jobs:
           docker logs "$id" 2>&1 | tail -20
           [ "$comm" = tini ]
           ! docker logs "$id" 2>&1 | grep -q "not running as PID 1"
-          docker compose $F --profile computers create docker-api egress
-          for svc in vyre docker-api egress; do
+          docker compose $F --profile computers create docker-api
+          for svc in vyre docker-api; do
             id=$(docker compose $F --profile computers ps -aq "$svc")
             init=$(docker inspect -f '{{.HostConfig.Init}}' "$id")
             ep=$(docker inspect -f '{{join .Config.Entrypoint " "}}' "$id")
@@ -236,7 +249,5 @@ jobs:
         if: always() && hashFiles('core/daemon/loop.sh') != ''
         env:
           VYRE_IMAGE: vyre-box:ci
-          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
-          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
           COMPOSE_PROJECT_NAME: vyreci
-        run: docker compose -f box/compose.yml -f box/compose.egress.yml --profile computers down -v || true
+        run: docker compose -f box/compose.yml --profile computers down -v || true

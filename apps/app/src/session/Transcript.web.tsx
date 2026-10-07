@@ -28,7 +28,7 @@ const NEAR_TOP = 600;
 /** Keys session-state derives from the box's own ids, the same on every read (a user row's by its uuid; u:live:N is minted per read). */
 const STABLE = /^(m|r|t|a|run|steer):|^u:(?!live:)/;
 
-export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: TranscriptProps) {
+export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump, jumpTo }: TranscriptProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const headEl = useRef<HTMLDivElement>(null);
   const heights = useMemo(() => createHeights({ estimates: ESTIMATES }), []);
@@ -142,8 +142,9 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: 
     restore();
     const r = current();
     setRange((was) => (sameRange(was, r) && was?.windowed === r.windowed ? was : r));
-    heights.prune(keys);
-  }, [rows, measured, current, restore, heights, keys]);
+  }, [rows, measured, current, restore]);
+  // Forgetting the heights of rows that left walks every key: only when the rows change, not on each measure (10,000 rows: 142 ms a fling).
+  useEffect(() => { heights.prune(keys); }, [heights, keys]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -197,6 +198,21 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: 
     el.scrollTo({ top: 0 });
     setAway(false);
   }, []);
+
+  // A tapped quote scrolls to the original: its row if it is mounted, else to where the model says it is (the window then mounts it) and then to the row.
+  useEffect(() => {
+    if (!jumpTo) return;
+    const el = scroller.current;
+    if (!el) return;
+    const find = () => el.querySelector<HTMLElement>(`[data-k="${CSS.escape(jumpTo.key)}"]`);
+    const at = () => { const node = find(); if (node) { node.scrollIntoView({ block: "center", behavior: "smooth" }); return true; } return false; };
+    if (at()) return;
+    const i = live.current.keys.indexOf(jumpTo.key);
+    if (i < 0) return;
+    live.current.anchor = null;
+    el.scrollTop = live.current.offs[i] - (el.scrollHeight - el.clientHeight) + (headEl.current?.offsetHeight ?? 0) - el.clientHeight / 2;
+    requestAnimationFrame(() => requestAnimationFrame(() => { at(); }));
+  }, [jumpTo?.n]);
 
   const n = rows.length;
   // Rows read in above shift every index: the window keeps the rows it held, found by key.

@@ -23,14 +23,15 @@ In the order `vyre help` lists them.
 | [`vyre up`](#vyre-up) | start vyred and print the onboarding link, or this box's address |
 | [`vyre down`](#vyre-down) | stop it |
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
-| [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
+| [`vyre doctor`](#vyre-doctor) | check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
-| [`vyre projects`](#vyre-projects) | every project; on a server, move moves the homes to /work/projects |
+| [`vyre projects`](#vyre-projects) | every project |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
 | [`vyre open`](#vyre-open) | a project: what its threads are told, and its threads |
+| [`vyre roll`](#vyre-roll) | continue a long Claude Code session in a fresh window, with nothing lost |
 | [`vyre threads`](#vyre-threads) | sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions) |
 | [`vyre sessions`](#vyre-sessions) | how the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt |
 | [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said |
@@ -39,7 +40,7 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
-| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
+| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
@@ -61,13 +62,14 @@ In the order `vyre help` lists them.
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
-| [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
+| [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
-| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
-| [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code |
+| [`vyre send`](#vyre-send) | send files to another of your computers through your server |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre wink`](#vyre-wink) | free a server that still belongs to an app you no longer have |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
@@ -77,6 +79,9 @@ In the order `vyre help` lists them.
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
 | [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
+| [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
+| [`vyre signout`](#vyre-signout) | sign this terminal out |
+| [`vyre space`](#vyre-space) | which space this terminal acts in |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -123,12 +128,12 @@ vyre down [--json]
 Put Vyre on a server from this Mac, and look after it.
 
 ```
-vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
+vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
 ```
 
 ### vyre doctor
 
-Check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix.
+Check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix.
 
 ```
 vyre doctor [--json]
@@ -155,10 +160,10 @@ vyre config [list [group]|get <key>|set <key> <value>|reset <key>] [--project <s
 
 ### vyre projects
 
-Every project; on a server, move moves the homes to /work/projects.
+Every project.
 
 ```
-vyre projects [list|move [--dry-run]] [--json]
+vyre projects [list] [--json]
 ```
 
 ### vyre recall
@@ -197,6 +202,20 @@ A project: what its threads are told, and its threads.
 ```
 vyre open <project> [--json]
 ```
+
+### vyre roll
+
+Continue a long Claude Code session in a fresh window, with nothing lost.
+
+```
+vyre roll [--session <id>] [--thread <id>] [--print] [--no-start] [--json]
+```
+
+Run it in the folder, after /exit. It builds a seed from what you decided, an index of what came before and the last turns word for word, then starts claude here under a fresh session with the seed as its first message. Every earlier turn stays stored: memory_search finds it and memory_turn reads it back exactly.
+--session <id>: roll this session (the start of its id is enough), not the newest one in this folder
+--thread <id>: a session Vyre runs: ask it to roll its window over now (it does this by itself when the window fills)
+--print: print the seed and start nothing, for any agent to use
+--no-start: build the seed and a fresh session id, write the seed to a file, and start nothing
 
 ### vyre threads
 
@@ -327,7 +346,7 @@ vyre unpick <project> <thread>...
 
 ### vyre setup
 
-Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
+Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run.
 
 ```
 vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]
@@ -421,7 +440,7 @@ Change what it holds:
 This box's address: <you>.vyre.run.
 
 ```
-vyre name [status|check <n>|claim <n>|ts.net|release] [--json]
+vyre name [status|check <n>|claim <n>|release] [--json]
 ```
 
 ### vyre alarm
@@ -581,7 +600,7 @@ vyre run [--env-file f] [<item...>] -- <command...>
 
 ### vyre hooks
 
-Webhooks from the internet through Funnel, one route at a time.
+Webhooks from the internet, one route at a time.
 
 ```
 vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
@@ -600,12 +619,11 @@ vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|sig
 Add a phone to your box, list, remove and test the ones it has.
 
 ```
-vyre phone [add [--iphone|--android] [--tailscale-only] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
+vyre phone [add [--iphone|--android] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
 ```
 
 vyre phone add               the steps to put a phone on the box, then live checks
       --iphone | --android     only that phone's install step
-      --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
       --android --usb          the native app over a cable: downloads the APK the box serves,
                                checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
@@ -614,15 +632,13 @@ vyre phone add               the steps to put a phone on the box, then live chec
   vyre phone test [id]         send a test notification to every device, or one
 
   add pairs through the relay by default: it asks you first, then shows a QR that works once
-  for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
-  path direct and private. With --tailscale-only (or on a box without the relay) it mints a
-  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
+  for 10 minutes, so the phone needs nothing installed first. Then it watches until the phone shows up: a new
   notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.
 
 ### vyre relay
 
-Reach this box from your phone with a QR code, no Tailscale.
+Reach this box from your phone with a QR code.
 
 ```
 vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
@@ -636,10 +652,10 @@ vyre relay on|off, pin <release>|unpin: the relay itself, and which web app buil
 
 ### vyre send
 
-Send files from this Mac to your box with Taildrop.
+Send files to another of your computers through your server.
 
 ```
-vyre send <file...> [--json]
+vyre send <file...> [--to <computer>] [--json]
 ```
 
 ### vyre vitals
@@ -657,6 +673,16 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 ```
 vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]
 ```
+
+### vyre wink
+
+Free a server that still belongs to an app you no longer have.
+
+```
+vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]
+```
+
+vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.
 
 ### vyre team
 
@@ -755,6 +781,34 @@ The keys that prove you are here, and a code to enroll a passkey.
 vyre presence [keys|code|remove <id>] [--json]
 ```
 
+### vyre signin
+
+Sign in this terminal (approve on your phone).
+
+```
+vyre signin [--json]
+```
+
+Asks your phone to approve. On a yes this terminal acts as you until `vyre signout`, or 30 days without use. Run it in a terminal you are logged in on.
+
+### vyre signout
+
+Sign this terminal out.
+
+```
+vyre signout [--json]
+```
+
+### vyre space
+
+Which space this terminal acts in.
+
+```
+vyre space [use <name> | use --clear | add-agent <space> <agent>] [--json]
+```
+
+`vyre space use harlow` remembers harlow for this terminal's calls. `vyre call records.list` then acts in it; `--space <name>` on one call overrides it. With none, calls act in the home's own space.
+
 ### vyre tips
 
 Short tips on using each part of Vyre.
@@ -810,7 +864,7 @@ vyre tools [--json]
 Run any tool, e.g. vyre call system.echo '{"text":"hi"}'.
 
 ```
-vyre call [--tty] <tool> [json]
+vyre call [--tty] [--space <name>] <tool> [json]
 ```
 
 Prints the tool's data as JSON. A tool that needs you (approving a draft, answering an ask)
@@ -852,19 +906,10 @@ These work, but `vyre help` leaves them out: they are for the box's service mana
 
 | Command | What it does |
 | --- | --- |
-| [`vyre owner`](#vyre-owner) | the one Tailscale login this box serves |
 | [`vyre home`](#vyre-home) | your projects, a new session, and your agents |
 | [`vyre restore`](#vyre-restore) | put a backup back (vyred must be stopped) |
 | [`vyre uninstall`](#vyre-uninstall) | remove the systemd units (the data stays unless --purge) |
 | [`vyre daemon`](#vyre-daemon) | run vyred in the foreground (what systemd runs) |
-
-### vyre owner
-
-The one Tailscale login this box serves.
-
-```
-vyre owner [<tailscale-login>]
-```
 
 ### vyre home
 

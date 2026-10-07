@@ -3,7 +3,8 @@
 // whole scenario including the fixed safety set, bypass-shaped modes filtered, the client's fs and
 // terminal methods held to the floor and to the session's folder, and the per-provider hooks.
 
-import { test } from "node:test";
+import "../../../scripts/mac-test-guard.mjs";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -15,6 +16,9 @@ import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
 import { projectCodexConfig, seedTampered, promptTokens, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
+
+// Some tests start a fake agent and end before its process does; once the file is done, whatever child of THIS process is still running is stopped, so the run exits on its own (no force exit).
+after(() => { for (const h of /** @type {any[]} */ (/** @type {any} */ (process)._getActiveHandles())) if (h && h.constructor && h.constructor.name === "ChildProcess" && h.exitCode === null) { try { h.kill("SIGKILL"); } catch { /* gone */ } } });
 import { codexProvider } from "./codex.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-acp.js");
@@ -86,7 +90,7 @@ test("acp: memory goes ahead of the person's words on every prompt, the brief on
   const w = world(t);
   const asked = [];
   const s = open(w, { system: { text: "VYRE-PROMPT" }, memory: async q => { asked.push(q); return [{ type: "text", text: q.first ? "BRIEF" : "LINES" }]; } });
-  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPTBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
+  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPT\n\nBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
   assert.equal(await s.say("and the domain"), "echo: LINESand the domain");
   assert.deepEqual(asked, [{ prompt: "where is the site hosted", first: true }, { prompt: "and the domain", first: false }], "memory searches on the person's words only");
   await s.proc.stop(1000);
@@ -261,7 +265,8 @@ test("acp: a turn's tokens come from the prompt response (Codex's usage, Grok's 
     const s = open(w, { env: { ...w.env, FAKE_ACP_USAGE: mode } });
     s.proc.write({ type: "user", message: { role: "user", content: "hello" } });
     const r = await s.until(m => m.type === "result", "the result");
-    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, ...extra }, mode);
+    // context_used: what the context holds after the turn (the last request's whole input and its output), which a rollover reads as the window's use.
+    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, context_used: 120, ...extra }, mode);
     assert.equal(r.model, mode === "grok" ? "grok-x" : undefined, "Grok's model rides on the result, Codex's none in this fake");
     await s.proc.stop(500);
   }

@@ -185,6 +185,7 @@ export default {
     });
 
     ctx.tool("sync.consent", {
+      effect: "write",
       description: "Turn a paired peer's session import on or off, on the box's own record: never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action. planHash and included, when the surface reviewed a sync.scan plan with the person, are stored with the consent: sync.delete.import can later remove just that import by its planHash, and every project folder not in included is refused by sync.upload.plan and sync.upload.start, not merely left untagged. The picker's exclusions are enforced, not advisory. folders (Vyre Drive step 4) is the person's confirmed folder-to-project mapping, sync.scan's own proposed slug or whatever they typed instead: the first file that lands for a mapped folder creates that project (if the slug is new) and attaches the folder with projects.add-workspace. A folder left out of folders is synced but attached to no project.",
       input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" }, planHash: { type: "string" },
         included: { type: "array", items: { type: "string" }, description: "Project folder names (sync.scan's own names) this plan lets in. Omitted or on: false: no restriction." },
@@ -216,6 +217,7 @@ export default {
     });
 
     ctx.tool("sync.delete", {
+      effect: "write",
       description: "Delete everything a device sent and everything derived from it: synced/<machine>/ and its quarantine, then sync.deleted. Its own person-only action, never implied by unpairing or turning sync off. Without confirm: true, answers a preview (file and byte counts) and deletes nothing; the person sees the counts, then calls it again with confirm: true.",
       input: { type: "object", required: ["machine"], properties: { machine: { type: "string" }, confirm: { type: "boolean" } } },
       callers: ["cli", "local", "deck", "capsule"],
@@ -233,6 +235,7 @@ export default {
     });
 
     ctx.tool("sync.delete.import", {
+      effect: "write",
       description: "Delete just one approved import's files (those sync.consent's planHash tagged as they landed), leaving anything a separately-approved plan sent for the same device untouched. Its own person-only action, same as sync.delete. Without confirm: true, answers a preview (file and byte counts) and deletes nothing.",
       input: { type: "object", required: ["machine", "planHash"], properties: { machine: { type: "string" }, planHash: { type: "string" }, confirm: { type: "boolean" } } },
       callers: ["cli", "local", "deck", "capsule"],
@@ -258,9 +261,10 @@ export default {
     });
 
     ctx.tool("sync.upload.plan", {
+      effect: "write",
       description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { companion: { type: "string" },  files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ files, companion }, meta) => {
         const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
@@ -282,9 +286,10 @@ export default {
     });
 
     ctx.tool("sync.upload.start", {
+      effect: "write",
       description: "Start (or resume) sending one file: offset is 0 for new, or how many bytes the box already holds for a retry of the exact same path and hash.",
       input: { type: "object", required: ["path", "bytes", "hash"], properties: { companion: { type: "string" },  path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
         const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
@@ -322,9 +327,10 @@ export default {
     // Reached only from core/daemon/index.js's dedicated route: the body is a raw Buffer, never
     // parsed as JSON, since a chunk is arbitrary bytes (e2e: "application/octet-stream only").
     ctx.tool("sync.upload.chunk", {
+      effect: "write",
       description: "One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own route calls this after reading the request body.",
       input: { type: "object", required: ["upload", "offset", "data"], properties: { companion: { type: "string" },  upload: { type: "string" }, offset: { type: "number" }, data: {} } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, offset, data, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -349,9 +355,10 @@ export default {
     });
 
     ctx.tool("sync.upload.cancel", {
+      effect: "write",
       description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
       input: { type: "object", required: ["upload"], properties: { companion: { type: "string" },  upload: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
@@ -364,9 +371,10 @@ export default {
     });
 
     ctx.tool("sync.upload.finish", {
+      effect: "write",
       description: "Verify and land a finished upload: checks its hash, scrubs it for secrets, and renames it into synced/<machine>/ (or quarantines it).",
       input: { type: "object", required: ["upload", "hash"], properties: { companion: { type: "string" },  upload: { type: "string" }, hash: { type: "string" } } },
-      callers: ["tailnet"],
+      callers: ["tailnet", "device", "space", "agent"],
       run: async ({ upload, hash, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -510,6 +518,7 @@ function walkSize(dir, budget) {
 
 async function deviceSide(ctx) {
   ctx.tool("sync.scan", {
+    effect: "read",
     description: "What this device would offer to sync to the box (Vyre Drive's what-to-sync picker): every project folder under this device's own Claude Code folder (~/.claude/projects or CLAUDE_CONFIG_DIR/projects), each with its session-file count and total size, so the person sees what is there and can leave folders out before turning sync.consent on. Read-only: nothing is sent, nothing is opened, only sizes are read. Each folder also carries `project`, a proposed project id (lib/project-id.js's slugify of the folder name) for Vyre Drive step 4's folder-to-project mapping: a suggestion only, the person confirms or edits it at sync.consent time; nothing here creates a project or attaches anything. planHash stands for the choice made here: pass it straight to sync.consent's own planHash, so an approved import is tied to what was actually reviewed, not a plan that silently drifted.",
     input: { type: "object", properties: { exclude: { type: "array", items: { type: "string" } } } },
     callers: ["cli", "local", "deck", "capsule"],
@@ -542,7 +551,8 @@ async function deviceSide(ctx) {
   });
 
   ctx.tool("sync.send", {
-    description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see docs/work/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.",
+    effect: "write",
+    description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see team/archive/work-journals/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.",
     input: { type: "object", required: ["files", "mode"], properties: {
       files: { type: "array", items: { type: "object", required: ["path", "rel", "bytes", "hash"], properties: { path: { type: "string" }, rel: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } },
       mode: { type: "string", enum: ["once", "sync"] },

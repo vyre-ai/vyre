@@ -1,5 +1,7 @@
 // @ts-check
 // precache.mjs's pure pieces: which exported files the service worker caches, and the build id.
+import "../../../scripts/mac-test-guard.mjs";
+import "./test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -1,4 +1,5 @@
 // "Sign in to your AI" with an API key: three kinds, a cheap check, the Vault, an account bound to its address, and a thread that sends the key only there.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -33,6 +34,7 @@ async function service(t) {
 }
 
 test("api key: an OpenAI-compatible key is checked, vaulted, bound to its address, never returned, and a thread on it sends the key only there", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";   // this harness has no inference door; the door path is lib/door-bridge.test.js
   const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
   const s = await service(t);
   const r = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, model: "m1", label: "My lab server" });

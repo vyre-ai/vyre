@@ -1,7 +1,7 @@
 // The installed web app's pure pieces (pwa.web.ts), runnable in Node.
 
-/** Where the app is served; the router's paths are below it. */
-export const APP_BASE = "/app";
+/** Where the app is served; the router's paths are below it. "/app", or "" for the root build (VYRE_APP_BASE=root, config app.root). */
+export const APP_BASE = process.env.EXPO_PUBLIC_VYRE_APP_BASE === "root" ? "" : "/app";
 
 /**
  * The router path for a worker's {type: "vyre:navigate", path} message, or null for anything else.

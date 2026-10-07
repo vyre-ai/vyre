@@ -25,9 +25,9 @@ What you get:
 - Agents that keep working when your laptop is closed, and answer when you press Option-Space on your Mac or open Vyre on your phone.
 - An encrypted vault on the Droplet for your API keys. Anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 - Your sessions, memory and projects stay on this Droplet.
-- A private address on your own Tailscale network. The Droplet opens no port to the internet except SSH.
+- A private address on Vyre's own built-in network. The Droplet opens no port to the internet except SSH.
 
-What you need besides the Droplet: a Claude subscription or an Anthropic API key, a free Tailscale account, and a Mac or an iPhone or Android phone.
+What you need besides the Droplet: a Claude subscription or an Anthropic API key, and a Mac or an iPhone or Android phone.
 
 Vyre is open source (Apache 2.0): https://github.com/vyre-ai/vyre
 
@@ -49,8 +49,8 @@ Ubuntu 24.04 LTS (x64)
 
 1. Create the Droplet. Add your SSH key.
 2. Log in with SSH. A banner says whether Vyre has finished installing (about a minute after first boot).
-3. Run `sudo vyre setup`. It connects this server to your setup page.
-4. Finish in your browser at https://vyre.run/setup: connect your Claude account, add Tailscale, pair your Mac and phone.
+3. Run `sudo vyre call wink.server.code '{"qr":true}'`. It shows a QR and a long code.
+4. Open the Vyre app, scan the QR or paste the long code, and confirm the three words. The app then walks you through connecting your Claude account.
 
 To update Vyre later: `vyre update`. It checks the same signature before it changes anything.
 
@@ -69,7 +69,7 @@ Free. You pay only for the Droplet.
 
 ## Facts to keep true (check before every submission)
 
-- `sudo vyre setup` and https://vyre.run/setup are the one setup flow (release item 11); check the command and the page exist and say this, and that launch and app-design agree the wording, before any submission.
+- The Vyre app pairs this server with the code `sudo vyre call wink.server.code` shows; check the command and the app's pairing screens say this before any submission.
 - The image installs the latest release at first boot; it does not bake one in. The first-boot script is packaging/digitalocean/files/vyre-firstboot.
 - "Nothing opens to the internet except SSH" holds while the firewall in 010-base.sh is unchanged and Vyre binds 127.0.0.1 (box/compose.yml). Re-check both.
 - The 2 GB recommendation is a floor from measurements of Vyre's process and idle sessions, not of a loaded Droplet. Re-measure on a real 2 GB Droplet before the listing goes live.

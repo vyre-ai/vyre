@@ -6,10 +6,15 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@vyre/resilience/*": ["../../core/resilience/*"],
-      "@vyre/chat-core/*": ["../../deck/chat/core/*"],
+      "@vyre/chat-core/*": ["./src/chat/core/*"],
       "@vyre/relay-client/*": ["./src/types/relay-client/*"],
-      "@vyre/perf/*": ["../../lib/perf/*"]
+      "@vyre/stream/*": ["../../core/stream/*"],
+      "@vyre/perf/*": ["../../lib/perf/*"],
+      "@vyre/ui": ["./ui/index.ts"],
+      "@vyre/ui/*": ["./ui/*"],
+      "@vyre/store/*": ["./src/store-core/*"],
+      "@vyre/kernel/*": ["../../kernel/contracts/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts", "nativewind-env.d.ts"]
 }

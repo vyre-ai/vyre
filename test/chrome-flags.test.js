@@ -3,6 +3,7 @@
 // (lib/chrome-flags). Without them Chrome on macOS asks for the login Keychain and puts a real dialog
 // on the user's screen. A file that launches Chrome must spread CHROME_SAFE or spell out both flags.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

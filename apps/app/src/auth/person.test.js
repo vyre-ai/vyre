@@ -2,6 +2,8 @@
 // The person session's pure pieces (person.ts) in Node with globalThis.crypto.subtle: PKCE, the
 // proof message, a signature the box can verify (P1363), the token trade, and a 401
 // person_session_required forgetting the token. No DOM, no network.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,7 @@ import { backoff } from "../../../../core/resilience/backoff.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 const enc = new TextEncoder();
 
 /** @param {() => boolean} ok */

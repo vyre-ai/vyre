@@ -11,7 +11,7 @@
 #   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
-#   install.sh, i, box, w          the install line, /box, and the Windows installer script (_redirects and a copy of the script)
+#   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
 #   box/*                          the release's box files, checked against its SHA256SUMS
 #   box/install-mac-server.sh      the Mac server installer; install-box.sh fetches it from the same site on a Mac (not in the release assets)
 #   setup/relay, deck, fonts, tokens.css, signin-hosts.json   the files the setup page loads, copied from the tag
@@ -38,7 +38,7 @@ say "pages"
 VYRE_SITE_VERSION=${tag#v} node scripts/gen-site.mjs >/dev/null
 rm -rf "$out"; mkdir -p "$out"
 cp -R site/. "$out/"
-for f in w i install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
+for f in w i i.sh install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
 
 say "release assets $tag"
 mkdir -p "$out/box"
@@ -51,13 +51,26 @@ cp "$out/box/install-box.sh" "$out/install.sh"
 say "from the tag's source"
 git show "$tag:scripts/install-windows.ps1" >"$out/w"
 git show "$tag:scripts/install-mac-server.sh" >"$out/box/install-mac-server.sh"
-printf '/box /box/install-box.sh 200\n/i /install.sh 200\n/download/mac /start#mac 302\n' >"$out/_redirects"
-mkdir -p "$out/setup/relay" "$out/setup/deck/js" "$out/setup/deck/vendor/vyrecode" "$out/setup/fonts"
+# /i is the server install line (scripts/install/i.sh: installs, then prints a pairing code), when the tag has it; /box stays the release installer.
+if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
+  git show "$tag:scripts/install/i.sh" >"$out/i.sh"
+  ipath=/i.sh
+else ipath=/install.sh; fi
+printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
+mkdir -p "$out/setup/relay" "$out/setup/deck/js" "$out/setup/deck/vendor/vyrecode" "$out/setup/lib/wink-code" "$out/setup/fonts"
 for f in $(git ls-tree --name-only "$tag" relay/client/ | grep '\.js$' | grep -v '\.test\.js$'); do git show "$tag:$f" >"$out/setup/relay/$(basename "$f")"; done
-git show "$tag:deck/css/tokens.css" >"$out/setup/tokens.css"
-git show "$tag:deck/js/phone-code.js" >"$out/setup/deck/js/phone-code.js"
-for f in $(git ls-tree --name-only "$tag" deck/vendor/vyrecode/ | grep '\.js$'); do git show "$tag:$f" >"$out/setup/deck/vendor/vyrecode/$(basename "$f")"; done
-git show "$tag:deck/vendor/qrcode.js" >"$out/setup/deck/vendor/qrcode.js"
+# A release made before the Deck moved to web/ keeps these files under deck/: take whichever the tag has.
+pick() { if git cat-file -e "$tag:web/$1" 2>/dev/null; then echo "web/$1"; else echo "deck/$1"; fi; }
+git show "$tag:$(pick css/tokens.css)" >"$out/setup/tokens.css"
+git show "$tag:$(pick js/phone-code.js)" >"$out/setup/deck/js/phone-code.js"
+# A release made before the marks moved to lib/wink-code carries them under vendor/vyrecode: take whichever the tag has.
+if git cat-file -e "$tag:lib/wink-code/vyrecode2.js" 2>/dev/null && git show "$tag:$(pick js/phone-code.js)" | grep -q "../../lib/wink-code/"; then
+  for f in vyrecode2 geometry identity payload rs; do git show "$tag:lib/wink-code/$f.js" >"$out/setup/lib/wink-code/$f.js"; done
+else
+  vdir=$(dirname "$(pick vendor/qrcode.js)")/vyrecode
+  for f in $(git ls-tree --name-only "$tag" "$vdir/" | grep '\.js$'); do git show "$tag:$f" >"$out/setup/deck/vendor/vyrecode/$(basename "$f")"; done
+fi
+git show "$tag:$(pick vendor/qrcode.js)" >"$out/setup/deck/vendor/qrcode.js"
 git cat-file -e "$tag:lib/providers/signin-hosts.json" 2>/dev/null && git show "$tag:lib/providers/signin-hosts.json" >"$out/setup/signin-hosts.json" || true
 for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2; do
   git show "$tag:apps/app/assets/fonts/$f" >"$out/setup/fonts/$(basename "$f")"
@@ -77,8 +90,9 @@ if [ -n "$check" ]; then
     if cmp -s "$f" "$out/$p"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
   done
   for p in i box; do
+    want="$out/install.sh"; [ "$p" = i ] && [ -f "$out/i.sh" ] && want="$out/i.sh"
     n=$(curl -fsSL "$check/$p" | wc -c | tr -d ' ')
-    [ "$n" = "$(wc -c <"$out/install.sh" | tr -d ' ')" ] && echo "same    /$p serves install.sh" || { echo "DIFFERS /$p"; bad=1; }
+    [ "$n" = "$(wc -c <"$want" | tr -d ' ')" ] && echo "same    /$p serves $(basename "$want")" || { echo "DIFFERS /$p"; bad=1; }
   done
   [ "$bad" = 0 ] || exit 1
 fi

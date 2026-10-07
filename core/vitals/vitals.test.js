@@ -4,6 +4,7 @@
 // end through the real store. seams stand in for this device's own OS reads and for computers'
 // per-agent breakdown, so nothing here touches a real /proc, cgroup or Docker.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -41,8 +42,8 @@ test("vitals: the manifest loads with its five tools and both events, on both ro
 test("vitals: status and watch refuse an agent outright; summary is the one tool an agent may call", async t => {
   const s = await boot(t, { own: flat });
   await s.h.tick();
-  assert.match((await s.agent("kit")("vitals.status", {})).error.message, /is an agent; reading vitals in full is the person's/);
-  assert.match((await s.agent("kit")("vitals.watch", { action: "open" })).error.message, /is an agent; watching vitals is the person's/);
+  assert.equal((await s.agent("kit")("vitals.status", {})).error.code, "denied", "the callers list refuses a model before the body (group D, kernel-declare)");
+  assert.equal((await s.agent("kit")("vitals.watch", { action: "open" })).error.code, "denied");
   const sum = await s.agent("kit")("vitals.summary", {});
   assert.ok(!sum.error, sum.error && sum.error.message);
   assert.deepEqual(Object.keys(sum.data).sort(), ["battery", "cpu", "device", "disk", "gpu", "netRx", "netTx", "ram", "scope"]);

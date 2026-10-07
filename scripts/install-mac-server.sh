@@ -41,7 +41,12 @@ PURGE=0
 SYSTEM=1
 TMP=""
 CODE=${VYRE_CODE:-}
-BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
+# The release files come from VYRE_BOX_URL, else from `box-url` beside this script (a prerelease app names its own tag's release assets there, the
+# rc channel; the files are verified against the pinned release key either way, so the URL chooses a source and never a trust), else vyre.run/box.
+_here=""; [ -f "$0" ] && _here=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+_boxurl=""; [ -n "$_here" ] && [ -f "$_here/box-url" ] && _boxurl=$(sed -n '1p' "$_here/box-url" | tr -d '\r')
+case "$_boxurl" in https://*/) ;; *) _boxurl="" ;; esac
+BASE=${VYRE_BOX_URL:-${_boxurl:-https://vyre.run/box/}}
 # Overridable for tests only.
 UNAME_S=${VYRE_UNAME_S:-$(uname -s)}
 UNAME_M=${VYRE_UNAME_M:-$(uname -m)}
@@ -81,6 +86,16 @@ GH_VERSION=2.102.0
 GH_SHA256_ARM64=da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e
 GH_SHA256_AMD64=b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3
 GH_BIN=""
+
+# The built-in network on a Mac server (core/wink/netd.js): Headscale and the Wink node program run NATIVELY beside vyred, not in the Colima VM (netd supervises them over
+# unix sockets and files, which do not cross the VM boundary). Headscale: the pinned darwin release binary, sums from headscale_0.29.4's checksums.txt in the release itself.
+# The node program (wink-forwarder) is a first-party file of the signed release, wink-forwarder-darwin-<arch>, listed in SHA256SUMS like every other.
+# VYRE_HEADSCALE_URL / _SHA256 and VYRE_FORWARDER_FILE override, for tests.
+HEADSCALE_VERSION=0.29.4
+HEADSCALE_SHA256_ARM64=b5cfd0f81caaa1e8f71f830fd89fdf86a8719bb6e9f9a2ec5b47d9426c96986e
+HEADSCALE_SHA256_AMD64=06e4c94a8b9397ed8c2714a4cd484c998604dc884e9b5d4a186aef05f14047b1
+HEADSCALE_BIN=""
+FORWARDER_BIN=""
 
 # The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
 # and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
@@ -200,10 +215,17 @@ install_app() {
     # SHA256SUMS is signed (SHA256SUMS.sig, the one signature Linux and Mac both use): verify_release
     # checks it here before sudo and root checks it again on its own copies.
     get vyre.tgz; get manifest.json; fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig"; cp "$TMP/SHA256SUMS" "$TMP/sums"
+    # The release's signed list of first-party modules (modules.json), when it has one: it is a line of the signed SHA256SUMS, checked by get like every file.
+    if awk '$2 == "modules.json" || $2 == "*modules.json" { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get modules.json; fi
+    if awk '$2 == "appbuild.json" || $2 == "*appbuild.json" { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get appbuild.json; fi
     mkdir -p "$TMP/release"
     mv "$TMP/vyre.tgz" "$TMP/manifest.json" "$TMP/SHA256SUMS.sig" "$TMP/release/"; mv "$TMP/sums" "$TMP/release/SHA256SUMS"
+    [ ! -f "$TMP/modules.json" ] || mv "$TMP/modules.json" "$TMP/release/modules.json"
+    [ ! -f "$TMP/appbuild.json" ] || mv "$TMP/appbuild.json" "$TMP/release/appbuild.json"
     verify_release
     tar -xzf "$TMP/release/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
+    # The three signed files go to the package root, where the kernel reads them (kernel/modules/release-list.js); verify_release has just checked the signature.
+    for f in SHA256SUMS SHA256SUMS.sig modules.json appbuild.json; do [ -f "$TMP/release/$f" ] && cp "$TMP/release/$f" "$APP.new/$f"; done
   elif [ -n "$FROM" ]; then
     (cd "$FROM" && tar --exclude .git --exclude node_modules -cf - .) | (cd "$APP.new" && tar -xf -)
   else
@@ -311,9 +333,7 @@ write_colima_plist() {
 <plist version="1.0"><dict>
   <key>Label</key><string>$COLIMA_LABEL</string>
   <key>ProgramArguments</key><array>
-    <string>$BIN/colima</string><string>start</string><string>--foreground</string>
-    <string>--vm-type</string><string>vz</string>
-    <string>--cpu</string><string>2</string><string>--memory</string><string>4</string><string>--disk</string><string>40</string>
+    <string>$BIN/vyre-runtime</string><string>run</string>
   </array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>$BIN:$SERVER_DIR/lima/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
@@ -329,6 +349,85 @@ EOF
   chmod 644 "$p"
 }
 
+# write_runtime_helper: the account's own `vyre-runtime` in BIN, the one place Colima's VM size is decided and applied (the formula lives only here).
+#   vyre-runtime run             what the Colima job runs: start Colima in the foreground at the size in <VYRE_HOME>/colima-size.env
+#   vyre-runtime start           the same without the job (a Mac that runs Colima under brew services)
+#   vyre-runtime room N          JSON: can this Mac host N spaces? { ok, spaces, cpus, memory_gib, max_spaces, message }
+#   vyre-runtime resize N        make room for N spaces: prints "Making room for a new space", writes the size, restarts Colima (its job relaunches it at the new size)
+# Memory is 2 GiB plus 2.5 GiB per space (rounded up, never under 4 GiB, the size Colima had before), capped at half of the Mac's RAM; 2 CPUs, 4 on a Mac with 8 or more
+# cores; the disk stays 40 GiB (it is sparse). Nothing here needs root: Colima runs as the account, so its job is told to run this file and the size is a file the account owns.
+write_runtime_helper() {
+  mkdir -p "$BIN"
+  cat >"$BIN/vyre-runtime" <<'EOF'
+#!/bin/sh
+set -eu
+VHOME=${VYRE_HOME:-$HOME/.vyre}
+SIZEF=$VHOME/colima-size.env
+GIB=1073741824
+ram=${VYRE_RAM_BYTES:-$(sysctl -n hw.memsize 2>/dev/null || echo 0)}
+cores=${VYRE_CORES:-$(sysctl -n hw.ncpu 2>/dev/null || echo 2)}
+
+# size N: sets CPUS, MEM (GiB), MAX (spaces this Mac can host), OK (1 when N fits under the cap)
+size() {
+  n=$1; [ "$n" -ge 1 ] 2>/dev/null || n=1
+  gib=$((ram / GIB)); cap=$((gib / 2))
+  CPUS=2; [ "$cores" -lt 8 ] || CPUS=4
+  need=$((2 + (5 * n + 1) / 2)); [ "$need" -ge 4 ] || need=4
+  if [ "$cap" -ge "$need" ]; then MEM=$need; OK=1; else MEM=$cap; OK=0; fi
+  MAX=0; [ "$cap" -lt 2 ] || MAX=$(( (cap - 2) * 2 / 5 ))
+  [ "$MEM" -ge 1 ] || MEM=1
+}
+# the spaces the VM was last sized for (1 before any is recorded)
+spaces_now() { n=1; [ ! -f "$SIZEF" ] || n=$(sed -n 's/^SPACES=//p' "$SIZEF" | head -n 1); [ "$n" -ge 1 ] 2>/dev/null || n=1; echo "$n"; }
+# JOB=1 means a launchd job runs Colima (`run`), so stopping Colima is the restart; JOB=0 means nothing relaunches it and `resize` starts it itself.
+job_now() { j=0; [ ! -f "$SIZEF" ] || j=$(sed -n 's/^JOB=//p' "$SIZEF" | head -n 1); [ "$j" = 1 ] && echo 1 || echo 0; }
+write_size() { mkdir -p "$VHOME"; printf 'SPACES=%s\nCPUS=%s\nMEMORY=%s\nDISK=40\nJOB=%s\n' "$1" "$CPUS" "$MEM" "${2:-$(job_now)}" >"$SIZEF.new"; mv "$SIZEF.new" "$SIZEF"; }
+read_size() { CPUS=$(sed -n 's/^CPUS=//p' "$SIZEF" | head -n 1); MEM=$(sed -n 's/^MEMORY=//p' "$SIZEF" | head -n 1); }
+
+case "${1:-}" in
+  run|start)
+    jobflag=0; [ "$1" != run ] || jobflag=1
+    if [ -f "$SIZEF" ]; then read_size; else size 1; write_size 1 "$jobflag"; fi
+    [ "$1" = run ] || exec colima start --cpu "$CPUS" --memory "$MEM" --disk 40
+    # The job's own run. Stopping Colima for a resize ends the foreground `colima start` with exit 0, and launchd does not relaunch a job that exits 0, so this loop does it:
+    # a restart flag left by `resize` means "start again at the size now on file"; anything else is the end of the job with Colima's own exit code (0: someone stopped it).
+    while :; do
+      read_size
+      colima start --foreground --vm-type vz --cpu "$CPUS" --memory "$MEM" --disk 40 &
+      pid=$!
+      trap 'kill "$pid" 2>/dev/null' TERM INT
+      rc=0; wait "$pid" || rc=$?
+      trap - TERM INT
+      if [ -f "$VHOME/colima-restart" ]; then rm -f "$VHOME/colima-restart"; continue; fi
+      exit "$rc"
+    done
+    ;;
+  room|resize)
+    n=${2:-}; [ "$n" -ge 1 ] 2>/dev/null || { echo "usage: vyre-runtime $1 <spaces>" >&2; exit 2; }
+    size "$n"
+    if [ "$OK" = 1 ]; then msg="This Mac has room for $n spaces."
+    else msg="This Mac has room for $MAX spaces. Another would need more memory than half of this Mac's RAM, so put it on your server instead."; fi
+    json=$(printf '{"ok":%s,"spaces":%s,"cpus":%s,"memory_gib":%s,"max_spaces":%s,"message":"%s"}' "$([ "$OK" = 1 ] && echo true || echo false)" "$n" "$CPUS" "$MEM" "$MAX" "$msg")
+    if [ "$1" = room ]; then echo "$json"; if [ "$OK" = 1 ]; then exit 0; else exit 3; fi; fi
+    if [ "$OK" != 1 ]; then echo "$json"; exit 3; fi
+    if [ -f "$SIZEF" ] && [ "$(sed -n 's/^MEMORY=//p' "$SIZEF" | head -n 1)" = "$MEM" ] && [ "$(sed -n 's/^CPUS=//p' "$SIZEF" | head -n 1)" = "$CPUS" ]; then
+      write_size "$n"; echo "$json"; exit 0
+    fi
+    echo "Making room for a new space"
+    write_size "$n"
+    # Stopping Colima is the restart: its job (the LaunchDaemon, the LaunchAgent) brings it back through `run` at the size just written. Without a job (brew services) start it here.
+    [ "$(job_now)" != 1 ] || : >"$VHOME/colima-restart"
+    colima stop >/dev/null 2>&1 || true
+    if [ "$(job_now)" = 1 ]; then i=0; until colima status >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -lt 30 ] || break; sleep 2; done; fi
+    colima status >/dev/null 2>&1 || colima start --cpu "$CPUS" --memory "$MEM" --disk 40 >/dev/null 2>&1 || { echo "$json" | sed 's/"ok":true/"ok":false/'; exit 4; }
+    echo "$json"
+    ;;
+  *) echo "usage: vyre-runtime run | start | room <spaces> | resize <spaces>" >&2; exit 2 ;;
+esac
+EOF
+  chmod 755 "$BIN/vyre-runtime"
+}
+
 # colima_system_args: the start command for the root installer's Colima LaunchDaemon (it runs as
 # your account). A launchd job has no PATH worth the name, so it goes through /usr/bin/env with the
 # pinned dirs (and the directories of the colima and docker found) in front.
@@ -342,17 +441,8 @@ colima_system_args() {
   COLIMA_ARGS="/usr/bin/env
 PATH=$cpath
 HOME=$HOME
-$cbin
-start
---foreground
---vm-type
-vz
---cpu
-2
---memory
-4
---disk
-40"
+$BIN/vyre-runtime
+run"
 }
 
 # setup_colima: agents' computers run in Colima (open source, headless), never Docker Desktop. An
@@ -361,6 +451,7 @@ vz
 # LaunchAgent. If neither works it says so and goes on: the server works, agents get no computer.
 setup_colima() {
   if [ "$DRY" = 1 ]; then say "would install Colima (agents' computers) and $([ "$SYSTEM" = 1 ] && echo 'hand its start command to the root installer' || echo start it)"; return 0; fi
+  write_runtime_helper
   if ! command -v colima >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
       say "Installing Colima with Homebrew..."
@@ -377,7 +468,7 @@ setup_colima() {
     fi
   fi
   if [ "$SYSTEM" = 1 ]; then colima_system_args; step "Colima is installed; it starts at boot"; return 0; fi
-  colima start --cpu 2 --memory 4 --disk 40 >/dev/null 2>&1 || { say "  note  Colima did not start; run: colima start"; return 0; }
+  "$BIN/vyre-runtime" start >/dev/null 2>&1 || { say "  note  Colima did not start; run: $BIN/vyre-runtime start"; return 0; }
   brew services start colima >/dev/null 2>&1 || true
   step "Colima is running"
 }
@@ -410,6 +501,37 @@ setup_gh() {
   step "gh is $g"
 }
 
+# setup_wink_net: Headscale and the Wink node program, for the built-in network. Either missing is not fatal: netd then says "no-binary" and the relay carries everything,
+# which is correct; the person is told which one is missing.
+setup_wink_net() {
+  if [ "$DRY" = 1 ]; then say "would put the pinned Headscale and the release's wink-forwarder into Vyre's own bin (the built-in network; without them the relay carries everything)"; return 0; fi
+  case "$UNAME_M" in
+    arm64|aarch64) ha=arm64; hs=$HEADSCALE_SHA256_ARM64; fa=arm64 ;;
+    x86_64|amd64) ha=amd64; hs=$HEADSCALE_SHA256_AMD64; fa=amd64 ;;
+    *) say "  note  no pinned Headscale for this Mac ($UNAME_M); the relay carries everything"; return 0 ;;
+  esac
+  hs=${VYRE_HEADSCALE_SHA256-$hs}
+  hu=${VYRE_HEADSCALE_URL:-https://github.com/juanfont/headscale/releases/download/v$HEADSCALE_VERSION/headscale_${HEADSCALE_VERSION}_darwin_$ha}
+  if [ -z "$hs" ]; then say "  note  no pinned Headscale for this release; the relay carries everything"
+  elif ! curl -fsSL --retry 2 -o "$TMP/headscale" "$hu"; then say "  note  could not download Headscale; the relay carries everything"
+  elif [ "$(sha256 "$TMP/headscale")" != "$hs" ]; then say "  note  the Headscale download does not match its pinned checksum; nothing was installed"
+  else
+    mkdir -p "$BIN"; cp "$TMP/headscale" "$BIN/headscale"; chmod 755 "$BIN/headscale"; HEADSCALE_BIN=$BIN/headscale
+    step "Headscale $HEADSCALE_VERSION is $HEADSCALE_BIN"
+  fi
+  fname=wink-forwarder-darwin-$fa
+  if [ -n "${VYRE_FORWARDER_FILE:-}" ]; then
+    # a file you built yourself (a checkout install): used as it is, and said so
+    if [ -f "$VYRE_FORWARDER_FILE" ]; then mkdir -p "$BIN"; cp "$VYRE_FORWARDER_FILE" "$BIN/wink-forwarder"; chmod 755 "$BIN/wink-forwarder"; FORWARDER_BIN=$BIN/wink-forwarder; step "the node program is $FORWARDER_BIN (your own build)"
+    else say "  note  VYRE_FORWARDER_FILE is not a file; the relay carries everything"; fi
+  elif [ -f "$TMP/SHA256SUMS" ] && awk -v p="$fname" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then
+    get "$fname"; mkdir -p "$BIN"; cp "$TMP/$fname" "$BIN/wink-forwarder"; chmod 755 "$BIN/wink-forwarder"; FORWARDER_BIN=$BIN/wink-forwarder
+    step "the node program is $FORWARDER_BIN (from the signed release)"
+  else
+    say "  note  this release has no node program for this Mac ($fname); the relay carries everything"
+  fi
+}
+
 # write_env: DOCKER_HOST at Colima's own socket, and the setup code with the time it was written,
 # into VYRE_HOME/vyre.env (0600). The rest of the file is kept. The code is never an argument.
 write_env() {
@@ -433,6 +555,10 @@ write_wrapper() {
   mkdir -p "$BIN"
   WNODE=$(wrapper_node)
   GH_LINE=""; [ -z "$GH_BIN" ] || GH_LINE="export VYRE_GH_BIN=\"$GH_BIN\""
+  [ -z "$HEADSCALE_BIN" ] || GH_LINE="$GH_LINE
+export VYRE_HEADSCALE_BIN=\"$HEADSCALE_BIN\""
+  [ -z "$FORWARDER_BIN" ] || GH_LINE="$GH_LINE
+export VYRE_WINK_FORWARDER_BIN=\"$FORWARDER_BIN\""
   cat >"$BIN/vyre-serve" <<EOF
 #!/bin/sh
 # vyre on a Mac server: written by install-mac-server.sh
@@ -625,17 +751,18 @@ main() {
   install_app
   setup_colima
   setup_gh
+  setup_wink_net
   write_env
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
-    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
   else
     write_plist
     start_service
-    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
   fi
 }

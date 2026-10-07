@@ -10,13 +10,17 @@
 import os from "node:os";
 import path from "node:path";
 
+// The machine's own platform, read once at import: a test that fakes `process.platform` to exercise a darwin code path (relay's Mac refusals) must not make the guard think
+// it runs on a Mac. That made "a Mac box never mints" pass where VYRE_TEST_HOST=testbox is set and fail on any other Linux box (4 Oct).
+const HOST_PLATFORM = process.platform;
+
 export const REFUSAL = "daemon tests run on a runner or the test box, not on this Mac";
 
 /**
  * @param {{ root: string, real?: boolean, env?: Record<string, string | undefined>, platform?: string, hostname?: string, tmpdir?: string }} o
  * @returns {{ ok: true } | { ok: false, why: string }}
  */
-export function daemonHost({ root, real = false, env = process.env, platform = process.platform, hostname = os.hostname(), tmpdir = os.tmpdir() }) {
+export function daemonHost({ root, real = false, env = process.env, platform = HOST_PLATFORM, hostname = os.hostname(), tmpdir = os.tmpdir() }) {
   if (platform !== "darwin" || real) return { ok: true };
   const r = path.resolve(root);
   const tmp = [path.resolve(tmpdir), "/tmp", "/private/tmp", "/private/var/folders"].some(t => r === t || r.startsWith(t + path.sep));
@@ -30,4 +34,23 @@ export function daemonHost({ root, real = false, env = process.env, platform = p
 export function assertDaemonHost(o) {
   const r = daemonHost(o);
   if (!r.ok) throw Object.assign(new Error(r.why), { code: "test_host" });
+}
+
+export const WINDOWS_HOME_REFUSAL = "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.";
+
+/**
+ * A home on Windows needs its own sealing service (separate identity, DPAPI or TPM key, pipe ACL): 0.3.0. Until then vyred refuses to start there with one plain line.
+ * A development build with VYRE_KERNEL_FILE_KEY=1 (the CI socket-ACL job) and a daemon given its own sealer are let through; a packaged build never is.
+ * @param {{ platform?: string, env?: Record<string, string | undefined>, packaged?: boolean, sealer?: unknown }} o
+ */
+export function windowsHome({ platform = HOST_PLATFORM, env = process.env, packaged = true, sealer = null } = {}) {
+  if (platform !== "win32" || sealer) return { ok: true };
+  if (!packaged && env.VYRE_KERNEL_FILE_KEY === "1") return { ok: true };
+  return { ok: false, why: WINDOWS_HOME_REFUSAL };
+}
+
+/** Throw the refusal when a home would start on Windows. @param {Parameters<typeof windowsHome>[0]} o */
+export function assertNotWindowsHome(o) {
+  const r = windowsHome(o);
+  if (!r.ok) throw Object.assign(new Error(r.why), { code: "windows_home" });
 }

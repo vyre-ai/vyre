@@ -93,17 +93,13 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.url(box: BOX, target: ""), nil)
     }
 
-    t.test("the address comes from link.status, and only for a live pairing") {
-        @Sendable func link(_ data: Any) -> FakeLink { FakeLink { tool, _ in tool == "link.status" ? .success(data) : .failure(code: "no_such_tool", message: "no tool \(tool)") } }
-        let got = t.wait { () -> [String] in
-            [await Glass.address(link(["linked": true, "box": ["address": BOX + "/"]])) ?? "nil",
-             await Glass.address(link(["linked": false, "box": ["address": BOX]])) ?? "nil",
-             await Glass.address(link(["linked": true, "box": NSNull()])) ?? "nil",
-             await Glass.address(link(["linked": true, "box": ["address": "http://alex.vyre.run"]])) ?? "nil",
-             await Glass.address(FakeLink { _, _ in .failure(code: "unknown_tool", message: "no") }) ?? "nil",
-             await Glass.address(link(["linked": true, "box": ["address": BOX]]), has: false) ?? "nil"]
-        }
-        t.eq(got, [BOX, "nil", "nil", "nil", "nil", "nil"])
+    t.test("the address comes from wink.server.home, and only for a live pairing") {
+        let a = { (d: Any) in WinkServer.parseHome(d)?.address ?? "nil" }
+        t.eq([a(["linked": true, "box": ["address": BOX + "/"]]), a(["linked": true, "box": NSNull()]), a(["linked": true, "box": ["address": "http://alex.vyre.run"]]), a("not an object")],
+             [BOX, "nil", "nil", "nil"])
+        t.eq(WinkServer.parseHome(["linked": false])?.reachable, nil)
+        t.eq(WinkServer.parseHome(["linked": true])?.reachable, true)
+        t.eq(WinkServer.parseHome(["linked": true, "reachable": false, "name": "kit"])?.name, "kit")
     }
 
     t.test("an agent with a computer gets Open Glass, one without does not") {

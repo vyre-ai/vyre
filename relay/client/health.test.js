@@ -1,5 +1,6 @@
 // @ts-check
 // health(): the reach shape from a paths object or a Connection, and since only moving with the reach.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { health, watch } from "./health.js";
@@ -9,11 +10,11 @@ const relay = state => ({ kind: "relay", good: state === "open", connection: sta
 
 test("health: the direct path current is direct, with the tailnet round trip only when measured", () => {
   const p = { index: 0, paths: [direct(true), relay("open")] };
-  assert.deepEqual(health(p, { since: 10 }), { reach: "direct", why: "Connected to your server over Tailscale.", since: 10 });
+  assert.deepEqual(health(p, { since: 10 }), { reach: "direct", why: "Connected to your server directly.", since: 10 });
   assert.deepEqual(health(p, { since: 10, rtt: 23 }).tailnet, { path: "direct", latencyMs: 23 });
   const failing = health({ index: 0, paths: [direct(false), relay("offline")] }, { since: 10 });
   assert.equal(failing.reach, "none");
-  assert.equal(failing.fix?.action, "open-tailscale");
+  assert.equal(failing.fix?.action, "retry");
 });
 
 test("health: on the relay path it is relay while the channel is open, and none while connecting or offline", () => {

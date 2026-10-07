@@ -4,19 +4,20 @@
     { "title": "Start here", "pages": ["index.md"] },
     { "title": "Get started", "pages": [
       "get-started/install.md",
-      "get-started/tailscale.md",
-      "get-started/onboarding.md",
       "using/first-hour.md", "get-started/first-day.md",
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
     ]},
     {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
-      "using/deck.md",
       "using/chat.md",
+      "using/private-chats.md",
+      "using/spaces.md",
+      "using/time-zones.md",
       "using/cli.md",
       "using/claude-code.md",
       "using/sessions.md",
+      "using/local-runner.md",
       "using/projects-and-threads.md",
       "using/teammates.md",
       "using/agents.md",
@@ -24,18 +25,16 @@
       "using/memory.md",
     "using/artifacts.md",
       "using/learning.md",
-      "using/glass.md",
       "using/watchers.md",
       "using/planner.md",
       "using/connectors.md",
-      "using/tailscale.md",
       "using/mobile.md",
       "using/windows.md",
       "using/box-care.md", "using/tips.md"
     ]},
     { "title": "Concepts", "pages": [
       "concepts/box-and-mac.md",
-      "concepts/tailnet.md",
+      "concepts/network.md",
       "concepts/presence.md",
       "concepts/floor.md",
       "concepts/modules.md"
@@ -102,6 +101,8 @@
       "adr/0046-relay-introduces-tailscale-carries.md",
       "adr/0047-module-contract-v1.md",
       "adr/0049-deep-chrome-control.md",
+      "adr/0051-identity-chain.md",
+      "adr/0052-session-stream.md",
       "adr/0041-github-everywhere.md",
       "adr/0042-move-engine.md",
       "adr/0043-identity-marks-and-vyre-code.md",
@@ -205,5 +206,5 @@
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],
-  "unpublished": ["work/", "proposals/", "design/boards/"]
+  "unpublished": ["proposals/", "design/boards/"]
 }

@@ -38,6 +38,8 @@ import { agentClaim, callerKind } from "../modules/index.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
 const PEOPLE = new Set(["cli", "local", "capsule", "deck"]);
+/** The person's own surfaces and the owner's devices (what link.status, which shows the pairing code, and link.call, which drives the box as this Mac, answer to). A model session is not one. */
+const PERSON_SURFACES = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -405,6 +407,7 @@ export function macSide(ctx, seam = {}) {
   }
 
   ctx.tool("link.pair", {
+    effect: "write",
     description: "Pair this device with your box. Shows a code to approve on the box: `vyre link approve <code>` there, or in the Deck. kind: \"mac\" (the default, the full link feature set) or \"device\" (paired only to import its own sessions, core/sync).",
     input: { type: "object", properties: { box: { type: "string" }, kind: { type: "string", enum: ["mac", "device"] } }, required: ["box"] },
     callers: ["cli", "local", "capsule"],
@@ -430,6 +433,7 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.find", {
+    effect: "read",
     description: "Look for your box on your tailnet: online peers that answer as a Vyre box. For `vyre up` to offer pairing.",
     input: { type: "object", properties: {} },
     callers: ["cli", "local", "capsule"],
@@ -459,10 +463,11 @@ export function macSide(ctx, seam = {}) {
   // the box's own page; the box sends a code to the loopback, and vyred trades it, with the
   // verifier and the public half of a key it just made, for a 30-day session. The session and the
   // key are kept in link.json (0600): a process of this user can read them, which is the Mac's
-  // accepted residual (docs/work/e2e.md); minting one always takes the person's passkey.
+  // accepted residual (team/archive/work-journals/e2e.md); minting one always takes the person's passkey.
   /** @type {{ server: http.Server, url: string, expires: number } | null} */
   let signing = null;
   ctx.tool("link.signin", {
+    effect: "write",
     description: "Sign this Mac's command line and Capsule in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to open; you confirm with your passkey on the box's page.",
     callers: ["cli", "local", "capsule"],
     input: { type: "object", properties: {} },
@@ -507,6 +512,7 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.signout", {
+    effect: "write",
     description: "Sign this Mac out on the box: its command line and Capsule are only a device there again.",
     callers: ["cli", "local", "capsule"],
     input: { type: "object", properties: {} },
@@ -522,6 +528,7 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.status", {
+    effect: "read", callers: [...PERSON_SURFACES, "module"],
     description: "Whether this Mac is paired with a box, and whether the box is reachable right now.",
     input: { type: "object", properties: {} },
     run: async () => ({
@@ -535,6 +542,7 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.health", {
+    effect: "read",
     description: "How this Mac reaches its box right now: reach (direct over the tailnet, or none), why, fix, since and the tailnet path and latency; the older path, latencyMs and lastHandshake stay. Checked at most once a minute.",
     input: { type: "object", properties: {} },
     run: async () => {
@@ -545,6 +553,7 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.unpair", {
+    effect: "write",
     description: "Forget the box on this Mac, and tell the box to forget this Mac when it can be reached.",
     input: { type: "object", properties: {} },
     callers: ["cli", "local", "capsule"],
@@ -569,9 +578,15 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.call", {
+    effect: "write", callers: [...PERSON_SURFACES, "module"],
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
+    // The box sees this Mac as the owner's device, so a model or an agent must never ride it: only the person's own surfaces and modules call it (reviewer-2 HD-3). A model that needs a box tool
+    // asks through its own tools, which the box gates by the model's own caller.
+    callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
     run: async ({ tool, input }, meta) => {
+      // A module hop made for a model (meta.origin) is a model's call: it never rides this Mac's paired-device identity to the box.
+      if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("link.call is the person's own; a module acting for a model session may not use it"), { code: "denied" });
       const r = await remote(tool, input || {}, meta && meta.caller);
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
       return r.data;

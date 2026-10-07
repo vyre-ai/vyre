@@ -1,8 +1,9 @@
 // @ts-check
-// vyre-core phase 2a (ADR 0040, docs/work/vyre-core-plan.md): the vault's store in core. An item
+// vyre-core phase 2a (ADR 0040, team/archive/work-journals/vyre-core-plan.md): the vault's store in core. An item
 // anyone puts is unverified until the person says so; grants and releases are core's; a plain
 // value leaves only for the Capsule core signed, with a proof or a session bound to that process.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -26,6 +27,7 @@ async function core(t) {
   const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, testKdf: TEST_KDF,
     peerCred: async () => ({ pid: process.pid, uid }), capsuleFrom: async () => at.capsule, peerKey: () => at.key });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const keyId = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }).id;
   /** A device proof over one call. */

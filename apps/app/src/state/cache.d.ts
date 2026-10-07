@@ -3,4 +3,6 @@
 export const viewCache: {
   get<T = unknown>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown): Promise<void>;
+  /** Forget everything cached (a removed device). */
+  clear(): Promise<void>;
 };

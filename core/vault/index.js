@@ -13,7 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
-import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
@@ -22,8 +22,6 @@ import * as rotateTools from "./tools/rotate.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
-import { whois, run as tailscale } from "../names/tailscale.js";
-import { isTailnet, normalize } from "../names/identity.js";
 import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
@@ -34,6 +32,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
@@ -52,9 +51,22 @@ const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
 // floor (ADR 0004) is what proves a person is there, whichever surface asks.
 const SURFACES = [...PEOPLE, "deck", "capsule"];
+// The phone app adds and unlocks from the app itself (UX-33): the paired phone calls as `mobile` (or its device label), and the presence floor, a Face ID on the phone, is what proves the person is there.
+const PHONE = ["mobile", "device"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
+// The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a frozen function the vault hands to the registry ONCE, at its own start, through
+// `ctx.provide` (the registry refuses a second provider, and any module but the vault). The daemon and the launcher modules receive it from the registry's own dependencies, so no
+// module and no daemon import reaches into the vault for it, and nothing that imports this file can take it.
+/** @param {any} vault */
+const credentialsPort = vault => Object.freeze({
+  /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
+  credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
+  /** The key of an API-key account's vault item, for the lent computer's credential route (the home's kernel asks per request). Null for anything that is not an API-key item. @param {string} name */
+  apiKey: async name => vault.apiKeyValue(name),
+});
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -79,22 +91,17 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      // With identity "whois" no header counts: the login is the one Tailscale gives the peer
-      // address, and meta.peer is the rest of that answer (node, stable id, tags, caps), which
-      // vault.relay.grants "require" reads. A tagged node has no login, so it is never a holder.
-      const byWhois = opts.relay.identity === "whois"
-        ? async ip => { if (!isTailnet(ip)) return null; return whois(normalize(ip)); }
-        : null;
-      if (byWhois) vault.lookupPeer = peerByLogin;
-      if (vault.relayGrants === "require" && vault.relayIdentity !== "whois") ctx.log("vault: vault.relay.grants is require but vault.relay.identity is not whois, so no caller carries caps and every relayed request is refused");
+      // The caller's identity on this listener is whatever the request carries and the pass binds to (the holder's device key). The old modes that took a login from a
+      // VPN's `whois` answer or a proxy header are retired with that VPN (removal plan, step 4): a pass binds to the device key and the signed envelope.
+      if (vault.relayGrants === "require") ctx.log("vault: vault.relay.grants is require, which needs a network policy that no longer exists, so every relayed request is refused; switch it off");
       listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
         onRelay: async (env, meta) => {
-          if (!byWhois) return vault.onRelay(env, meta);
-          return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
+          return vault.onRelay(env, meta);
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
@@ -152,7 +159,7 @@ export default {
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
-    tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
+    tool("vault.put", [...SURFACES, ...PHONE, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
       obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
         // `value` is the kind's own field: a PAT's token, a secret's value.
@@ -160,10 +167,17 @@ export default {
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
+        // Every grant is checked BEFORE the item is written: a refused grant must not leave a changed value behind (reviewer-2 VP-5).
+        if (grants !== undefined && (!Array.isArray(grants) || grants.length > 32)) throw new Error("grants is a short list of module names");
+        const refuse = msg => { vault.refuse("put", input.name, caller, msg); throw new Error(msg); };
+        for (const g of grants || []) if (!validModuleName(g)) refuse(`"${String(g).slice(0, 60)}" is not a module name`);
+        // A provider sign-in token takes no module grant once the launcher reads it through the credentials port: refuse before anything is written, never after.
+        if (grants && launcherItem(String(input.name)) && vault.launcherOnly) refuse(`${input.name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`);
         // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
           if (mod) throw new Error("modules cannot write to shared vaults");
+          if (launcherItem(String(input.name).slice(slash + 1))) { const why = `${String(input.name).slice(slash + 1)} is a provider sign-in token; it is never put in a shared vault`; vault.refuse("put", input.name, caller, why); throw new Error(why); }
           if (input.kind === "api-credential") throw new Error("an api-credential is never put in a shared vault; it is used only by this Vyre's vault.request");
           return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         }
@@ -193,6 +207,24 @@ export default {
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });
 
+    // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
+    // The person sets, replaces or removes one here with presence; the app learns only that one is stored and when. Nothing returns the value: the session launcher gets it through the
+    // credentials port above and sets it in the session's own process.
+    const provider = p => { const spec = Object.hasOwn(LAUNCHER_ITEMS, String(p)) ? LAUNCHER_ITEMS[String(p)] : null; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
+    tool("vault.provider.set", SURFACES, "Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
+      obj({ provider: str, token: str }, ["provider", "token"]),
+      async ({ provider: p, token }, { caller }) => {
+        const spec = provider(p); if (/[\r\n\0\s]/.test(String(token))) throw new Error("a sign-in token is one line with no spaces");
+        await vault.put({ name: spec.item, kind: spec.kind, description: `${p} sign-in token`, fields: { value: String(token) } }, caller);
+        return { provider: p, stored: true };
+      },
+      presence("Store a provider sign-in token", ({ provider: p }) => `Store a ${String(p).slice(0, 32)} sign-in token in your vault`));
+    tool("vault.provider.remove", SURFACES, "Remove a stored provider sign-in token.", obj({ provider: str }, ["provider"]),
+      async ({ provider: p }, { caller }) => { vault.remove({ name: provider(p).item }, caller); return { provider: p, stored: false }; },
+      presence("Remove a provider sign-in token", ({ provider: p }) => `Remove the ${String(p).slice(0, 32)} sign-in token from your vault`));
+    tool("vault.provider.status", SURFACES, "Which provider sign-in tokens are stored and when each was added. Never the value.", obj({ provider: str }),
+      async ({ provider: p } = {}) => ({ tokens: vault.providerTokens().filter(t => !p || t.provider === p) }));
+
     tool("vault.delete", [...SURFACES, "module"], "Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).",
       obj({ name: str }, ["name"]), (input, { caller }) => {
         // A module has no presence proof to give: the person's own action (a person-only tool of that module) is the proof. Origin is set by
@@ -216,11 +248,12 @@ export default {
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
-    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
+    tool("vault.revoke", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
         const c = String(caller);
-        // A named agent, or another module, may only withdraw a request it made itself; the person's surfaces and an unnamed session revoke freely.
-        return vault.revoke(input, c, /^mcp:agent:/.test(c) || c.startsWith("module:") ? { onlyPendingBy: c } : {});
+        const k = callerKind(c);
+        // The person's surfaces revoke any grant. A model session (named agent, thread or bare mcp) and another module may only withdraw a request they made themselves (group D LOW).
+        return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
@@ -240,6 +273,15 @@ export default {
       // A presence session from the Deck or the Capsule covers approving (the floor keeps the CLI out).
       }, { session: () => true }));
 
+    // The answer to "is this item granted to the calling module (and this watcher)?", from the very check `release` makes; it hands over no value. For a module that reads through something the vault
+    // does not hold the token of (a Google account), so the person's per-watcher grant is the one permission, not a second copy of it.
+    ctx.tool("vault.granted", {
+      internal: true,
+      description: "Whether an item is granted to the calling module, and to exactly this watcher when one is named: { granted }. The same check vault.release makes; no value is returned.",
+      input: obj({ name: str, watcher: str, project: str }, ["name"]),
+      run: (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) }; },
+    });
+
     ctx.tool("vault.release", {
       internal: true,
       description: "One value, to a module holding a grant for it. `project`, when the grant names one, must match.",
@@ -254,7 +296,7 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", [...SURFACES, "module", "tailnet"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module", "tailnet", "device"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
       obj({ name: str, id: str, session: str }),
       async ({ name, id }, { caller }) => {
@@ -318,13 +360,16 @@ export default {
         return scanEnvFiles(dirs);
       });
 
-    tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
+    tool("vault.audit", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));
 
     tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
       obj({ url: str }, ["url"]), input => vault.match(input));
 
-    tool("vault.unlock", PEOPLE, "Unlock a passphrase vault (the first unlock sets the passphrase).",
+    tool("vault.state", [...SURFACES, ...PHONE], "Whether the vault is open, for the app's empty and locked states: { locked, keystore, unlock: \"passphrase\" | \"none\", items }. Never a value.",
+      obj({}), async () => { const locked = await vault.locked(); return { locked, keystore: vault.kind, unlock: vault.kind === "passphrase" ? "passphrase" : "none", items: locked ? null : (l => (Array.isArray(l) ? l : l.items || []).length)(vault.list({})) }; });
+
+    tool("vault.unlock", [...PEOPLE, ...PHONE], "Unlock a passphrase vault (the first unlock sets the passphrase).",
       obj({ passphrase: str }, ["passphrase"]), input => vault.unlock(input.passphrase),
       presence("Unlock the vault", () => "Unlock the vault"));
 
@@ -344,13 +389,13 @@ export default {
 
     // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
     // callers only: an agent caller has no business mapping who can reach what.
-    tool("vault.grants.status", [...SURFACES, "mcp"], "With vault.relay.grants, whether the tailnet policy grants each pass holder vyre.run/cap/vault for what they hold, by whois now or as last seen at the relay.",
+    tool("vault.grants.status", [...SURFACES, "mcp"], "Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.",
       obj({}), async (_input, { caller }) => {
         if (/(?:^|[\s:])agent:/.test(String(caller))) throw new Error("vault.grants.status is for the owner, not an agent");
         return vault.grantsStatus();
       });
 
-    tool("vault.pass.list", null, "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
+    tool("vault.pass.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
 
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.revokePass(input, caller));
@@ -362,7 +407,7 @@ export default {
         return `Accept a ${t.mode} pass from ${t.owner} holding ${list(t.items)}`;
       }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
-    tool("vault.relay", ["cli", "local", "mcp", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
+    tool("vault.relay", ["cli", "local", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
       (input, { caller }) => vault.relayOut(input, caller));
 
@@ -380,7 +425,7 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.deny(input, caller));
     tool("vault.emergency.remove", null, "End a contact's emergency access and delete its escrow.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.remove(input, caller));
-    tool("vault.emergency.list", null, "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
+    tool("vault.emergency.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
       obj({}), () => vault.emergency.list());
     tool("vault.emergency.request", SURFACES, "Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.",
       obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.request(input, caller),
@@ -436,6 +481,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
         reminders.stop();
         await conns.stop();
@@ -450,31 +496,3 @@ export default {
     };
   },
 };
-
-/**
- * The relay listener's meta in whois mode: the login and the peer are whois's answer for the
- * socket's address and nothing else, whatever the request's headers say. Pure, for tests.
- * @param {{ remoteAddress?: string, login?: string|null }} meta
- * @param {ReturnType<typeof import("../link/transport.js").parseWhois>} w
- */
-export function whoisMeta(meta, w) {
-  const login = w && !w.tagged ? w.login : null;
-  return { ...meta, login, ...(w ? { peer: { login, node: w.node, stableId: w.stableId, tags: w.tags, caps: w.caps } } : {}) };
-}
-
-/**
- * whois of the online, untagged node signed in as `login`, found in `tailscale status --json`
- * (a shared-in node is in Peer too). On demand only: a new pass with grants required, or
- * vault.grants.status. Null when no such node is online or Tailscale is not there.
- * @param {string} login
- */
-async function peerByLogin(login) {
-  const r = await tailscale(["status", "--json"], { timeout: 5000 });
-  if (r.code !== 0) return null;
-  let s;
-  try { s = JSON.parse(r.out); } catch { return null; }
-  const users = s.User || {};
-  const peer = Object.values(s.Peer || {}).find(p => p && p.Online && !(p.Tags || []).length && (p.TailscaleIPs || []).length
-    && users[String(p.UserID)] && users[String(p.UserID)].LoginName === login);
-  return peer ? whois(peer.TailscaleIPs[0]) : null;
-}

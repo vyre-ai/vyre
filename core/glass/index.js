@@ -145,7 +145,10 @@ export default {
       if (t.private) ctx.call("computers.shield", { agent, on: false }).catch(() => {});
     });
 
-    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
+    // The file tools that change a target (upload, move, mkdir, trash) are open to the person's surfaces and to a model: filesFor holds a model to its own computer's files and gives a plain mcp or harness session none.
+    const FILE_WRITERS = new Set(["glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"]);
+    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...(FILE_WRITERS.has(name) ? { callers: FILE_WRITE_CALLERS } : {}), ...extra });
 
     // ---- screens -------------------------------------------------------------------------
 
@@ -251,8 +254,9 @@ export default {
         const held = t && t.surface === surface ? now() - t.since : 0;
         takes.delete(agent);
         emit("glass.released", { target: i.target, surface, held_ms: held, why: "gave back" });
-        await noteThread(agent, surface, held, i.note);
-        return { released: true, held_ms: held };
+        const noted = await noteThread(agent, surface, held, i.note);
+        // `noted` says whether the agent's thread was told: false when it has no thread open, so a screen can say where the note went instead of claiming it arrived.
+        return { released: true, held_ms: held, noted };
         // No presence: giving the agent its keyboard back only returns what it had, and a person
         // at the Deck must never be stuck in control. An agent still cannot call it for a person's
         // surface (surfaceOf).
@@ -260,20 +264,21 @@ export default {
 
     /**
      * Tell the agent its keyboard was taken and given back: who, for how long, and the person's
-     * note. Never anything typed. Best effort: no thread, or no switchboard, and it is skipped.
+     * note. Never anything typed. Best effort: no thread, or no switchboard, and it is skipped. True when the thread was told.
      */
     const noteThread = async (agent, surface, held, note) => {
       try {
         const c = await ctx.call("computers.get", { agent });
         const thread = c.data && c.data.thread;
-        if (!thread) return;
+        if (!thread) return false;
         const from = FROM[surface.split(":")[0]] || surface.split(":")[0];
         const clean = typeof note === "string" ? note.replace(/\s+/g, " ").trim().slice(0, 500) : "";
         const text = `Someone had your keyboard from ${from} for ${duration(held)} and handed it back. The screen may have changed; look before acting.`
           + (clean ? ` Their note: ${clean}` : "");
         const r = await ctx.call("threads.send", { thread: String(thread), text });
         if (r.error && r.error.code !== "no_such_tool") ctx.log(`could not note the hand-back in ${agent}'s thread: ${r.error.message}`);
-      } catch (e) { ctx.log(`could not note the hand-back in ${agent}'s thread: ${/** @type {Error} */ (e).message}`); }
+        return !r.error;
+      } catch (e) { ctx.log(`could not note the hand-back in ${agent}'s thread: ${/** @type {Error} */ (e).message}`); return false; }
     };
 
     // ---- files ---------------------------------------------------------------------------

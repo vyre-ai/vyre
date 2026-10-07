@@ -1,0 +1,260 @@
+// @ts-check
+// Kernel type definitions and values <-> Twenty metadata and rows. Pure, no network.
+//
+// Twenty has no stage rules, no sealed values and no polymorphic links, so those are kept as plain
+// fields (a select, a JSON reference, text) and enforced by the gateway (spec 5.4). A link to a TYPE (`to`)
+// is a real Twenty RELATION: a single link is a MANY_TO_ONE field with its named inverse (ONE_TO_MANY) on the
+// target, held in the `<field>Id` column, and a `many` link is a hidden junction object (Twenty has no native
+// many-to-many), read and written by the store. A link to ANY record (no `to`) stays the urn as text: a
+// relation needs one target. The gateway owns the rules and the ids; the ids are Twenty's own row ids, so a
+// link is the target's id and the urn is rebuilt from it. A sealed field holds the SealedRefValue the kernel
+// gives it (reference and flags), never a value.
+
+import { checkValue, isSealedRef } from "../../kernel/store/values.js";
+
+export class PlanError extends Error {
+  /** @param {string} code @param {string} message */
+  constructor(code, message) { super(message); this.code = code; }
+}
+
+export const camel = (/** @type {string} */ s) => s.replace(/[_-]([a-z0-9])/g, (_, c) => c.toUpperCase());
+export const pascal = (/** @type {string} */ s) => { const c = camel(s); return c[0].toUpperCase() + c.slice(1); };
+export const optionValue = (/** @type {string} */ c) => c.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+/** Names Twenty refuses and would rename with a "Custom" suffix (twenty-shared reserved-metadata-name-keywords, MIT). */
+export const TWENTY_RESERVED = new Set(["approvedAccessDomain", "approvedAccessDomains", "appToken", "appTokens", "billingCustomer", "billingCustomers", "billingEntitlement", "billingEntitlements", "billingMeter", "billingMeters", "billingProduct", "billingProducts", "billingSubscription", "billingSubscriptions", "billingSubscriptionItem", "billingSubscriptionItems", "featureFlag", "featureFlags", "job", "jobs", "keyValuePair", "keyValuePairs", "pageLayout", "pageLayouts", "pageLayoutTab", "pageLayoutTabs", "pageLayoutWidget", "pageLayoutWidgets", "twoFactorMethod", "twoFactorMethods", "user", "users", "userWorkspace", "userWorkspaces", "role", "roles", "userWorkspaceRole", "userWorkspaceRoles", "plan", "plans", "event", "events", "field", "fields", "link", "links", "currency", "currencies", "fullNames", "address", "addresses", "type", "types", "object", "objects", "index", "relation", "relations", "aggregate", "connect", "create", "disconnect", "search", "searches"]);
+const safe = (/** @type {string} */ n) => (TWENTY_RESERVED.has(n) ? n + "Custom" : n);
+/** Standard Twenty objects and the system columns on every object: a Vyre type or field may not take them. */
+const STANDARD_OBJECTS = new Set(["person", "people", "company", "companies", "opportunity", "opportunities", "task", "tasks", "note", "notes", "attachment", "attachments", "workspaceMember", "workspaceMembers", "dashboard", "dashboards", "workflow", "workflows", "workflowRun", "workflowRuns", "workflowVersion", "favorite", "favorites", "message", "messages", "calendarEvent", "calendarEvents", "timelineActivity", "blocklist", "connectedAccount"]);
+const SYSTEM_FIELDS = new Set(["id", "name", "createdAt", "updatedAt", "deletedAt", "createdBy", "updatedBy", "position", "searchVector", "timelineActivities", "attachments", "favorites", "noteTargets", "taskTargets", "vyreVersion", "vyreHeld"]);
+
+const COLORS = ["blue", "turquoise", "purple", "orange", "green", "gray", "red", "pink", "yellow", "sky"];
+export const VERSION_FIELD = "vyreVersion";
+/** The kernel attributes the store mirrors as real fields so Twenty can filter by them (the gateway's `attr_filter`): attribute name to column. */
+export const ATTR_COLUMNS = Object.freeze({ project: "vyreProject", owner: "vyreOwner", created_by: "vyreCreatedBy", sensitivity: "vyreSensitivity" });
+/** Twenty keeps a soft-deleted row in its unique index, but a removed record must free its value. A type with unique fields has this hidden JSON column: on remove the values move into it (and the unique columns go null), on restore they move back. */
+export const HELD_FIELD = "vyreHeld";
+/** @param {TypePlan} p */
+export const uniqueFields = (p) => p.fields.filter((f) => f.def.unique === true);
+
+/**
+ * @typedef {{ vyre: string, kind: string, twenty: string, type: string, def: any, options?: { value: string, label: string, position: number, color: string }[],
+ *   settings?: any, isTitle: boolean, sealed: boolean, column?: string, rel?: { to: string, many: boolean, space: string, inverseLabel: string } }} FieldPlan
+ * @typedef {{ vyre: string, singular: string, plural: string, label: string, icon: string, def: any, fields: FieldPlan[],
+ *   byVyre: Map<string, FieldPlan>, byTwenty: Map<string, FieldPlan>, title: string | null }} TypePlan
+ */
+
+/** @param {any} f @returns {{ type: string, settings?: any, options?: any[] }} */
+function twentyKind(f) {
+  const opts = () => (f.options ?? []).map((/** @type {string} */ o, /** @type {number} */ i) => ({ value: optionValue(o), label: o, position: i, color: COLORS[i % COLORS.length] }));
+  switch (f.kind) {
+    case "text": case "rich_text": case "url": case "link": return { type: "TEXT" };
+    case "number": return { type: "NUMBER", settings: { dataType: "float", decimals: 4, type: "number" } };
+    case "money": return { type: "CURRENCY" };
+    case "boolean": return { type: "BOOLEAN" };
+    case "date": return { type: "DATE" };
+    case "datetime": return { type: "DATE_TIME" };
+    case "choice": case "stage": return { type: "SELECT", options: opts() };
+    case "multi_choice": return { type: "MULTI_SELECT", options: opts() };
+    case "rating": return { type: "RATING" };
+    case "actor": case "file": case "address": case "phones": case "emails": case "urls": case "sealed": return { type: "RAW_JSON" };
+    default: throw new PlanError("invalid", `Unknown field kind ${f.kind}`);
+  }
+}
+
+/** @param {string} n */
+function plural(n) { return /(s|x|z|ch|sh)$/.test(n) ? n + "es" : /[^aeiou]y$/.test(n) ? n.slice(0, -1) + "ies" : n + "s"; }
+
+/** @param {any} def a kernel TypeDefinition @param {{ plural?: string, space?: string, inverseLabels?: Map<string, string> }} [hint] `space` is the Space's id: a link's urn is rebuilt from the target's row id and it @returns {TypePlan} */
+export function planType(def, hint = {}) {
+  if (!def || typeof def.name !== "string" || !/^[a-z][a-z0-9_-]*$/.test(def.name)) throw new PlanError("invalid", "A type name is lowercase letters, digits, hyphens and underscores");
+  let singular = safe(camel(def.name));
+  let pl = safe(hint.plural ?? camel(plural(def.name)));
+  // A Vyre type may share a name with a standard Twenty object (task, note, person): it is stored under a vyre prefix and mapped back by `planBySingular`
+  if (STANDARD_OBJECTS.has(singular) || STANDARD_OBJECTS.has(pl)) { const up = (/** @type {string} */ n) => "vyre" + n[0].toUpperCase() + n.slice(1); if (!hint.plural) { singular = up(singular); pl = up(pl); } else singular = up(singular); }
+  if (singular === pl) throw new PlanError("invalid", `Type "${def.name}" needs a plural that differs from its name`);
+  // the title is the first text field that is not unique: Twenty's own `name` column cannot carry a unique index through our define
+  const title = def.fields.find((/** @type {any} */ f) => f.kind === "text" && f.unique !== true)?.name ?? null;
+  /** @type {FieldPlan[]} */ const fields = [];
+  for (const f of def.fields) {
+    const isTitle = f.name === title;
+    const tw = isTitle ? "name" : safe(camel(f.name));
+    if (!isTitle && SYSTEM_FIELDS.has(tw)) throw new PlanError("invalid", `Field "${f.name}" of ${def.name} collides with a name Twenty uses on every object`);
+    // a link to a type is a relation (or, for a list, a junction); a link to any record, and every other kind, is a plain column
+    const rel = !isTitle && f.kind === "link" && typeof f.to === "string" && f.to ? { to: f.to, many: f.many === true, space: hint.space ?? "", inverseLabel: String(f.inverse && f.inverse.label ? f.inverse.label : hint.inverseLabels?.get(`${def.name}.${f.name}`) ?? `${def.label ?? def.name} ${f.label ?? f.name}`) } : null;
+    const k = rel ? { type: rel.many ? "JUNCTION" : "RELATION" } : isTitle ? { type: "TEXT" } : twentyKind(f);
+    if (rel && !rel.space) throw new PlanError("invalid", `${def.name}.${f.name} is a link: the plan needs the Space's id`);
+    if (k.options) { const vals = k.options.map((o) => o.value); if (new Set(vals).size !== vals.length || vals.some((v) => !v)) throw new PlanError("invalid", `The options of ${def.name}.${f.name} are not distinct once written as Twenty values`); }
+    fields.push({ vyre: f.name, kind: f.kind, twenty: tw, type: k.type, def: f, options: k.options, settings: k.settings, isTitle, sealed: f.kind === "sealed", ...(rel ? { rel, ...(rel.many ? {} : { column: `${tw}Id` }) } : {}) });
+  }
+  const byTwenty = new Map(fields.map((f) => [f.twenty, f]));
+  if (byTwenty.size !== fields.length) throw new PlanError("invalid", `Two fields of ${def.name} map to the same Twenty name`);
+  for (const f of fields) if (f.column && (byTwenty.has(f.column) || SYSTEM_FIELDS.has(f.column))) throw new PlanError("invalid", `The link ${def.name}.${f.vyre} would use the column ${f.column}, which another field of ${def.name} already has`);
+  return { vyre: def.name, singular, plural: pl, label: def.label ?? def.name, icon: def.icon ?? "IconBox", def, fields, byVyre: new Map(fields.map((f) => [f.vyre, f])), byTwenty, title };
+}
+
+/** The selection set. @param {TypePlan} p */
+export function selection(p) {
+  return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...(uniqueFields(p).length ? [HELD_FIELD] : []), ...p.fields.filter((f) => f.type !== "JUNCTION").map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.type === "RELATION" ? /** @type {string} */ (f.column) : f.twenty))].join(" ");
+}
+
+/**
+ * Validate a whole data object against the definition, with the kernel's own validators so every store agrees on what is valid.
+ * Returns an error string, "sealed_value_refused", or null. @param {TypePlan} p @param {Record<string, any>} data
+ */
+export function checkData(p, data) {
+  for (const k of Object.keys(data)) if (!p.byVyre.has(k)) return { code: "unknown_field", message: `${p.vyre} has no field ${k}` };
+  for (const f of p.fields) {
+    const err = checkValue(f.def, data[f.vyre]);
+    if (err === "sealed_value_refused") return { code: "sealed_value_refused", message: `${f.vyre} is sealed: a value is never stored, only a reference` };
+    if (err) return { code: "invalid", message: err };
+    const v = data[f.vyre];
+    if (v !== null && v !== undefined) {
+      if (f.kind === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { code: "invalid", message: `${f.vyre} must be a date written YYYY-MM-DD` };
+      if (f.kind === "sealed" && Object.keys(v).some((k) => !["sealed", "ref", "present", "valid_format", "set_at", "hint"].includes(k))) return { code: "sealed_value_refused", message: `${f.vyre} holds a reference only` };
+    }
+  }
+  return null;
+}
+
+/** Kernel value -> Twenty value. @param {FieldPlan} f @param {any} v */
+function toTwenty(f, v) {
+  if (v === null || v === undefined) return null;
+  switch (f.kind) {
+    case "money": return { amountMicros: Math.round(v.amount * 1_000_000), currencyCode: v.currency };
+    case "choice": case "stage": return optionValue(v);
+    case "multi_choice": return v.map(optionValue);
+    case "datetime": return new Date(v).toISOString();
+    case "rating": return `RATING_${v}`;
+    case "link": return v.urn;
+    default: return v;
+  }
+}
+/** Twenty value -> kernel value, or undefined when absent. @param {FieldPlan} f @param {any} v */
+export function fromTwenty(f, v) {
+  if (v === null || v === undefined || v === "") return undefined;
+  switch (f.kind) {
+    case "money": return v.amountMicros == null ? undefined : { amount: Number(v.amountMicros) / 1_000_000, currency: v.currencyCode };
+    case "choice": case "stage": return f.def.options?.find((/** @type {string} */ o) => optionValue(o) === v);
+    case "multi_choice": return Array.isArray(v) && v.length ? v.map((x) => f.def.options?.find((/** @type {string} */ o) => optionValue(o) === x)).filter((x) => x !== undefined) : undefined;
+    case "rating": return Number(String(v).replace("RATING_", ""));
+    case "link": return { urn: v };
+    case "number": return typeof v === "string" ? Number(v) : v;
+    case "date": return String(v).slice(0, 10);
+    case "datetime": return new Date(v).toISOString();
+    case "phones": case "emails": case "urls": return Array.isArray(v) ? v : undefined; // stored as JSON, so an empty list stays an empty list
+    default: return v;
+  }
+}
+
+/** The row id a link value names, checked against the Space and the link's target type. @param {FieldPlan} f @param {any} v */
+export function idOfLink(f, v) {
+  const rel = /** @type {NonNullable<FieldPlan["rel"]>} */ (f.rel);
+  const parts = v && typeof v.urn === "string" ? v.urn.split("/") : [];
+  if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== rel.space || parts[3] !== rel.to || !/^[0-9a-f-]{36}$/.test(parts[4])) throw new PlanError("invalid", `${f.vyre} must name a ${rel.to} of this Space`);
+  return parts[4];
+}
+/** The urn of the row a link's column holds. @param {FieldPlan} f @param {string} id */
+export const urnOfLink = (f, id) => { const rel = /** @type {NonNullable<FieldPlan["rel"]>} */ (f.rel); return `vyre://${rel.space}/${rel.to}/${id}`; };
+
+/** @param {TypePlan} p @param {Record<string, any>} patch null clears a field @returns {Record<string, any>} */
+export function toInput(p, patch) {
+  /** @type {Record<string, any>} */ const out = {};
+  for (const [k, v] of Object.entries(patch)) {
+    const f = /** @type {FieldPlan} */ (p.byVyre.get(k));
+    if (f.type === "JUNCTION") continue; // a list link is written by the store, row by row in its junction
+    if (f.type === "RELATION") { out[/** @type {string} */ (f.column)] = v === null || v === undefined ? null : idOfLink(f, v); continue; }
+    out[f.twenty] = toTwenty(f, v);
+  }
+  return out;
+}
+
+/** A Twenty row -> the kernel's StoredRecord. @param {TypePlan} p @param {any} row */
+export function fromRow(p, row) {
+  // a removed record shows the unique values it held
+  if (row.deletedAt && row[HELD_FIELD] && typeof row[HELD_FIELD] === "object") row = { ...row, ...row[HELD_FIELD] };
+  /** @type {Record<string, any>} */ const data = {};
+  for (const f of p.fields) {
+    if (f.type === "RELATION") { const id = row[/** @type {string} */ (f.column)]; if (id) data[f.vyre] = { urn: urnOfLink(f, id) }; continue; }
+    if (f.type === "JUNCTION") { const l = row.__many && row.__many[f.vyre]; if (Array.isArray(l) && l.length) data[f.vyre] = l.map((/** @type {string} */ id) => ({ urn: urnOfLink(f, id) })); continue; }
+    const v = fromTwenty(f, row[f.twenty]); if (v !== undefined) data[f.vyre] = v;
+  }
+  const rec = { type: p.vyre, id: row.id, version: row[VERSION_FIELD] == null ? 1 : Number(row[VERSION_FIELD]), data, created_at: Date.parse(row.createdAt), updated_at: Date.parse(row.updatedAt), ...(row.deletedAt ? { deleted_at: Date.parse(row.deletedAt) } : {}) };
+  return /** @type {any} */ (rec);
+}
+
+const OP_SIMPLE = { eq: "eq", ne: "neq", lt: "lt", lte: "lte", gt: "gt", gte: "gte" };
+
+/**
+ * Kernel filter -> Twenty filter input (a JSON variable, so enum values need no quoting).
+ * @param {TypePlan} p @param {any} f @returns {Record<string, any> | undefined}
+ */
+export function toFilter(p, f) {
+  if (!f) return undefined;
+  if (f.and) { const sub = f.and.map((/** @type {any} */ x) => toFilter(p, x)).filter(Boolean); return sub.length ? { and: sub } : undefined; }
+  if (f.or) { const sub = f.or.map((/** @type {any} */ x) => toFilter(p, x)).filter(Boolean); return sub.length ? { or: sub } : undefined; }
+  if (f.not) { const s = toFilter(p, f.not); return s ? { not: s } : undefined; }
+  if (typeof f.field !== "string") throw new PlanError("invalid", "a filter names a field");
+  // Twenty refuses an empty `in` list; "in nothing" matches nothing, and `id` is never null
+  if (f.op === "in" && Array.isArray(f.value) && f.value.length === 0) return { id: { is: "NULL" } };
+  if (f.field === "id") return { id: sys(f.op, f.value) };
+  if (f.field === "created_at" || f.field === "updated_at") return { [f.field === "created_at" ? "createdAt" : "updatedAt"]: sys(f.op, typeof f.value === "number" ? new Date(f.value).toISOString() : f.value) };
+  if (f.field === "version") return { [VERSION_FIELD]: sys(f.op, f.value) };
+  if (typeof f.field === "string" && f.field.startsWith("attr:") && Object.hasOwn(ATTR_COLUMNS, f.field.slice(5))) return { [/** @type {any} */ (ATTR_COLUMNS)[f.field.slice(5)]]: sys(f.op, f.value) };
+  const fp = p.byVyre.get(f.field);
+  if (!fp) throw new PlanError("unknown_field", `${p.vyre} has no field ${f.field}`);
+  if (fp.sealed) throw new PlanError("invalid", `${p.vyre}.${f.field} is sealed and cannot be filtered`);
+  if (fp.type === "JUNCTION") throw new PlanError("invalid", `${p.vyre}.${f.field} is a list of links: the store answers a filter on it from its junction`);
+  if (fp.type === "RELATION") {
+    const c = /** @type {string} */ (fp.column);
+    const idOf = (/** @type {any} */ x) => idOfLink(fp, x);
+    if (f.op === "is_null") return { [c]: { is: "NULL" } };
+    if (f.op === "eq" || f.op === "ne") {
+      if (f.value === null || f.value === undefined) return { [c]: { is: f.op === "eq" ? "NULL" : "NOT_NULL" } };
+      return { [c]: { [f.op === "eq" ? "eq" : "neq"]: idOf(f.value) } };
+    }
+    if (f.op === "in") { if (!Array.isArray(f.value)) throw new PlanError("invalid", "in takes a list"); return { [c]: { in: f.value.map(idOf) } }; }
+    throw new PlanError("invalid", `${fp.kind} fields support eq, ne, in and is_null only`);
+  }
+  const t = fp.twenty;
+  const one = (/** @type {any} */ x) => toTwenty(fp, x);
+  if (f.op === "is_null") return fp.type === "CURRENCY" ? { [t]: { amountMicros: { is: "NULL" } } } : fp.type === "RAW_JSON" ? { [t]: { is: "NULL" } } : { [t]: { is: "NULL" } };
+  if (f.op === "contains") {
+    if (fp.type === "MULTI_SELECT") return { [t]: { containsAny: [one([f.value])[0]] } };
+    if (fp.type === "TEXT") return { [t]: { ilike: `%${String(f.value).replace(/[%_\\]/g, "\\$&")}%` } };
+    throw new PlanError("invalid", `contains works on text and multi_choice fields, not ${fp.kind}`);
+  }
+  if (f.op === "in") { if (!Array.isArray(f.value)) throw new PlanError("invalid", "in takes a list"); return fp.type === "CURRENCY" ? { [t]: { amountMicros: { in: f.value.map((/** @type {any} */ x) => Math.round(x.amount * 1e6)) } } } : { [t]: { in: f.value.map(one) } }; }
+  if (!(f.op in OP_SIMPLE)) throw new PlanError("invalid", `Unknown operator ${f.op}`);
+  const op = /** @type {any} */ (OP_SIMPLE)[f.op];
+  if (fp.type === "CURRENCY") return { [t]: { amountMicros: { [op]: Math.round((typeof f.value === "object" && f.value ? f.value.amount : f.value) * 1e6) } } };
+  if (fp.type === "RAW_JSON" || fp.type === "MULTI_SELECT") throw new PlanError("invalid", `${fp.kind} fields support contains and is_null only`);
+  if (f.op === "ne" && (f.value === null || f.value === undefined)) return { [t]: { is: "NOT_NULL" } };
+  if (f.op === "eq" && (f.value === null || f.value === undefined)) return { [t]: { is: "NULL" } };
+  return { [t]: { [op]: one(f.value) } };
+}
+/** @param {string} op @param {any} v */
+function sys(op, v) {
+  if (op === "in") return { in: v };
+  if (!(op in OP_SIMPLE)) throw new PlanError("invalid", `Unknown operator ${op}`);
+  return { [/** @type {any} */ (OP_SIMPLE)[op]]: v };
+}
+
+/** @param {TypePlan} p @param {{ field: string, dir: "asc" | "desc" }[] | undefined} sort */
+export function toOrderBy(p, sort) {
+  /** @type {any[]} */ const out = [];
+  for (const s of sort ?? []) {
+    const dir = s.dir === "desc" ? "DescNullsLast" : "AscNullsFirst";
+    if (s.field === "id") { out.push({ id: dir }); continue; }
+    if (s.field === "created_at" || s.field === "updated_at") { out.push({ [s.field === "created_at" ? "createdAt" : "updatedAt"]: dir }); continue; }
+    if (s.field === "version") { out.push({ [VERSION_FIELD]: dir }); continue; }
+    const f = p.byVyre.get(s.field);
+    if (!f) throw new PlanError("unknown_field", `${p.vyre} has no field ${s.field}`);
+    if (f.sealed || f.type === "RAW_JSON" || f.type === "MULTI_SELECT" || f.type === "JUNCTION") throw new PlanError("invalid", `${p.vyre}.${s.field} cannot be sorted`);
+    if (f.type === "RELATION") { out.push({ [/** @type {string} */ (f.column)]: dir }); continue; }
+    out.push({ [f.twenty]: f.type === "CURRENCY" ? { amountMicros: dir } : dir });
+  }
+  if (!out.some((o) => "id" in o)) out.push({ id: "AscNullsFirst" });
+  return out;
+}
+export { isSealedRef };

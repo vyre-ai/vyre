@@ -61,7 +61,8 @@ const GIT_URL = /^(https:\/\/|git@|file:\/\/)/;
  * @typedef {{ ok: boolean, running?: boolean, note?: string }} Restarted
  * @typedef {{ home?: string, repo?: string, git?: string, node?: string, io?: IO, supervisor?: string,
  *   restart?: (home: string) => Promise<Restarted>,
- *   modules?: (home: string) => Promise<{ data?: any, error?: any }> }} Deps
+ *   modules?: (home: string) => Promise<{ data?: any, error?: any }>,
+ *   proposeKit?: (home: string, kit: any) => Promise<any> }} Deps
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -604,6 +605,9 @@ function summary(m) {
     { label: "Vault items", value: list(needs.vault) },
     { label: "Network", value: list(needs.network) },
     { label: "Credentials", value: list(creds) },
+    { label: "Records", value: needs.kernel && Array.isArray(needs.kernel.records) && needs.kernel.records.length ? `makes, reads and changes ${needs.kernel.records.join(", ")} records, as you` : "none" },
+    { label: "Kits", value: Array.isArray(m.does && m.does.kits) && m.does.kits.length ? `${m.does.kits.join(", ")}: record types, fields and Flows it adds, each waiting for your own yes` : "none" },
+    { label: "Files", value: needs.kernel && Array.isArray(needs.kernel.files) && needs.kernel.files.length ? `writes files in ${needs.kernel.files.join(", ")} in your Drive` : "none" },
     ...(m.replaces ? [{ label: "Replaces", value: `Vyre's own ${m.replaces}` }] : []),
   ];
 }
@@ -694,14 +698,30 @@ async function install(args, flags, o, deps) {
     fs.renameSync(staged, dest);
     o.say(`  ${signal("added")} ${bold(name)} ${dim(dest)}`);
     if (skipped.length) o.say(dim(`  left out ${skipped.length} symlink${skipped.length === 1 ? "" : "s"}: ${skipped.slice(0, 3).join(", ")}`));
-    return reload(o, deps, { home, name, version: m.version, dest, src, skipped, fields });
+    return reload(o, deps, { home, name, version: m.version, dest, src, skipped, fields, manifest: m });
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
 
+/** Propose each Kit file a module ships (does.kits) through vyred, as the person at this terminal: the answer says where the card is waiting. @param {any} deps @param {string} home @param {string} dest @param {any} manifest */
+async function proposeKits(deps, home, dest, manifest) {
+  const files = Array.isArray(manifest && manifest.does && manifest.does.kits) ? manifest.does.kits : [];
+  const askKit = deps.proposeKit || ((/** @type {string} */ h, /** @type {any} */ kit) => request("POST", "/v1/tools/flows.kit.propose", { kit }, { root: h, caller: "cli" }));
+  /** @type {{ file: string, ok: boolean, said: string }[]} */ const out = [];
+  for (const file of files) {
+    try {
+      const kit = JSON.parse(fs.readFileSync(path.join(dest, file), "utf8"));
+      const r = await askKit(home, kit);
+      const d = r && (r.data || r);
+      out.push(r && r.error ? { file, ok: false, said: String(r.error.message || r.error.code) } : { file, ok: true, said: d && d.ok === false ? `not proposed: ${(d.errors || []).map((/** @type {any} */ e) => e.message).join("; ")}` : "its card is waiting for your yes" });
+    } catch (e) { out.push({ file, ok: false, said: String(/** @type {any} */ (e).message || e).slice(0, 160) }); }
+  }
+  return out;
+}
+
 /** Restart vyred so it loads the module, then say what state the module is in. */
-async function reload(o, deps, { home, name, version, dest, src, skipped, fields }) {
+async function reload(o, deps, { home, name, version, dest, src, skipped, fields, manifest }) {
   const base = { installed: true, module: name, version, dir: dest, from: src, skipped };
   const card = (/** @type {string} */ state, /** @type {{ label: string, value: any }[]} */ more) => ({ kind: "card", title: `added ${name}`, state, fields: [...fields, { label: "Folder", value: dest }, ...more] });
   if ((deps.supervisor ?? process.env.VYRE_SUPERVISOR) === "docker") {
@@ -723,7 +743,11 @@ async function reload(o, deps, { home, name, version, dest, src, skipped, fields
   const data = { ...base, reload: "restarted", state, ...(error ? { error } : {}) };
   const bad = ["failed", "invalid"].includes(state);
   const view = card(state === "running" ? "ok" : bad ? "failed" : "unknown", [{ label: "State", value: state }, ...(error ? [{ label: "Error", value: error }] : [])]);
+  // The Kits it ships are proposed for the person's yes (a card each); the module itself is already added.
+  const kits = state === "running" ? await proposeKits(deps, home, dest, manifest) : [];
+  if (kits.length) { data.kits = kits; view.fields.push({ label: "Kits", value: kits.map(k => `${k.file}: ${k.said}`).join("; ") }); }
   return o.done(bad ? EXIT.FAILED : EXIT.OK, data, view, () => {
+    for (const k of kits) out(`  ${signal(k.ok ? "waiting" : "failed")} ${dim(`${k.file}: ${k.said}`)}`);
     if (state === "running") out(`  ${signal("running")} ${dim(`vyre call ${name}.<tool> runs its tools · vyre tools lists them`)}`);
     else if (bad) { out(beacon(`  ${state}: ${error || "no reason given"}`)); out(dim(`  next: fix it in ${dest}, then vyre down && vyre up`)); }
     else if (state === "off") out(dim(`  off on this machine: its roles leave this one out, or config.json modules.disable names it`));

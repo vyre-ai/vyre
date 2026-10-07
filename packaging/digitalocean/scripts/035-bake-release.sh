@@ -13,6 +13,7 @@ set -euo pipefail
 j=$(tr -d '\n' </var/lib/vyre/release/release.json)
 BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
 COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+# shellcheck disable=SC2016 # the pattern matches a literal ${...} in install-box.sh
 COSIGN_IMAGE=$(sed -n 's/^COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-\(.*\)}$/\1/p' /var/lib/vyre/release/install-box.sh | head -n 1)
 for ref in $BOX_REF $COMPUTER_REF $COSIGN_IMAGE; do
   case "$ref" in ghcr.io/*@sha256:*) docker pull -q "$ref" >/dev/null ;; *) echo "refusing to pull $ref: not a ghcr.io digest" >&2; exit 1 ;; esac

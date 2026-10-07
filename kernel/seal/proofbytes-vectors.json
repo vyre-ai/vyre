@@ -1,0 +1,90 @@
+{
+ "note": "proofBytes(proof) = UTF-8 of sorted-key JSON, no whitespace, of the proof WITHOUT `signature` and WITHOUT `assertion`. native-core's build must reproduce `bytes` exactly for each `proof`.",
+ "vectors": [
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_ab12cd34",
+    "payload_hash": "p_hash",
+    "decision": "task.decide",
+    "chain_hash": "c_hash",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n1"
+   },
+   "bytes": "{\"chain_hash\":\"c_hash\",\"decision\":\"task.decide\",\"expires_at\":1800000060000,\"issued_at\":1800000000000,\"key_id\":\"dk_ab12cd34\",\"nonce\":\"n1\",\"payload_hash\":\"p_hash\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_ab12cd34",
+    "payload_hash": "p_hash",
+    "decision": "task.decide",
+    "chain_hash": "c_hash",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n1",
+    "signature": "SIGSIGSIG",
+    "assertion": "QVNTRVJUSU9O"
+   },
+   "bytes": "{\"chain_hash\":\"c_hash\",\"decision\":\"task.decide\",\"expires_at\":1800000060000,\"issued_at\":1800000000000,\"key_id\":\"dk_ab12cd34\",\"nonce\":\"n1\",\"payload_hash\":\"p_hash\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_zz",
+    "payload_hash": "é\"quote\\slash",
+    "decision": "grant.create",
+    "chain_hash": "ch",
+    "issued_at": 1,
+    "expires_at": 2,
+    "nonce": "nn",
+    "extra": {
+     "b": 2,
+     "a": [
+      3,
+      1,
+      {
+       "z": 1,
+       "y": 2
+      }
+     ]
+    }
+   },
+   "bytes": "{\"chain_hash\":\"ch\",\"decision\":\"grant.create\",\"expires_at\":2,\"extra\":{\"a\":[3,1,{\"y\":2,\"z\":1}],\"b\":2},\"issued_at\":1,\"key_id\":\"dk_zz\",\"nonce\":\"nn\",\"payload_hash\":\"é\\\"quote\\\\slash\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "note": "presence over the peer wire: `home` and `challenge` are signed like every other field",
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_remote1",
+    "payload_hash": "ph_remote",
+    "decision": "grant.invite",
+    "chain_hash": "ch_remote",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n_remote",
+    "home": "spc_homehomehome",
+    "challenge": "chal_0123456789abcdef"
+   },
+   "bytes": "{\"chain_hash\":\"ch_remote\",\"challenge\":\"chal_0123456789abcdef\",\"decision\":\"grant.invite\",\"expires_at\":1800000060000,\"home\":\"spc_homehomehome\",\"issued_at\":1800000000000,\"key_id\":\"dk_remote1\",\"nonce\":\"n_remote\",\"payload_hash\":\"ph_remote\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "note": "presence over the peer wire: `home` and `challenge` are signed like every other field",
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_remote1",
+    "payload_hash": "ph_remote",
+    "decision": "grant.invite",
+    "chain_hash": "ch_remote",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n_remote",
+    "home": "spc_other0000other",
+    "challenge": "chal_0123456789abcdef",
+    "assertion": "ignored-in-the-bytes"
+   },
+   "bytes": "{\"chain_hash\":\"ch_remote\",\"challenge\":\"chal_0123456789abcdef\",\"decision\":\"grant.invite\",\"expires_at\":1800000060000,\"home\":\"spc_other0000other\",\"issued_at\":1800000000000,\"key_id\":\"dk_remote1\",\"nonce\":\"n_remote\",\"payload_hash\":\"ph_remote\",\"signer\":\"secure_enclave\"}"
+  }
+ ]
+}

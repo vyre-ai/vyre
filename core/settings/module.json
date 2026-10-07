@@ -2,11 +2,55 @@
   "name": "settings",
   "version": "0.1.0",
   "description": "One way to read and change every setting, at account, project, device or session level, wherever it is kept.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": ["settings.schema", { "name": "settings.get", "projectArg": "project" }, "settings.set", "settings.reset", "settings.resolve", { "name": "settings.snapshot", "projectArg": "project" }, "settings.write", { "name": "settings.request", "projectArg": "project" }, "settings.undo", "settings.changes"] },
-  "watches": { "emits": ["settings.changed", "settings.loosened"] },
-  "shows": { "deck": ["settings"], "cli": [] },
-  "needs": {},
+  "does": {
+    "reads": [
+      "settings.get"
+    ],
+    "tools": [
+      "settings.schema",
+      {
+        "name": "settings.get",
+        "projectArg": "project"
+      },
+      "settings.set",
+      "settings.reset",
+      "settings.resolve",
+      {
+        "name": "settings.snapshot",
+        "projectArg": "project",
+        "effect": "read"
+      },
+      "settings.write",
+      {
+        "name": "settings.request",
+        "projectArg": "project",
+        "effect": "write"
+      },
+      "settings.undo",
+      "settings.changes"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "settings.changed",
+      "settings.loosened"
+    ]
+  },
+  "shows": {
+    "deck": [
+      "settings"
+    ],
+    "cli": []
+  },
+  "needs": {
+    "kernel": {
+      "actions": []
+    }
+  },
   "teaches": {}
 }

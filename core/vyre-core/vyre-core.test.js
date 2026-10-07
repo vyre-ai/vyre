@@ -1,8 +1,9 @@
 // @ts-check
 // vyre-core phase 1 (ADR 0040): only the owner's uid gets an answer, and a write proves itself to
 // core's own keys with a method core can check itself. Runs on Linux; the _vyre account and
-// LOCAL_PEERCRED are a Mac check (docs/work/vyre-core-plan.md).
+// LOCAL_PEERCRED are a Mac check (team/archive/work-journals/vyre-core-plan.md).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -25,6 +26,7 @@ async function core(t, o = {}) {
   const socket = path.join(dir, "c.sock");
   const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, version: "test", dev: true, ...o });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   return { ...c, socket, dir };
 }
 

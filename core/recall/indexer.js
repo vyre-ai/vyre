@@ -16,6 +16,13 @@ import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
 import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/secret-shapes.js";
 import { chunks, encode } from "./embed.js";
+import { scrubText } from "./sealed.js";
+
+/** Bumped when what the indexer links changes: every session is then read once more for its links (turns are not touched). */
+export const LINKS_VERSION = "1";
+
+/** Credentials, then values shaped like a sealed class (core/recall/sealed.js): the one cleaning every turn and title gets on the way in. @param {string} text */
+const clean = text => scrubText(redact(text)).text;
 
 /** Let the event loop breathe between files, so vyred keeps answering while it indexes. */
 const breathe = () => new Promise(r => setImmediate(r));
@@ -48,6 +55,7 @@ export class Indexer {
    * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
    *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void,
    *           origin?: (session: string) => Promise<{ known?: boolean, human?: boolean } | null | undefined>,
+   *           capture?: (c: { session: string, rewritten: boolean, cwd?: string | null, lines: { seq: number, role: string, text: string, at: number | null }[] }) => Promise<void>,
    *           accountsHome?: string | null }} [hooks]
    *   origin: the Switchboard's own record of a session (threads.origin). For a transcript under an
    *   account folder, whether it is a person's comes only from this, never from the transcript: no
@@ -59,7 +67,13 @@ export class Indexer {
     this.log = hooks.log || (() => {});
     this.onVector = hooks.onVector || (() => {});
     this.origin = hooks.origin || null;
+    /** The capture port: the same scrubbed turns this pass just kept are handed on once, for the Space's memory (work.know.capture). It never fails an index pass. */
+    this.capture = hooks.capture || null;
+    /** @type {Promise<void> | null} the capture calls so far, chained: a test awaits it */
+    this.captured = null;
     this.accountsHome = hooks.accountsHome === undefined ? defaultAccountsHome() : hooks.accountsHome;
+    /** False until every session already indexed has been read once for its links (the first pass after the table appears); then true for the life of the process. */
+    this.linked = this.linksDone();
     /** @type {Map<string, { at: number, human: boolean }>} */
     this.origins = new Map();
     this.q = {
@@ -71,6 +85,8 @@ export class Indexer {
       delTurns: db.prepare("DELETE FROM recall_turns WHERE session = ?"),
       delVectors: db.prepare("DELETE FROM recall_vectors WHERE session = ?"),
       addTurn: db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text, provider, model) VALUES (?,?,?,?,?,?,?)"),
+      addLink: db.prepare("INSERT OR IGNORE INTO recall_links (session, seq, kind, ref) VALUES (?,?,?,?)"),
+      delLinks: db.prepare("DELETE FROM recall_links WHERE session = ?"),
       put: db.prepare(`INSERT INTO recall_sessions (id, file, cwd, name, title, started, ended, turns, human, parent, bytes, mtime)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET file=excluded.file, cwd=COALESCE(excluded.cwd, cwd),
@@ -111,8 +127,16 @@ export class Indexer {
       if (pace && spent > 2) await pace(spent); else await breathe();
     }
     s.ms = Date.now() - t0;
+    // A whole pass that read every session (not stopped, none failed) has linked them all: from here an unchanged file is skipped again.
+    if (!this.linked && !stopped() && s.failed === 0) { this.q.meta.run("links", LINKS_VERSION); this.linked = true; }
     this.q.meta.run("last_index", JSON.stringify({ at: Date.now(), ...s }));
     return s;
+  }
+
+  /** True when every session indexed so far has been read for its links (this version's rules). */
+  linksDone() {
+    const r = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'links'").get());
+    return Boolean(r && r.v === LINKS_VERSION);
   }
 
   /**
@@ -135,9 +159,9 @@ export class Indexer {
     this.db.exec("BEGIN");
     try {
       for (const r of rows) {
-        const clean = redact(r.text);
-        if (clean === r.text) continue;
-        upd.run(clean, r.rowid); dv.run(r.session, r.seq); n++;
+        const cleaned = redact(r.text);
+        if (cleaned === r.text) continue;
+        upd.run(cleaned, r.rowid); dv.run(r.session, r.seq); n++;
       }
       if (n) this.q.generation.run();
       this.q.meta.run("redact", rows.length < batch ? REDACT_VERSION : `${REDACT_VERSION}-working:${rows[rows.length - 1].rowid}`);
@@ -187,7 +211,11 @@ export class Indexer {
    * @param {transcripts.Entry} entry @returns {Promise<boolean|null>}
    */
   async humanOf(entry) {
-    if (!this.underAccounts(entry.file)) return null;
+    // Outside an account folder the transcript's own reading stands, EXCEPT that the Switchboard's own record of a thread a person started in the app makes it human whatever driver carried it
+    // (an Agent SDK session's transcript says it is programmatic; the person typed the turn).
+    if (!this.underAccounts(entry.file)) {
+      try { const r = this.origin ? await this.origin(entry.id) : null; return r && r.known === true && r.human === true ? true : null; } catch { return null; }
+    }
     const hit = this.origins.get(entry.id);
     if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.human;
     let human = false;
@@ -206,7 +234,7 @@ export class Indexer {
    */
   one(entry, s, human = null) {
     const prev = /** @type {any} */ (this.q.get.get(entry.id));
-    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
+    if (prev && this.linked && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
       // Same bytes somewhere else (an archived folder): note where it lives now, read nothing.
       if (prev.file !== entry.file) this.q.moved.run(entry.file, entry.id);
       s.skipped++;
@@ -214,7 +242,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
-    for (const turn of t.turns) turn.text = redact(turn.text);
+    for (const turn of t.turns) turn.text = clean(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;
@@ -237,8 +265,12 @@ export class Indexer {
         this.q.generation.run();
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text, turn.provider || "claude", turn.model || null);
-      this.q.put.run(entry.id, entry.file, t.cwd, t.name, t.title, t.started || null, t.ended || null,
-        t.turns.length, human === null ? t.human : (human && t.human ? 1 : 0), t.parent, entry.size, entry.mtime);
+      // Links for every turn, not only the new ones: a tool call after the last turn indexed hangs on that turn once the exchange has ended, and a pass that finds the table new
+      // links the whole session. INSERT OR IGNORE, so what is there stays.
+      if (rewritten) this.q.delLinks.run(entry.id);
+      for (const turn of t.turns) for (const l of turn.links || []) this.q.addLink.run(entry.id, turn.seq, l.kind, l.ref);
+      this.q.put.run(entry.id, entry.file, t.cwd, t.name == null ? t.name : clean(t.name), t.title == null ? t.title : clean(t.title), t.started || null, t.ended || null,
+        t.turns.length, human === null ? t.human : (human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
 
@@ -249,6 +281,12 @@ export class Indexer {
     // whatever pointed at the old turns has to let go of them.
     if (wrote > 0 || rewritten) {
       this.emit("session.indexed", { session: entry.id, from, to: t.turns.length - 1, rewritten }, { thread: entry.id });
+      if (this.capture) {
+        const lines = t.turns.slice(from).map(turn => ({ seq: turn.seq, role: turn.role, text: String(turn.text || "").slice(0, 20_000), at: turn.ts || null }));
+        // One at a time, in the order the batches were indexed, and never holding up the pass (this method is synchronous).
+        const cap = this.capture;
+        this.captured = (this.captured || Promise.resolve()).then(() => cap({ session: entry.id, rewritten, lines, cwd: t.cwd || null })).catch(e => this.log(`capture of ${entry.id.slice(0, 8)} failed: ${/** @type {Error} */ (e).message}`));
+      }
     }
   }
 
@@ -260,7 +298,7 @@ export class Indexer {
    * the fixture/fictional labelled set (0.845 to 0.667): its "blind visitors" case is answered by
    * a USER turn (the audit request itself), and a role-only cut throws that kind of case away
    * along with the short, noisy real-corpus user turns that were actually the problem. See
-   * docs/work/recall.md for the numbers and the dense_weight retune that replaced this.
+   * team/archive/work-journals/recall.md for the numbers and the dense_weight retune that replaced this.
    */
   pending() {
     return /** @type {{ rid: number }[]} */ (this.db.prepare(`
@@ -288,7 +326,7 @@ export class Indexer {
     let n = 0;
     this.db.exec("BEGIN");
     try {
-      for (const id of ids) { this.q.delVectors.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
+      for (const id of ids) { this.q.delVectors.run(id); this.q.delLinks.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
       if (n) this.q.generation.run();
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }

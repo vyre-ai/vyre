@@ -130,6 +130,18 @@ export function promptModel(r) {
   return id ? id.slice(0, 80) : null;
 }
 /**
+ * What the context holds after a turn, for a rollover's window count: the agent's own report (Codex's usage_update `used`) when it sent one, else the last request's
+ * whole input (the cached part included) and its output, which is what Grok Build's response names. Nothing is invented: no tokens named, no context_used.
+ * @param {Record<string, any>} u the result's usage
+ */
+export function contextUsage(u) {
+  if (Number(u.context_used) > 0) return u;
+  const n = (/** @type {unknown} */ v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0);
+  const used = n(u.input_tokens) + n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens) + n(u.output_tokens);
+  return used > 0 ? { ...u, context_used: used } : u;
+}
+
+/**
  * What a turn used, from the session/prompt RESPONSE, shaped as the Switchboard reads Claude's usage (input_tokens without the cached part,
  * output_tokens, cache_read_input_tokens, cache_creation_input_tokens), so agents.usage and a budget work for every provider.
  * MEASURED: neither Codex nor Grok sends a usage_update for tokens. Codex puts the standard ACP `usage` on the response
@@ -236,7 +248,7 @@ function runAcp(entry, known, o) {
     for (const n of secretEnv) { const v = o.env && o.env[n]; if (typeof v === "string" && v.length >= 6) out = out.split(v).join("[secret]"); }
     return out;
   };
-  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
+  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
   let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false;
@@ -537,7 +549,7 @@ function runAcp(entry, known, o) {
       const argv = Array.isArray(p.args) ? p.args.map(String) : [];
       const line = String(p.command);
       const [exe, args] = !argv.length && /\s/.test(line.trim()) ? ["/bin/sh", ["-c", line]] : [line, argv];
-      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
+      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };
       t.child.stdout.setEncoding("utf8"); t.child.stderr.setEncoding("utf8");
       t.child.stdout.on("data", add); t.child.stderr.on("data", add);
@@ -638,7 +650,8 @@ function runAcp(entry, known, o) {
     // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
     const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
     const first = firstPrompt && !loaded;
-    const sys = first && o.system && o.system.text ? [{ type: "text", text: String(o.system.text) }] : [];
+    // The environment brief and the role go with the first prompt of every process, a resumed session's too: it must know the state as it is now.
+    const sys = firstPrompt && o.system && o.system.text ? [{ type: "text", text: String(o.system.text) + "\n\n" }] : [];
     firstPrompt = false;
     // Memory, as Claude gets it: the brief on the first prompt and up to 5 quoted lines on every one,
     // ahead of the person's words, scoped by vyred to this thread's own agent and project (the
@@ -649,7 +662,7 @@ function runAcp(entry, known, o) {
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
       const bad = r && r.error;
       say({ type: "result", subtype: bad ? "error" : "success", is_error: Boolean(bad), result: bad ? String(r.error.message || r.error) : turnText,
-        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: { ...(usage || {}), ...(bad ? {} : promptTokens(r)) }, ...(!bad && promptModel(r) ? { model: promptModel(r) } : {}) });
+        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: contextUsage({ ...(usage || {}), ...(bad ? {} : promptTokens(r)) }), ...(!bad && promptModel(r) ? { model: promptModel(r) } : {}) });
       busy = false; pump();
     });
   }

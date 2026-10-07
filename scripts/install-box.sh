@@ -5,10 +5,13 @@
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
 #   --from DIR         use the box files in a local checkout DIR and build the image from it
-#   --print-link       end with only VYRE_LINK=<url> (and VYRE_SSH=<line>) on stdout, for a
+#   --print-link       end with only VYRE_PAIRED=<space> or VYRE_PAIR=<command> on stdout, for a
 #                      program to read; everything else goes to stderr (or VYRE_LINK_ONLY=1)
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
+#
+#   --version V        install release V (the app that runs `vyre box add` passes its own); latest takes whatever
+#                      the release site serves. A site serving another version stops the install, saying which.
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
@@ -39,6 +42,8 @@ set -eu
 DRY=0
 YES=0
 FROM=""
+WANT=${VYRE_VERSION:-}
+DEVSIGNED=0
 UNINSTALL=0
 PURGE=0
 SUDO=""
@@ -53,7 +58,6 @@ DIR=${VYRE_DIR:-/srv/vyre}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
-TUN=${VYRE_TUN:-/dev/net/tun}
 DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
 # The cosign that checks our images, pinned by digest so a moved tag cannot swap it. The identity
 # is the release workflow of this repo on a version tag, and nothing else.
@@ -168,14 +172,17 @@ finish() {
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
     say "  $BOLD${BONE}Your server is ready.$RESET"
+    # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
+    say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
-      say "  The setup link went to stdout for the program that asked."
+      say "  Whether it is paired went to stdout for the program that asked."
     else
-      if [ -n "$CODE" ]; then
+      if [ "$PAIRED" = 1 ]; then
+        say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
+      elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
-        say "  Next: open the link above. If it came with an ssh -L line,"
-        say "  run that on your own computer first, then open the link there."
+        say "  Next: finish pairing from your device (the long code above)."
       fi
     fi
   fi
@@ -276,14 +283,6 @@ need_docker() {
   fi
 }
 
-# Tailscale runs in its own container with kernel networking, which needs the TUN device.
-need_tun() {
-  [ -c "$TUN" ] && return 0
-  say "This server has no /dev/net/tun, which the Tailscale container needs."
-  say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
-  exit 1
-}
-
 # fetch NAME DEST: a box file from BASE.
 fetch() {
   if command -v curl >/dev/null 2>&1; then curl -fsSL "$BASE$1" -o "$2"
@@ -316,6 +315,17 @@ get_sums() {
   if [ ! -s "$TMP/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$TMP/SHA256SUMS"; then
     die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
   fi
+}
+
+# check_version: the version this install was asked for (--version, or VYRE_VERSION) against the one the release site serves. The release
+# site holds one release, so a different version is refused with both named, never installed quietly. "latest" and no version take what is served.
+check_version() {
+  case "$WANT" in ""|latest) return 0 ;; esac
+  case "$WANT" in *[!0-9A-Za-z.-]*) die "--version $WANT is not a version like 0.2.9" ;; esac
+  awk '$2 == "VERSION" || $2 == "*VERSION" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS" || die "this release site does not say which version it serves, so $WANT cannot be checked. Nothing was installed. (Run with --version latest to install what it serves, or install a build that is not published from a checkout with --from <folder>.)"
+  get VERSION
+  have=$(tr -d '[:space:]' <"$TMP/VERSION")
+  [ "$have" = "$WANT" ] || die "this install was asked for Vyre $WANT, but $BASE serves $have. Nothing was installed. Install $have with --version $have (or --version latest), point VYRE_BOX_URL at a site that serves $WANT, or, for a build that is not published yet, install from a checkout of it with --from <folder>."
 }
 
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
@@ -382,6 +392,33 @@ mkdir_owned() {
   fi
 }
 
+# dev_sign: an install from a checkout has no release to verify, so it makes its own, in a throwaway container of the pinned node image: the checkout is packed like a release is (npm pack),
+# unpacked, a throwaway key (never kept) replaces the pinned release key in THAT copy only, and the copy's module list is signed with it (scripts/dev-sign.mjs). The box is then built from the
+# copy and published the list, so it boots its signed modules with no path rule and no development switch. The checkout and the real release key are never touched. A tampered module is refused as in a release.
+dev_sign() {
+  TMP=$(mktemp -d)
+  nodeimg=$(sed -n 's/^FROM \(node:[^ ]*\).*/\1/p' "$FROM/box/Dockerfile" | head -n 1)
+  [ -n "$nodeimg" ] || die "$FROM/box/Dockerfile names no node image to pack and sign with"
+  say "packing the checkout and signing it with a throwaway key (this install only)"
+  dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
+    set -e
+    mkdir /tmp/w /tmp/u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /tmp/w -xf -
+    cd /tmp/w && npm pack --silent --pack-destination /tmp >/dev/null
+    tar -xzf /tmp/*.tgz -C /tmp/u --strip-components=1
+    node /from/scripts/dev-sign.mjs --root /tmp/u --out /out
+    cp /tmp/u/box/vyre /out/vyre
+    tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /tmp/u .
+  ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
+  TGZ=1; DEVSIGNED=1
+  # An image left from an earlier install is used as it is (compose never rebuilds a present vyre:local), so it would run the OLD tree with none of this signing: remove it, and the box is built fresh.
+  dk docker image rm -f vyre:local >/dev/null 2>&1 || true
+  unpack
+  WRAPPER_SRC="$TMP/vyre"
+  done_step "the checkout is signed for this server only"
+}
+
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
   if [ -n "$FROM" ]; then
@@ -393,6 +430,8 @@ write_stack() {
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
     put "$FROM/box/vyre.env.example" "$DIR/vyre.env.example" 0644
     WRAPPER_SRC="$FROM/box/vyre"
+    # VYRE_DEV_SIGN=0 skips it (the tests' stub docker makes no files); the box then needs VYRE_KERNEL_PATH_RULE=1 to run its modules.
+    { [ "$DRY" = 1 ] || [ "${VYRE_DEV_SIGN:-1}" = 0 ]; } || dev_sign
   else
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
@@ -405,6 +444,7 @@ write_stack() {
       done_step "nothing downloaded (dry run)"
     else
       get_sums
+      check_version
       if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
         get release.json
       fi
@@ -414,6 +454,12 @@ write_stack() {
       pick_build
       [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
+      # The signed list of first-party modules (and shell.json) the release carries: checked against SHA256SUMS like every file, and placed for the box by
+      # publish_signed_files once the wrapper is installed.
+      for f in modules.json shell.json appbuild.json; do
+        if awk -v p="$f" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get "$f"; fi
+      done
+      fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig" 2>/dev/null || rm -f "$TMP/SHA256SUMS.sig"
       done_step "every file matches SHA256SUMS"
       verify_images
     fi
@@ -437,7 +483,7 @@ docker_gid() {
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs. The one
+# it is where the person adds COMPOSE_PROFILES and anything else of theirs. The one
 # exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
   gid=$(docker_gid)
@@ -467,7 +513,7 @@ write_env() {
     printf '%s\n' "COMPOSE_PROJECT_NAME=vyre"
     if [ -n "$FROM" ]; then
       printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
-      printf '%s\n' "VYRE_SOURCE=$FROM"
+      if [ "${DEVSIGNED:-0}" = 1 ]; then printf '%s\n' "VYRE_SOURCE=$DIR/src"; else printf '%s\n' "VYRE_SOURCE=$FROM"; fi
     elif [ "$TGZ" = 1 ]; then
       printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
       printf '%s\n' "VYRE_SOURCE=$DIR/src"
@@ -485,6 +531,16 @@ write_env() {
 }
 
 # /usr/local/bin/vyre: ours, or ask before replacing whatever is there.
+# publish_signed_files: the release's SHA256SUMS, its signature, modules.json and shell.json go where the box reads them (the wrapper's publish-release checks the
+# signature with the pinned release key and publishes nothing for an unsigned release). Not for an install from a checkout, which has none of them.
+publish_signed_files() {
+  [ "$DRY" != 1 ] && { [ -z "$FROM" ] || [ "${DEVSIGNED:-0}" = 1 ]; } && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
+  if ! priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP"; then
+    # A release with a signed module list that cannot be placed would start a box whose modules the kernel refuses: stop here, plainly.
+    [ ! -f "$TMP/modules.json" ] || die "the release's signed files could not be placed, so the box would start with no modules; nothing was started. See the line above, then run this again."
+    say "note: could not place the release's signed files; vyre update will"
+  fi
+}
 install_wrapper() {
   if [ -e "$WRAPPER" ] && ! grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
     ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
@@ -500,6 +556,14 @@ install_wrapper() {
   fi
 }
 
+# The Space helper (box/vyre `space-helper`): the root path unit that starts a Space's Twenty store and firewalls it from the agents, on vyred's request. It records the
+# image vyre runs, so it is installed once the container is up. It is required: a space on a server runs on Twenty, and without the helper (or its images) it
+# would have no store. A failure stops the install with the helper's own cause (an image that could not be pulled names the image and the registry's reason).
+install_space_helper() {
+  [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ] || return 0
+  priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || die "the Space helper could not be set up (the cause is the line above), so a space on this server would have no records store. Vyre is running but unfinished; fix the cause, then run: sudo vyre space-helper install, and pair the server after it"
+}
+
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
 # wrapper needs SSH_CONNECTION to print the ssh -L line.
 # verify_up: the installer says it is done only when the vyre container is running. `vyre up` can end without starting it (a root run
@@ -510,6 +574,32 @@ verify_up() {
     i=$((i + 1))
     [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
     sleep 2
+  done
+  # The Space helper goes in now, before the wait for modules: the container's entry holds the daemon back until the helper has proved the firewall for this start (core/spawner/space-wall.sh), so
+  # waiting for modules first can never end. A reinstall also finds the helper's record of the old image here, and replaces it with this one (no `sudo vyre space-helper install` by hand).
+  install_space_helper
+  # Running is not enough: a box whose modules did not start (a build the kernel does not recognise as signed) answers its socket with nothing behind it. Say so, loudly, with the reason.
+  [ "${VYRE_MODULES_TRIES:-60}" != 0 ] || return 0   # a test seam: the tests' stub docker runs no daemon
+  j=0; mods=0
+  while [ "$j" -lt "${VYRE_MODULES_TRIES:-60}" ]; do
+    st=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" status 2>/dev/null | tr -d '\033' || true)
+    mods=$(printf '%s\n' "$st" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) modules running.*/\1/p' | head -n 1)
+    [ "${mods:-0}" -gt 0 ] && return 0
+    j=$((j + 1)); sleep 2
+  done
+  why=$(dk_quiet logs --tail 40 vyre-vyre-1 2>&1 | sed -n 's/.*\(modules from outside Vyre run only under[^"]*\).*/\1/p' | head -n 1)
+  die "Vyre is running but none of its modules started${why:+ ($why)}. A box built from a checkout (--from) has no signed module list, so it cannot run them: install a release, or build one with scripts/build-site.sh and install from that. Nothing is set up on this server."
+}
+# verify_running_build: the container that is running must be the build just laid out. An install from a tree (--from, or a tgz) builds its image from DIR/src; a stale image left by an earlier
+# install would otherwise run the OLD tree while this installer reports the new one. The kind and the pinned key (lib/build-kind.js, lib/release-sig.js) and the version are compared byte for byte.
+verify_running_build() {
+  [ -d "$DIR/src/lib" ] || return 0
+  [ "$TGZ" = 1 ] || [ -n "$FROM" ] || return 0
+  for f in lib/build-kind.js lib/release-sig.js package.json; do
+    [ -f "$DIR/src/$f" ] || continue
+    want=$(sha256 "$DIR/src/$f")
+    got=$(dk docker exec vyre-vyre-1 sha256sum "/opt/vyre/$f" 2>/dev/null | cut -d' ' -f1)
+    [ "$want" = "$got" ] || die "the server is running an older build than the one installed ($f differs from the copy in $DIR/src). Remove the old image (docker image rm -f vyre:local), then run this installer again. Nothing is set up."
   done
 }
 start() {
@@ -585,7 +675,7 @@ mbx_init() {
   body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK")
   case "$(mbx_post "$body")" in
     200) MBX=1 ;;
-    409) printf 'vyre: Another server already used this code. Your browser is not connected to this server. Start again at https://vyre.run/setup.\n' >&2; exit 1 ;;
+    409) printf 'vyre: Another server already used this code. Run the install line again to get a new code.\n' >&2; exit 1 ;;
     *) MBX=0 ;;
   esac
 }
@@ -623,19 +713,12 @@ show_words() {
   done
 }
 
-# intake_code: the setup code, from VYRE_CODE or asked for on a terminal (hidden, Enter skips it).
-# Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+# intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
+# thing this installer asks a person is the pairing (pair_server), by the user's ruling of 4 Oct. Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
 intake_code() {
   CODE=${VYRE_CODE:-}
   unset VYRE_CODE
   [ "$UNINSTALL" = 1 ] && { CODE=""; return 0; }
-  if [ -z "$CODE" ] && [ "$DRY" = 0 ] && [ "$YES" = 0 ] && [ "$LINK_ONLY" = 0 ] && (: </dev/tty) 2>/dev/null; then
-    printf '%sPaste the setup code from your browser (Enter to skip): %s' "$BEACON" "$RESET" >/dev/tty
-    stty -echo </dev/tty 2>/dev/null || true
-    read -r CODE </dev/tty || CODE=""
-    stty echo </dev/tty 2>/dev/null || true
-    printf '\n' >/dev/tty
-  fi
   [ -n "$CODE" ] || return 0
   printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
     || die "that setup code does not look right. Copy the install line from your browser again."
@@ -645,6 +728,23 @@ intake_code() {
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
+# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on Twenty when this server has
+# room for it; only a server too small for Twenty gets the small built-in store. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
+write_kernel_env() {
+  [ "$DRY" = 1 ] && { say "would turn the kernel on in $DIR/vyre.env"; return 0; }
+  TMP=${TMP:-$(mktemp -d)}
+  : >"$TMP/vyre.kernel"
+  if [ -e "$DIR/vyre.env" ]; then
+    # shellcheck disable=SC2024
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; else sudo cat "$DIR/vyre.env" >"$TMP/vyre.kernel"; fi
+    [ ! -s "$TMP/vyre.kernel" ] || [ -z "$(tail -c 1 "$TMP/vyre.kernel")" ] || printf '\n' >>"$TMP/vyre.kernel"
+  fi
+  chmod 600 "$TMP/vyre.kernel"
+  grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
+  put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
+}
+
 write_code() {
   [ -n "$CODE" ] || return 0
   if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
@@ -659,6 +759,122 @@ write_code() {
   chmod 600 "$TMP/vyre.env"
   printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
+}
+
+# pair_server: the last step, and the only question this terminal ever asks (the user's ruling, 4 Oct: the server's part is one command and the pairing, nothing else; members,
+# connectors and everything inside a space are set up on the person's own device). It shows the pairing QR and the long code, waits for a device to ask, shows who is asking and
+# three sets of three words, takes the pick of the set the device shows, and ends with the line the person acts on. A step that fails says why and offers to try again on a
+# terminal; nothing is created before the pick, so nothing is left half-made. Under --yes or with no terminal it prints the code and the way back and ends.
+# The tools are the daemon's (wink.server.code, wink.server.pairing, wink.server.pair.answer); VYRE_PAIR_TO names the one identity an unattended install is for.
+PAIRED=0; PAIRED_NAME=""; PAIRED_DEVICE=""
+tool() { dk env "VYRE_DIR=$DIR" "$WRAPPER" call "$@" 2>/dev/null | tr -d '\n'; }
+json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\(\\([^\"\\\\]\\|\\\\.\\)*\\)\".*/\\1/p"; }
+json_num() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\\([0-9][0-9]*\\).*/\\1/p"; }
+# minutes left until a time given in milliseconds, at least one
+mins() { m=$(( ($1 / 1000 - $(date +%s) + 30) / 60 )); [ "$m" -ge 1 ] || m=1; printf '%s' "$m"; }
+pair_server() {
+  [ "$DRY" = 0 ] && [ "$LINK_ONLY" = 0 ] || return 0
+  tries=0
+  while :; do
+    tries=$((tries + 1))
+    if [ -n "${VYRE_PAIR_TO:-}" ]; then pt=$(printf '%s' "$VYRE_PAIR_TO" | tr -d "\"\\\\"); input="{\"qr\":true,\"pairTo\":\"$pt\"}"; else input='{"qr":true}'; fi
+    out=$(tool wink.server.code "$input" || true)
+    qr=$(json_str "$out" qr)
+    if [ -z "$qr" ]; then
+      why=$(json_str "$out" message)
+      say "  Pairing could not start: ${why:-the pairing is not ready on this server}."
+      if [ "$YES" = 0 ] && (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue; fi
+      say "  Pair it from your device later: open Vyre, add a server, and run on this server: ${BOLD}vyre call wink.server.code '{\"qr\":true}'${RESET}"
+      return 0
+    fi
+    art=$(json_str "$out" art | sed 's/\\n/\n/g; s/\\\\/\\/g')
+    say ""
+    say "  Pair this server from your Vyre app: scan this with your phone,"
+    say "  or paste the long code into the app on a computer."
+    [ -z "$art" ] || printf '%s\n' "$art"
+    say "  Long code: $BOLD$qr$RESET"
+    say "  It is good for five minutes."
+    # The short typed code beside them (on unless the kill switch is set): the app types it, shows a code of its own, and the person types that back here.
+    TYPED=$(json_str "$out" code); ctries=$(json_num "$out" code_tries); cexp=$(json_num "$out" code_expires)
+    if [ -n "$TYPED" ]; then
+      say "  Or type this code in your app: ${BOLD}$TYPED${RESET}"
+      say "  The typed code is good for $(mins "${cexp:-0}") minutes and closes after ${ctries:-3} wrong tries."
+    fi
+    if [ -n "${VYRE_PAIR_TO:-}" ]; then say "  This install is for ${BOLD}${VYRE_PAIR_TO}${RESET} only. Finish setting up on that identity's device."; return 0; fi
+    if [ "$YES" = 1 ] || ! (: </dev/tty) 2>/dev/null; then say "  Finish setting up on your device once it has paired."; return 0; fi
+    if [ -n "$TYPED" ]; then end=$(( $(date +%s) + 600 )); else end=$(( $(date +%s) + 300 )); fi
+    while [ "$(date +%s)" -lt "$end" ]; do
+      if [ -n "$TYPED" ]; then
+        cs=$(tool wink.code.status '{}' || true)
+        cc=$(json_str "$cs" code); cst=$(json_str "$cs" state); cof=$(json_str "$cs" offer)
+        if [ -n "$cc" ] && [ "$cc" != "$TYPED" ]; then
+          say "  The typed code closed: its time ran out, or it had ${ctries:-3} wrong tries."
+          say "  A new typed code is showing: ${BOLD}$cc${RESET}  (good for $(mins "$(json_num "$cs" expires)") minutes)"; TYPED=$cc
+        fi
+        if [ "$cst" = found ] && [ -n "$cof" ]; then
+          say "  Your app typed the code and now shows a code of its own."
+          printf '%sType the code your app shows: %s' "$BEACON" "$RESET" >/dev/tty
+          read -r typed </dev/tty || typed=""
+          typed=$(printf '%s' "$typed" | tr -cd 'A-Za-z0-9 -')
+          r=$(tool wink.server.confirm "{\"offer\":\"$cof\",\"typed\":\"$typed\"}" || true)
+          case "$r" in
+            *'"ok": true'*|*'"ok":true'*)
+               say "  The codes match. Your app finishes the pairing."
+               # The typed ack is the owner's yes: no three words follow. Wait for the app to finish, then the closing line says whose server this is.
+               w=0; while [ "$w" -lt 60 ]; do
+                 st=$(tool wink.server.status '{}' || true)
+                 case "$st" in *'"owned": true'*|*'"owned":true'*) PAIRED=1; PAIRED_NAME=$(json_str "$st" space); PAIRED_DEVICE=$(json_str "$st" device); return 0 ;; esac
+                 w=$((w + 1)); sleep 1
+               done
+               say "  The app did not finish the pairing, so nothing was paired."; return 0 ;;
+            *) say "  That is not the code your app shows, so this typed code is closed."
+               # a wrong ack closes the code and a fresh one replaces it with no tap
+               w=0; while [ "$w" -lt 6 ]; do
+                 sleep 1; ns=$(tool wink.code.status '{}' || true); nc=$(json_str "$ns" code)
+                 if [ -n "$nc" ] && [ "$nc" != "$TYPED" ]; then say "  A new typed code is showing: ${BOLD}$nc${RESET}  (good for $(mins "$(json_num "$ns" expires)") minutes)"; TYPED=$nc; break; fi
+                 w=$((w + 1))
+               done ;;
+          esac
+          continue
+        fi
+      fi
+      q=$(tool wink.server.pairing '{}' || true)
+      case "$q" in
+        *'"asking": true'*|*'"asking":true'*)
+          nm=$(json_str "$q" name)
+          # The three sets, one per line (a JSON array of three strings).
+          sets=$(printf '%s' "$q" | sed -n 's/.*"choices": *\[\([^]]*\)\].*/\1/p' | sed 's/", *"/\n/g; s/"//g')
+          say ""
+          say "  ${BOLD}${nm:-Someone}${RESET} is asking to pair this server. Pick the three words your app shows:"
+          i=0; printf '%s\n' "$sets" | while IFS= read -r l; do i=$((i + 1)); printf '    %s) %s\n' "$i" "$l"; done
+          printf '%sWhich one? (1, 2 or 3, Enter to refuse) %s' "$BEACON" "$RESET" >/dev/tty
+          read -r pick </dev/tty || pick=""
+          case "$pick" in
+            1|2|3) ans=$(tool wink.server.pair.answer "{\"yes\":true,\"pick\":$pick}" || true) ;;
+            *) ans=$(tool wink.server.pair.answer '{"yes":false}' || true); say "  Refused. Nothing was paired."; return 0 ;;
+          esac
+          case "$ans" in
+            *'"yes": true'*|*'"yes":true'*)
+               PAIRED=1; PAIRED_NAME=${nm:-your space}
+               # The device finishes the pairing a moment after the yes; the server then names whose it is (the space), and the closing line says it.
+               w=0; while [ "$w" -lt 10 ]; do
+                 pd=$(tool wink.server.pairing '{}' || true)
+                 case "$pd" in *'"paired": true'*|*'"paired":true'*) o=$(json_str "$pd" owner); [ -z "$o" ] || PAIRED_NAME=$o; PAIRED_DEVICE=$(json_str "$pd" device); break ;; esac
+                 w=$((w + 1)); sleep 1
+               done
+               return 0 ;;
+            *) say "  Those were not the words the app shows, so nothing was paired."
+               if (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue 2; fi
+               return 0 ;;
+          esac
+          ;;
+      esac
+      sleep 2
+    done
+    say "  The code ran out before a device asked. Nothing was paired."
+    if (: </dev/tty) 2>/dev/null && ask "Make a new code?"; then continue; fi
+    return 0
+  done
 }
 
 # one_install: an install that is already running here is updated, never replaced.
@@ -688,18 +904,50 @@ early_one_install() {
   DOCKER_SUDO=""
 }
 
+# The memory one Space's larger (Twenty) store needs on this server, in MB: the same number as stores/twenty/space-store.js REQUIRE.memoryMb
+# (test/install-box-v2.test.js keeps the two equal; records sets it). Disk is the images and one Space's volumes.
+# The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
+CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
+SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
+# A server under 6 GB of memory (TINY_BELOW_MB in stores/twenty/provision.js) gets the tiny profile, whose measured need is stores/twenty/space-store.js requireFor(4096).memoryMb; the test keeps both equal.
+SPACE_MEM_TINY_MB=${VYRE_SPACE_MEM_TINY_MB:-2521}
+TINY_BELOW_MB=6144
+SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
+# preflight: say plainly what this server can host. A box too small for Twenty runs on the small built-in store, which is a choice the person
+# should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
+preflight() {
+  mem=""; disk=""
+  if [ -r /proc/meminfo ]; then mem=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
+  [ -d "$d" ] || d=/
+  disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will run each space on Twenty if it finds room, and on the small built-in store if it does not."; return 0; fi
+  # the same rule the daemon uses: a machine under 6 GB is measured against the tiny profile's need, not the small one's
+  total=""; if [ -r /proc/meminfo ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  SPACE_MEM_MB_USED=$SPACE_MEM_MB
+  if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$TINY_BELOW_MB" ]; then SPACE_MEM_MB_USED=$SPACE_MEM_TINY_MB; fi
+  fit=$(( (mem - 300) / (SPACE_MEM_MB_USED - 300) )); [ "$fit" -ge 0 ] || fit=0
+  if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Twenty needs $SPACE_DISK_MB MB: this server is too small for Twenty, so Vyre will use the small built-in store."
+  elif [ "$fit" -ge 1 ]; then
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on Twenty (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
+  else
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. Twenty needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB per space. This server is too small for Twenty, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
+  fi
+}
+
 # docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
-# specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
+# specific (the socket group, compose.yml itself), so they stop here in plain words.
 docker_flavor() {
   command -v docker >/dev/null 2>&1 || return 0
   case "$(command -v docker)" in
-    /snap/*|*/snap/bin/*) die "this Docker came from snap, which cannot give the Tailscale container a TUN device. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
+    /snap/*|*/snap/bin/*) die "this Docker came from snap, whose confinement keeps the box from its Docker socket group. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
   esac
   if docker --version 2>/dev/null | grep -qi podman; then
     die "this is Podman answering as docker. Vyre needs Docker Engine with Compose v2: curl -fsSL https://get.docker.com | sh"
   fi
   if dk_quiet info --format '{{.SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
-    die "this Docker runs rootless, which cannot run the Tailscale container's network. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
+    die "this Docker runs rootless, which cannot give the box's Docker proxy the socket group it needs. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
   fi
 }
 
@@ -809,19 +1057,37 @@ mac_server() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   get_sums
+  [ "${MAC_FROM:-0}" = 1 ] || check_version
   get install-mac-server.sh
   sh "$TMP/install-mac-server.sh" "$@"
   return $?
 }
 
 main() {
-  if [ "$(uname -s)" = Darwin ]; then mac_server "$@"; exit $?; fi
+  if [ "$(uname -s)" = Darwin ]; then
+    # The Mac server script takes no version, so it is taken out here and checked against the site before that script runs (the check is on every
+    # path). The other arguments are passed on as they came: rotated through "$@", never word-split, so an argument with a space stays one.
+    MAC_FROM=0
+    n=$#
+    while [ "$n" -gt 0 ]; do
+      x=$1; shift; n=$((n - 1))
+      case "$x" in
+        --version) [ "$#" -ge 1 ] || die "--version needs a version (or latest)"; WANT=$1; shift; n=$((n - 1)) ;;
+        --version=*) WANT=${x#--version=} ;;
+        --from|--from=*) MAC_FROM=1; set -- "$@" "$x" ;;
+        *) set -- "$@" "$x" ;;
+      esac
+    done
+    mac_server "$@"; exit $?
+  fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) DRY=1 ;;
       --yes|-y) YES=1 ;;
       --from) [ $# -ge 2 ] || die "--from needs a folder"; FROM=$2; shift ;;
       --from=*) FROM=${1#--from=} ;;
+      --version) [ $# -ge 2 ] || die "--version needs a version (or latest)"; WANT=$2; shift ;;
+      --version=*) WANT=${1#--version=} ;;
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
@@ -866,26 +1132,33 @@ main() {
   step "Checking Docker"
   pick_owner
   need_docker
-  need_tun
   docker_flavor
   one_install
-  if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
+  preflight
+  # An install from a checkout (--from) starts as the person, never as root (a root `vyre up` refuses a box built from a checkout), so that person
+  # must reach Docker themselves. Say what to do now, before anything is laid out, instead of stopping later with the box half installed.
+  if [ -n "$FROM" ] && [ "$DRY" != 1 ] && [ "$(id -u)" != 0 ] && [ -n "$DOCKER_SUDO" ]; then
+    die "this account cannot reach Docker without sudo, and an install from a checkout starts as you. Run: sudo usermod -aG docker $(id -un), sign in again, then run this installer again (the docker group is root-equivalent on this server)."
+  fi
+  if command -v docker >/dev/null 2>&1; then done_step "Docker and Compose are there"
   else done_step "Docker would be installed first (dry run)"
   fi
   if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  write_kernel_env
   write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"
   install_wrapper
+  publish_signed_files
   if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
   # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
   if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; done_step "Vyre is up"; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is up"; pair_server; fi
     show_words
   fi
   finish

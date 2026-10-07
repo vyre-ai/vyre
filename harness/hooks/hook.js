@@ -21,7 +21,7 @@ import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offli
 import { home, paths } from "../../core/config/index.js";
 import { writeKey } from "../../core/switchboard/sessions.js";
 
-const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", fail: "PostToolUseFailure", stop: "Stop" };
+const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", fail: "PostToolUseFailure", stop: "Stop", end: "SessionEnd" };
 const piece = /** @type {keyof typeof EVENT} */ (process.argv[2]);
 
 async function stdin() {
@@ -97,8 +97,11 @@ async function main() {
     const prompt = String(h.prompt || "");
     // Only a plain yes or no can answer a lesson, so only then is ps worth running (about 10 ms).
     const interactive = reply(prompt) ? await typedByPerson(h.session_id) : false;
-    const r = await call("harness.enrich", { ...base, ...scope, prompt, interactive }, opts);
-    if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
+    const r = await call("harness.enrich", { ...base, ...scope, prompt, interactive, ...(typeof h.transcript_path === "string" ? { transcript: h.transcript_path } : {}) }, opts);
+    // The window warning (core/harness/meter.js) is the person's to read, once: a systemMessage beside the context Claude gets.
+    const notice = r.data && typeof r.data.notice === "string" ? r.data.notice : "";
+    const text = r.data && r.data.text ? r.data.text : "";
+    if (text || notice) process.stdout.write(JSON.stringify({ ...(notice ? { systemMessage: notice } : {}), ...(text ? { hookSpecificOutput: { hookEventName: EVENT.enrich, additionalContext: text } } : {}) }));
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}), plugin_root };
     const r = await call("harness.rules", input, opts);
@@ -120,6 +123,9 @@ async function main() {
     await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ok: false,
       ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}),
       ...(typeof h.error === "string" ? { error_head: h.error.slice(0, 200) } : {}), ...(h.is_interrupt === true ? { interrupted: true } : {}) }, opts);
+  } else if (piece === "end") {
+    // SessionEnd (clear, logout, exit): the Project hub closes this session's summary. Said once, never blocks, says nothing to Claude.
+    await call("harness.end", { ...base, ...(typeof h.reason === "string" ? { reason: h.reason.slice(0, 40) } : {}) }, opts);
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
     // Our own headless child (VYRE_THREAD is its session id) has no one to decline a call.

@@ -1,5 +1,5 @@
 // @ts-check
-// hands-chrome: Chrome control over one long-lived CDP connection per computer (docs/work/computers.md).
+// hands-chrome: Chrome control over one long-lived CDP connection per computer (team/archive/work-journals/computers.md).
 //
 // Every tool resolves which agent's computer it means the same way core/computers does (an
 // agent's own hands call as `mcp:agent:<name>`; anyone else must say `agent`), asks
@@ -16,6 +16,9 @@
 // Glass's action log has something to show. No event, tool result or log line ever carries the
 // CDP endpoint's helper token or a page's full text: `summary` is a short, human sentence.
 
+import { agentClaim } from "../../core/modules/index.js";
+import { isPerson } from "../../lib/caller.js";
+import { requirePublicUrl } from "./nav.js";
 import { CdpPool } from "./cdp.js";
 import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
@@ -30,12 +33,20 @@ const SELECTOR = obj({
   role: str, identifier: str, name: str, container: str,
 }, []);
 
-/** Which agent's computer a call means, the same rule as core/computers/index.js. */
+/** The person's own surfaces and modules, plus an agent's own hands (a model session): each tool below resolves which computer it means and refuses a model that names none of its own. */
+const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+
+/**
+ * Which agent's computer a call means, the same rule as core/computers/index.js. `agentClaim`
+ * finds the agent behind any transport shape ("mcp:agent:kit", "harness:agent:kit", "cli:agent:kit"),
+ * so none of them reads as unnamed and may name another agent's browser (group D audit, HD-5).
+ * A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no
+ * computer of its own, so it may not name one either.
+ */
 async function resolveAgent(input, caller, call) {
-  const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+  const self = agentClaim(String(caller || ""));
   let agent;
-  if (m) {
-    const self = m[1];
+  if (self) {
     if (!input.agent || input.agent === self) agent = self;
     else {
       const r = await call("agents.list", {});
@@ -44,6 +55,7 @@ async function resolveAgent(input, caller, call) {
       else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
     }
   } else {
+    if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
     if (!input.agent) throw new Error("say which agent's computer: agent is required");
     agent = input.agent;
   }
@@ -136,7 +148,8 @@ export default {
       if (!r.data.ok) throw new Error(r.data.why);
     };
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    /** screenshot and snapshot only look; the rest drive the page. */
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: CALLERS, effect: /^chrome\.(snapshot|screenshot)$/.test(name) ? "read" : "write" });
 
     tool("chrome.snapshot", "Every actionable control on the agent's current page: role, name, whether it is enabled, and where it sits. No page text beyond a length.",
       obj({ agent: str }), async (i, meta) => {
@@ -154,6 +167,9 @@ export default {
         await mayAct(agent, "chrome.open");
         const url = String(i.url);
         if (!/^https?:\/\//.test(url)) throw new Error(`"${url}" is not an http(s) URL`);
+        // A model's Chrome reaches the public web only (lib/netguard.js, the runner egress rule); the person's own call is not held to it.
+        const guarded = !isPerson(meta.caller);
+        if (guarded) await requirePublicUrl(url);
         const { cdp, sessionId } = await session(agent);
         try {
           const loaded = cdp.waitFor(m => m.method === "Page.loadEventFired" && m.sessionId === sessionId);
@@ -164,6 +180,8 @@ export default {
           throw e;
         }
         const snap = await perceive(cdp, sessionId);
+        // A redirect or a script may have taken the page somewhere inside: check where it landed, and leave it on a blank page.
+        if (guarded && /^https?:/.test(String(snap.url || ""))) { try { await requirePublicUrl(String(snap.url)); } catch (e) { await cdp.send("Page.navigate", { url: "about:blank" }, sessionId).catch(() => null); act_(meta, agent, "open", false, "landed on a non-public address", { summary: bareUrl(url) }); throw e; } }
         act_(meta, agent, "open", true, undefined, { summary: bareUrl(url) });
         return { ok: true, title: snap.title, url: snap.url };
       });

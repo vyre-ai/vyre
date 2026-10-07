@@ -7,13 +7,14 @@
   ],
   "requires": [],
   "does": {
+    "reads": ["onboard.status"],
     "tools": [
       "onboard.status",
       "onboard.you",
       "onboard.machine",
       "onboard.name",
       "onboard.claude",
-      "onboard.tailscale",
+      "onboard.pair",
       "onboard.join",
       "onboard.history",
       "onboard.skip",
@@ -27,6 +28,7 @@
   "watches": {
     "emits": [
       "onboard.stepped",
+      "onboard.claude-changed",
       "onboard.finished"
     ]
   },

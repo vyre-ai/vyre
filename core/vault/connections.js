@@ -76,9 +76,7 @@ const AUTH_OF_KIND = { "api-key": "api-key", pat: "bearer", oauth: "oauth", clou
  * Which surface a caller is, before any thread lookup. "person" sees everything; "module" is a
  * module acting as itself; null is no surface. `mcp:thread:<id>` is chat until its thread says
  * it came from the Capsule.
- * @param {string} caller @param {boolean} [person] whether this call carries a person session
- *   (ADR 0032): required for the owner's tailnet device to count as "person", the same bar
- *   settings.isPerson holds it to. Without it, a device merely on the tailnet is no surface.
+ * @param {string} caller @param {boolean} [person] whether the kernel's chain for this call is exactly one person (core/vault/person.js)
  * @returns {{ surface: "person"|"module"|"capsule"|"chat"|"agents"|"phone"|null, thread?: string }}
  */
 export function surfaceOf(caller, person) {
@@ -91,11 +89,9 @@ export function surfaceOf(caller, person) {
   const th = /^mcp:thread:(.+)$/s.exec(c);
   if (th) return { surface: "chat", thread: th[1] };
   if (/^(mcp|tailnet|harness):agent:./.test(c)) return { surface: "agents" };
-  // The owner on their own device at the box's tailnet address (core/names): the owner's Deck,
-  // once they have signed in there with a person session. A device merely on the tailnet, with
-  // no session, is no surface: it may not read or change what another surface may use.
-  if (/^tailnet:[^:]+$/.test(c)) return person ? { surface: "person" } : { surface: null };
-  return { surface: null };
+  // Anything else (the owner's own device over the tailnet or a relay pairing, a visiting device, an unknown label) is the person ONLY when the kernel's chain for the call says so (`person`,
+  // from core/vault/person.js), never because of what its label looks like. A device with no verified person is no surface: it may not read or change what another surface may use.
+  return person ? { surface: "person" } : { surface: null };
 }
 
 // ---- capabilities from tool names ---------------------------------------------------------

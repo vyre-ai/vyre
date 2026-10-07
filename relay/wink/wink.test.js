@@ -1,5 +1,6 @@
 // @ts-check
 // relay/wink: the camera page's release. A throwaway key, never the real one.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,9 +19,9 @@ test("specifiers: static, dynamic and new URL() imports, relative only", () => {
 
 test("the page loads the scanner, the relay client and the haptics, and never the Deck's API client, router or avatars", () => {
   const files = closure();
-  for (const f of ["deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/pair-ticket.js", "deck/js/haptics.js", "relay/client/client.js", "deck/vyrecode/decode-core2.js", "relay/wink/page.js", "relay/wink/flow.js", ENTRY]) assert.ok(files.includes(f), f);
+  for (const f of ["web/js/scan.js", "web/js/scan-worker.js", "web/js/pair-ticket.js", "web/js/haptics.js", "relay/client/client.js", "lib/wink-code/decode-core2.js", "relay/wink/page.js", "relay/wink/flow.js", ENTRY]) assert.ok(files.includes(f), f);
   assert.ok(!files.includes("deck/js/avatars.js") && !files.includes("deck/js/pair-scan.js"), "no avatar renderer, no Deck sheet: the card has no picture");
-  assert.ok(!files.includes("deck/js/api.js"), "no Deck API client: the page has no box to call");
+  assert.ok(!files.includes("web/js/api.js"), "no Deck API client: the page has no box to call");
   assert.ok(!files.some(f => f === "deck/js/app.js" || f.startsWith("deck/views/") && f !== "deck/views/pair-scan.js"), "no Deck shell or view");
 });
 
@@ -50,16 +51,16 @@ test("build: sealed, every folder verifies, the entry is pinned by SRI, no inlin
     }
   }
   // A changed file after sealing fails verification.
-  fs.appendFileSync(path.join(out, "deck/js/scan.js"), "evil()");
+  fs.appendFileSync(path.join(out, "web/js/scan.js"), "evil()");
   await assert.rejects(verify(out, new Uint8Array(Buffer.from(pub, "base64url"))), /does not match/);
 });
 
 test("the page makes no request at all and keeps nothing: no storage, no cookie, no fetch of its own, in any file it loads except the device-key store the relay client owns", () => {
-  const files = closure().filter(f => f.startsWith("relay/wink/") || f === "deck/js/scan.js" || f === "deck/js/haptics.js");
+  const files = closure().filter(f => f.startsWith("relay/wink/") || f === "web/js/scan.js" || f === "web/js/haptics.js");
   for (const f of files) {
     const src = fs.readFileSync(path.join(import.meta.dirname, "..", "..", f), "utf8");
     // haptics.js reads a person's own opt-out (localStorage vyre.haptics) and writes nothing; the tests use no real storage.
-    const bad = f === "deck/js/haptics.js" ? /sessionStorage|indexedDB|document\.cookie|fetch\(|setItem/ : /localStorage|sessionStorage|indexedDB|document\.cookie|fetch\(/;
+    const bad = f === "web/js/haptics.js" ? /sessionStorage|indexedDB|document\.cookie|fetch\(|setItem/ : /localStorage|sessionStorage|indexedDB|document\.cookie|fetch\(/;
     assert.doesNotMatch(src.replace(/^\s*\/\/.*$/gm, ""), bad, f);
   }
 });

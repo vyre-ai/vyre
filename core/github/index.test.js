@@ -9,6 +9,7 @@
 // either its primary one, set once by github.project, or added workspaces via add-repo; detect
 // only ever reads what's already on disk).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -90,12 +91,12 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
   };
   const mod = await github.start(ctx);
   t.after(() => mod.stop());
-  const as = (caller, { firstParty = false, asked = false, door = false, granted } = {}) => async (name, input = {}) => {
+  const as = (caller, { firstParty = false, asked = false, door = false, granted, thread } = {}) => async (name, input = {}) => {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: [] } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(thread ? { thread } : {}), ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: [] } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -424,8 +425,17 @@ test("github.session.push: validates before ever touching git - no primary repo,
   const deniedModule = await w.as("module:someone-else")("github.session.push", { project: "harlow", session: "s1" });
   assert.equal(deniedModule.error.code, "denied");
 
-  const viaAgent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s1" });
-  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity");
+  const viaAgent = await w.as("mcp:agent:kit", { granted: "*", thread: "s1" })("github.session.push", { project: "harlow", session: "s1" });
+  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity, for its own session");
+
+  // HD-7: another session's branch is not its to push, undo or redo
+  for (const caller of ["mcp:agent:kit", "mcp"]) for (const tool of ["github.session.push", "github.session.undo", "github.session.redo"]) {
+    const r = await w.as(caller, { granted: "*", thread: "s2" })(tool, { project: "harlow", session: "s1" });
+    assert.equal(r.error && r.error.code, "denied", `${caller} ${tool} on another session: ${JSON.stringify(r)}`);
+    assert.match(String(r.error.message), /its own branch only/);
+  }
+  const noThread = await w.as("mcp")("github.session.undo", { project: "harlow", session: "s1" });
+  assert.equal(noThread.error && noThread.error.code, "denied", "a model call with no verified session undoes nothing");
 });
 
 test("github.session.push: refuses a secret in the outgoing commits before ever attempting the network push, names the file and line", async t => {
@@ -459,7 +469,7 @@ test("github.session.push: an agent cannot lift the secret scan with allow_secre
   fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
   execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
-  const agent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
+  const agent = await w.as("mcp:agent:kit", { granted: "*", thread: "s2" })("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
   assert.equal(agent.error.code, "secret_found", "an agent's allow_secret alone changes nothing");
   // (The two allowed cases would go on to a real push to github.com, so the override itself is
   // proven at the git level, git.test.js, against an unreachable address.)

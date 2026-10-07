@@ -12,6 +12,8 @@ export type TranscriptProps = {
   onNearTop: () => void;
   /** Above the oldest row: "Loading earlier" or nothing. */
   head?: ReactNode;
+  /** Scroll to this row (a quote was tapped); a new `n` scrolls again. */
+  jumpTo?: { key: string; n: number } | null;
   /** The "Jump to latest" pill, shown while the reader is up in history; `go` scrolls to the tail. */
   jump?: (go: () => void) => ReactNode;
 };

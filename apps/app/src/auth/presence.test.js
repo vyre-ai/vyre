@@ -3,6 +3,8 @@
 // trade signed with the key it registers and no Origin, the biometric JWK kept apart from it, the
 // input hash's canonical JSON against the box's, the device proof verified as the box does
 // (node:crypto, DER), the presence session replacing prompts after keep, and its expiry.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +15,7 @@ import { backoff } from "../../../../core/resilience/backoff.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 const enc = new TextEncoder();
 const TOKEN = "abcdefgh1234.secretsecretsecret1234";
 

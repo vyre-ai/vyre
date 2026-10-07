@@ -16,6 +16,16 @@
    "owner": "module's own team",
    "note": "reviewed by the assistant: every computed call runs as module:assistant and names a read tool of another owner (agents.list, waiting.count and waiting.list, memory.facts and memory.digest, context.now, modules.capabilities, mcp.servers, link.macs, push.devices, team.list, providers.list, threads.list, sessions.prompt.history, undo.list, onboard.status), plus agents.rollover (the one write, whose own code admits module:assistant). Each is dropped when it refuses, so a callee that closes to modules degrades the answer and never errors it."
   },
+  "core/bridges/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "call() runs as module:bridges and names spaces.membership and spaces.merge-list (modules-only, built) and spaces.policy and spaces.ask (not built yet: a missing tool is tolerated and the share is refused or held)"
+  },
+  "core/flows/index.js": {
+   "count": 1,
+   "owner": "platform",
+   "note": "registers the flows.* tools in a loop over a fixed name table (ctx.tool with a computed name); it calls no other tool through ctx.call except watchers.items from the watcher bridge, as the flows module"
+  },
   "core/gate/index.js": {
    "count": 2,
    "owner": "module's own team",
@@ -66,6 +76,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/modules/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "reviewed (windows, 5 Oct): the registry's own relay (`ctx.call(tool, input, { relay: true })`) calls a tool by a computed name only after RELAY_ALLOWED (core/modules/index.js) lists that exact name or prefix for the calling first-party module (spaces to the chat and memory upgrade tools, memory and work to spaces.storage.); anything else is refused before the call. callInSpace calls a tool that declares crossSpace in its manifest."
+  },
   "core/names/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -75,6 +90,11 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/publish/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "call() runs as module:publish and names only spaces.membership and spaces.self (modules-only), plus the vault's secret tools it has been granted"
   },
   "core/settings/index.js": {
    "count": 4,
@@ -126,6 +146,16 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/work/index.js": {
+   "count": 2,
+   "owner": "chat",
+   "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
+  },
+  "core/wink/index.js": {
+   "count": 1,
+   "owner": "network",
+   "note": "reviewed (network, 5 Oct): dirCall reaches only names.directory.acme, acme-clear and publish, which the names module restricts to module:wink"
+  },
   "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -155,6 +185,11 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/modules/sandbox-ctx.js": {
+   "count": 2,
+   "owner": "lead",
+   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
   }
  }
 }

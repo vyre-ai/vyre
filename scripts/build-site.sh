@@ -88,22 +88,29 @@ for f in "$src"/relay/client/*.js; do
   case "$f" in *.test.js) continue ;; esac
   cp "$f" "$here/site/setup/relay/"
 done
-cp "$src/deck/css/tokens.css" "$here/site/setup/tokens.css"
+cp "$src/web/css/tokens.css" "$here/site/setup/tokens.css"
 # The phone's ring (the same drawing the Deck uses for Wink) and the renderer it needs, kept in the folder shape
 # its own imports expect.
 rm -rf "$here/site/setup/deck"
-mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor/vyrecode"
-cp "$src/deck/js/phone-code.js" "$here/site/setup/deck/js/"
-cp "$src"/deck/vendor/vyrecode/*.js "$here/site/setup/deck/vendor/vyrecode/"
-cp "$src/deck/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
+mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor" "$here/site/setup/lib/wink-code"
+cp "$src/web/js/phone-code.js" "$here/site/setup/deck/js/"
+for f in vyrecode2 geometry identity payload rs; do cp "$src/lib/wink-code/$f.js" "$here/site/setup/lib/wink-code/"; done
+cp "$src/web/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
 # Where a provider's sign-in page may be (sessions' list); the page falls back to any plain https address until it exists.
 rm -f "$here/site/setup/signin-hosts.json"
 [ -f "$src/lib/providers/signin-hosts.json" ] && cp "$src/lib/providers/signin-hosts.json" "$here/site/setup/signin-hosts.json"
 # The two fonts, self-hosted so the page loads nothing from another origin.
 rm -rf "$here/site/setup/fonts"
 mkdir -p "$here/site/setup/fonts"
-cp "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-Regular.woff2" "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-SemiBold.woff2" \
-  "$src/apps/app/assets/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2" "$here/site/setup/fonts/"
+# The app no longer bundles text fonts (the platform font everywhere), so the setup page's files come from the Deck's own copies when the app's are gone.
+font() { # font TARGET-NAME APP-PATH WEB-FILE
+  if [ -f "$src/apps/app/assets/fonts/$2" ]; then cp "$src/apps/app/assets/fonts/$2" "$here/site/setup/fonts/$1"
+  elif [ -f "$src/web/fonts/$3" ]; then cp "$src/web/fonts/$3" "$here/site/setup/fonts/$1"
+  else echo "build-site: no font for $1 (neither apps/app/assets/fonts/$2 nor web/fonts/$3)" >&2; exit 1; fi
+}
+font InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-Regular.woff2 instrument-sans-latin.woff2
+font InstrumentSans-SemiBold.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 instrument-sans-latin.woff2
+font JetBrainsMono-Regular.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2 jetbrains-mono-latin.woff2
 
 # A checksum an older build-site packed for the retired Capsule zip.
 rm -f "$src/box/Vyre-mac.sha256"
@@ -121,12 +128,39 @@ else
 fi
 # The web app at /app/ (apps/app/dist), which vyre.tgz ships; nothing when --src has no apps/app.
 sh "$here/scripts/build-app.sh" --src "$src"
+# The build kind is part of what is signed: the package says "release", so its daemon ignores the developer switches (kernel/devbuild.js). The checkout keeps "development".
+# VYRE_TEST_DEV_KIND=1 (CI proofs only, scripts/release.sh never passes it) leaves the checkout's development kind in the package, so a proof can run an owned box with the software signer.
+if [ -f "$src/lib/build-kind.js" ] && [ "${VYRE_TEST_DEV_KIND:-}" != 1 ]; then
+  kind_keep=$(mktemp)
+  cp "$src/lib/build-kind.js" "$kind_keep"
+  trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT
+  # Fails the build when the file does not say release afterwards (DP-1); the same two lines kernel/devbuild.js reads (lib/build-kind-text.js).
+  node "$src/scripts/stamp-build-kind.mjs" "$src/lib/build-kind.js" || exit 1
+fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"
+# Developer scripts that start a daemon with a presence double (scripts/boot-check.mjs, scripts/proof-box.mjs) must never ride in a release: a shell user on the server could run them.
+if tar -tzf "$out/vyre.tgz" | grep -Eq '^package/scripts/(boot-check|proof-box)\.mjs$'; then echo "build-site: the package carries a developer script that starts a daemon with a presence double (scripts/boot-check.mjs or scripts/proof-box.mjs); it must not ship" >&2; exit 1; fi
 
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
+
+# The signed list of first-party modules (kernel/modules/release-list.js): the hash of every module folder of the UNPACKED tarball, so the hashes are of what a box will hold,
+# made here with no key and listed in SHA256SUMS below, so the release key's one signature covers it. The counter is made from the version (scripts/release-counter.mjs):
+# it orders as semver does and so only ever goes up. A source without the kernel's list code (an older line) makes no list.
+if [ -f "$src/scripts/modules-manifest.mjs" ] && [ -f "$src/kernel/modules/release-list.js" ]; then
+  unpacked=$(mktemp -d)
+  tar -xzf "$out/vyre.tgz" -C "$unpacked" --strip-components=1
+  ver=$(cat "$out/VERSION")
+  node "$src/scripts/modules-manifest.mjs" "$unpacked" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --release "$ver" --out "$out/modules.json" || exit 1
+  # The web app's files (lib/app-build.js): the daemon serves a file of /app/ only when it matches this list, so it is signed with the rest (MW-5). No apps/app/dist, no list.
+  if [ -f "$src/scripts/appbuild-manifest.mjs" ]; then node "$src/scripts/appbuild-manifest.mjs" "$unpacked" --release "$ver" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --out "$out/appbuild.json" || exit 1; fi
+  rm -rf "$unpacked"
+  # shell.json carries both lists as exact text (lib/release-shell.js): the one file every updater since 0.2 already fetches, verifies and publishes, so a server an OLD updater updates still receives
+  # the module list. modules.json and appbuild.json stay in the release and in SHA256SUMS: the embedded text must hash to those lines.
+  node "$src/scripts/shell-hashes.mjs" "$out" "$ver" --modules "$out/modules.json" $( [ -f "$out/appbuild.json" ] && echo "--appbuild $out/appbuild.json" ) || exit 1
+fi
 
 (
   cd "$out"
