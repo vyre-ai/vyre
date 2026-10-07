@@ -158,7 +158,7 @@ export function createEventLog(cfg) {
     const first = base();
     if (durable && after < first - 1) {
       while (after < first - 1) {
-        const rows = /** @type {any} */ (cfg.persist).range({ after, before: first, filter, limit: BATCH });
+        const rows = /** @type {any} */ (cfg.persist).range({ after, before: first, filter, limit: Math.min(BATCH, cap - given) });
         if (!rows.length) { after = first - 1; break; }
         for (const raw of rows) { yield deepFreeze(raw); if (++given >= cap) return; }
         after = rows[rows.length - 1].seq;

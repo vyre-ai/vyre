@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(kernel): the event log's `iterate` asks the disk for the rows its caller's limit needs, not a whole batch of 500: a consumer far behind the window read 500 rows to deliver one event.
 - fix(flows,watchers): IR-18 on a Space with its own records store the Flow types and the watcher definitions are defined: def-flow's `name` is now Twenty's title column (a text field called name is the title), and the watcher definition's `name` is no longer unique, so neither type is refused ("collides with a name Twenty uses"); the Flows timer starts only after the Flow types exist and runs are recovered, so a tick no longer reads "no type flow-state" every minute. A test plans every type Vyre defines.
 - fix(doctor): IR-17 `vyre doctor` no longer says Claude is not signed in right after the setup page signed it in: onboard.status counted only the Claude step's own token, and now also a signed-in Claude account made by the sign-in tool.
 - fix(setup): IR-11 what the setup channel may call is one list: the registry's class check read its own copy of it (SETUP_REACH), which lacked network.wink.status, so the page's network step got "no tool network.wink.status" from a healthy box. SETUP_REACH is now built from core/relay/setup.js (SETUP_REASONS), classReach asks setupToolAllowed, and kernel/retrofit/gates.js reads the same classReach. test/setup-gates.test.js drives every tool site/setup calls through a real registry as a setup caller.
