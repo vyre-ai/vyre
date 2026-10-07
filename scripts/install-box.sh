@@ -739,7 +739,7 @@ intake_code() {
 # write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on Twenty when this server has
 # room for it; only a server too small for Twenty gets the small built-in store. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
 write_kernel_env() {
-  [ "$DRY" = 1 ] && { say "would turn the kernel on in $DIR/vyre.env"; return 0; }
+  [ "$DRY" = 1 ] && { say "would write the 0.3 settings to $DIR/vyre.env"; return 0; }
   TMP=${TMP:-$(mktemp -d)}
   : >"$TMP/vyre.kernel"
   if [ -e "$DIR/vyre.env" ]; then
@@ -929,18 +929,18 @@ preflight() {
   d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
   [ -d "$d" ] || d=/
   disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
-  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will run each space on Twenty if it finds room, and on the small built-in store if it does not."; return 0; fi
+  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will give each space its full records store if it finds room, and the small built-in one if it does not."; return 0; fi
   # the same rule the daemon uses: a machine under 6 GB is measured against the tiny profile's need, not the small one's
   total=""; if [ -r /proc/meminfo ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo); fi
   SPACE_MEM_MB_USED=$SPACE_MEM_MB
   if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$TINY_BELOW_MB" ]; then SPACE_MEM_MB_USED=$SPACE_MEM_TINY_MB; fi
   fit=$(( (mem - 300) / (SPACE_MEM_MB_USED - 300) )); [ "$fit" -ge 0 ] || fit=0
   if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Twenty needs $SPACE_DISK_MB MB: this server is too small for Twenty, so Vyre will use the small built-in store."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and a space's full records store needs $SPACE_DISK_MB MB: this server is too small for it, so Vyre will use the small built-in store."
   elif [ "$fit" -ge 1 ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space(s) on Twenty (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space$([ "$fit" = 1 ] || printf s) (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
   else
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. Twenty needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB per space. This server is too small for Twenty, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. A space's full records store needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB. This server is too small for it, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
   fi
 }
 

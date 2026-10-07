@@ -335,7 +335,7 @@ ready() {
     compose exec -T vyre vyre status >/dev/null 2>&1 && return 0
     i=$((i + 1)); sleep 1
   done
-  echo "vyre: vyred did not come up; see: vyre logs" >&2
+  echo "vyre: Vyre did not start; see: vyre logs" >&2
   return 1
 }
 
@@ -382,7 +382,7 @@ backup_db() {
   f="$CHOME/backups/pre-$1.tar.gz"
   BK=$(bk_dir)
   csh 'mkdir -p "$1" && rm -f "$2"' "$CHOME/backups" "$f" \
-    || die "could not reach vyred's home in the container to back up; is the box up? (vyre up)"
+    || die "could not reach Vyre's data in the container to back up; is the box up? (vyre up)"
   mkdir -p "$BK"
   chmod 700 "$BK"
   # The backup is always sealed under a passphrase (R8). An update's own backup is unattended, so it gets a random one, kept
@@ -530,7 +530,7 @@ publish_release() {
   FATAL=0; if [ -f "$src/modules.json" ] || [ -f "$UPD_STATE/release/modules.json" ]; then FATAL=1; fi
   if [ "$(id -u)" != "$ROOT_UID" ]; then
     sudo -n "$WRAPPER" publish-release "$src" >/dev/null 2>&1 && return 0
-    echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
+    echo "vyre: could not put the release's signature files where Vyre serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
     return "$FATAL"
   fi
   if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return "$FATAL"; fi
@@ -806,7 +806,7 @@ update() {
     # Nothing new ran, so the database is untouched: put the files back only.
     if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi
     put_box "$BOXPREV" exact
-    die "the new image did not build; the box files are back as they were and vyred was not restarted"
+    die "the new image did not build; the box files are back as they were and Vyre was not restarted"
   fi
   stage restarting
   # The daemon is stopped, the signed release files are replaced as a folder, and only then the new container starts: a running vyred never sees
@@ -1028,7 +1028,7 @@ rollback() {
       echo "vyre: the release before has an older module list (counter $prevc, this one is $curc); the owner has to approve going back, once." >&2
       # The owner's approval comes from the owner's phone through the running daemon: ask (one new ask per 10 minutes, a second call returns the same id), print where to approve,
       # then poll the status about every 2 s until it is answered or the ask runs out. Approved swaps; refused, none, a rate limit or no answer refuses and changes nothing.
-      ask=$(compose exec -T vyre vyre call modules.list.reset.ask '{}' 2>&1) || { printf '%s\n' "$ask" | head -n 3 >&2; die "not rolled back: the owner could not be asked to approve (is Vyre running and the kernel on?). Nothing was changed."; }
+      ask=$(compose exec -T vyre vyre call modules.list.reset.ask '{}' 2>&1) || { printf '%s\n' "$ask" | head -n 3 >&2; die "not rolled back: the owner could not be asked to approve (is Vyre running?). Nothing was changed."; }
       rid=$(printf '%s' "$ask" | tr -d '\n' | sed -n 's/.*"id": *"\([A-Za-z0-9_-]\{1,80\}\)".*/\1/p')
       ttl=$(printf '%s' "$ask" | tr -d '\n' | sed -n 's/.*"expires_in_s": *\([0-9]\{1,5\}\).*/\1/p')
       [ -n "$rid" ] || die "not rolled back: the answer to the approval request was not understood. Nothing was changed."

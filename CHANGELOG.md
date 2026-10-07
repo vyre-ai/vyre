@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(installer): IR-4 the installer and the box wrapper name no internal part to a person (Twenty, kernel, vyred): "room for 2 spaces (each needs about 3.1 GB)" replaces "room for 2 space(s) on Twenty"; a test keeps the printed lines free of them.
 - fix(installer): IR-2 with a setup code (a browser install) the terminal shows the four check words only: no pairing QR, long code or typed code, which was a second pairing path beside the page's.
 - fix(installer): IR-3 the installer starts vyre with `vyre up --quiet`, so a fresh install no longer reads "vyred is already running" or "not paired yet, run vyre call wink.server.code"; the installer says what comes next itself.
 - fix(installer): IR-1 the check words are read through sudo when the account cannot reach the box itself, and the terminal names the command that shows them when they cannot be read.
