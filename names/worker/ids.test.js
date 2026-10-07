@@ -102,8 +102,11 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   assert.deepEqual([r.name, r.kind, r.id, r.sealed], ["alex", "person", alex.state.id, "c2VhbGVk"]);
   assert.equal((await C.verifyChain(r.ops, { now: w.clock.t })).head, alex.state.head, "the client re-verifies the chain, it does not trust the directory");
   // The directory holds public keys only.
-  const blob = JSON.stringify(r);
-  assert.ok(!/code|pin|email|device name/i.test(blob.replace(/"label":"phone"/g, "")), "no private field comes back");
+  // every field name in the answer, at any depth: a private field (a code, a pin, an email, a device name) is refused by its name; values are keys and signatures, where those letters can occur by chance
+  const names = []; const walk = (/** @type {any} */ v) => { if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { if (!Array.isArray(v)) names.push(k); walk(x); } };
+  walk(r);
+  assert.deepEqual(names.filter(k => /code|pin|email|device.?name/i.test(k)), [], "no private field comes back");
+  assert.ok(!JSON.stringify(r).includes("@"), "no email address comes back");
   // No listing, no search.
   for (const p of ["/v1/ids/list", "/v1/ids/search?q=a", "/v1/ids/resolve", "/v1/ids/resolve?name=al*", "/v1/ids/resolve?name="]) assert.ok([404, 405].includes((await alex.get(p)).status), p);
   void chainsById;

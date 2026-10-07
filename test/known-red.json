@@ -15,9 +15,9 @@
   "owner": "app-wire",
   "seen": "lead integration 6 Oct 2026: needs the app's web export built in the checkout (npm run export:web); the gate builds it, a bare test run does not"
  },
- "core/names/system.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
+ "core/runner/lent-wire.test.js": {
+  "owner": "runner",
+  "seen": "lead integration 7 Oct 2026: needs gocryptfs (apt install gocryptfs); the hosted runner has none, the test boxes do"
  },
  "core/sessions/sessions.test.js": {
   "owner": "sessions",
@@ -34,6 +34,10 @@
  "kernel/golden/golden.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "modules/hands-chrome/chrome.test.js": {
+  "owner": "hands",
+  "seen": "lead integration 7 Oct 2026: drives the agent's Chrome at a local test page, and an agent's Chrome reaches public addresses only (by design, nav.js NOT_PUBLIC); move the page to a public-looking test host. Skipped on boxes with no Chrome"
  },
  "test/cc-plugin.test.js": {
   "owner": "memory",
@@ -54,6 +58,10 @@
  "test/link.test.js": {
   "owner": "network",
   "seen": "lead integration 6 Oct 2026: the link and tailnet listener were removed with Tailscale (network c67dcbfc6); the 0.3.0 cleanup (cleanup-tailnet 41283b712) rewrites these tests onto Wink"
+ },
+ "test/login-server-uid0.test.js": {
+  "owner": "launch",
+  "seen": "lead integration 7 Oct 2026: walks a real ssh process chain through /proc; the hosted runner cannot read the other users' entries (unreadable)"
  },
  "test/peer.test.js": {
   "owner": "platform",

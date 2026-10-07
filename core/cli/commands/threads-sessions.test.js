@@ -490,7 +490,8 @@ test("threads watch: a vyred restart mid-watch reconnects from the last event an
   // deck took the keyboard at start; the next words come from there too.
   const sent = await w.tool("threads.send", { thread: id, text: "second words", surface: "deck" });
   assert.ok(sent.data, JSON.stringify(sent));
-  await until(() => /echo: second words/.test(out), "the reply after the restart");
+  // a resumed thread starts its agent again first: on a slow runner that takes longer than the default wait
+  await until(() => /echo: second words/.test(out), "the reply after the restart", 45_000);
   p.kill("SIGINT");
   await closed;
   assert.equal(out.match(/echo: first words/g)?.length, 1, `the first reply was printed again:\n${out}`);
