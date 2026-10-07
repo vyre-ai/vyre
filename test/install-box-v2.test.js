@@ -438,13 +438,16 @@ test("install-box.sh v2: the check words come from the box, show on the terminal
 
 // A server whose account may not talk to the box itself: Docker answers `info` and the box answers the check words only to a root caller (the sudo stub says so).
 const ROOT_ONLY = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) [ -n "$FAKE_ROOT" ] && echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0`;
-const AS_ROOT = 'FAKE_ROOT=1 exec "$@"';
+const AS_ROOT = '[ "$1" = -n ] && shift\nFAKE_ROOT=1 exec "$@"';
+// The wrapper a downloaded install lays down, as a stub: it answers the check words to a root caller only.
+const WRAPPER_STUB = `#!/bin/sh\ncase "$*" in "call relay.setup.status") [ -n "$FAKE_ROOT" ] && echo '{"data":{"words":"lantern quiet river oak"}}' ;; esac\nexit 0\n`;
 
 test("install-box.sh v2: IR-1 an account that cannot reach Docker still gets the check words, through the same sudo path vyre up took", t => {
   const b = box(t, { sudo: AS_ROOT, docker: `case "$1" in info) [ -n "$FAKE_ROOT" ] || exit 1 ;; esac\n${ROOT_ONLY}` });
-  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { extra: { vyre: WRAPPER_STUB } }), VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(b.calls(), /sudo env VYRE_DIR=\S+ \S+ call relay\.setup\.status/, "the call went through sudo");
 });
 
 test("install-box.sh v2: IR-1 words only a root caller can read are tried through sudo, not given up on", t => {
