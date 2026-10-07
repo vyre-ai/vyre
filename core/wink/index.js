@@ -766,11 +766,7 @@ export function createWink(inject = {}) {
       enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
       // the public gate: this box's name and the name directory's DNS calls, which the names module signs for (names.directory.*, this module only)
       name: () => (ctx.config && typeof ctx.config.name === "string" && ctx.config.name && ctx.config.network && ctx.config.network.via === "vyre.run" ? ctx.config.name : null),
-      directory: {
-        acme: async (/** @type {string} */ token) => dirCall("names.directory.acme", { token }),
-        acmeClear: async () => dirCall("names.directory.acme-clear", {}),
-        publish: async () => dirCall("names.directory.publish", {}),
-      },
+      directory: nameDirectory(dirCall),
       // public ingress: the public gate carries POST /hooks/<route> and GET /s/<token> to the hooks listener and the share server on loopback (control/gate.js), nothing else
       ingress: {
         hooks: async () => { try { const r = /** @type {any} */ (await ctx.call("hooks.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
@@ -961,6 +957,19 @@ export function createWink(inject = {}) {
  * The relay bridge's peer door for one space (core/relay/peers.js reads it as `ctx.peerDoor()`): `allow` from the Wink module's registry, `accept` from the node
  * host's own relay door. The composition root sets `ctx.peerDoor = () => peerDoor({ wink, host, space })` for the relay module.
  * @param {{ wink: { peers: { allow(deviceId: string): boolean } }, host: { acceptRelay(space: string): (stream: any, who: any) => void }, space: string }} o */
+/**
+ * The public gate's name-directory calls (core/wink/control/publicgate.js), signed for by the names module (names.directory.*). The gate calls acme(name, value) and
+ * acmeClear(name); the names module puts the record under this box's own name, so the name the gate passes is not sent on.
+ * @param {(tool: string, input: any) => Promise<any>} dirCall
+ */
+export function nameDirectory(dirCall) {
+  return {
+    acme: async (/** @type {string} */ _name, /** @type {string} */ token) => dirCall("names.directory.acme", { token }),
+    acmeClear: async () => dirCall("names.directory.acme-clear", {}),
+    publish: async () => dirCall("names.directory.publish", {}),
+  };
+}
+
 export function peerDoor(o) {
   return { space: o.space, allow: (/** @type {string} */ d) => o.wink.peers.allow(d), accept: o.host.acceptRelay(o.space) };
 }
