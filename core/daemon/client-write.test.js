@@ -1,5 +1,6 @@
 // @ts-check
 // write(): one intent, one key, retried through a vyred restart (ADR 0029, R2).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -17,12 +18,12 @@ function counter(root) {
 test("write: a send made while vyred is restarting lands once when it is back", { timeout: 30_000 }, async t => {
   const root = tempHome(t);
   counter(root);
-  let d = await start({ root, log: () => {} });
+  let d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(async () => { await d.stop(); });
   await d.stop();
   const pending = write("count.add", { n: 1 }, { root, key: "key-restart-1", caller: "cli" });
   await new Promise(r => setTimeout(r, 600));
-  d = await start({ root, log: () => {} });
+  d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   const r = await pending;
   assert.deepEqual(r.data, { n: 1 });
   // The same intent again (a retry after a lost answer) is the first answer, not a second write.

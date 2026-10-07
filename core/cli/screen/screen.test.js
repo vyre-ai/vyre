@@ -2,6 +2,7 @@
 // The screen's pure parts: keys, width, fuzzy matching, the model, the transcript and the
 // layout, each without a terminal or vyred.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { keyParser } from "./keys.js";

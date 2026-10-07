@@ -4,6 +4,7 @@
 // runs the Noise handshake and makes requests through the box's own router. Everything on
 // 127.0.0.1; no Tailscale, no Cloudflare.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -127,6 +128,8 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   const health = await p.request("GET", "/v1/health");
   assert.equal(health.status, 200);
 
+  assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own: a device that has not signed in is asked to");
+  await p.signIn(d);
   const list = await p.call("relay.devices.list");
   assert.equal(list.status, 200, JSON.stringify(list));
   assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online, x.path]), [[p.reply.device, "alex's phone", true, "relay"]]);
@@ -167,7 +170,7 @@ test("relay: a relayed device is a device; a person's action needs its person se
   const device = await p.call("relay.pair.start", {}, P);
   assert.equal(device.status, 401, JSON.stringify(device));
   assert.equal(device.error.code, "person_session_required");
-  assert.equal((await p.call("relay.devices.list")).status, 200, "reads stay the device's");
+  assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own, so it too needs the session (reach person)");
   // Signed in with its own presence key, the device is the person, and presence still decides.
   await p.signIn(d);
   const bare = await p.call("relay.pair.start");
@@ -294,6 +297,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
   assert.match(listed.fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
   assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
+  assert.deepEqual((await web.call("relay.devices.list")).data.devices.map(x => x.id), [web.reply.device], "a browser reads its own row only, not the other paired devices (PA-4)");
   assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
   assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
   assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
@@ -303,7 +307,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.deepEqual([second.data.asked, second.data.already], [true, true]);
   assert.equal(asked.length, 1, "once");
   // An app device has no limits to lift; a person's own surface is not a browser asking about itself.
-  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "bad_input");
+  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "denied", "an app device is device:<id>, not a browser (BR-2): the tool is for web:<id> only");
   const cli = await d.registry.call("relay.devices.ask-trust", {}, "cli");
   assert.equal(cli.error.code, "denied");
   // Approval is the owner's, with presence; then the browser is trusted and asking again only says so.
@@ -350,7 +354,8 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   assert.equal(trust.status, 200, JSON.stringify(trust));
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
   const lifted = await again.call("relay.pair.start", {}, P);
-  assert.equal(lifted.error && lifted.error.code, "person_session_required", JSON.stringify(lifted));
+  // BR-2 (4 Oct 2026): a browser is web:<id>, never an owner's device, so even trusted it reaches no person tool; its relay limits are lifted and nothing more.
+  assert.equal(lifted.error && lifted.error.code, "no_such_tool", JSON.stringify(lifted));
 });
 
 test("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {
@@ -400,6 +405,7 @@ test("relay: a device reports its path; the box measures the relay round trip an
   const r = await p.call("relay.devices.path", { path: "relay", rtt: 42 });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.match(r.data.link, /^[A-Za-z0-9_-]{22}$/);
+  await p.signIn(d);
   let me = (await p.call("relay.devices.list")).data.devices[0];
   assert.equal(me.path, "relay");
   assert.equal(typeof me.rtt, "number", "the box pinged the device over the channel");
@@ -910,4 +916,13 @@ test("relay: /v1/pair is rate-limited per IP", async t => {
   let last;
   for (let i = 0; i < 31; i++) last = await fetch(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "x".repeat(24) }) });
   assert.equal(last.status, 429);
+});
+
+test("relay.status and the device list are the owner's: a bare model session, the harness, a Vyre session and a thread claim are refused; the person's surfaces are not", async t => {
+  const { d } = await world(t);
+  for (const caller of ["mcp", "harness", "session:s1", "mcp:thread:t1", "cli:thread:t1", "mcp:agent:kit", "anonymous", "hook", "tailnet-guest:sam@harlow.example"]) {
+    const r = await d.registry.call("relay.status", {}, caller);
+    assert.ok(r.error, `${caller} is refused relay.status`);
+  }
+  for (const caller of ["cli", "deck", "local"]) assert.ok(!(await d.registry.call("relay.status", {}, caller)).error, `${caller} may read relay.status`);
 });

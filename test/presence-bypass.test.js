@@ -3,6 +3,7 @@
 // vyred with the real Gate and a fake mail server. Each route must be refused with nothing sent,
 // and the person's own routes (a signed Capsule call, a code typed at a login terminal) must work.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -14,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { Presence, inputHash } from "../core/presence/index.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, kernelCaller } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BIN = path.join(ROOT, "bin", "vyre");
@@ -244,7 +245,7 @@ test("bypass: revising, discarding and deleting sends nothing and asks for no pr
   assert.equal((await raw(b.socket, "/v1/tools/threads.answer", { ask: "nope", decision: "allow" }, { "x-vyre-caller": "mcp" })).body.error.code, "denied");
 });
 
-test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the owner can only for the box's own address", async t => {
+test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the tailnet owner cannot either (PW-1: the owner's paired device only)", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", vault: { keystore: "file" }, modules: { disable: ["names", "onboard", "link"] },
     network: { tailscale: true, owner: "me@example.com", address: "https://me.vyre.run" } }));
@@ -253,20 +254,26 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   const key = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const enroll = rp_id => ({ kind: "passkey", name: "x", public_key: key, alg: -7, rp_id, credential_id: "cred-" + rp_id.replace(/\./g, "-") });
   // What Claude could get: a fresh code, as a module (onboarding) would mint it.
-  const code = () => d.registry.call("presence.code", {}, "module:onboard").then(r => r.data.code);
+  // A module may NOT mint a passkey code (a code enrols a presence key, the root of every later approval): the registry refuses it, so a fixture mints through the Presence object itself.
+  const refusedForModule = await d.registry.call("presence.code", {}, "module:onboard");
+  assert.equal(refusedForModule.error && refusedForModule.error.code, "denied", "a module cannot mint a passkey code: " + JSON.stringify(refusedForModule));
+  const code = async () => (await d.registry.deps.presence.mintCode()).code;
   for (const caller of ["cli", "local", "capsule"]) {
     const r = await raw(d.paths.socket, "/v1/tools/presence.enroll", enroll("me.vyre.run"), { "x-vyre-caller": caller, "x-vyre-presence": `code code=${await code()}` });
     assert.equal(r.status, 403, caller);
   }
   const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
-  assert.match(wrong.error.message, /must be for me\.vyre\.run/);
-  const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
-  assert.ok(ok.data, JSON.stringify(ok));
-  assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
+  // refused: before PW-1 for the wrong address, since PW-1 earlier, because a passkey on the box enrols only from the owner's own paired device
+  assert.match(wrong.error.message, /must be for me\.vyre\.run|owner's own paired device/);
+  // PW-1: even for the box's own address, a passkey on the box enrols only from the owner's own paired device, never over the tailnet (the tailnet goes in 0.3.0)
+  const tailnet = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  assert.match(String(tailnet.error && tailnet.error.message), /owner's own paired device/, JSON.stringify(tailnet));
+  assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 0);
 });
 
 test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
   const b = await box(t);
+
   const refused = async (tool, input, caller) => {
     const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
     assert.equal(r.status, 403, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
@@ -287,6 +294,11 @@ test("bypass: making or changing an agent is a person's, with no passkey; the as
   assert.ok(!(await call("agents.list", {}, { root: b.root, caller: "cli" })).data.some(a => a.name === "ledger"), "nothing was made");
   // A person changes anything, with no proof: credentials and budget, projects, skills, its computer.
   for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: false }]) {
+    if (change.projects) {
+      // giving an agent a project is a kernel grant, a person's own call with their device's facts and no passkey (a bare label is never a person)
+      for (const [caller, who] of [["deck", { name: "kit" }], ["cli", { agent: "kit" }]]) { const r = await kernelCaller(b.d, b.root, caller)("agents.update", { ...who, ...change }); assert.equal(r.error, undefined, `agents.update ${caller}: ${JSON.stringify(r.error)}`); }
+      continue;
+    }
     await allowed("agents.update", { name: "kit", ...change }, "deck");
     await allowed("agents.update", { agent: "kit", ...change }, "cli");
   }

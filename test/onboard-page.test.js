@@ -4,6 +4,7 @@
 // driven over the DevTools protocol. test/onboard.test.js and test/journey.test.js call the tools
 // directly, which is how a Continue button that could never turn on went unnoticed.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -17,10 +18,9 @@ import { tempHome } from "./helpers.js";
 import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 
 // This test drives the Deck through its sample data (?fixtures=1), which a box serves only to dev worlds.
-process.env.VYRE_DECK_FIXTURES = "1";
 
 // An explicit override, then a real Chrome for local Mac use, then testbox's own
-// chrome-headless-shell (deck/test's own default path, e.g. deck/test/settings-browser.js):
+// chrome-headless-shell (the default path web/test/settings-browser.js uses):
 // without this second fallback these tests silently skip on testbox, which has no Chrome.app, so
 // they never actually ran there (caught only once CI ran them for real on a Mac runner).
 const CHROME_CANDIDATES = [process.env.CHROME_BIN, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -89,7 +89,7 @@ async function chrome(t, dir) {
 }
 
 /** ?fixtures=1 goes before the #fragment, not after (a real query param, read by location.search
- * in deck/js/api.js), and never onto the one-time ?t=<token> link itself (a second query param
+ * in web/js/api.js), and never onto the one-time ?t=<token> link itself (a second query param
  * there would not survive its own redirect) — always call this on the settled URL. */
 const withFixtures = url => {
   const hashAt = url.indexOf("#");
@@ -98,8 +98,11 @@ const withFixtures = url => {
   return base + (base.includes("?") ? "&" : "?") + "fixtures=1" + frag;
 };
 
+// A server has no first-run page since b3ef6ad78 (onboard.link refuses on a box). These four walk that page on a role "box" home, so they wait for the Solo Deck loopback design (docs/design/anywhere.md), which reuses the link.
+const PAGE_GONE = "a server has no setup page (b3ef6ad78); these return with the Solo Deck loopback link";
+
 test("onboard page: step 1 takes a name on a box with no vyre.run token, and says it goes on the tailnet",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -150,19 +153,25 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#tailscale"`, "still needs to join Tailscale, even as a device");
     const saved = config.load(root);
-    assert.equal(saved.name, "alex");
+    // The name typed in step 1 is the person's, never the address (#50): it saves the person only.
     assert.equal(saved.onboard.person, "alex");
+    assert.notEqual(saved.name, "alex");
+    assert.equal(saved.name, undefined, "the person's name is never config.name");
+    // Where onboard.status reads it: the person's name, from the person's own surface.
+    const status = await call("onboard.status", {}, { root, caller: "cli" });
+    assert.equal(status.data && status.data.name, "alex", JSON.stringify(status.error));
+    assert.equal(status.data.person, "alex");
   });
 
 test("onboard page: Device, already on the same Tailscale network, verifies the server's name before proceeding (reviewer-2's caught bug)",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     // Regression for a real bug: the Device branch checked only the call's error, never
     // whether onboard.join actually said the server was reachable (link.health's real shape
     // is `online`, not `ok`/`reachable`), so a wrong node proceeded to Claude sign-in exactly
     // like a right one. No real onboard.join exists yet to answer this for real, so this test
-    // drives it through the Deck's own fixtures (?fixtures=1, deck/js/api.js), whose
+    // drives it through web/'s own fixtures (?fixtures=1, web/js/api.js), whose
     // onboard.join `verify` case answers `online: false` for node "wrong-node" specifically
-    // and `online: true` for anything else (deck/fixtures/onboard.json).
+    // and `online: true` for anything else (web/fixtures/onboard.json).
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -189,7 +198,7 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
     // link.data.url is the one-time ?t=<token> link, which the server redeems itself and
     // redirects to the stable /onboard#s=<session> address, stored in this tab's
     // sessionStorage (onboard.js's `ss.setItem("vyre.onboard", sid)`). Turning fixtures on
-    // (?fixtures=1, deck/js/api.js) is a second, same-tab navigation once that's settled, not
+    // (?fixtures=1, web/js/api.js) is a second, same-tab navigation once that's settled, not
     // appended to the one-time link itself (which already has its own ?t= query and a
     // redirect that would not carry a second query param through).
     await page.send("Page.navigate", { url: link.data.url });
@@ -244,7 +253,7 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
   });
 
 test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address, landing on Claude sign-in",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -282,14 +291,14 @@ test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address,
   });
 
 test("onboard page: \"How will Vyre run?\" Device shows \"Pair with a code\" as the default once anywhere ships can.relayJoin (every non-darwin platform, including this one)",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     // Was written when the real onboard.status returned no `can` field at all, so "Pair with a
     // code" stayed unconditionally hidden. can.relayJoin is real now (core/onboard/index.js's
     // canRelayJoin: false only on darwin, true everywhere else, including testbox/CI's Linux),
     // and relay.pair.ticket/relay.join are real and reviewer-cleared, so this platform now gets
     // the real, current design: relay ("Pair with a code") is the device-via default, and the
     // manual tailnet-name field moves under "Use my own Tailscale setup," an advanced fallback
-    // (the user's pivot, 28 Sep, docs/work/launch-surfaces.md). Rewritten to assert that.
+    // (the user's pivot, 28 Sep, team/archive/work-journals/launch-surfaces.md). Rewritten to assert that.
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };

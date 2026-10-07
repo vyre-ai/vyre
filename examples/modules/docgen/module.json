@@ -1,0 +1,17 @@
+{
+  "$schema": "https://vyre.run/schema/module-1.json",
+  "name": "docgen",
+  "version": "0.1.0",
+  "vyre": "1",
+  "description": "Fills a template with a record's fields and files the result in your Drive.",
+  "roles": ["box"],
+  "does": {
+    "tools": [
+      { "name": "docgen.make", "summary": "fill a template with one record and file it in the Drive" }
+    ]
+  },
+  "watches": { "emits": ["docgen.made"] },
+  "needs": {
+    "kernel": { "records": ["doc_template", "contact"], "files": ["Clients"] }
+  }
+}

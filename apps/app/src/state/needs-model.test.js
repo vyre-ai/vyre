@@ -2,6 +2,8 @@
 // Needs you as data (needs-model.ts): rows from the box's two lists, oldest first, kept live by
 // events, and the cache read back. Loaded through Node's type stripping, so skipped on a Node
 // without it.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,11 +12,11 @@ const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./needs-model.ts");
 
 const ctx = {
-  projects: { "harlow-legal": "Harlow Legal", northwind: "Northwind Bakery" },
-  threads: { t1: { agent: "kit", project: "harlow-legal" }, t2: { agent: "juno", project: "northwind" } },
+  projects: { "juniper-studio": "Juniper Studio", northwind: "Northwind Bakery" },
+  threads: { t1: { agent: "kit", project: "juniper-studio" }, t2: { agent: "juno", project: "northwind" } },
 };
 const gate = (o = {}) => ({ id: "g1", kind: "send", via: "mail", to: ["sam@northwind.test"], summary: "Q3 report, the short version",
-  why: null, agent: "kit", thread: "t1", project: "harlow-legal", at: 1000, presence: { required: true, covered: false, since: null }, ...o });
+  why: null, agent: "kit", thread: "t1", project: "juniper-studio", at: 1000, presence: { required: true, covered: false, since: null }, ...o });
 const ask = (o = {}) => ({ id: "a1", thread: "t1", tool: "Bash", summary: "git push origin q3-report", destination: null, reason: null,
   at: 2000, state: "open", decision: null, presence: { required: false, covered: false, since: null }, ...o });
 
@@ -25,7 +27,7 @@ test("needs: held items and asks are one list, oldest first, ties by id", { skip
   const g = list[1];
   assert.equal(g.title, "Send email to sam");
   assert.equal(g.detail, "Q3 report, the short version");
-  assert.equal(g.project, "Harlow Legal", "the project's name, not its slug");
+  assert.equal(g.project, "Juniper Studio", "the project's name, not its slug");
   assert.equal(g.mono, false);
   const a = list[2];
   assert.equal(a.title, "Run a command");

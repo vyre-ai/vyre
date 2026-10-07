@@ -2,6 +2,7 @@
 // The transcripts adapter: finding transcript files as Claude Code lays them out, and reading
 // each into turns without ever throwing over a bad file or a bad line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -59,9 +60,18 @@ test("transcripts: reading the corpus gives exactly the expected turns and sessi
     const want = expected(s);
     const got = read(e.file, { id: e.id, parent: e.parent });
     assert.ok(got);
-    assert.deepEqual(got.turns.map(x => ({ session: e.id, ...x })), want.turns, `${e.id}: turns differ`);
+    // links (what a turn touched, links.test.js) ride on a turn but are not part of what was said.
+    assert.deepEqual(got.turns.map(({ links: _, ...x }) => ({ session: e.id, ...x })), want.turns, `${e.id}: turns differ`);
     for (const k of ["cwd", "name", "title", "started", "ended", "human", "parent"]) assert.equal(got[k], want.session[k], `${e.id}: ${k}`);
   }
+});
+
+test("transcripts: the corpus's tool call between two turns links the assistant turn before the person's next one", t => {
+  const dir = path.join(tempHome(t), "transcripts");
+  writeTranscripts(dir);
+  const e = list([dir]).find(x => x.id === "11111111-aaaa-4000-8000-000000000001");
+  const got = read(e.file, { id: e.id, parent: e.parent });
+  assert.deepEqual(got?.turns.map(x => x.links || null), [null, [{ kind: "read", ref: "src/intake.tsx" }], null, null]);
 });
 
 test("transcripts: the last /rename wins, however many copies came before it", t => {

@@ -26,6 +26,10 @@ impl Pinned {
 
     pub fn origin(&self) -> &str { &self.origin }
 
+    /// Is this the Origin header of a call made by a page of the pinned origin itself? Exactly the pinned origin (scheme, host and port), nothing else: a frame of another origin inside a pinned page
+    /// sends its own origin, and a call with no Origin header at all is refused.
+    pub fn is_origin(&self, header: Option<&str>) -> bool { header.map_or(false, |h| h == self.origin) }
+
     /// True when `target` is on the pinned origin. The relay-fallback origin (B5) is added by the
     /// caller as a second `Pinned`, never widened here.
     pub fn allows(&self, target: &str) -> bool {
@@ -136,6 +140,17 @@ mod tests {
         ] {
             assert_eq!(open_path(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn only_the_pinned_origin_itself_is_the_caller_a_frame_inside_it_is_not() {
+        let p = Pinned::parse("https://alex.vyre.run").unwrap();
+        assert!(p.is_origin(Some("https://alex.vyre.run")));
+        // a cross-origin frame (an artifact or Drive preview, an embedded site) inside the pinned page sends its own origin
+        for other in ["https://evil.example", "https://alex.vyre.run.evil.example", "https://mallory.vyre.run", "http://alex.vyre.run", "https://alex.vyre.run:8443", "https://alex.vyre.run/", "null", ""] {
+            assert!(!p.is_origin(Some(other)), "{other}");
+        }
+        assert!(!p.is_origin(None), "no Origin header is refused");
     }
 
     #[test]

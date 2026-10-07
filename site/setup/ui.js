@@ -6,6 +6,8 @@
 // The screen is a few regions, each rebuilt only when what it shows changes, so a progress line arriving never
 // takes the caret out of the name being typed or the focus off a button.
 
+import { stepList, stepNumber } from "./flow.js";
+
 /** @param {Document} doc @param {string} tag @param {Record<string, string>|null} attrs @param {...(string|Node|null|false)} kids */
 export function h(doc, tag, attrs, ...kids) {
   const el = doc.createElement(tag);
@@ -15,14 +17,14 @@ export function h(doc, tag, attrs, ...kids) {
 }
 
 /** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
- *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
+ *   continueToAi: () => void, continueToNetwork: () => void, skipAi?: () => void, readNetwork: () => void, startAi: (provider: string) => void, openAiKey: (kind: string) => void, submitAiKey: (f: { kind: string, key: string, base_url?: string, model?: string }) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
  *   openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "domain", "ai", "tailscale", "devices", "claim", "log"];
+const REGIONS = ["timeline", "head", "words", "naming", "domain", "ai", "network", "devices", "claim", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -47,9 +49,37 @@ export function render(s, ctx) {
     return true;
   };
   const found = s.stage === "found" || s.stage === "named" ? s.box : null;
+  const steps = stepList(s), at = stepNumber(s), cur = steps[at - 1] || null;
+  /** The small label above each heading: where this is in the ten. */
+  const stepLabel = () => (cur ? `Step ${at} of ${steps.length}${cur.optional ? ", optional" : ""}` : "Set up");
+
+  // ---- timeline: ten steps, the same list as a rail (wide) and a segmented bar with the list one tap away (narrow) ----
+  const tlKey = at ? steps.map(x => x.status).join(",") : "none";
+  region("timeline", tlKey, () => {
+    if (!at) return [];
+    const mark = x => (x.status === "done" ? "Done" : x.status === "skipped" ? "Skipped" : x.status === "failed" ? "Stopped here" : x.status === "current" ? "Now" : "");
+    const list = cls => {
+      let last = "";
+      const kids = [];
+      for (const x of steps) {
+        if (x.where !== last) { kids.push(el("li", { class: "tl-group", "aria-hidden": "true" }, x.where)); last = x.where; }
+        kids.push(el("li", { class: `tl-step ${x.status}`, ...(x.status === "current" ? { "aria-current": "step" } : {}) },
+          el("span", { class: "tl-dot", "aria-hidden": "true" }, x.status === "done" ? "\u2713" : x.status === "skipped" ? "\u2013" : ""),
+          el("span", { class: "tl-name" }, x.title), x.optional ? el("span", { class: "tl-opt" }, "optional") : null,
+          mark(x) ? el("span", { class: "sr" }, `, ${mark(x).toLowerCase()}`) : null));
+      }
+      return el("ol", { class: cls, "aria-label": "Setup steps" }, ...kids);
+    };
+    const segs = el("div", { class: "tl-segs", "aria-hidden": "true" }, ...steps.map(x => el("span", { class: `seg ${x.status}` })));
+    return [
+      list("tl-rail"),
+      el("div", { class: "tl-bar" }, segs,
+        el("details", { class: "tl-more" }, el("summary", null, el("span", { class: "tl-now" }, `Step ${at} of ${steps.length}`, " ", el("b", null, cur ? cur.title : "")), el("span", { class: "tl-all" }, "All steps")), list("tl-list"))),
+    ];
+  });
 
   // ---- head: what this screen is, in words ----
-  const headKey = `${s.stage}|${s.stage === "stopped" ? s.error?.code : ""}|${found?.name || ""}|${s.installLine}`;
+  const headKey = `${at}|${s.stage}|${s.stage === "stopped" ? s.error?.code : ""}|${found?.name || ""}|${s.installLine}`;
   const rebuiltHead = region("head", headKey, () => {
     if (s.stage === "start") return [
       el("p", { class: "lbl" }, "Set up"),
@@ -62,8 +92,8 @@ export function render(s, ctx) {
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       copy.addEventListener("click", ev => actions.copy(s.installLine, /** @type {HTMLElement} */ (ev.currentTarget)));
       return [
-        el("p", { class: "lbl" }, "Install"),
-        el("h1", { tabindex: "-1" }, s.machine === "mac" ? "Run this on the Mac" : "Run this on your server"),
+        el("p", { class: "lbl" }, stepLabel()),
+        el("h1", { tabindex: "-1" }, s.machine === "mac" ? "Run the line on the Mac" : "Run the line on your server"),
         el("p", { class: "lead" }, s.machine === "mac"
           ? "Open Terminal on the Mac as yourself, not root, and paste the line. It asks for your Mac password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in."
           : "Open a terminal on the server as yourself, not root, and paste the line. It asks for sudo itself only when it needs it."),
@@ -75,35 +105,36 @@ export function render(s, ctx) {
       ];
     }
     if ((s.stage === "found" || s.stage === "named") && found) return [
-      el("p", { class: "lbl" }, s.stage === "named" ? "Named" : "Found your server"),
-      el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : found.name),
-      s.stage === "found" ? el("p", { class: "lead" }, "It answered this page. Look at your server's terminal: it printed four words. Do they match these?") : null,
+      el("p", { class: "lbl" }, stepLabel()),
+      el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : s.confirm === "pending" ? "Check the four words" : found.name),
+      s.stage === "found" && s.confirm === "pending" ? el("p", { class: "lead" }, "Your server answered this page. Look at its terminal: it printed four words. Do they match these?") : null,
     ];
     if (s.stage === "ai") return [
-      el("p", { class: "lbl" }, "Your AI"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Sign in to your AI"),
-      el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on; you can add more later."),
+      el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on. Your assistant needs one to answer, and you can add more later."),
     ];
     if (s.stage === "claim") return [
-      el("p", { class: "lbl" }, "Arrive"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Open your server"),
-      el("p", { class: "lead" }, "Your server has its own address. Open it once from here: it asks for your fingerprint, face or security key, and that makes you its owner. Nothing else can."),
+      el("p", { class: "lead" }, `Your server is ready at ${s.named ? `${s.named.name}.vyre.run` : "its own address"}. Open it to make your passkey, which makes you its owner. Steps 8 to 10 continue there.`),
     ];
     if (s.stage === "done") return [
-      el("p", { class: "lbl" }, "Done"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "You're in"),
-      el("p", { class: "lead" }, "Your server knows you now. Carry on at its own address."),
-      s.named ? el("div", { class: "actions" }, el("a", { class: "btn primary", href: `https://${s.named.name}.vyre.run/`, rel: "noopener" }, "Open your server")) : null,
+      el("p", { class: "lead" }, `Your passkey is made and your server knows you now. Steps 8 to 10, you and your assistant, your computers and your history, continue at ${s.named ? `${s.named.name}.vyre.run` : "its own address"}.`),
+      s.skipped.length ? el("p", { class: "note" }, `Skipped: ${s.skipped.map(id => (stepList(s).find(x => x.id === id) || { title: id }).title).join(", ")}. You can do them later in Settings, under Setup.`) : null,
+      s.named ? el("div", { class: "actions" }, el("a", { class: "btn primary", href: `https://${s.named.name}.vyre.run/`, rel: "noopener" }, `Open ${s.named.name}.vyre.run`)) : null,
     ];
     if (s.stage === "devices") return [
-      el("p", { class: "lbl" }, "Devices"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Add your phone"),
-      el("p", { class: "lead" }, "Your phone pairs by scanning a ring with the Vyre app's camera. The ring works once, for five minutes, and this page can make only one."),
+      el("p", { class: "lead" }, "This page pairs nothing. Your first device pairs at the server's own terminal: it shows a QR and a long code, and you confirm three words. Your phone and everything else is added from the Vyre app afterwards."),
     ];
-    if (s.stage === "tailscale") return [
-      el("p", { class: "lbl" }, "Tailscale"),
-      el("h1", { tabindex: "-1" }, "Connect your server to Tailscale"),
-      el("p", { class: "lead" }, "Tailscale is the private network your devices and this server share. You sign in on Tailscale's own page."),
+    if (s.stage === "network") return [
+      el("p", { class: "lbl" }, stepLabel()),
+      el("h1", { tabindex: "-1" }, "Your server's network"),
+      el("p", { class: "lead" }, "Vyre's private network is built in. Your devices and this server find each other with nothing to install and nothing to sign in to."),
     ];
     return [
       el("p", { class: "lbl" }, "Stopped"),
@@ -144,7 +175,7 @@ export function render(s, ctx) {
       const code = saved ? null : s.named.recoveryCode;
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       if (code) copy.addEventListener("click", ev => actions.copy(code, /** @type {HTMLElement} */ (ev.currentTarget)));
-      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi()));
+      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToNetwork()));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
         el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
@@ -175,7 +206,7 @@ export function render(s, ctx) {
   region("domain", domainKey, () => {
     if (domainKey === "none") return [];
     if (domainKey === "closed") return [el("div", { class: "actions" }, button("Use a domain of your own too", "secondary", () => actions.openDomain(true)))];
-    const input = el("input", { type: "text", class: "name", name: "domain", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Your domain", "aria-describedby": "domain-status", maxlength: "100", placeholder: "harlowlegal.com" });
+    const input = el("input", { type: "text", class: "name", name: "domain", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Your domain", "aria-describedby": "domain-status", maxlength: "100", placeholder: "juniperstudio.example" });
     /** @type {any} */ (input).value = dm.input;
     input.addEventListener("input", ev => actions.setDomain(/** @type {any} */ (ev.currentTarget).value));
     input.addEventListener("keydown", ev => { if (/** @type {any} */ (ev).key === "Enter") actions.checkDomain(); });
@@ -198,11 +229,29 @@ export function render(s, ctx) {
 
   // ---- ai: each provider's own sign-in ----
   const providers = [["claude", "Claude"], ["codex", "ChatGPT (Codex)"], ["grok", "Grok"]];
-  const aiKey = s.stage === "ai" ? "a:" + s.ai.accounts.map(a => `${a.id}/${a.step}/${a.url}/${a.code}/${a.error}`).join("|") : "none";
+  const keyKinds = [["openai-compatible", "OpenAI-compatible"], ["anthropic-compatible", "Anthropic-compatible"], ["openrouter", "OpenRouter"]];
+  const aiKey = s.stage === "ai" ? "a:" + s.ai.accounts.map(a => `${a.id}/${a.step}/${a.url}/${a.code}/${a.error}`).join("|") + `|k:${s.ai.keyKind}/${s.ai.keyBusy}` : "none";
   region("ai", aiKey, () => s.stage !== "ai" ? [] : [
     el("div", { class: "providers" }, ...providers.map(([id, label]) => button(`Sign in with ${label}`, "secondary", () => actions.startAi(id)))),
+    el("p", { class: "hint" }, "Or use an API key instead of signing in:"),
+    el("div", { class: "providers" }, ...keyKinds.map(([id, label]) => button(`${label} key`, s.ai.keyKind === id ? "primary" : "secondary", () => actions.openAiKey(id)))),
+    ...(s.ai.keyKind ? [(() => {
+      const kind = s.ai.keyKind, custom = kind !== "openrouter";
+      const field = (name, label, attrs = {}) => el("input", { type: "text", class: "name", name, autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": label, placeholder: label, ...attrs });
+      // type password and autocomplete off: the key is typed once, read once at the click, and never kept in the page's state.
+      const key = field("apikey", "API key", { type: "password", maxlength: "400", autocomplete: "new-password" });
+      const base = custom ? field("base_url", kind === "anthropic-compatible" ? "Address (empty for api.anthropic.com)" : "Address (empty for api.openai.com/v1)", { maxlength: "300", inputmode: "url" }) : null;
+      const model = kind === "openai-compatible" ? field("model", "Model to use (optional)", { maxlength: "100" }) : null;
+      const go = button(s.ai.keyBusy ? "Checking" : "Check and save", "primary", () => { actions.submitAiKey({ kind, key: /** @type {any} */ (key).value, base_url: base ? /** @type {any} */ (base).value : "", model: model ? /** @type {any} */ (model).value : "" }); /** @type {any} */ (key).value = ""; });
+      if (s.ai.keyBusy) go.setAttribute("disabled", "");
+      return el("div", { class: "account", "data-role": "key-form" },
+        el("p", { class: "row-title" }, (keyKinds.find(k => k[0] === kind) || [0, kind])[1]),
+        el("div", { class: "field" }, key), base ? el("div", { class: "field" }, base) : null, model ? el("div", { class: "field" }, model) : null,
+        el("p", { class: "hint" }, "Your server checks the key with one small request, keeps it in its vault, and never shows it again."),
+        el("div", { class: "actions" }, go));
+    })()] : []),
     ...s.ai.accounts.map(a => {
-      const label = (providers.find(p => p[0] === a.provider) || [0, a.provider])[1];
+      const label = ((providers.concat(keyKinds)).find(p => p[0] === a.provider) || [0, a.provider])[1];
       const kids = [el("p", { class: "row-title" }, label)];
       if (a.step === "starting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Starting the sign-in"));
       if (a.step === "code" || a.step === "url") {
@@ -214,36 +263,31 @@ export function render(s, ctx) {
           kids.push(el("div", { class: "field" }, input), el("div", { class: "actions" }, go));
         }
       }
-      if (a.step === "waiting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Finishing the sign-in"));
-      if (a.step === "done") kids.push(el("p", { class: "hint" }, `${label} is signed in.`));
+      if (a.step === "waiting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), a.id.startsWith("key-") ? "Checking the key" : "Finishing the sign-in"));
+      if (a.step === "done") kids.push(el("p", { class: "hint" }, a.id.startsWith("key-") ? `${label} key saved.` : `${label} is signed in.`));
       if (a.error) kids.push(el("p", { class: "warn", role: "alert" }, a.error));
       return el("div", { class: "account" }, ...kids);
     }),
-    s.ai.accounts.some(a => a.step === "done") ? el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToTailscale())) : null,
+    s.ai.accounts.some(a => a.step === "done")
+      ? el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToDevices()))
+      : el("div", { class: "actions" }, button("Skip for now", "quiet", () => actions.skipAi && actions.skipAi())),
+    s.ai.accounts.some(a => a.step === "done") ? null : el("p", { class: "note" }, "Skipping is fine. Add one later in Settings, under Your AI. Until you do, your assistant cannot answer."),
   ]);
 
-  // ---- tailscale: the box joins the tailnet, then its address is published ----
-  const t = s.tailscale, ts = t.status;
-  const tsKey = s.stage === "tailscale" ? `t:${ts ? ts.state : "?"}|${ts ? ts.tailnetKind : ""}|${t.loginUrl}|${t.busy}|${t.error}|${t.address ? t.address.phase + t.address.why : ""}` : "none";
-  region("tailscale", tsKey, () => {
-    if (s.stage !== "tailscale") return [];
+  // ---- network: built in, so the page only shows how the server is reachable ----
+  const nt = s.network, ns = nt.status;
+  const ntKey = s.stage === "network" ? `n:${ns ? ns.state + "|" + ns.path : "?"}|${nt.busy}|${nt.error}` : "none";
+  region("network", ntKey, () => {
+    if (s.stage !== "network") return [];
     const kids = [];
-    const named = s.named && (s.named.address || s.named.name);
-    if (ts && ts.state === "connected") {
-      kids.push(el("p", { class: "hint" }, `Your server is on ${ts.tailnet || "your tailnet"}${ts.login ? ` as ${ts.login}` : ""}.`));
-      if (ts.tailnetKind === "organization") kids.push(el("p", { class: "warn", role: "alert" }, "This is a work network. Your company's admins can see and reach this server. A personal Tailscale account is usually what you want."));
-      const ph = t.address ? t.address.phase : null;
-      if (ph === "serving") kids.push(el("p", { class: "hint" }, `Your address is live: ${named}.`));
-      else if (ph === "failed") kids.push(el("p", { class: "warn", role: "alert" }, t.address && t.address.why ? t.address.why : "The address could not be published."));
-      else kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Publishing your address"));
-    } else if (ts && ts.state === "needs-approval") {
-      kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for approval in your Tailscale admin"));
-    } else {
-      kids.push(el("div", { class: "actions" }, button(t.busy ? "Getting the link" : "Connect my server", "primary", () => actions.connectTailscale())));
-      if (t.loginUrl) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: t.loginUrl, target: "_blank", rel: "noopener noreferrer" }, "Tailscale's sign-in page"), " and sign in. This page notices when your server joins."));
+    if (ns) {
+      const line = ns.state === "connected" ? "Your server is reachable directly." : ns.state === "relayed" ? "Your server is reachable through Vyre's relay, which carries the connection end-to-end encrypted. This is normal." : ns.state === "joining" ? "Your server's network is coming up." : ns.state === "offline" ? "Your server's link is down for now. Setup can carry on." : "Your server's network is ready.";
+      kids.push(el("p", { class: "hint" }, line));
+    } else if (nt.busy || !nt.error) {
+      kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Looking at your server's network"));
     }
-    if (ts && ts.state === "connected" && t.address && t.address.phase === "serving") kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToDevices())));
-    if (t.error) kids.push(el("p", { class: "warn", role: "alert" }, t.error));
+    if (nt.error) { kids.push(el("p", { class: "warn", role: "alert" }, nt.error)); kids.push(el("div", { class: "actions" }, button("Look again", "quiet", () => actions.readNetwork()))); }
+    if (ns || nt.error) kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi())));
     return kids;
   });
 
@@ -255,9 +299,9 @@ export function render(s, ctx) {
     const address = s.named && (s.named.address || s.named.name);
     const next = el("div", { class: "actions" }, button(dv.phone === "paired" ? "Continue" : "Skip for now", dv.phone === "paired" ? "primary" : "quiet", () => actions.continueToClaim()));
     if (dv.phone === "idle" || dv.phone === "failed" || dv.phone === "minting") return [
-      el("div", { class: "actions" }, button(dv.phone === "minting" ? "Making the ring" : "Add my phone", "primary", () => actions.addPhone())),
-      dv.error ? el("p", { class: "warn", role: "alert" }, dv.error) : null,
-      el("p", { class: "note" }, "You can add phones later from your server's own page."), next,
+      el("p", { class: "lead" }, "Your first device pairs from the server's own terminal."),
+      el("p", { class: "note" }, "The install shows a QR code and a long code there. Scan it with the Vyre app on your phone, or paste the code into the app on a computer, and confirm the three words. Then you finish setting up in the app, not here."),
+      next,
     ];
     if (dv.phone === "showing") return [
       el("div", { class: "ring-slot", "data-role": "ring", role: "img", "aria-label": "The ring to scan with the Vyre app on your phone" }),
@@ -292,9 +336,9 @@ export function render(s, ctx) {
   if (rebuiltClaim && clKey.startsWith("c:ready") && cl.url) { const slot = findByRole(m.regions.claim, "qr"); if (slot) actions.drawQr(slot, cl.url); }
 
   // ---- log: the install as the server tells it, as plain text ----
-  region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}`, () => s.lines.length ? [
-    el("h2", { class: "sub" }, "What your server is doing"),
-    el("ul", { class: "log", "aria-live": "polite" }, ...s.lines.map(t => el("li", null, t))),
+  region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}|${s.activity.length}`, () => s.lines.length || s.activity.length ? [
+    el("h2", { class: "sub" }, "What is happening"),
+    el("ul", { class: "log", "aria-live": "polite" }, ...s.activity.map(t => el("li", { class: "mine" }, t)), ...s.lines.map(t => el("li", null, t))),
   ] : []);
 
   // A new screen puts focus on its heading; progress lines arriving on the same screen do not.

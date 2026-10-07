@@ -32,7 +32,7 @@ is told something needs them while closed, and what it keeps on the phone.
 - Both are thin clients of vyred's public API, like the Deck (spec section 9): `POST /v1/tools/<name>`,
   `GET /v1/events/stream`, `POST /v1/presence/challenge`. Neither has logic the Deck lacks; a
   screen that needs something new asks for a tool, it does not compute it on the phone.
-- The shared client contract is `apps/CONTRACT.md`, taken from the code (not the docs) and kept
+- The shared client contract is `team/archive/CONTRACT-native-apps.md`, taken from the code (not the docs) and kept
   current by this workstream. Each app has one API client that is the only thing that opens a
   connection, the same rule as `deck/js/api.js`.
 
@@ -187,7 +187,7 @@ box to be read before sending. No audio leaves the phone.
 - Store releases wait on the push-relay decision, on App Review accepting an app that needs a
   self-hosted server (a demo box for review), and on the user's own developer accounts. The steps
   are in `apps/RELEASE.md`; none is done by an agent.
-- Two more clients to keep in step with the contract. `apps/CONTRACT.md` and a contract test
+- Two more clients to keep in step with the contract. `team/archive/CONTRACT-native-apps.md` and a contract test
   against a real vyred in a temp home keep them honest.
 
 ## Addendum, 27 Sep 2026 · The push relay (proposed, for decision)

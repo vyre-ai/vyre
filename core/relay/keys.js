@@ -7,7 +7,7 @@
 // Today: ~/.vyre/relay/keys.json (0600), made on first use, never leaves the box. That file sits
 // on the person's own uid, so a process running as them (including a prompt-injected model) can
 // read or replace it, the reason relay-on-a-Mac is not enabled by default until vyre-core holds
-// this instead (docs/work/tailnet.md "Needs from others").
+// this instead (team/archive/work-journals/tailnet.md "Needs from others").
 
 import fs from "node:fs";
 import path from "node:path";

@@ -1,21 +1,48 @@
 {
   "name": "network",
   "version": "0.1.0",
-  "description": "Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.",
-  "roles": ["box"],
+  "description": "The built-in network as the person sees it: whether this machine is signed in, per space whether the link is up (direct or through the relay), and joining or leaving a space. The work is the Wink module's; this module holds the public names (network.wink.*).",
+  "roles": [
+    "box"
+  ],
   "requires": [],
-  "does": { "tools": [{ "name": "network.guests.list", "reach": "person" }, { "name": "network.guests.add", "reach": "person" }, { "name": "network.guests.remove", "reach": "person" }, { "name": "network.guests.enable", "reach": "person" }, { "name": "network.guests.check", "reach": "person" }, { "name": "network.funnel.status", "reach": "person" }, { "name": "network.tailscale.status", "reach": "anyone" }, { "name": "network.tailscale.login", "reach": "anyone" }, { "name": "network.tailscale.peers", "reach": "anyone" }] },
-  "watches": { "emits": ["guest.added", "guest.removed", "funnel.changed", "tailscale.changed"] },
-  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "does": {
+    "reads": [
+      "network.wink.status"
+    ],
+    "tools": [
+      {
+        "name": "network.wink.status",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "network.wink.whois",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "network.wink.join",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "network.wink.leave",
+        "effect": "write",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
   "needs": {},
   "teaches": {
-    "tips": [
-      {"id": "check", "text": "Run `vyre call network.guests.check` to see who besides you the box would serve.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call network.guests.check", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
-      {"id": "enable", "text": "Guests stay off until you run `vyre call --tty network.guests.enable '{\"on\":true}'` on the box.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.enable '{\"on\":true}'", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
-      {"id": "add", "text": "Let desk@harlowlegal.com list threads: run `vyre call --tty network.guests.add` with that login and threads.list.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.add", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
-      {"id": "remove", "text": "Run `vyre call --tty network.guests.remove` with a guest's login to stop serving them.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.remove"},
-      {"id": "settings-guests", "text": "Open Settings, Network in the Deck to see each guest and the tools they may call.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
-      {"id": "guest-limits", "text": "Share the box without worry: a guest can never approve, open Glass or act as you.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "get-started/tailscale.md#guests-from-another-tailnet"}
-    ]
+    "tips": []
   }
 }

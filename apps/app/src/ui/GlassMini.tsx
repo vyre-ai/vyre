@@ -1,8 +1,7 @@
 // The Glass mini-view on the phone (docs/design/system/components/glass-mini.md, the App parts):
 // the Card (a 16:10 still of an agent's computer and the step line under it) and the Pill (the
 // step line alone, 28 tall) for a thread whose frame is collapsed. Read only: watching changes
-// nothing. The whole card is one button, "Open Glass for kit's computer"; the phone has no Glass
-// screen yet, so it opens the step's thread when there is one. The picture is hidden from
+// nothing. The whole card is one button, "Open Glass for kit's computer"; there is no Glass screen yet (0.3.1), so it opens the step's thread when there is one. The picture is hidden from
 // assistive tech; a polite live region says a new step at most once every 5 s.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -127,10 +126,11 @@ function useSwap(key: string) {
 function useOpen(view: TargetView, here?: string | null) {
   const router = useRouter();
   return useCallback(() => {
+    // Glass (Screen Share) is 0.3.1: until then the card opens the step's thread.
     const t = view.thread;
     if (!t || t === here) return;
     sessionOpening();
-    router.push({ pathname: "/session/[id]", params: { id: t } });
+    router.push({ pathname: "/u/chats/[id]", params: { id: t } });
   }, [router, view.thread, here]);
 }
 

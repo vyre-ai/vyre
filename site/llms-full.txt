@@ -1,0 +1,84 @@
+# Vyre, in full
+
+Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
+
+Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+
+## What it is
+- One session runs Claude, Codex, Grok or OpenRouter. Each reply shows which model wrote it. You can switch model mid-session (the new model gets a summary of the conversation) or address one model for a single message with an @, such as @codex.
+- Several accounts per provider are supported and kept apart on the server.
+- Teammates are named roles inside a project with their own notes and a charter; they hand work to each other. A person can fill a role with one of their own agents.
+- Watchers run on events, schedules or Gmail pushes. Each is shown as a card (when, check, do, what it reads, whether it acts, cost) before it is turned on. Watchers run inside a wall with no home folder and no sockets; where the wall is unavailable a watcher does not run and says why.
+- Memory records every session. A recalled answer shows its source (the call, thread or turn) and says when no model was used. Corrections and Forget are supported, with undo.
+- The vault holds credentials sealed on your own machine. Agents use a credential without seeing its value. A Mac unlocks it with Touch ID or a password.
+- "Asking is approving": your own words approve an action. Touch ID or Face ID is for pairing, vault secrets, and sends, posts or payments nobody asked for.
+- Vyre for Chrome lets an agent drive your own Chrome. Agent computers, GitHub, generated images and video saved to the project, and a daily spend cap are included.
+- Modules are the building blocks you or your agents add. Each declares who may call each tool.
+
+## Where it runs
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
+- Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by `vyre capsule install`; self-signed, not notarized. Needs Node 22.5 or newer.
+- Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
+- Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
+- Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
+
+## Install
+1. Open the Vyre app, choose your name, create a space and choose a server. The steps are at https://vyre.run/start/.
+2. On the server, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh`
+3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
+4. Mac: `npm i -g https://vyre.run/box/vyre.tgz`, then `vyre up`, then `vyre capsule install`.
+5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
+
+## What it costs
+Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
+
+## Where your data lives
+Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
+
+## Releases
+- 0.2.9 (out now): the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.
+
+## Direction (not a promise of dates)
+- Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.
+- Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
+- Later: a Vyre-hosted home for people without a server.
+
+## Known gaps in 0.2.9
+- Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
+- Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.
+- The Mac server installer has not run on a real Mac yet.
+- Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
+- Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.
+- Only the answer fan-out across models is proven; per-model plan and diff blocks are not.
+- Parallel Chrome tabs read within one Chrome; a tab for each agent is not built.
+- Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler.
+- The Mac app is built on your Mac, not downloaded. The Windows app is not code-signed yet, and the first Windows install is not signature-checked.
+See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
+
+## FAQ
+### Is Vyre free?
+Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.
+
+### Do I need a server?
+Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.
+
+### Does it run on Windows?
+Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.
+
+### Does it work on my phone?
+Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.
+
+### Where does my data live?
+Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.
+
+### Do I need a VPN or another network app?
+No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.
+
+### Does it replace Claude Code, Codex or Grok?
+No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.
+
+### What stops an agent from doing something I did not ask for?
+Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.
+
+### Is it ready?
+It is 0.2.9, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.2.9 does not do yet.

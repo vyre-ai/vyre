@@ -3,6 +3,7 @@
 // one process, each with a relay listener on 127.0.0.1, and one clock both share so the wait can
 // pass. Every vault lives in a temp home with a file keystore.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -271,7 +272,7 @@ test("emergency: through the module, the relay listener answers /v1/emergency an
   assert.equal(todos.length, 1);
   assert.equal(todos[0].input.list, "Vault");
   assert.equal((await juno.run("vault.emergency.status", { owner: "alex" })).state, "waiting");
-  const listed = (await alex.run("vault.emergency.list", {}, "mcp")).contacts;
+  const listed = (await alex.run("vault.emergency.list", {}, "cli")).contacts;
   assert.deepEqual(listed.map(c => [c.person, c.wait, c.state]), [["juno", "3d", "waiting"]]);
   assert.equal((await alex.run("vault.emergency.deny", { person: "juno" }, "mcp")).emergency.state, "denied");
   assert.deepEqual(await alex.run("vault.emergency.remove", { person: "juno" }, "mcp"), { removed: "juno" });

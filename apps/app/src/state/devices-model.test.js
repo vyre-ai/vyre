@@ -3,6 +3,8 @@
 // its own id, each row's trust control, the expiry, path and seen lines, and the vault's rows.
 // Loaded through Node's type stripping, so skipped on a Node without it. The module imports
 // nothing, so this runs from the repo root as well as from the app.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +29,7 @@ test("trust: the native app and the box-served browser are trusted without a lis
 
 test("trust: a paired browser is what the list says about its own id", { skip: !strip }, async () => {
   const { trustOf } = await load();
-  const others = [app(), web({ id: "d-office", name: "Firefox on Harlow office PC", trusted: true })];
+  const others = [app(), web({ id: "d-office", name: "Firefox on Juniper office PC", trusted: true })];
   assert.equal(trustOf({ kind: "web", self: "d-pixel", devices: [...others, web()] }), "untrusted");
   assert.equal(trustOf({ kind: "web", self: "d-pixel", devices: [...others, web({ trusted: true })] }), "trusted");
   assert.equal(trustOf({ kind: "web", self: "d-pixel", devices: others }), "unknown", "not listed yet");
@@ -105,7 +107,7 @@ test("lines: kind, path and last seen", { skip: !strip }, async () => {
   assert.equal(kindText(app()), "App");
   assert.equal(pathText(web()), "Relay · 80 ms");
   assert.equal(pathText(web({ rtt: null })), "Relay");
-  assert.equal(pathText(app({ path: "direct", rtt: 12, online: true })), "Tailscale · direct 12 ms");
+  assert.equal(pathText(app({ path: "direct", rtt: 12, online: true })), "Direct · 12 ms");
   assert.equal(pathText(app()), "Not connected");
   assert.equal(seenText(web(), NOW), "Seen now");
   assert.equal(seenText(app(), NOW), "Seen 4 min ago");
@@ -137,17 +139,17 @@ test("vault: rows are names, kinds and sites, never a value", { skip: !strip }, 
     locked: false,
     items: [
       { name: "Northwind orders", kind: "login", fields: ["username", "password"], url: "https://app.northwind.test/login", hosts: [] },
-      { name: "Harlow Legal Google", kind: "totp", fields: ["totp"], hosts: ["accounts.harlow.test"] },
-      { name: "Harlow intake API key", kind: "api-key", fields: [], hosts: ["https://intake.harlow.test"] },
-      { name: "Harlow Wi-Fi", kind: "note" },
+      { name: "Juniper Studio Google", kind: "totp", fields: ["totp"], hosts: ["accounts.juniper.example"] },
+      { name: "Juniper intake API key", kind: "api-key", fields: [], hosts: ["https://intake.juniper.example"] },
+      { name: "Juniper Wi-Fi", kind: "note" },
       null,
       { kind: "login" },
     ],
   });
   assert.equal(v.items.length, 4, "rows without a name are dropped");
   assert.equal(vaultDetail(v.items[0]), "Login · app.northwind.test");
-  assert.equal(vaultDetail(v.items[1]), "Code · accounts.harlow.test");
-  assert.equal(vaultDetail(v.items[2]), "API key · intake.harlow.test");
+  assert.equal(vaultDetail(v.items[1]), "Code · accounts.juniper.example");
+  assert.equal(vaultDetail(v.items[2]), "API key · intake.juniper.example");
   assert.equal(vaultDetail(v.items[3]), "Note");
   assert.equal(siteOf(v.items[3]), null);
   assert.deepEqual(fieldsOf(v.items[0]), ["username", "password"]);

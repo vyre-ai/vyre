@@ -2,9 +2,10 @@
 name: capsule-mac
 on:
   push:
-    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
+    branches: ["main", "work/**"]
+    paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/capsule-mac.yml"]
   pull_request:
-    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/capsule/**", "!local/capsule/native-win/**"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -74,9 +75,22 @@ jobs:
         # from a real daemon in a throwaway home: the # list, the module commands, the next-meeting line.
         if: always() && hashFiles('local/capsule/native/build.sh') != ''
         timeout-minutes: 5
+        env:
+          VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
         run: |
           npm ci --no-audit --no-fund
           node scripts/capsule-daemon-check.mjs local/capsule/native/.build/Vyre.app
+      - name: Lumen on a Mac paired to a server with an assistant
+        # #36: a box vyred and a Mac vyred paired through the link harness (a simulated tailnet); the box has the assistant, the Mac
+        # has none. The built Lumen must ask the box (@ lists it, a question offers it), say so when the box is away, and keep the
+        # Mac's own things local.
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 8
+        env:
+          VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/capsule-paired-check.mjs local/capsule/native/.build/Vyre.app
       - name: Node tests that need a Mac
         run: |
           npm ci --no-audit --no-fund
@@ -128,11 +142,23 @@ jobs:
           if [ -d local/capsule/native/.build/Vyre.app ]; then
             ditto -c -k --keepParent local/capsule/native/.build/Vyre.app dist/Vyre-capsule.app.zip
           fi
+      - name: Vyre.dmg
+        # The same app in a disk image, an Applications shortcut beside it. Self-signed only: no Developer ID, no notarization.
+        if: success() || failure()
+        run: |
+          if [ -d local/capsule/native/.build/Vyre.app ]; then sh scripts/make-dmg.sh local/capsule/native/.build/Vyre.app dist/Vyre.dmg; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()
         with:
           name: capsule-mac-${{ github.sha }}
           path: dist/*.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success() || failure()
+        with:
+          name: Vyre-dmg-${{ github.sha }}
+          path: dist/Vyre.dmg
+          if-no-files-found: ignore
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()

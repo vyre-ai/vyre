@@ -6,6 +6,7 @@
 //   GET /v1/box?route=<id>                  the box's control socket, after a signed challenge
 //   GET /v1/box?route=<id>&c=<conn>&t=<ticket>   the box's data socket for one device connection
 //   GET /v1/device?route=<id>               a device; the relay tells the box, then pipes frames
+//   POST /v1/wink/code                      one step of a typed Wink code's PAKE, forwarded to the box that holds the rendezvous
 //   POST /v1/pair                           resolve a Wink ticket's or a setup offer's locator
 //   POST /v1/setup/mbx                      append a line to a setup progress mailbox (the install script)
 //   GET /v1/setup/mbx                       read it, long poll, signed by the setup page's key
@@ -15,8 +16,10 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
-import { acceptKey, encodeFrame, FrameParser } from "../../core/computers/ws.js";
-import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage } from "../../core/relay/wire.js";
+import net from "node:net";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { createTunnelFront } from "./tunnel.js";
+import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
 
 /** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */
 function rateLimiter(max, windowMs) {
@@ -87,10 +90,10 @@ class Peer {
 }
 
 /**
- * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, log?: (event: string, x?: any) => void }} [o]
+ * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, code?: Partial<typeof CODE>, clientAddress?: (req: import("node:http").IncomingMessage) => string, log?: (event: string, x?: any) => void }} [o]
  */
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = ["registered", "revoke"];
+export const FEATURES = ["registered", "revoke", "code"];
 
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
@@ -163,6 +166,137 @@ export function createRelay(o = {}) {
   // outsider sends can stop a real pairing, and a shared address cannot block one (GHSA-25xh-w9j7-7v28).
   const pairResolveLimitByIp = rateLimiter(30, 60_000);
 
+  // The typed Wink code's rendezvous (spec 6.5; relay/worker/index.js CodeSlot for the whole contract).
+  // A box asks, over its own control socket, for a free two-symbol rendezvous (5 minutes, one live code
+  // per box). A typing device POSTs a PAKE message under that rendezvous; the relay forwards it to the
+  // control socket of the route that allocated it and returns the box's answer, and nowhere else. It
+  // keeps no state for a rendezvous that is not live and nothing derived from a password: a message is
+  // an opaque string it passes along. A hit also names the route (the typist needs it for the transcript, see relay/client/code.js). Limits are per address, never global: every session (step 1)
+  // costs `sessionPerMin`, every later step `stepPerMin`, and a miss (no live rendezvous) `missPerMin`
+  // more. An unknown, closed or expired rendezvous, a refusal and a silent box all give one answer.
+  const codeCfg = { ...CODE, ...(o.code || {}) };
+  /** @type {Map<string, { route: string, exp: number }>} */
+  const codeSlots = new Map();
+  /** @type {Map<string, string>} route -> rendezvous */
+  const routeCode = new Map();
+  /** @type {Map<string, { route: string, done: (m: string|null) => void, timer: any }>} */
+  const codePending = new Map();
+  const codeSessionLimit = rateLimiter(codeCfg.sessionPerMin, 60_000);
+  const codeStepLimit = rateLimiter(codeCfg.stepPerMin, 60_000);
+  const codeMissLimit = rateLimiter(codeCfg.missPerMin, 60_000);
+  const codeAllocLimit = rateLimiter(codeCfg.allocPerMin, 60_000);
+  const addressOf = req => o.clientAddress ? o.clientAddress(req) : String(req.socket.remoteAddress || "");
+  const sweepCodes = () => { const now = Date.now(); for (const [rv, c] of codeSlots) if (c.exp <= now) { codeSlots.delete(rv); if (routeCode.get(c.route) === rv) routeCode.delete(c.route); } };
+  /** Frees a route's code and refuses what is waiting on it. @param {string} route */
+  const releaseCode = route => {
+    const rv = routeCode.get(route);
+    if (rv && codeSlots.get(rv)?.route === route) codeSlots.delete(rv);
+    routeCode.delete(route);
+    for (const [q, p] of codePending) if (p.route === route) { clearTimeout(p.timer); codePending.delete(q); p.done(null); }
+  };
+  /** Refuses what is waiting on a route's code but keeps the code itself (the box's control socket changed; the code did not). @param {string} route */
+  const refusePending = route => { for (const [q, p] of codePending) if (p.route === route) { clearTimeout(p.timer); codePending.delete(q); p.done(null); } };
+  /** A box whose control socket drops keeps its code for a short grace so a reconnect (a flapping link, a relay behind a proxy that cuts idle sockets) does not silently kill the code
+   * its screen still shows; the code's own expiry still applies. A different box never gets the slot: only the same route key can authenticate as the route. @type {Map<string, any>} */
+  const codeGrace = new Map();
+  const keepCode = route => {
+    if (!routeCode.has(route)) return;
+    clearTimeout(codeGrace.get(route));
+    const t = setTimeout(() => { codeGrace.delete(route); if (!routes.get(route)?.control) releaseCode(route); }, codeCfg.graceMs);
+    t.unref?.();
+    codeGrace.set(route, t);
+  };
+  const resumeCode = route => { clearTimeout(codeGrace.get(route)); codeGrace.delete(route); };
+  /** A free rendezvous, random among the free ones, or null. @param {string} route */
+  const allocCode = route => {
+    sweepCodes();
+    releaseCode(route);
+    const free = [];
+    for (let i = 0; i < 1024; i++) { const rv = CODE_ALPHABET[i >> 5] + CODE_ALPHABET[i & 31]; if (!codeSlots.has(rv)) free.push(rv); }
+    if (!free.length) return null;
+    const rv = free[crypto.randomInt(free.length)];
+    const exp = Date.now() + codeCfg.ttl;
+    codeSlots.set(rv, { route, exp });
+    routeCode.set(route, rv);
+    return { rv, exp };
+  };
+  /** The box side of a code: allocate, release, and answer a forwarded message. */
+  function onCodeControl(route, peer, t) {
+    if (t.t === "code.alloc") {
+      if (!codeAllocLimit(route)) { peer.json({ t: "code.allocated", error: "busy" }); return; }
+      const a = allocCode(route);
+      peer.json(a ? { t: "code.allocated", rv: a.rv, exp: a.exp } : { t: "code.allocated", error: "busy" });
+    } else if (t.t === "code.release") releaseCode(route);
+    else if (t.t === "code.reply") {
+      const p = codePending.get(String(t.q));
+      // Only the route the message was forwarded to may answer it.
+      if (!p || p.route !== route) return;
+      clearTimeout(p.timer);
+      codePending.delete(String(t.q));
+      const m = typeof t.m === "string" && t.m.length > 0 && t.m.length <= codeCfg.msg && /^[A-Za-z0-9_-]+$/.test(t.m) ? t.m : null;
+      p.done(m);
+    }
+  }
+  const refused = res => { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify(CODE_REFUSED)); };
+  function onCodeStep(req, res) {
+    const ip = addressOf(req);
+    let body = "";
+    let over = false;
+    req.on("data", c => { body += c; if (body.length > 1024) { over = true; req.destroy(); } });
+    req.on("end", () => {
+      if (over) return;
+      let m;
+      try { m = JSON.parse(body); } catch { reply(res, 400, { error: "bad request" }); return; }
+      const rv = String(m?.rv || ""), s = String(m?.s || ""), n = Number(m?.n), msg = String(m?.m || "");
+      if (!CODE_RV_RE.test(rv) || !/^[A-Za-z0-9_-]{22}$/.test(s) || (n !== 1 && n !== 3) || !/^[A-Za-z0-9_-]+$/.test(msg) || msg.length > codeCfg.msg) { reply(res, 400, { error: "bad request" }); return; }
+      // Charged to the address that asked, before anything is looked up, whether or not the code is live.
+      if (!(n === 1 ? codeSessionLimit(ip) : codeStepLimit(ip))) { reply(res, 429, { error: "too many tries; wait a minute" }); return; }
+      sweepCodes();
+      const slot = codeSlots.get(rv);
+      const control = slot && routes.get(slot.route)?.control;
+      if (!slot || !control) {
+        // A miss: charged again, to this address only. Nothing is created for it.
+        if (!codeMissLimit(ip)) { reply(res, 429, { error: "too many tries; wait a minute" }); return; }
+        refused(res); return;
+      }
+      if (codePending.size >= codeCfg.pending * 16 || [...codePending.values()].filter(p => p.route === slot.route).length >= codeCfg.pending) { refused(res); return; }
+      const q = crypto.randomBytes(9).toString("base64url");
+      const timer = setTimeout(() => { codePending.delete(q); refused(res); }, codeCfg.waitMs);
+      timer.unref?.();
+      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out, route: slot.route, exp: slot.exp }); else refused(res); } });
+      control.json({ t: "code.msg", q, rv, s, n, m: msg });
+    });
+    req.on("error", () => {});
+  }
+
+  // Reach check (core/wink/reach.js): a box that asked its own router for a port asks, from outside, whether the port answers. This is a remote-connect endpoint, so it dials ONLY the
+  // caller's own observed address (a body `addr` that differs is refused), only a public one (unless a test allows a private one), only a port from 1024, one TCP connect with a
+  // short timeout, and a few tries a minute per address. It sends nothing and reads nothing: a connect either completes or it does not.
+  const reachLimit = rateLimiter(o.reach?.perMin ?? 6, 60_000);
+  const reachDial = o.reach?.dial || ((addr, port) => new Promise(resolve => {
+    const s = net.connect({ host: addr, port, timeout: 3000 });
+    s.once("connect", () => { s.destroy(); resolve(true); });
+    s.once("timeout", () => { s.destroy(); resolve(false); });
+    s.once("error", () => resolve(false));
+  }));
+  const publicAddress = a => { const v = String(a).replace(/^::ffff:/, ""); return !(net.isIP(v) === 0 || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|::1$|fe80:|f[cd][0-9a-f]{2}:)/i.test(v) || /^172\.(1[6-9]|2\d|3[01])\./.test(v) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)); };
+  function onReachCheck(req, res) {
+    const reply = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    const ip = addressOf(req).replace(/^::ffff:/, "");
+    if (!reachLimit(ip)) return reply(429, { error: { code: "rate_limited", message: "a few checks a minute" } });
+    let body = "";
+    req.on("data", c => { body += c; if (body.length > 512) req.destroy(); });
+    req.on("end", async () => {
+      let j; try { j = JSON.parse(body); } catch { return reply(400, { error: { code: "bad_input", message: "JSON with a port" } }); }
+      const port = Number(j && j.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return reply(400, { error: { code: "bad_input", message: "a port from 1024 to 65535" } });
+      if (j.addr && String(j.addr).replace(/^::ffff:/, "") !== ip) return reply(400, { error: { code: "not_your_address", message: "the relay only checks the address it sees you at" } });
+      if (!o.reach?.allowPrivate && !publicAddress(ip)) return reply(200, { reachable: false, why: "your address is not a public one" });
+      reply(200, { reachable: Boolean(await reachDial(ip, port)), addr: ip, port });
+    });
+    req.on("error", () => {});
+  }
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
     if (url.pathname === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); return; }
@@ -173,7 +307,14 @@ export function createRelay(o = {}) {
       res.end();
       return;
     }
+    if (url.pathname === "/v1/wink/code" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/wink/code" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onCodeStep(req, res); return; }
     if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
+    if (url.pathname === "/v1/reach/check" && req.method === "POST") { onReachCheck(req, res); return; }
     // The setup mailbox answers any origin too: the page reads it from vyre.run, and its safety is a signature and a sealed stream.
     if (url.pathname === "/v1/setup/mbx" && req.method === "OPTIONS") {
       res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type, x-vyre-setup-key, x-vyre-setup-ts, x-vyre-setup-sig", "access-control-max-age": "600" });
@@ -308,6 +449,7 @@ export function createRelay(o = {}) {
   function onBoxControl(route, peer) {
     const challenge = crypto.randomBytes(32);
     peer.json({ t: "challenge", n: challenge.toString("base64url") });
+    let upSince = 0;
     let authed = false;
     peer.onmessage = (data, binary) => {
       if (authed || binary) { if (!authed) peer.close(CLOSE.refused, "expected auth"); return; }
@@ -322,18 +464,24 @@ export function createRelay(o = {}) {
       authed = true;
       const r = routeOf(route);
       if (r.control) r.control.close(CLOSE.replaced, "replaced by a newer box connection");
+      // The same box reconnecting keeps the code its screen shows (until it expires); only what was in flight on the old socket is refused.
+      resumeCode(route);
+      refusePending(route);
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
-      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: FEATURES }) });
+      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box && !x.tunnel).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: o.tunnel ? [...FEATURES, "tunnel"] : FEATURES }) });
+      upSince = Date.now();
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
       // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
       // trust boundary the way the HTTP resolve side is; the size caps and the register-side
       // rate limit are just hygiene against a runaway or compromised box, not the real defence.
       peer.onmessage = (d2, bin2) => {
-        if (bin2 || !pairRegisterLimit(route)) return;
+        if (bin2) return;
         let t;
         try { t = JSON.parse(d2.toString()); } catch { return; }
+        if (typeof t?.t === "string" && t.t.startsWith("code.")) { onCodeControl(route, peer, t); return; }
+        if (!pairRegisterLimit(route)) return;
         if (t?.t === "revoke") {
           const rloc = String(t.loc || "");
           if (!/^[A-Za-z0-9_-]{20,64}$/.test(rloc)) return;
@@ -354,7 +502,7 @@ export function createRelay(o = {}) {
     };
     peer.onclose = () => {
       const r = routes.get(route);
-      if (r && r.control === peer) { r.control = null; r.ticket = null; log("box.disconnected", { route }); }
+      if (r && r.control === peer) { r.control = null; r.ticket = null; refusePending(route); keepCode(route); log("box.disconnected", { route, upMs: Date.now() - upSince }); }
       tidy(route);
     };
   }
@@ -367,6 +515,7 @@ export function createRelay(o = {}) {
     conn.box = peer;
     for (const f of conn.buffer) peer.send(f);
     conn.buffer = [];
+    if (conn.onbox) conn.onbox(true);
     peer.onmessage = (data, binary) => { if (binary) conn.device.send(data); };
     peer.onclose = () => {
       if (r.conns.get(c) !== conn) return;
@@ -403,8 +552,52 @@ export function createRelay(o = {}) {
     };
   }
 
+  // The Publish tunnel (relay/node/tunnel.js): a public visitor is a connection like a device's, except that the far end is a TCP socket and the open message is `tunnel`, which carries the
+  // name and the visitor's address on this authenticated channel (never in the bytes). An old box ignores the message and the visitor times out.
+  /** @type {ReturnType<typeof createTunnelFront> | null} */
+  const tunnelFront = o.tunnel ? createTunnelFront({
+    resolve: o.tunnel.resolve, log, ...(o.tunnel.limits ? { limits: o.tunnel.limits } : {}),
+    open: async (route, visitor, sink) => {
+      const r = routes.get(route);
+      if (!r || !r.control || !r.control.socket || r.conns.size >= limits.open) return null;
+      const c = crypto.randomBytes(12).toString("base64url");
+      const conn = /** @type {any} */ ({ tunnel: true, buffer: [], box: null,
+        // the "device" end of a connection is the visitor's socket here: what the box sends comes out as bytes, and closing it closes the visitor
+        device: /** @type {any} */ ({
+          send: (/** @type {Buffer} */ data) => { if (sink.data(Buffer.from(data)) === false && conn.box) { conn.box.socket.pause(); sink.whenDrained(() => conn.box && conn.box.socket.resume()); } },
+          close: () => sink.end(),
+        }) });
+      r.conns.set(c, conn);
+      const answered = new Promise(resolve => { conn.onbox = resolve; });
+      r.control.json({ t: "tunnel", c, host: visitor.host, ip: visitor.ip, port: visitor.port });
+      const timer = setTimeout(() => conn.onbox(false), Math.max(200, ((o.tunnel.limits && o.tunnel.limits.openMs) || 8000) - 500));
+      timer.unref?.();
+      const ok = await answered;
+      clearTimeout(timer);
+      if (!ok || !conn.box) { r.conns.delete(c); tidy(route); return null; }
+      const box = conn.box;
+      return {
+        write: b => { box.send(b); if (box.socket.writableNeedDrain) { box.socket.once("drain", sink.resume); return false; } return true; },
+        close: () => { if (r.conns.get(c) === conn) { r.conns.delete(c); tidy(route); } box.close(CLOSE.deviceGone, "visitor left"); },
+      };
+    },
+  }) : null;
+  /** @type {import("node:net").Server[]} */
+  const tunnelServers = [];
+
   return {
     server,
+    /** The public listeners of the Publish tunnel: TLS passthrough on `tlsPort` (443) and the fixed redirect on `httpPort` (80). Only with the `tunnel` option. @param {{ tlsPort?: number, httpPort?: number, host?: string }} [a] @returns {Promise<{ tls: number, http: number }>} */
+    listenTunnel(a = {}) {
+      if (!tunnelFront) return Promise.reject(new Error("this relay was made without the tunnel option"));
+      const host = a.host || "127.0.0.1";
+      const front = tunnelFront;
+      const t = net.createServer(s => front.tls(s)), h = net.createServer(s => front.http(s));
+      tunnelServers.push(t, h);
+      const on = (/** @type {import("node:net").Server} */ srv, /** @type {number|undefined} */ port) => new Promise(resolve => srv.listen(port ?? 0, host, () => resolve(/** @type {import("node:net").AddressInfo} */ (srv.address()).port)));
+      return Promise.all([on(t, a.tlsPort), on(h, a.httpPort)]).then(([tls, http]) => ({ tls, http }));
+    },
+    tunnel: tunnelFront,
     /** @param {number} [port] @param {string} [host] @returns {Promise<string>} the relay's ws:// base */
     listen(port = 0, host = "127.0.0.1") {
       return new Promise(resolve => server.listen(port, host, () => {
@@ -412,9 +605,11 @@ export function createRelay(o = {}) {
         resolve(`ws://${host}:${a.port}`);
       }));
     },
-    /** For tests: how many routes and connections the relay holds. */
-    stats() { return { routes: routes.size, conns: [...routes.values()].reduce((n, r) => n + r.conns.size, 0) }; },
+    /** For tests: how many routes and connections the relay holds, and live codes and requests waiting on a box. */
+    stats() { return { routes: routes.size, conns: [...routes.values()].reduce((n, r) => n + r.conns.size, 0), codes: codeSlots.size, codeRequests: codePending.size }; },
     close() {
+      tunnelFront && tunnelFront.close();
+      for (const srv of tunnelServers) srv.close();
       for (const r of routes.values()) { r.control?.close(1001, "relay stopping"); for (const x of r.conns.values()) { x.device.close(1001); x.box?.close(1001); } }
       routes.clear();
       return new Promise(resolve => { server.close(() => resolve(undefined)); server.closeAllConnections?.(); });

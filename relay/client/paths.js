@@ -2,20 +2,20 @@
 // paths: one box, several ways to reach it, one API (ADR 0029, R5; "Direction A"). The list is
 // ordered best first, for example:
 //
-//   [{ kind: "direct", base: "https://<box>.<tailnet>.ts.net" },
+//   [{ kind: "direct", base: "https://<name>.vyre.run" },
 //    { kind: "relay", relay, route, box, keyStore, crypto }]
 //
 // A direct path is used only once it answers a probe within 1.5 s; a transport error on it moves
 // to the next path at once and the request is sent there (a non-GET keeps its Idempotency-Key).
 // While on a worse path, the better ones are probed every 60 s, only while visible, and the
 // connection moves back when one answers. Event streams follow the move and resume from their
-// cursor, which belongs to the box, not the path. So the web app on an iPhone uses the tailnet
-// when Tailscale is on and the relay otherwise, and does not care which.
+// cursor, which belongs to the box, not the path. So the web app on an iPhone uses the direct address
+// when it answers and the relay otherwise, and does not care which.
 //
 // With a paired relay path (it carries `device`, from pair()), the app tells the box which path
 // it is on and the round trip it measured, on the first request, on every switch and when it
 // comes back to the front (relay.devices.path). The relay report returns a one-time code; the
-// first direct report hands it back, so the box learns which tailnet node this device is.
+// first direct report hands it back, so the box learns which node this device is.
 
 import { connect, defaultVisibility } from "./client.js";
 import { fromNative, lowerHeaders } from "./response.js";

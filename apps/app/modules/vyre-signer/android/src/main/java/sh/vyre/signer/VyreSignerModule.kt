@@ -38,10 +38,15 @@ import java.security.ProviderException
 import java.security.SecureRandom
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
+import java.security.spec.ECPoint
+import java.security.spec.ECPublicKeySpec
+import javax.crypto.KeyAgreement
 import java.security.spec.ECGenParameterSpec
 
 class EnsureOptions : Record {
   @Field val biometric: Boolean = false
+  /** base64url of the attestation challenge the key is made with (Android binds a Keystore key to an entry only as it is made). */
+  @Field val attestChallenge: String? = null
 }
 
 class SignOptions : Record {
@@ -50,6 +55,7 @@ class SignOptions : Record {
 
 private const val STORE = "AndroidKeyStore"
 private const val PERSON = "vyre.person"
+private const val AGREE = "vyre.agree"
 
 class VyreSignerModule : Module() {
   private val random = SecureRandom()
@@ -70,10 +76,27 @@ class VyreSignerModule : Module() {
     return out
   }
 
+  /** The agreement key: PURPOSE_AGREE_KEY, no user authentication, in StrongBox when asked and the phone has one, else the TEE. */
+  private fun makeAgreeKey(strongBox: Boolean) {
+    fun spec(sb: Boolean): KeyGenParameterSpec {
+      val b = KeyGenParameterSpec.Builder(AGREE, KeyProperties.PURPOSE_AGREE_KEY).setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+      if (sb && Build.VERSION.SDK_INT >= 28) b.setIsStrongBoxBacked(true)
+      return b.build()
+    }
+    val gen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, STORE)
+    try { gen.initialize(spec(strongBox)); gen.generateKeyPair() }
+    catch (e: Exception) {
+      // a StrongBox that will not make this key: the TEE does
+      if (!strongBox) throw CodedException("ERR_KEYGEN", e.message ?: "the agreement key could not be made", e)
+      val again = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, STORE)
+      again.initialize(spec(false)); again.generateKeyPair()
+    }
+  }
+
   private fun strongBoxPresent(): Boolean =
     Build.VERSION.SDK_INT >= 28 && context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
 
-  private fun spec(alias: String, biometric: Boolean, strongBox: Boolean): KeyGenParameterSpec {
+  private fun spec(alias: String, biometric: Boolean, strongBox: Boolean, challenge: ByteArray?): KeyGenParameterSpec {
     val b = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
       .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
       .setDigests(KeyProperties.DIGEST_SHA256)
@@ -88,14 +111,15 @@ class VyreSignerModule : Module() {
       }
       b.setInvalidatedByBiometricEnrollment(true)
     }
+    if (challenge != null) b.setAttestationChallenge(challenge)
     if (strongBox && Build.VERSION.SDK_INT >= 28) b.setIsStrongBoxBacked(true)
     return b.build()
   }
 
-  private fun generate(alias: String, biometric: Boolean) {
+  private fun generate(alias: String, biometric: Boolean, challenge: ByteArray? = null) {
     val gen = { strongBox: Boolean ->
       KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, STORE).run {
-        initialize(spec(alias, biometric, strongBox))
+        initialize(spec(alias, biometric, strongBox, challenge))
         generateKeyPair()
       }
     }
@@ -155,8 +179,16 @@ class VyreSignerModule : Module() {
     Name("VyreSigner")
 
     AsyncFunction("ensureKey") { alias: String, options: EnsureOptions ->
-      if (!keyStore().containsAlias(alias)) generate(alias, options.biometric)
+      if (!keyStore().containsAlias(alias)) {
+        val challenge = options.attestChallenge?.let { android.util.Base64.decode(it, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING) }
+        generate(alias, options.biometric, challenge)
+      }
       coordinates(alias)
+    }
+
+    // The Keystore certificate chain of a key (standard base64 DER, leaf first). The leaf's attestation extension holds the challenge the key was made with and where it lives (StrongBox or TEE).
+    AsyncFunction("attestationChain") { alias: String ->
+      (keyStore().getCertificateChain(alias) ?: emptyArray()).map { android.util.Base64.encodeToString(it.encoded, android.util.Base64.NO_WRAP) }
     }
 
     AsyncFunction("sign") { alias: String, message: String, options: SignOptions, promise: Promise ->
@@ -212,6 +244,41 @@ class VyreSignerModule : Module() {
           promise.reject("ERR_BIOMETRIC", e.message, e)
         }
       }
+    }
+
+    // The agreement key (ECDH, no prompt per use): an EC P-256 key in the Android Keystore with PURPOSE_AGREE_KEY (Android 12 and later), in StrongBox where the phone has one. No user
+    // authentication, so it works while the phone is unlocked. A phone before Android 12 cannot hold such a key: agreePublic then rejects, and the device entry carries no `agree`.
+    // agree(epk) is the 32-byte shared secret, the raw X coordinate; HKDF and AES-GCM stay portable code in the app (lib/keywrap.js).
+    AsyncFunction("agreePublic") { create: Boolean ->
+      if (Build.VERSION.SDK_INT < 31) throw CodedException("ERR_NO_AGREE", "this Android cannot hold an agreement key", null)
+      val ks = keyStore()
+      if (!ks.containsAlias(AGREE)) {
+        if (!create) throw CodedException("ERR_NO_KEY", "there is no agreement key", null)
+        makeAgreeKey(strongBox = strongBoxPresent())
+      }
+      val pub = ks.getCertificate(AGREE).publicKey as ECPublicKey
+      val raw = ByteArray(65)
+      raw[0] = 4
+      System.arraycopy(fixed32(pub.w.affineX), 0, raw, 1, 32)
+      System.arraycopy(fixed32(pub.w.affineY), 0, raw, 33, 32)
+      b64url(raw)
+    }
+
+    AsyncFunction("agree") { epk: String ->
+      val point = Base64.decode(epk, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+      if (point.size != 65 || point[0].toInt() != 4) throw CodedException("ERR_INPUT", "that is not a public key", null)
+      val ks = keyStore()
+      val priv = ks.getKey(AGREE, null) as? PrivateKey ?: throw CodedException("ERR_NO_KEY", "there is no agreement key", null)
+      val own = ks.getCertificate(AGREE).publicKey as ECPublicKey
+      val peer = try {
+        KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(ECPoint(BigInteger(1, point.copyOfRange(1, 33)), BigInteger(1, point.copyOfRange(33, 65))), own.params))
+      } catch (e: Exception) { throw CodedException("ERR_INPUT", "that is not a public key", e) }
+      val ka = KeyAgreement.getInstance("ECDH")
+      ka.init(priv)
+      ka.doPhase(peer, true)
+      val secret = ka.generateSecret()
+      if (secret.size != 32) throw CodedException("ERR_AGREE", "the key gave a bad answer", null)
+      b64url(secret)
     }
 
     AsyncFunction("deleteKey") { alias: String ->

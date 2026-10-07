@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre relay`: reach the box with a QR code, no Tailscale (ADR 0026). Status, pairing with a code
+// `vyre relay`: reach the box with a QR code (ADR 0026). Status, pairing with a code
 // drawn in the terminal, the device list, and turning it on and off. Every change goes through
 // the person at this terminal (presence), like the same buttons in the Deck.
 //
@@ -10,6 +10,7 @@
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
+import { OFFER_NOTE } from "../offer-note.js";
 import { personIO } from "./presence.js";
 import { out, dim, bold, colour } from "../style.js";
 import { json, emit, fail, failTool, usage, parse } from "../kit.js";
@@ -86,7 +87,7 @@ export default [
       { verb: "unpin", summary: "follow the newest web app release this box knows", usage: "", person: true },
     ],
     help: "vyre relay: whether the relay is on and connected\nvyre relay pair: a QR code for one more device (once, 10 minutes)\nvyre relay devices: paired devices, which are connected, and how\nvyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)\nvyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts",
-    summary: "reach this box from your phone with a QR code, no Tailscale",
+    summary: "reach this box from your phone with a QR code",
     async run(args) {
       const { flags, pos } = parse(args, { bool: ["off"], values: ["url"], cmd: "relay" });
       const [verb = "status", a, ...rest] = pos;
@@ -100,6 +101,7 @@ export default [
             else out("  Open this address on your phone (the QR code shows in a colour terminal). It works once, for 10 minutes.");
             out(dim(`  ${d.url}`));
             if (!d.connected) out(dim("  the box is not at the relay yet; the code works as soon as it is (vyre relay)"));
+            out(dim(`  ${OFFER_NOTE}`));
           }, d => ({ kind: "qr", text: String(d.url), caption: `Scan this with your phone's camera. It works once, for 10 minutes.${d.connected ? "" : " The box is not at the relay yet; it works as soon as it is."}` }));
         case "remove":
           if (!a) return usage("vyre relay remove needs a device id", "vyre relay devices lists them");

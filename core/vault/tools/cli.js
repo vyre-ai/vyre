@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { totp } from "../totp.js";
+import { launcherItem } from "../vault.js";
 import { parseRef, parseTemplate } from "../refs.js";
 import { parseRequest, requestOrigin, candidates, formatResponse } from "../git.js";
 import { parsePrivate, generateKey, TYPES as SSH_TYPES } from "../ssh/keys.js";
@@ -193,6 +194,8 @@ export async function register({ ctx, vault }) {
         if (i.rename !== i.name && vault.row(i.rename)) throw new Error(`${i.rename} already exists`);
       }
       if (i.fields && Object.values(i.fields).some(v => typeof v !== "string")) throw new Error("field values must be text");
+      // Grants are carried to a renamed item after the old one is gone: refuse up front what grant would refuse then (a provider sign-in token takes none), so nothing is left half done.
+      if (i.rename !== undefined && i.rename !== i.name && launcherItem(i.rename) && vault.launcherOnly && (listed(i.name).grants || []).length) { const why = `${i.rename} is a provider sign-in token; no module is granted it, so ${i.name} cannot be renamed to it while it has grants`; vault.refuse("edit", i.name, caller, why); throw new Error(why); }
       const f = await open(r);
       const fields = { ...f, ...(i.fields || {}) };
       for (const k of i.removeFields || []) delete fields[k];
@@ -369,12 +372,13 @@ export async function register({ ctx, vault }) {
 
   ctx.tool("vault.ssh.generate", {
     description: "Generate an SSH key in vyred and store it; returns only the public key and fingerprint. A new name only.",
-    input: obj({ name: str, type: { type: "string", enum: SSH_TYPES }, comment: str }, ["name"]),
-    callers: ["cli", "local", "mcp"],
-    run: async ({ name, type = "ed25519", comment }, { caller }) => {
+    input: obj({ name: str, type: { type: "string", enum: SSH_TYPES }, comment: str, description: str }, ["name"]),
+    // The Deck's "new ssh key" form calls it too.
+    callers: ["cli", "local", "deck", "capsule", "mcp"],
+    run: async ({ name, type = "ed25519", comment, description }, { caller }) => {
       if (!NAME.test(String(name))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
       if (vault.row(name)) throw new Error(`${name} already exists; generate into a new name`);
-      return { key: await storeKey(name, generateKey(type, comment || name), caller, "ssh-generate") };
+      return { key: await storeKey(name, generateKey(type, comment || description || name), caller, "ssh-generate") };
     },
   });
 

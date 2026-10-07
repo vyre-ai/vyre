@@ -1,14 +1,16 @@
 // @ts-check
 // More signals, behaviour proposals, scope, jobs, metrics and skills, through the Registry with
 // the real Harness (ADR 0007, decisions 6 to 10). Fictional people and folders only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { personTypes } from "../../test/typed-line.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { softCorrection, wordsKey } from "./signals.js";
 import { parseAnswer } from "./jobs.js";
@@ -28,8 +30,8 @@ function fakeProjects(home, t) {
   const P = [{ slug: "harlow-site", name: "Harlow Site", home: W + "/harlow-site", workspaces: [W + "/harlow-site"] },
              { slug: "bramble-app", name: "Bramble App", home: W + "/bramble-app", workspaces: [W + "/bramble-app"] }];
   export default { async start(ctx) {
-    ctx.tool("projects.of", { run: async ({ cwd }) => { const p = P.find(p => cwd === p.home || String(cwd).startsWith(p.home + "/")); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; } });
-    ctx.tool("projects.list", { run: async () => ({ projects: P, problems: [] }) });
+    ctx.tool("projects.of", { effect: "read", run: async ({ cwd }) => { const p = P.find(p => cwd === p.home || String(cwd).startsWith(p.home + "/")); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; } });
+    ctx.tool("projects.list", { effect: "read", run: async () => ({ projects: P, problems: [] }) });
     return {};
   } };`;
   writeModule(path.join(home, "mods"), "projects", { does: { tools: ["projects.of", "projects.list"] } }, src);
@@ -44,7 +46,7 @@ function fakeProjects(home, t) {
 function fakeSwitchboard(home) {
   const src = `export default { async start(ctx) {
     globalThis.__sb = { launched: [], busy: false, emit: (type, payload, thread) => ctx.events.emit(type, { thread, ...payload }, { thread }) };
-    ctx.tool("threads.list", { run: async () => globalThis.__sb.busy ? [{ id: "user-thread", status: "working" }] : [] });
+    ctx.tool("threads.list", { effect: "read", run: async () => globalThis.__sb.busy ? [{ id: "user-thread", status: "working" }] : [] });
     ctx.tool("threads.launch", { internal: true, run: async i => { const id = "job-" + (globalThis.__sb.launched.length + 1); globalThis.__sb.launched.push({ id, ...i }); return { id, status: "starting" }; } });
     return {};
   } };`;
@@ -73,12 +75,13 @@ async function learning(t, { projects = false, switchboard = false, memory = fal
   const where = projects ? fakeProjects(home, t) : null;
   const extra = [...(projects ? discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] }) : []), ...(switchboard ? fakeSwitchboard(home) : []), ...(memory ? fakeMemory(home) : [])];
   await reg.start([...core, ...extra], { role: "local" });
+  personTypes(reg);
   t.after(async () => { await reg.stop(); db.close(); });
   const of = type => events.since(0, { limit: 5000 }).filter(e => e.type === type);
-  const lessons = async () => (await reg.call("learn.lessons", { status: "all" })).data;
+  const lessons = async () => (await reg.call("learn.lessons", { status: "all" }, "cli")).data;
   const signals = kind => db.prepare("SELECT * FROM learn_signals WHERE kind = ? ORDER BY id").all(kind);
-  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id, interactive: true });
-  const stop = (session, prompt_id, extra = {}) => reg.call("harness.stop", { session, prompt_id, stop_hook_active: false, ...extra });
+  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id, interactive: true }, "harness");
+  const stop = (session, prompt_id, extra = {}) => reg.call("harness.stop", { session, prompt_id, stop_hook_active: false, ...extra }, "harness");
   return { home, db, events, reg, of, lessons, signals, say, stop, where };
 }
 const tick = () => new Promise(r => setTimeout(r, 5));
@@ -122,7 +125,7 @@ test("rejected and corrected: counted with kinds and ids, and corrections per ex
   assert.ok(!JSON.stringify(rej[0]).includes("wrong tone"), "the reason is not kept");
   const s = (await reg.call("learn.signals", {}, "cli")).data;
   assert.deepEqual(s.corrected, [{ rule: "appositive", n: 2 }, { rule: "signature", n: 1 }]);
-  assert.equal((await reg.call("learn.lessons", { status: "all" })).data.length, 0, "a correction to Memory is not a lesson for Claude");
+  assert.equal((await reg.call("learn.lessons", { status: "all" }, "cli")).data.length, 0, "a correction to Memory is not a lesson for Claude");
   assert.equal((await reg.call("learn.signals", {}, "mcp")).error.code, "denied", "owner surfaces only");
 });
 
@@ -131,9 +134,9 @@ test("reverted: a file the user put back in two sessions proposes a path check a
   const file = path.join(where.harlow, "src", "intake.js");
   const write = async (session, content) => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Write", tool_input: { file_path: "src/intake.js", content }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id });
+    await reg.call("harness.rules", { tool_name: "Write", tool_input: { file_path: "src/intake.js", content }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "harness");
     fs.writeFileSync(file, content);
-    await reg.call("harness.learn", { tool_name: "Write", tool_input: { file_path: "src/intake.js" }, cwd: where.harlow, session, tool_use_id: id });
+    await reg.call("harness.learn", { tool_name: "Write", tool_input: { file_path: "src/intake.js" }, cwd: where.harlow, session, tool_use_id: id }, "harness");
   };
   for (const [i, session] of ["s1", "s2"].entries()) {
     fs.writeFileSync(file, "export const form = 1;\n");
@@ -162,9 +165,9 @@ test("rewritten, and Claude's own git checkout is not the user reverting", async
   const cycle = async (session, after) => {
     await say("change a", session, "p1");
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: file, new_string: "b" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id });
+    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: file, new_string: "b" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "harness");
     fs.writeFileSync(file, "b\n");
-    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: file }, cwd: where.harlow, session, tool_use_id: id });
+    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: file }, cwd: where.harlow, session, tool_use_id: id }, "harness");
     await after(session);
     await stop(session, "p1");
     await say("next", session, "p2");
@@ -173,7 +176,7 @@ test("rewritten, and Claude's own git checkout is not the user reverting", async
   assert.equal(signals("rewritten").length, 1);
   fs.writeFileSync(file, "a\n");
   await cycle("s2", async session => {
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git checkout src/a.js" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: uid() });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git checkout src/a.js" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     fs.writeFileSync(file, "a\n");
     fs.utimesSync(file, new Date(2026, 0, 3), new Date(2026, 0, 3));
   });
@@ -185,14 +188,14 @@ test("test-fix: a failing test, an edit and a pass is a run; an edit with no tes
   const cwd = "/w/harlow-site";
   const bash = async (session, command, ok) => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: id });
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command }, cwd, session, tool_use_id: id, ok });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: id }, "harness");
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command }, cwd, session, tool_use_id: id, ok }, "harness");
   };
   const edit = async session => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: "src/x.js", new_string: "y" }, cwd, session, prompt_id: "p1", tool_use_id: id });
+    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: "src/x.js", new_string: "y" }, cwd, session, prompt_id: "p1", tool_use_id: id }, "harness");
     await tick();
-    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/x.js" }, cwd, session, tool_use_id: id });
+    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/x.js" }, cwd, session, tool_use_id: id }, "harness");
     await tick();
   };
   await say("fix the tests", "s1", "p1");
@@ -221,10 +224,10 @@ test("declined: a command the user said no to 3 times in 14 days, never yes, pro
   for (const session of ["s1", "s2", "s3"]) {
     await say("clean up", session, "p1");
     // PreToolUse saw it; Vyre did not hold it; neither Post nor PostFailure came: the user said no.
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session, prompt_id: "p1", tool_use_id: uid() });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     const ok = uid();
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, prompt_id: "p1", tool_use_id: ok });
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, tool_use_id: ok });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, prompt_id: "p1", tool_use_id: ok }, "harness");
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, tool_use_id: ok }, "harness");
     await stop(session, "p1");
   }
   assert.equal(signals("declined").length, 3, "the ls that ran is not declined");
@@ -234,7 +237,7 @@ test("declined: a command the user said no to 3 times in 14 days, never yes, pro
   assert.deepEqual([l.level, l.status], ["ask", "proposed"]);
   const r = await reg.call("learn.accept", { id: l.id }, "cli");
   assert.equal(r.data.status, "active");
-  const held = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf build" }, cwd, session: "s4", tool_use_id: uid() });
+  const held = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf build" }, cwd, session: "s4", tool_use_id: uid() }, "harness");
   assert.equal(held.data.decision, "ask");
 });
 
@@ -244,14 +247,14 @@ test("declined: three nos in one session propose nothing; a headless thread decl
   // One session: a settings rule refusing the call looks the same as the user's no.
   for (const p of ["p1", "p2", "p3"]) {
     await say("clean up", "s1", p);
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "s1", prompt_id: p, tool_use_id: uid() });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "s1", prompt_id: p, tool_use_id: uid() }, "harness");
     await stop("s1", p);
   }
   assert.equal(signals("declined").length, 3);
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0, "one session is not enough");
   // Our own headless child: no one was there to say no.
   await say("clean up", "h1", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "h1", prompt_id: "p1", tool_use_id: uid() });
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "h1", prompt_id: "p1", tool_use_id: uid() }, "harness");
   await stop("h1", "p1", { headless: true });
   assert.equal(signals("declined").length, 3, "nothing inferred headless");
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0);
@@ -262,7 +265,7 @@ test("learn.edit refuses a proposed lesson: the user accepts what they were show
   await say("never use em dashes in anything you write", "s1", "p1");
   const [l] = await lessons();
   assert.equal(l.status, "proposed");
-  const r = await reg.call("learn.edit", { id: l.id, level: "block", rule: "Never use em dashes, or anything else." });
+  const r = await reg.call("learn.edit", { id: l.id, level: "block", rule: "Never use em dashes, or anything else." }, "cli");
   assert.match(r.error.message, /proposed/);
   assert.equal((await lessons())[0].rule, l.rule);
 });
@@ -273,7 +276,7 @@ test("PreToolUse asks the Harness for one row, and writes are found by path thro
   const call = reg.call.bind(reg);
   reg.call = async (tool, input, ...rest) => { if (tool === "harness.touched") seen.push(input.limit); return call(tool, input, ...rest); };
   await say("fix it", "s1", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/w/harlow-site", session: "s1", prompt_id: "p1", tool_use_id: uid() });
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/w/harlow-site", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "harness");
   assert.deepEqual(seen.slice(-1), [1]);
   const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM learn_writes WHERE path = ? AND done = 0 AND h1 IS NOT NULL").all("/x").map(r => String(r.detail)).join(" ");
   assert.match(plan, /USING INDEX learn_writes_path/);
@@ -284,7 +287,7 @@ test("declined: an allowed run of the same shape means no proposal", async t => 
   const cwd = "/w/harlow-site";
   for (const session of ["s1", "s2", "s3"]) {
     await say("ship it", session, "p1");
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session, prompt_id: "p1", tool_use_id: uid() });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     await stop(session, "p1");
   }
   // One allow, answered on a Switchboard thread, and the rule is not proposed a fourth time.
@@ -292,7 +295,7 @@ test("declined: an allowed run of the same shape means no proposal", async t => 
   await tick();
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 1, "three nos proposed it once");
   await say("ship it", "s5", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session: "s5", prompt_id: "p1", tool_use_id: uid() });
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session: "s5", prompt_id: "p1", tool_use_id: uid() }, "harness");
   await stop("s5", "p1");
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 1, "no second proposal");
 });
@@ -300,22 +303,22 @@ test("declined: an allowed run of the same shape means no proposal", async t => 
 test("denied and allowed: ask.answered counts per shape; an ask lesson allowed 5 of 5 proposes a demotion, as an event only", async t => {
   const { reg, say, stop, signals, events, of } = await learning(t);
   const cwd = "/w/harlow-site";
-  const l = (await reg.call("learn.add", { text: "don't use sed -i", level: "ask" })).data;
+  const l = (await reg.call("learn.add", { text: "don't use sed -i", level: "ask" }, "cli")).data;
   for (let i = 0; i < 5; i++) {
     await say("edit config", "s1", `p${i}`);
     const id = uid();
-    const r = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", prompt_id: `p${i}`, tool_use_id: id });
+    const r = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", prompt_id: `p${i}`, tool_use_id: id }, "harness");
     assert.equal(r.data.decision, "ask");
     events.emit("threads", "ask.answered", { ask: `a${i}`, decision: "allow", by: "deck", tool: "Bash", summary: "sed -i s/a/b/ x.conf" }, { thread: "s1" });
     await tick();
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", tool_use_id: id });
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", tool_use_id: id }, "harness");
     await stop("s1", `p${i}`);
   }
   assert.equal(signals("allowed").filter(s => s.lesson === l.id).length, 5, "counted once each, when the call ran");
   const ev = of("lesson.allowed");
   assert.equal(ev.length, 1);
   assert.deepEqual(ev[0].payload, { lesson: l.id, allowed: 5, asked: 5, level: "ask", propose: "remind" });
-  assert.equal((await reg.call("learn.lessons", {})).data.find(x => x.id === l.id).level, "ask", "nothing changes on its own");
+  assert.equal((await reg.call("learn.lessons", {}, "cli")).data.find(x => x.id === l.id).level, "ask", "nothing changes on its own");
   events.emit("threads", "ask.answered", { ask: "a9", decision: "deny", by: "deck", tool: "Bash", summary: "sed -i s/x/y/ y.conf" }, { thread: "s2" });
   await tick();
   assert.equal(signals("denied").length, 1);
@@ -355,7 +358,7 @@ test("scope: said in another project first, a new proposal holds everywhere and 
 
 test("scope: narrowing a lesson (to a project, an agent, or some files) is learn.relax; widening back is learn.edit", async t => {
   const { reg } = await learning(t, { projects: true });
-  const l = (await reg.call("learn.add", { text: "never use em dashes" })).data;
+  const l = (await reg.call("learn.add", { text: "never use em dashes" }, "cli")).data;
   const narrow = { check: { ...l.check, paths: "\\.md$" } };
   assert.match((await reg.call("learn.edit", { id: l.id, ...narrow }, "mcp")).error.message, /narrows the check to some files.*learn\.relax/);
   assert.equal((await reg.call("learn.relax", { id: l.id, ...narrow }, "cli")).data.check.paths, "\\.md$");
@@ -383,7 +386,7 @@ test("preference: an accepted 'use pnpm not npm' teaches Memory the user prefers
 test("jobs: without the Switchboard they wait, capped at 200", async t => {
   const { reg, db } = await learning(t);
   for (let i = 0; i < 205; i++) db.prepare("INSERT INTO learn_jobs (at, kind, key, input, status) VALUES (?,?,?,?, 'queued')").run(i, "distill", `k${i}`, JSON.stringify({ text: `rule ${i}` }));
-  await reg.call("harness.enrich", { prompt: "from now on sign emails as Harlow Legal", session: "s1", prompt_id: "p1" });
+  await reg.call("harness.enrich", { prompt: "from now on sign emails as Harlow Legal", session: "s1", prompt_id: "p1" }, "harness");
   const q = db.prepare("SELECT COUNT(*) AS n FROM learn_jobs WHERE status = 'queued'").get().n;
   assert.equal(q, 200);
   assert.equal(db.prepare("SELECT MIN(at) AS at FROM learn_jobs WHERE status = 'queued'").get().at, 6, "the oldest made room");
@@ -488,7 +491,7 @@ test("stats: before and after per 100 turns, and a verdict", async t => {
   await say("never use em dashes", "s1", "p1");
   await say("never use em dashes", "s2", "p1");                        // a repeat before acceptance
   await reg.call("learn.accept", { id: 1 }, "cli");
-  assert.equal((await reg.call("learn.stats", { id: 1 })).data.verdict, "measuring");
+  assert.equal((await reg.call("learn.stats", { id: 1 }, "cli")).data.verdict, "measuring");
   // Back-date: first said 3 days ago over 20 turns, accepted yesterday, 60 clean turns since.
   const at = Date.now();
   db.prepare("UPDATE learn_signals SET at = ? WHERE kind = 'prompt'").run(at - 3 * DAY);
@@ -497,18 +500,18 @@ test("stats: before and after per 100 turns, and a verdict", async t => {
   const day = ms => new Date(ms).toISOString().slice(0, 10);
   db.prepare("INSERT INTO learn_days (day, project, agent, turns) VALUES (?, '', '', 20)").run(day(at - 3 * DAY));
   db.prepare("INSERT INTO learn_days (day, project, agent, turns) VALUES (?, '', '', 60)").run(day(at));
-  const s = (await reg.call("learn.stats", { id: 1 })).data;
+  const s = (await reg.call("learn.stats", { id: 1 }, "cli")).data;
   assert.deepEqual({ before: s.before, after: s.after, escapes: s.escapes, turns: s.turns, verdict: s.verdict }, { before: 10, after: 0, escapes: 0, turns: 60, verdict: "working" });
   await say("write it", "s3", "p1");
   for (const a of [true, true, true]) await stop("s3", "p1", { text: `a ${DASH} b`, stop_hook_active: a });
-  const broken = (await reg.call("learn.stats", { id: 1 })).data;
+  const broken = (await reg.call("learn.stats", { id: 1 }, "cli")).data;
   assert.equal(broken.escapes, 1);
-  assert.ok(Array.isArray((await reg.call("learn.stats", {})).data));
+  assert.ok(Array.isArray((await reg.call("learn.stats", {}, "cli")).data));
 });
 
 test("dormant: quiet 60 days and 200 turns, out of the brief, still checked; waking on a catch", async t => {
   const { reg, db, of, say, stop } = await learning(t);
-  await reg.call("learn.add", { text: "never use em dashes" });
+  await reg.call("learn.add", { text: "never use em dashes" }, "cli");
   const at = Date.now();
   db.prepare("UPDATE learn_lessons SET accepted = ? WHERE id = 1").run(at - 70 * 86_400_000);
   db.prepare("INSERT INTO learn_days (day, project, agent, turns) VALUES (?, '', '', 250)").run(new Date(at - 10 * 86_400_000).toISOString().slice(0, 10));
@@ -520,7 +523,7 @@ test("dormant: quiet 60 days and 200 turns, out of the brief, still checked; wak
   await say("write", "s1", "p2");
   const b = await stop("s1", "p2", { text: `a ${DASH} b` });
   assert.equal(b.data.decision, "block", "still checked");
-  assert.equal((await reg.call("learn.lessons", {})).data[0].dormant, false, "a catch wakes it");
+  assert.equal((await reg.call("learn.lessons", {}, "cli")).data[0].dormant, false, "a catch wakes it");
 });
 
 test("retention: per-turn rows older than 7 days are pruned from Stop, at most hourly", async t => {
@@ -545,13 +548,13 @@ test("skills: steps recorded at Stop, marked clean at the next prompt, proposed 
   for (const session of ["s1", "s2", "s3"]) {
     await say("ship the fix", session, "p1");
     for (const command of ["npm test", "git add -A", "git commit -m wip", "git push"]) {
-      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() });
+      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
       await tick();
     }
     await stop(session, "p1");
     await say("thanks", session, "p2");
   }
-  const { skills, drift } = (await reg.call("learn.skills", {})).data;
+  const { skills, drift } = (await reg.call("learn.skills", {}, "cli")).data;
   assert.equal(skills.length, 1);
   assert.equal(skills[0].status, "proposed");
   assert.match(skills[0].body, /^---\nname: learned-/);
@@ -565,13 +568,13 @@ test("skills: steps recorded at Stop, marked clean at the next prompt, proposed 
   for (const session of ["s4", "s5", "s6"]) {
     await say("ship the fix", session, "p1");
     for (const command of ["npm test", "git add -A", "git commit -m wip", "git push"]) {
-      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() });
+      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
       await tick();
     }
     await stop(session, "p1");
     await say("thanks", session, "p2");
   }
-  assert.equal((await reg.call("learn.skills", {})).data.skills.length, 1, "a retired procedure is not proposed again");
+  assert.equal((await reg.call("learn.skills", {}, "cli")).data.skills.length, 1, "a retired procedure is not proposed again");
   assert.equal((await reg.call("learn.skill-dismiss", { id: 99 }, "cli")).error.code, "failed");
 });
 
@@ -579,7 +582,7 @@ test("skills: a turn corrected at the next prompt is not clean", async t => {
   const { reg, say, stop, db } = await learning(t);
   await say("ship the fix", "s1", "p1");
   for (const command of ["npm test", "git add -A", "git push"]) {
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd: "/w", session: "s1", prompt_id: "p1", tool_use_id: uid() });
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd: "/w", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "harness");
     await tick();
   }
   await stop("s1", "p1");

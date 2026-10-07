@@ -6,6 +6,7 @@
 // the module registered, as vyred's router does; the last test runs the module inside a real
 // vyred and fetches over its socket.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
@@ -148,7 +149,7 @@ function fetchRaw(url, { method = "GET", headers = {}, body } = /** @type {any} 
 test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a direct one does not", async t => {
   const relayed = await boot(t, { link: { path: "relay", relay: "fra", latencyMs: 80, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
-  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(o.error, undefined, o.error?.message);
   assert.deepEqual(o.data.link, { path: "relay", latencyMs: 80 });
   assert.deepEqual(relayed.link.asked, [{ input: { node: "nPHONE" }, caller: "module:glass" }]);
@@ -159,11 +160,11 @@ test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a di
   assert.equal(relayed.link.asked.length, 1);
 
   const far = await boot(t, { link: { path: "direct", relay: null, latencyMs: 180, lastHandshake: null, online: true, checkedAt: 1, cached: true } });
-  await far.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  await far.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(far.computers.calls.find(c => c.tool === "computers.watch").input.slow, true, "over 150 ms is slow too");
 
   const direct = await boot(t, { link: { path: "direct", relay: null, latencyMs: 12, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
-  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.deepEqual(d.data.link, { path: "direct", latencyMs: 12 });
   assert.deepEqual(direct.computers.calls.find(c => c.tool === "computers.watch").input, { agent: "kit", surface: "phone:pocket" });
 });
@@ -171,19 +172,19 @@ test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a di
 test("glass: open never fails for link.health, whether it errors or is slow to answer", async t => {
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
   const broken = await boot(t, { link: "throw" });
-  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(a.error, undefined);
   assert.equal(a.data.link, undefined);
   assert.ok(a.data.screen.ticket);
   const hung = await boot(t, { link: "hang" });
   const at = Date.now();
-  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(b.error, undefined);
   assert.ok(Date.now() - at < 5000, "the open waited only briefly");
   assert.ok(b.data.screen.ticket);
   // No link module at all.
   const none = await boot(t);
-  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(c.error, undefined);
   assert.equal(c.data.link, undefined);
 });
@@ -286,6 +287,7 @@ test("glass: release returns held_ms, emits, and notes the thread without anythi
   s.h.takes.get("kit").since -= 134_000;
   const r = await s.deck("glass.release", { target: "computer:kit", surface: "phone:pocket", note: "signed in to the bank portal" });
   assert.equal(r.data.released, true);
+  assert.equal(r.data.noted, true, "the thread was told");
   assert.ok(r.data.held_ms >= 134_000 && r.data.held_ms < 140_000, String(r.data.held_ms));
   const ev = s.events("glass.released")[0].payload;
   assert.deepEqual([ev.target, ev.surface, ev.why], ["computer:kit", "phone:pocket", "gave back"]);
@@ -296,6 +298,12 @@ test("glass: release returns held_ms, emits, and notes the thread without anythi
   // Releasing what you do not hold changes nothing and says so.
   assert.deepEqual((await s.deck("glass.release", { target: "computer:kit", surface: "phone:pocket" })).data, { released: false, held_ms: 0 });
   assert.equal(s.events("glass.released").length, 1);
+  // An agent with no thread open is not told, and the answer says so (a screen must not claim the note arrived).
+  await s.deck("glass.take", { target: "computer:pax", surface: "phone:pocket" });
+  const before = s.threads.sent.length;
+  const none = await s.deck("glass.release", { target: "computer:pax", surface: "phone:pocket", note: "hello" });
+  assert.deepEqual([none.data.released, none.data.noted], [true, false]);
+  assert.equal(s.threads.sent.length, before, "the release sent nothing to a thread that is not there");
   assert.equal(duration(40_000), "40 s");
   assert.equal(duration(3_780_000), "1 h 3 min");
 });
@@ -491,6 +499,16 @@ test("glass: an agent reaches only its own computer's files, never the box or an
   assert.match((await s.kit("glass.files.list", { target: "computer:pax" })).error.message, /only its own computer/);
   assert.match((await s.kit("glass.files.list", { target: "box" })).error.message, /only its own computer/);
   assert.match((await s.kit("glass.files.download", { target: "box", path: "files/docs/readme.md" })).error.message, /only its own computer/);
+  // a model caller with no agent behind it (plain mcp or harness) has no computer of its own: it reaches no files, read or write
+  for (const caller of ["mcp", "harness", "mcp:thread:t1", "MCP", "Harness", " mcp"]) {
+    const call = (/** @type {string} */ tool, /** @type {any} */ input) => s.registry.call(tool, input, caller);
+    for (const [tool, input] of /** @type {Array<[string, any]>} */ ([["glass.files.list", { target: "box" }], ["glass.files.list", { target: "computer:kit" }], ["glass.files.stat", { target: "box", path: "files" }], ["glass.files.download", { target: "box", path: "files/docs/readme.md" }], ["glass.files.upload", { target: "computer:kit", dir: "", name: "x.txt", size: 1 }], ["glass.files.mkdir", { target: "box", path: "files/x" }], ["glass.files.move", { target: "box", from: "files/a", to: "files/b" }], ["glass.files.trash", { target: "box", path: "files/docs/readme.md" }]])) {
+      const r = await call(tool, input);
+      assert.match(String(r.error && r.error.message), /no computer of its own|is not available to/, `${caller} ${tool}`);
+    }
+  }
+  // the person's own surfaces are unaffected
+  assert.equal((await s.cli("glass.files.list", { target: "box" })).error, undefined);
 });
 
 test("glass: through every files tool, in every spelling an agent can arrive as, only its own computer can be the target", async t => {

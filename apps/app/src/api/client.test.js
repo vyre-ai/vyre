@@ -2,6 +2,8 @@
 // The box client (client.ts) over the box's own resilience code, with web.js's caller against a
 // fake fetch and a fake open: no network. Imports client.ts through Node's type stripping, so it
 // is skipped on a Node without it.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,7 @@ import { backoff } from "../../../../core/resilience/backoff.js";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./client.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 
 /** @param {number} status @param {unknown} body */
 const reply = (status, body) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
@@ -193,4 +195,13 @@ test("client: over a relay base with a route prefix, the proof signs the box's p
   await verify(sent[0], "POST", "/v1/tools/notes.add");
   assert.equal(sent[1].path, "/v1/events/stream?type=*&since=latest");
   await verify(sent[1], "GET", "/v1/events/stream?type=*&since=latest");
+});
+
+import fs from "node:fs";
+import { ZONE_HEADER, systemZone, validZone } from "../../../../lib/time/index.js";
+test("every call carries the device's zone in x-vyre-zone (lib/time), set where the client builds a call's headers", () => {
+  const src = fs.readFileSync(new URL("./client.ts", import.meta.url), "utf8");
+  assert.equal(ZONE_HEADER, "x-vyre-zone");
+  assert.match(src, /\[ZONE_HEADER\]: systemZone\(\)/);
+  assert.equal(validZone(systemZone()), true);
 });

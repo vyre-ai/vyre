@@ -1,0 +1,14 @@
+{
+  "name": "@vyre/kernel-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The studs of the Vyre kernel: types and constant tables, no logic. Every team builds against these.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "types": "index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" }
+  },
+  "files": ["index.d.ts", "index.js", "common.d.ts", "chain.d.ts", "authorize.d.ts", "grant.d.ts", "event.d.ts", "store.d.ts", "task.d.ts", "fields.d.ts", "model.d.ts", "seal.d.ts", "roles.d.ts", "gateway.d.ts", "identity.d.ts", "README.md"],
+  "engines": { "node": ">=22.5" }
+}

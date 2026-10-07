@@ -3,6 +3,7 @@
 // that names image digests is cosign-checked and pulled by digest, a running install is never replaced,
 // and the Docker flavors that cannot work stop in plain words. All against stub docker/sudo and a
 // file:// release site: no network, no real Docker.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -36,8 +37,10 @@ function box(t, opts = {}) {
   for (const [name, body] of Object.entries(stubs)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   const env = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
-    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_TUN: "/dev/null", VYRE_DOCKER_SOCK: path.join(base, "none"),
-    VYRE_NO_UP: "1",
+    VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
+    VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
+    // Never the machine's own units: on a host that runs a real Vyre the uninstall sees them and keeps the wrapper.
+    VYRE_SYSTEMD_DIR: path.join(base, "systemd"),
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
   };
@@ -56,14 +59,15 @@ const runAsync = (env, args) => new Promise(resolve => {
 const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
 
 /** A file:// release site: the box files, a SHA256SUMS over them, and release.json. */
-function site(base, { images = true, pin = true } = {}) {
+function site(base, { images = true, pin = true, extra = /** @type {Record<string,string>} */ ({}) } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
   const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
-    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
+    VERSION: "0.2.0\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
   };
+  Object.assign(files, extra);
   for (const [n, c] of Object.entries(files)) fs.writeFileSync(path.join(dir, n), c);
   const sums = Object.entries(files).map(([n, c]) => `${crypto.createHash("sha256").update(c).digest("hex")}  ${n}`).join("\n") + "\n";
   fs.writeFileSync(path.join(dir, "SHA256SUMS"), sums);
@@ -107,10 +111,66 @@ test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's 
 });
 
 test("install-box.sh v2: with a code the terminal ends on the plain line", t => {
-  const b = box(t);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Done\. Back to your browser\./);
+});
+
+test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
+  const b = box(t); // the stub docker lists no running container
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /Vyre is not running/);
+  assert.doesNotMatch(r.stdout, /Your server is ready|Back to your browser/);
+});
+
+test("install-box.sh v2: when the box is running after the start, the installer is done", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(b.calls().includes("--filter name=vyre-vyre-1 --filter status=running"), b.calls());
+});
+
+test("install-box.sh v2: --from as an account outside the docker group stops early with the command to run, and lays nothing out", t => {
+  // docker only answers `info` under sudo (the account is not in the docker group)
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; esac; if [ "$1" = info ] && [ -z "${STUB_SUDO:-}" ]; then exit 1; fi; exit 0' });
+  fs.writeFileSync(path.join(b.base, "bin", "sudo"), `#!/bin/sh\necho "sudo $*" >>"${b.log}"\nSTUB_SUDO=1 exec "$@"\n`, { mode: 0o755 });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /sudo usermod -aG docker alex/);
+  assert.ok(!fs.existsSync(path.join(b.dir, "compose.yml")), "nothing was laid out");
+});
+
+test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
+  const { REQUIRE, requireFor } = await import("../stores/twenty/space-store.js");
+  assert.equal(Number(/^SPACE_MEM_TINY_MB=(?:\$\{VYRE_SPACE_MEM_TINY_MB:-)?(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "the installer's small-server number is requireFor(4096): change both together");
+  assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=sqlite\n", { mode: 0o600 });
+  const r = run(b.env, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout + r.stderr, /GB of memory free/);
+  const text = fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8");
+  assert.match(text, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
+  assert.match(text, /^VYRE_KERNEL=1$/m);
+  assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1, "a person's own VYRE_STORE stays, and none is added");
+  assert.match(text, /^VYRE_STORE=sqlite$/m);
+});
+
+test("install-box.sh v2: the custody notice is the one the kernel says, and it is printed when the server is ready", async t => {
+  const text = fs.readFileSync(SCRIPT, "utf8");
+  const said = /^CUSTODY_NOTE="(.*)"$/m.exec(text)?.[1];
+  assert.ok(said);
+  const mod = await import("../kernel/seal/process.js").catch(() => null);
+  if (mod && mod.custodyNote) assert.equal(said, mod.custodyNote("server", "linux"));
+  const win = fs.readFileSync(path.join(REPO, "scripts", "install-windows.ps1"), "utf8");
+  assert.match(win, /About your keys: Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file\./);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes("About your keys: " + said), r.stdout);
 });
 
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
@@ -209,7 +269,8 @@ test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) han
   fs.mkdirSync(b2.dir, { recursive: true });
   const wrong = spawnSync("sh", ["-c", `VYRE_CODE='${CODE}' cat '${SCRIPT}' | sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b2.env });
   assert.equal(wrong.status, 0);
-  assert.ok(!fs.existsSync(path.join(b2.dir, "vyre.env")), "the variable on curl's side is not the script's");
+  const wrongEnv = path.join(b2.dir, "vyre.env");
+  assert.ok(!fs.existsSync(wrongEnv) || !fs.readFileSync(wrongEnv, "utf8").includes("VYRE_SETUP_CODE="), "the variable on curl's side is not the script's");
 });
 
 test("install-box.sh v2: a running install is updated, never replaced", t => {
@@ -238,7 +299,7 @@ test("install-box.sh v2: Podman and rootless Docker stop with a plain line", t =
 // --- vyre uninstall (box/vyre): one flow, every volume named, asking is approving ---
 
 const BOXVYRE = path.join(REPO, "box", "vyre");
-const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_tailscale-state", "vyre_mystery"];
+const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vyre-agent-home", "vyre_mystery"];
 
 /** A box with a stack folder, our wrapper installed, and a docker that knows the volumes. */
 function installed(t) {
@@ -267,7 +328,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   assert.ok(calls.includes("compose --profile computers down --remove-orphans"), calls);
   assert.ok(calls.includes("image rm -f img1 img2"), "Vyre's own images go, once each: " + calls);
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "the vyre command is removed");
-  assert.match(r.stdout, /Tailscale machines list/);
+  assert.doesNotMatch(r.stdout, /Tailscale/i, "no Tailscale step: there is none");
   assert.match(r.stdout, /vyre backup/, "the export is offered beside it");
 });
 
@@ -361,12 +422,12 @@ test("install-box.sh v2: a code another server already used stops with the plain
   const forged = Buffer.concat([raw.subarray(0, 16), Buffer.from(await (await import("../relay/client/setup.js")).setupFingerprint(other.spki))]).toString("base64url");
   const c = await runAsync({ ...second.env, VYRE_CODE: forged, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
   assert.notEqual(c.status, 0);
-  assert.match(c.stderr, /Another server already used this code\. Your browser is not connected to this server\. Start again at https:\/\/vyre\.run\/setup\./);
+  assert.match(c.stderr, /Another server already used this code\. Run the install line again to get a new code\./);
   assert.ok(!fs.existsSync(second.dir), "nothing was installed");
 });
 
 test("install-box.sh v2: the check words come from the box, show on the terminal, and never go through the mailbox", t => {
-  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Check words: lantern quiet river oak/);
@@ -421,4 +482,70 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.notEqual(x.status, 0);
   assert.match(x.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
   assert.ok(!fs.existsSync(out));
+});
+
+
+test("install-box.sh: the Space helper is installed as soon as the container is running, before the wait for modules (the entry holds the daemon back until the helper proves the firewall), and once, not after the wait", () => {
+  const src = fs.readFileSync(SCRIPT, "utf8");
+  const body = src.slice(src.indexOf("\nverify_up() {"), src.indexOf("\n}\n", src.indexOf("\nverify_up() {")));
+  const at = (/** @type {string} */ re) => body.search(new RegExp(re));
+  assert.ok(at("install_space_helper") > at("status=running") && at("install_space_helper") < at("modules running"), "inside verify_up, after the container runs and before the modules wait");
+  assert.equal((src.match(/^\s*install_space_helper$/gm) ?? []).length, 1, "called once");
+  assert.ok(!/verify_running_build; install_space_helper/.test(src), "no second call after the wait");
+});
+
+test("install-box.sh: --version names what the release site must serve; another version stops the install and names both", t => {
+  const b = box(t);
+  const url = site(b.base);
+  let r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.9"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.9, but .* serves 0\.2\.0\. Nothing was installed/);
+  assert.match(r.stderr, /--version 0\.2\.0/);
+  assert.ok(!fs.existsSync(b.dir), "nothing laid out");
+  assert.ok(!b.calls().includes("docker pull"), "no image is pulled");
+
+  // the same version, and latest, and no version at all, go through to the next step (the stub docker stops it later, never at the version check)
+  for (const args of [["--version", "0.2.0"], ["--version=0.2.0"], ["--version", "latest"], []]) {
+    const c = box(t);
+    r = run({ ...c.env, VYRE_BOX_URL: site(c.base) }, ["--yes", ...args]);
+    assert.doesNotMatch(r.stderr, /asked for Vyre|cannot be checked|not a version/, args.join(" "));
+  }
+  const d = box(t);
+  r = run({ ...d.env, VYRE_BOX_URL: site(d.base) }, ["--yes", "--version", "0.2.9; rm"]);
+  assert.match(r.stderr, /not a version like 0\.2\.9/);
+  const e = box(t);
+  r = run({ ...e.env, VYRE_BOX_URL: site(e.base), VYRE_VERSION: "0.2.5" }, ["--yes"]);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.5/, "VYRE_VERSION is the same as --version");
+});
+
+test("install-box.sh on a Mac: the version is checked on this path too, and the other arguments reach the Mac script one by one", t => {
+  const b = box(t);
+  fs.writeFileSync(path.join(b.base, "bin", "uname"), "#!/bin/sh\necho Darwin\n", { mode: 0o755 });
+  const out = path.join(b.base, "args.txt");
+  const mac = `#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "[$a]"; done >"${out}"\n`;
+  const url = site(b.base, { extra: { "install-mac-server.sh": mac } });
+  // another version than the site serves: refused before the Mac script runs, saying how to install a build that is not published
+  let r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.9"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.9, but .* serves 0\.2\.0\. Nothing was installed/);
+  assert.match(r.stderr, /--from <folder>/);
+  assert.ok(!fs.existsSync(out), "the Mac script did not run");
+  // the served version: the script runs, never sees --version, and an argument with a space stays one argument
+  r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.0", "--name", "my mac"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(out, "utf8"), "[--yes]\n[--name]\n[my mac]\n");
+  // --version=V form, and --version given last, are taken out the same way
+  r = run({ ...b.env, VYRE_BOX_URL: url }, ["--version=0.2.0", "a  b"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(out, "utf8"), "[a  b]\n");
+});
+
+test("install-box.sh: a site that does not list VERSION cannot confirm a named version, and says so", t => {
+  const b = box(t);
+  const url = site(b.base);
+  const dir = url.replace("file://", "");
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), fs.readFileSync(path.join(dir, "SHA256SUMS"), "utf8").split("\n").filter(l => !l.endsWith("  VERSION")).join("\n"));
+  const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.0"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /does not say which version it serves/);
 });

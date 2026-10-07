@@ -6,6 +6,7 @@
 // Light by default: a text "ping" every 60 s (the relay answers it without waking), and two
 // unanswered pings end the socket. Reconnects back off from 1 s to 5 minutes. Nothing polls.
 
+import { EventEmitter } from "node:events";
 import { boxSide } from "./channel.js";
 import { authMessage, signRoute, CLOSE } from "./wire.js";
 
@@ -24,6 +25,8 @@ const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code
  *   admit: (devicePub: Buffer, hello: any) => Promise<any>,
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
+ *   oncode?: (msg: { q: string, rv: string, s: string, n: number, m: string }) => void,
+ *   ontunnel?: (stream: any, visitor: { host: string, ip: string, port: number }) => void,
  *   log?: (m: string) => void, WebSocket?: any, pingMs?: number }} o
  */
 export function relayLink(o) {
@@ -41,6 +44,7 @@ export function relayLink(o) {
   /** @type {any} */
   let pinger = null;
   let connected = false;
+  let upSince = Date.now();
   /** @type {Map<string, any>} */
   const data = new Map();
   /** Ticket registrations (ADR 0045) waiting for a connected control socket to carry them; sent
@@ -73,6 +77,8 @@ export function relayLink(o) {
     const fn = status => { clearTimeout(t); resolve(status); };
     list.push(fn);
   });
+  /** Waiters for the relay's answer to a typed-code allocation (spec 6.5). @type {Array<(a: { rv: string, exp: number } | null) => void>} */
+  let codeWaiters = [];
   const flushRegs = () => {
     if (!control) return;
     for (const r of pendingRegs.splice(0)) { try { control.send(JSON.stringify({ t: "ticket", ...r })); } catch {} }
@@ -115,6 +121,7 @@ export function relayLink(o) {
         // What this relay says it does (an older one says nothing): whether it answers a registration, so silence can mean "older" or "failed".
         relayFeatures = Array.isArray(m.features) ? m.features.map(String) : [];
         backoff = BACKOFF_MIN;
+        upSince = Date.now();
         state("connected");
         flushRegs();
         clearInterval(pinger);
@@ -126,7 +133,10 @@ export function relayLink(o) {
         for (const c of Array.isArray(m.waiting) ? m.waiting : []) openData(String(c));
       } else if (m.t === "revoked") { for (const f of revokeAnswers.get(String(m.loc)) || []) f(Number(m.status)); revokeAnswers.delete(String(m.loc)); }
       else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
+      else if (m.t === "code.allocated") { const a = m.error ? null : { rv: String(m.rv), exp: Number(m.exp) }; for (const f of codeWaiters.splice(0)) f(a); }
+      else if (m.t === "code.msg") { try { o.oncode?.({ q: String(m.q), rv: String(m.rv), s: String(m.s), n: Number(m.n), m: String(m.m) }); } catch (err) { log(`relay: code handler failed: ${/** @type {Error} */ (err).message}`); } }
       else if (m.t === "open") openData(String(m.c));
+      else if (m.t === "tunnel") openTunnel(m);
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
     const gone = e => {
@@ -137,6 +147,8 @@ export function relayLink(o) {
       if (control !== ws) return;
       control = null;
       clearInterval(pinger);
+      // one line that says how long the link had been up and what the relay (or the network) said, so a flap shows its own cause in the log the next time it happens
+      if (!stopped && connected) log(`relay: control link closed after ${Math.round((Date.now() - upSince) / 1000)} s up (code ${e && e.code}${e && e.reason ? `, "${String(e.reason).slice(0, 80)}"` : ""})`);
       state("disconnected", e && e.reason ? String(e.reason) : `closed ${e && e.code}`);
       if (stopped) return;
       // Replaced means another process holds this route key (a restored copy of the box, say).
@@ -156,6 +168,7 @@ export function relayLink(o) {
     ws.binaryType = "arraybuffer";
     data.set(c, ws);
     const side = boxSide({
+      get bufferedAmount() { return ws.bufferedAmount; },
       send: bytes => { try { ws.send(bytes); } catch {} },
       close: (code, reason) => { try { ws.close(closeCode(code), String(reason || "").slice(0, 120)); } catch {} },
     }, { s: o.boxKey, route: o.route, admit: o.admit });
@@ -165,6 +178,30 @@ export function relayLink(o) {
     ws.onclose = e => end(e && e.reason ? String(e.reason) : "relay closed the connection");
     ws.onerror = () => end("could not reach the relay");
     side.ready.then(({ channel, hello, reply }) => o.onchannel(channel, { hello, reply }), e => log(`relay: refused a device: ${e.message}`));
+  }
+
+  /** A Publish tunnel stream (relay/node/tunnel.js): the relay names a visitor on its control channel and the box opens a data socket for the raw bytes, which go to `ontunnel` as a duplex.
+   * The name and address come from the relay's authenticated control message; the box end (lib/publish/tunnel.js) still checks the name against its own Space. @param {any} m */
+  function openTunnel(m) {
+    const c = String(m.c);
+    if (stopped || !o.ontunnel || data.has(c) || !/^[A-Za-z0-9_-]{1,64}$/.test(c)) return;
+    const ip = String(m.ip || ""), port = Number(m.port) || 0;
+    if (!/^[0-9a-fA-F:.]{2,45}$/.test(ip)) return;
+    const ws = new WS(`${base}/v1/box?route=${o.route}&c=${encodeURIComponent(c)}&t=${encodeURIComponent(ticket)}`);
+    ws.binaryType = "arraybuffer";
+    data.set(c, ws);
+    const stream = new EventEmitter();
+    let ended = false;
+    const end = why => { if (ended) return; ended = true; if (data.get(c) === ws) data.delete(c); try { ws.close(); } catch {} stream.emit("close", why); };
+    Object.assign(stream, {
+      // Bytes to the visitor. A relay that stops reading for good leaves a growing buffer: past 4 MB the stream ends rather than hold it.
+      write: (/** @type {Buffer} */ b) => { if (ended) return false; try { ws.send(b); } catch { end("send"); return false; } if (ws.bufferedAmount > 4 * 1024 * 1024) { end("stalled"); return false; } return true; },
+      end: () => end("ended"), destroy: () => end("destroyed"), pause() {}, resume() {},
+    });
+    ws.onmessage = e => { if (typeof e.data !== "string") stream.emit("data", Buffer.from(e.data)); };
+    ws.onclose = () => end("closed");
+    ws.onerror = () => end("error");
+    ws.onopen = () => { try { o.ontunnel?.(stream, { host: String(m.host || ""), ip, port }); } catch (err) { log(`relay: tunnel handler failed: ${/** @type {Error} */ (err).message}`); end("handler"); } };
   }
 
   connect();
@@ -201,6 +238,26 @@ export function relayLink(o) {
       try { control.send(JSON.stringify({ t: "revoke", loc })); } catch {}
       return a;
     },
+    /** Whether the relay this link is on has the typed-code rendezvous. */
+    codes() { return relayFeatures.includes("code"); },
+    /** Ask the relay for a free typed-code rendezvous (5 minutes; this box holds at most one, a new ask replaces it).
+     * Resolves { rv, exp }, or null when the relay is busy, does not answer in 5 seconds, or the link is down.
+     * @returns {Promise<{ rv: string, exp: number } | null>} */
+    codeAlloc() {
+      if (!control || !connected) return Promise.resolve(null);
+      return new Promise(resolve => {
+        const t = setTimeout(() => { codeWaiters = codeWaiters.filter(f => f !== fn); resolve(null); }, 5000);
+        t.unref?.();
+        const fn = a => { clearTimeout(t); resolve(a); };
+        codeWaiters.push(fn);
+        try { control.send(JSON.stringify({ t: "code.alloc" })); } catch {}
+      });
+    },
+    /** Give the rendezvous back. */
+    codeRelease() { try { control?.send(JSON.stringify({ t: "code.release" })); } catch {} },
+    /** Answer a message `oncode` delivered: `m` (base64url) is the reply; null refuses it. The relay gives the typing device one generic answer for a refusal.
+     * @param {string} q @param {string|null} m */
+    codeReply(q, m) { try { control?.send(JSON.stringify(m ? { t: "code.reply", q, m } : { t: "code.reply", q })); } catch {} },
     /** Register a setup offer's locator (tailnet plan 3.6): same fields, kept until dropSetup and
      * sent again after every reconnect. Resolves as registerTicket does; 409 means another server
      * used this code first, and the offer is dropped here so it is never re-sent.

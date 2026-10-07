@@ -4,6 +4,7 @@
 // The forbidden words and the secret pattern live in scripts/lib/hygiene.js, shared with
 // scripts/docs-check, which holds the published docs to the same rules.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,7 +15,7 @@ import { FORBIDDEN, SECRET } from "../scripts/lib/hygiene.js";
 import { discover } from "../core/modules/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SHIPPED = ["bin", "core", "harness", "local", "deck", "modules"];
+const SHIPPED = ["bin", "core", "harness", "local", "web", "modules"];
 
 function files(dir) {
   const out = [];
@@ -91,6 +92,9 @@ const OWN_PERSON_SET = /=\s*new Set\(\[\s*"cli"/;
 const KNOWN_OWN_PERSON_SETS = new Set([
   "core/presence/index.js",  // the canonical home PERSON_SURFACES lives in
   "core/daemon/index.js",    // kernel's own dispatch, not a module hand-rolling the concept
+  "local/hands-chrome-mac/caller.js", // the standalone Chrome package's sanctioned copy: caller.test.js compares it to core/presence PERSON_SURFACES
+  "core/planner/index.js",   // FOLLOWS: the callers whose time zone follows the device in hand (tailnet and device too), not a person check
+  "core/memory/identity/test-facts.js", // a test fixture's surfaces, not a person check
   "core/harness/rules.js", "core/link/box.js", "core/link/mac.js", "core/files/drive.js",
 ]);
 test("hygiene: no new hand-rolled copy of PERSON_SURFACES (a Set of exactly cli/local/deck/capsule)", () => {

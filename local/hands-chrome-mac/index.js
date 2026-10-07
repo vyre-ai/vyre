@@ -29,7 +29,7 @@ import { trustKeyIn } from "./extension/shared/trust.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
-import { callerKind, agentClaim } from "./caller.js";
+import { callerKind, agentClaim, modelKey } from "./caller.js";
 
 /** True when a folder is under the OS temp directory (resolved): a test profile, never a person's real one. @param {string|undefined} dir */
 const inTempDir = dir => { if (!dir) return false; try { const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }; const d = real(dir), t = real(os.tmpdir()); return d === t || d.startsWith(t + path.sep); } catch { return false; } };
@@ -38,10 +38,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /** An mcp caller inside a named agent's own thread: the same rule as hands. */
 /** Who must hold the grant: null for the person (their own surfaces or unnamed MCP session); a named claim from any route by that name; every other caller by a key that can never be granted, so it is refused (reviewer-2 H1, same rule as hands). */
-const agentOf = (/** @type {any} */ caller) => {
-  const claim = agentClaim(caller);
-  if (claim) return claim;
-  return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
+  // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
+  // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
+  if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
@@ -82,10 +83,10 @@ const timeout = { ...int, description: "Give up after this many ms. Default 3000
 const WAIT = obj({ timeoutMs: { ...int, description: "Keep looking for the control this long: it must exist, be enabled and (with stable) hold still, and loading spinners must clear. Default 0: one look." }, stable: bool, busyMs: { ...int, description: "How long to wait for spinners before giving up on them." } });
 
 /** Which tabs.* op an action means. */
-const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "tabs.open", activate: "tabs.activate", close: "tabs.close", navigate: "tabs.navigate", presence: "tabs.presence" };
+const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "tabs.open", many: "tabs.many", prefetch: "tabs.prefetch", activate: "tabs.activate", close: "tabs.close", navigate: "tabs.navigate", presence: "tabs.presence" };
 const SOURCE_OPS = { list: "dev.sources.list", get: "dev.sources.get", search: "dev.sources.search" };
 const NET_OPS = { start: "net.start", list: "net.list", get: "net.get", watch: "net.watch", unwatch: "net.unwatch", on: "net.on", off: "net.off", rules: "net.rules", replay: "net.replay" };
-const API_OPS = { learn: "api.learn", catalog: "api.catalog", call: "api.call" };
+const API_OPS = { learn: "api.learn", catalog: "api.catalog", route: "api.route", call: "api.call" };
 const GHL_OPS = { context: "ghl.context", section: "ghl.section", flows: "ghl.flows", run: "ghl.run", save: "ghl.save" };
 
 /** @param {any} v */ const isObj = v => v && typeof v === "object" && !Array.isArray(v);
@@ -194,7 +195,7 @@ export default {
       if (!agent) return;
       const r = await ctx.call("hands.grant.list", {});
       const ok = r && !r.error && Array.isArray(r.data) && r.data.some((/** @type {any} */ g) => g.agent === agent);
-      if (!ok) throw denied("denied", `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
+      if (!ok) throw denied("denied", String(agent).startsWith("caller:") ? "This assistant has no permission to use this computer yet. Add it in Access. (not granted)" : `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
     };
 
     /** Refuse when a page is one Vyre may not touch for this op. @param {string|null|undefined} url @param {string|undefined} op */
@@ -266,7 +267,7 @@ export default {
      */
     async function dispatch(op, input, meta, o = {}) {
       return via.run(meta || {}, async () => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         const args = { ...input };
         delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget; delete args.pointBudget;
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
@@ -459,7 +460,7 @@ export default {
       const { asked, release, ...replay } = args;
       // What to replay stays HERE keyed by the Gate's id; the card carries only what the person
       // reads, so an agent's own gate.request cannot make release run anything (reviewer-2 H2/HIGH).
-      const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller), ...(res.plan ? { plan: res.plan } : {}) };
+      const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller, meta), ...(res.plan ? { plan: res.plan } : {}) };
       const content = { app: "Chrome", window: scrub(res.title || ""), origin, control: scrub(control || res.why || summary), fields: clipFields(res.fields), ...(res.plan ? { kind: "plan" } : {}) };
       // The Gate sends at once what the person's own words or a standing permission covered, and it
       // calls release before gate.request has returned an id. So the record is filed under a fresh
@@ -470,7 +471,7 @@ export default {
       // The Gate may have started after this module; offer again before the first card needs it.
       if (!offered) await offer();
       const r = await ctx.call("gate.request", { kind: "act", via: "chrome:mac", to: origin, content: { ...content, ref }, ...(meta && meta.thread ? { thread: String(meta.thread) } : {}) });
-      const agent = agentOf(meta.caller);
+      const agent = agentOf(meta.caller, meta);
       // Covered by what the person said (asked, or a standing permission): the Gate already released it.
       if (r && !r.error && r.data && r.data.state === "sent") {
         heldActs.delete(ref);
@@ -494,13 +495,16 @@ export default {
     }
 
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, m: any) => Promise<any>} run @param {any} [extra] */
-    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
+    // The agent-facing tools admit a model (its grant and plan are checked in the body: "not granted" is refused before Chrome); the person-only ones pass `callers: PEOPLE`.
+    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, callers: [...PEOPLE, "module", "mcp", "harness"], run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
 
     const pass = (/** @type {string} */ name, /** @type {string} */ op, /** @type {string} */ description, /** @type {any} */ props) =>
       tool(name, description, obj({ tab, timeoutMs: timeout, ...props }), (i, m) => dispatch(op, i, m));
 
-    tool("chrome.tabs", "The tabs in the person's own Chrome. list: every tab (id, title, URL; pages Vyre may not look at are left out and counted in hidden). find: tabs matching a URL, origin or title. use: reuse a matching tab, and open one only when none matches and url is given (openIfMissing); it never steals focus unless focus is true. open: a new tab (avoid: prefer use). activate: bring a tab to the front. close: only a tab Vyre opened. navigate: send a tab to a URL.",
-      obj({ action: { type: "string", enum: Object.keys(TAB_OPS) }, tab, url: str, press: { ...str, description: "For presence: press one of the pill's own buttons (Stop or Pause) with a real click, the same as the person clicking it." }, match: obj({ url: str, origin: str, title: str }), openIfMissing: bool, focus: bool, timeoutMs: timeout }, ["action"]),
+    pass("chrome.parallel", "batch.parallel", "Read several tabs at the same time: steps are [{op, args: {tab}}], reading ops only (a snapshot, a screenshot, net list, api route), each on its own tab, at most 6. The answer takes as long as the slowest tab, not the sum. A step that fails does not stop the others. Anything that writes goes through chrome_batch.", { steps: { type: "array", items: { type: "object" } } });
+
+    tool("chrome.tabs", "The tabs in the person's own Chrome. list: every tab (id, title, URL; pages Vyre may not look at are left out and counted in hidden). find: tabs matching a URL, origin or title. use: reuse a matching tab, and open one only when none matches and url is given (openIfMissing); it never steals focus unless focus is true. open: a new tab (avoid: prefer use). activate: bring a tab to the front. close: only a tab Vyre opened. navigate: send a tab to a URL. many: open or reuse up to 6 URLs AT ONCE (urls), so the wait is the slowest page, not the sum. prefetch: the same for pages the person is likely to want next, always in the background and capped at 6 (oldest closed); a later use finds the tab already loaded.",
+      obj({ action: { type: "string", enum: Object.keys(TAB_OPS) }, tab, url: str, urls: { type: "array", items: str, description: "For many and prefetch: the pages, at most 6." }, press: { ...str, description: "For presence: press one of the pill's own buttons (Stop or Pause) with a real click, the same as the person clicking it." }, match: obj({ url: str, origin: str, title: str }), openIfMissing: bool, focus: bool, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (TAB_OPS)[action], { ...rest, action }, m); });
 
     tool("chrome.frames", "The tab's frames (iframes, including cross-origin ones that run in their own process): each with its origin, whether Vyre can read it, and which cannot be read and why. list shows them; clicktest is a diagnostic that clicks one element both ways Input can be sent and counts what the page received; probe reads each readable frame's title and control count, which is the quick way to see that child frames work here. A modern app (GoHighLevel's workflow builder, embedded editors and payment forms) lives in an iframe, so the top page alone can be only its shell.",
@@ -524,8 +528,8 @@ export default {
     tool("chrome.net", "The page's network traffic. start: begin capturing. list and get: what was captured (headers and bodies with every credential masked). watch and unwatch: live capture. on and off: act on matching requests (block, mock, change headers, wait then run a step). rules: the active on rules. replay: re-send a captured request from inside the page, so its own cookies sign it and no credential leaves the browser. Every frame of the tab is captured (cross-origin iframes and nested ones too): a request carries frame, its origin, and frame (here or inside filter) limits list, get and watch to one. A request an iframe made is replayed inside that iframe.",
       obj({ action: { type: "string", enum: Object.keys(NET_OPS) }, tab, id: str, frame: { description: "Only requests of this frame: a piece of its origin." }, filter: { type: "object" }, then: { type: "object" }, limit: int, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (NET_OPS)[action], { ...rest, action }, m); });
-    tool("chrome.api", "An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name. This is the way to call an app's backend with the person's login: prefer call over a fetch in chrome_eval, which cannot write and cannot read the stored login. A write (POST, PUT, PATCH, DELETE) is held for the person unless a plan they approved once (chrome_approve) covers it; a publish, a message or a payment always asks.",
-      obj({ action: { type: "string", enum: Object.keys(API_OPS) }, tab, frame: { description: "For call: run in this frame (index, frame id, or a piece of its origin). Default: the frame the entry was learned in." }, entry: str, args: { type: "object" }, host: str, timeoutMs: timeout }, ["action"]),
+    tool("chrome.api", "An app's own API, learned from its traffic. route: TRY THIS FIRST for a read: give a hint and the best learned GET is called from inside the page and verified; the reply says route \"api\" with the data, or route \"ui\" with why (then drive the page), and an endpoint that fails twice is dropped. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name. This is the way to call an app's backend with the person's login: prefer call over a fetch in chrome_eval, which cannot write and cannot read the stored login. A write (POST, PUT, PATCH, DELETE) is held for the person unless a plan they approved once (chrome_approve) covers it; a publish, a message or a payment always asks.",
+      obj({ action: { type: "string", enum: Object.keys(API_OPS) }, tab, frame: { description: "For call: run in this frame (index, frame id, or a piece of its origin). Default: the frame the entry was learned in." }, entry: str, hint: { ...str, description: "For route: what the data is about, in a few words (\"contacts\", \"workflow status\")." }, params: { type: "object", description: "For route: path and query values for the entry." }, args: { type: "object" }, host: str, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (API_OPS)[action], { ...rest, action }, m); });
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
@@ -559,7 +563,7 @@ export default {
     tool("chrome.approve", "Ask the person to approve a plan ONCE before a job with many changes, for example \"create these 8 workflows as drafts\". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A delete, a message to a contact and a payment are never covered: each asks one at a time. A publish is covered only when you set asked: true because the person's own words asked for it (\"build and publish these\"); the card then says \"and publish\" plainly. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.",
       obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" }, drawn: { type: "string", enum: ["click", "type", "drag"], description: "A create or edit done by POINTING at a drawn surface (chrome_point on a canvas), not by an API write. The card says plainly that the person cannot be shown what such a click does." }, origin: { ...str, description: "With drawn: the origin of the frame the pointing happens in, when it is not the tab's own." }, asked: { type: "boolean", description: "For publish: true only when the person's own words asked for it (\"build and publish these\"). Without it a publish asks one at a time." } }, ["kind", "what"]) }, tab }, ["title", "items"]),
       async (i, meta) => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         await requireGrant(agent);
         const raw = Array.isArray(i.items) ? i.items : [];
         if (!raw.length || raw.length > 40) throw denied("bad_request", "a plan needs between 1 and 40 items");
@@ -607,7 +611,7 @@ export default {
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
       obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, ok: { ...bool, description: "With finish: false when the run ended in failure. Default true." }, agent: str }),
       async (i, meta) => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         await requireGrant(agent);
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {

@@ -1,6 +1,7 @@
 // @ts-check
 // import.scan / plan / start with Codex and Gemini CLI sessions in a temp home: a source per agent,
 // filed by folder, and what is sent is the converted Claude-shaped copy, staged and then removed.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

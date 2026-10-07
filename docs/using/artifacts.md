@@ -27,7 +27,8 @@ any two versions. Images, video and audio are one file each: a new one is a new 
 A public link is off until you turn it on in Settings. A link shows one version, or always the
 latest, expires in 30 days unless you choose otherwise, and carries nothing about your project, the
 agent or the thread. Sharing counts as posting, so an agent's own share waits for you. Images, video
-and audio have no public link yet.
+and audio can be shared the same way; the link serves the file as it is, so a photograph's own
+metadata goes with it.
 
 ## Documents run no code; pages and apps run their own
 
@@ -51,12 +52,9 @@ request is a plain GET: the page cannot read the answer.
 
 So treat a page or an app as able to send out whatever is inside it. Do not let an agent put in one
 anything you would not send to the internet, and be careful with an interactive artifact made in a
-session that read mail, web pages or other content you did not write. When a page or an app loads a
-second time, which means it navigated away, the Deck blanks the frame and shows "This page tried to
-open another site", and the artifact's activity records that it left. Where it went is usually not
-known to Vyre, because a browser does not tell the surface around a frame where the frame went, so
-the log says that it left, not to what address. The log is written from what the Deck sees, so it is
-a record to look at, not a guard.
+session that read mail, web pages or other content you did not write. Where a page or an app
+goes after it navigates away is usually not known to Vyre, because a browser does not tell the
+surface around a frame where the frame went. Nothing in the Vyre app guards against it.
 
 ### A known limit in Safari
 

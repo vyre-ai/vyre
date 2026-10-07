@@ -1,88 +1,29 @@
-# The Vyre box: vyred and its own tailscaled, nothing else.
+# The Vyre box: vyred and the Docker API proxy for agents' computers, nothing else.
 #
 #   docker compose -f box/compose.yml up -d
 #
 # Upgrade:  docker compose pull && docker compose up -d
 #
-# Why a shared network namespace: the vyre service has no network of its own. It runs inside
-# the tailscale container's namespace (network_mode: service:tailscale), so vyred sees the real
-# tailscale0 interface, binds the tailnet addresses on 443 itself, and identifies every caller
-# by `tailscale whois` of the peer address (ADR 0002). There is no `tailscale serve` and no
-# identity header: a packet's WireGuard source address is the one thing a local process cannot
-# fake.
-#
-# The tailscale container is the only way in. It has no published port but the onboarding one,
-# which Docker binds on the host's loopback. Nothing else on the host, and no other container,
-# can reach vyred's tailnet listener except over WireGuard.
+# vyred reaches other devices over Wink, a Vyre-owned userspace network core it runs itself (the pinned binaries ship in the image, see
+# box/Dockerfile): no sidecar container, no TUN device, no extra capability. The only way in from the host is the onboarding page, which
+# Docker binds on the host's loopback.
 #
 # Room for more, as extra compose files rather than edits here, listed in COMPOSE_FILE in
 # /srv/vyre/.env (COMPOSE_PROJECT_NAME=vyre there keeps one project). Other services join the
 # `vyre` network, where vyred answers as `vyred`. The agents' computers are the `docker-api`
-# service below, under the `computers` profile. compose.egress.yml is one such extra: a few sites
-# in the computers go out through the user's Mac.
+# service below, under the `computers` profile.
 
 name: vyre
 
 services:
-  tailscale:
-    image: ${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:v1.102.5@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065}
-    hostname: ${VYRE_TS_HOSTNAME:-vyre}
+  vyre:
+    image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
     restart: unless-stopped
-    labels:
-      run.vyre: "1"
-    # tailscaled alone, not the image's containerboot: with no auth key, containerboot's own
-    # `tailscale up` gives up after a minute and exits, and every restart takes vyred's network
-    # (this namespace) down with it. Here tailscaled waits at NeedsLogin for as long as it takes,
-    # and vyred runs `tailscale up` when the person presses Connect in the onboarding.
-    #
-    # vyred runs as uid 1000 and must run `tailscale up` and `tailscale cert`, which tailscaled
-    # allows for root and for its operator. tailscaled finds the operator by the connecting uid's
-    # name in its own /etc/passwd, and this image has no uid 1000, so it gets one named vyre.
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        grep -q '^vyre:' /etc/passwd || echo 'vyre:x:1000:1000:vyre:/nonexistent:/sbin/nologin' >> /etc/passwd
-        tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
-        pid=$$!
-        i=0; until tailscale status >/dev/null 2>&1 || [ "$$(tailscale status 2>&1 | grep -c -i 'logged out\|needslogin')" != 0 ] || [ $$i -ge 30 ]; do i=$$((i+1)); sleep 1; done
-        tailscale set --operator=vyre --hostname="$${TS_HOSTNAME}" --accept-dns=false
-        if [ -n "$${TS_AUTHKEY}" ]; then tailscale up --authkey="$${TS_AUTHKEY}" --operator=vyre --hostname="$${TS_HOSTNAME}" --accept-dns=false || true; fi
-        wait $$pid
-    environment:
-      - TS_HOSTNAME=${VYRE_TS_HOSTNAME:-vyre}
-      # Optional. Empty means interactive login: `tailscale status --json` carries AuthURL once
-      # vyred starts the login, and the onboarding page shows it.
-      - TS_AUTHKEY=${TS_AUTHKEY:-}
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    sysctls:
-      # Lets non-root vyred bind 443, in this namespace only.
-      net.ipv4.ip_unprivileged_port_start: 0
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - tailscale-sock:/var/run/tailscale
-      # VyreDrive (built on Tailscale's Taildrive; core/files/drive.js). tailscaled serves a
-      # shared folder itself, from this container, so the folder must be here at the same path
-      # as in the vyre service, or the share points at nothing. Only /work: the projects share and Glass's box folders
-      # (glass.roots) are chosen inside it. vyre-home is never mounted here, since it holds the
-      # vault and Claude's sign-in, and a share serves every file under its folder.
-      #
-      # Read-only unless VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env: this container runs as root with
-      # NET_ADMIN, and read-only keeps it from ever changing a project (ADR 0009's rule, read-only
-      # where possible). Each share is read-only on its own too; the mount needs rw only while some
-      # share is rw (the files.drive.access tool). That tool answers the step when the two differ:
-      # set VYRE_DRIVE_ACCESS=rw (or back to ro) in /srv/vyre/.env, then run docker compose up -d.
-      - vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}
+    # The public gate (core/wink/control/publicgate.js): TLS for the box's own name, in front of the network's control server, an exact allow-list and nothing else.
+    # Nothing listens on it until the box has a name and a certificate, so publishing the port opens nothing before then. Change the number with VYRE_PUBLIC_GATE_PORT
+    # in vyre.env AND wink.publicPort in the config, together; the node program's own UDP is outbound-initiated and needs no published port.
     ports:
-      # The onboarding page, on host loopback only. Reach it with
-      # ssh -N -L 7300:127.0.0.1:7300 <user>@<host>
-      # The same number on both sides: the page checks its Host header against the port it binds.
-      - "127.0.0.1:7300:7300"
+      - "${VYRE_PUBLIC_GATE_PORT:-7443}:${VYRE_PUBLIC_GATE_PORT:-7443}"
     networks:
       vyre:
         aliases:
@@ -93,14 +34,6 @@ services:
       # Agents' computers join this network, so vyred reaches their screens, computerd and
       # browser ports by container name. It is made here because the proxy refuses NETWORKS.
       computers: {}
-
-  vyre:
-    image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
-    # Shares the tailscale container's namespace; see the note at the top.
-    network_mode: service:tailscale
-    depends_on:
-      - tailscale
-    restart: unless-stopped
     # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     # Root, for the spawner only (core/spawner, ADR 0032): it runs vyred as uid vyre (1000) and
     # Vyre-owned Claude sessions as vyre-agent (1001), which cannot open vyred's socket. Every
@@ -119,14 +52,12 @@ services:
     environment:
       - VYRE_HOME=/home/vyre/.vyre
       - VYRE_SUPERVISOR=docker
-      # Binds the onboarding listener to this alias on the vyre network, where Docker delivers
-      # the published port; never 0.0.0.0, which would include tailscale0.
-      - VYRE_ONBOARD_HOST=vyred
-      # Onboarding's Connect runs `tailscale up`; these keep the preferences the entrypoint set.
-      - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=${VYRE_TS_HOSTNAME:-vyre}
-      # The tailscale service's /work mount mode, so files.drive.access can say whether the
-      # .env step is needed.
-      - VYRE_DRIVE_ACCESS=${VYRE_DRIVE_ACCESS:-ro}
+      # The kernel's sealing process (kernel/seal) runs the server profile on a box: vyred is uid 1000, outside the agents' range
+      # (2000 to 2063), and its sealing folder is 0700 under that uid, so no agent session can read it.
+      - VYRE_SEAL_PROFILE=server
+      # 0.3: the kernel is on, whatever a user's vyre.env says or a root-run update passes on (a packaged box must not depend on a user file; platform's MA-5 refuses a packaged
+      # daemon with the kernel off). VYRE_STORE (the Space store) is the installer's choice and the root run passes it on from vyre.env.
+      - VYRE_KERNEL=1
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env
@@ -138,10 +69,10 @@ services:
       - vyre-agent-home:/home/vyre-agent
       # Each signed-in account's own home (uids 2000 to 2063, made in the image, private to the account).
       - vyre-accounts:/home/acct
+      # Each session's own temp folder (lib/session-temp.js: <home>.sessions/tmp/<session>), apart from the home so it is not in the home's backups and a killed daemon's leftovers do not ride along.
+      - vyre-sessions:/home/vyre/.vyre.sessions
       # Projects.
       - vyre-work:/work
-      # The CLI in this image talks to tailscaled through this socket.
-      - tailscale-sock:/var/run/tailscale
       # docker-api's bearer (core/dockerproxy/bearer.js): vyred (uid vyre, 1000) generates it
       # here on first use and reads it back on every computers.docker request. Shared with the
       # docker-api service below, mode 0400 -- unreadable to vyre-agent (uid 1001), which shares
@@ -153,17 +84,20 @@ services:
       # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
+      # Spaces' Twenty stores (box/vyre space-helper): vyred drops `req-<id>` files in the spool, a root path unit acts on them from its own copies, and the
+      # answers come back as status-<id> files in the read-only folder. No socket, no secret, no path in a request. Linux only; see team/archive/work-journals/space-helper.md.
+      - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/spool:/run/vyre-spaces
+      - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/status:/run/vyre-spaces-state:ro
       # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.
       # On the host, so a recreate of this container keeps them; root writes them (box/vyre publish_release).
-      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/deck/release:ro
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/web/release:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
 
   # The Docker API for agents' own computers (spec 7.9), and nothing else. Off until
   # `--profile computers`. Vyre's own proxy (core/dockerproxy) holds the host's socket, here and
-  # nowhere else; vyred reaches it at http://docker-api:2375 on an internal network that only the
-  # tailscale/vyred namespace joins. It allows container create, start, stop, pause, unpause,
+  # nowhere else; vyred reaches it at http://docker-api:2375 on an internal network that only vyred joins. It allows container create, start, stop, pause, unpause,
   # inspect, list and remove, exec on a computer and volume inspect, and refuses every other
   # endpoint. It reads every body too: a create must pass core/computers/driver/policy.js against
   # the network, image and label prefix below, every per-container op is checked against the
@@ -206,16 +140,13 @@ services:
       - docker-api
 
 volumes:
-  tailscale-state:
-    labels:
-      run.vyre: "1"
-  tailscale-sock:
-    labels:
-      run.vyre: "1"
   vyre-home:
     labels:
       run.vyre: "1"
   vyre-work:
+    labels:
+      run.vyre: "1"
+  vyre-sessions:
     labels:
       run.vyre: "1"
   vyre-accounts:

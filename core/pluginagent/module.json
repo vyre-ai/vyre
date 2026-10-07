@@ -1,0 +1,25 @@
+{
+  "name": "pluginagent",
+  "version": "0.1.0",
+  "description": "Claude Code on this computer, as a named agent the person grants once: the plugin asks, the person approves with presence, vyred registers the agent and a key only this OS user can read, and every later plugin session on this computer carries that agent's kernel token. Never the person.",
+  "roles": ["box", "local"],
+  "requires": ["agents"],
+  "needs": { "kernel": { "actions": [] } },
+  "does": {
+    "tools": [
+      { "name": "pluginagent.ask", "reach": "anyone", "effect": "write" },
+      { "name": "pluginagent.status", "reach": "anyone", "effect": "read" },
+      { "name": "pluginagent.pending", "reach": "person", "effect": "read" },
+      { "name": "pluginagent.grant", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.revoke", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.decline", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.on", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.allows", "reach": "modules", "effect": "read" },
+      { "name": "pluginagent.vouch", "reach": "modules", "effect": "read" }
+    ]
+  },
+  "watches": { "emits": ["pluginagent.asked", "pluginagent.granted", "pluginagent.revoked", "pluginagent.declined"] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

@@ -1,10 +1,11 @@
 // @ts-check
-// The box's reads take in the paired Mac's rows (docs/work/federation.md, design 4 and the first
+// The box's reads take in the paired Mac's rows (team/archive/work-journals/federation.md, design 4 and the first
 // half of 5): projects.catalog, projects.list, recall.search, recall.sessions, recall.thread and
 // threads.list answer with both machines' rows, labelled, for the person only; agents, MCP,
 // guests and modules that do not ask get the box's own. A Mac that is away costs the box nothing
 // but its rows, and nothing the Mac answers is stored on the box.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { SESSIONS } from "./fixtures/corpus.js";
 import { OWNER, PHONE, until, pair } from "./link-harness.js";
+import { kernelCaller } from "./helpers.js";
 
 const T0 = Date.parse("2026-09-01T09:00:00Z");
 /** The box's own session: newer than every one on the Mac, and about the same intake form. */
@@ -53,7 +55,8 @@ test("federation reads: the person on the box reads both machines, every row lab
   const mac = (await s.macCall("projects.catalog", { limit: 100 })).data;
   assert.ok(mac.total > 1 && mac.total < 100, `the Mac has its own sessions: ${mac.total}`);
 
-  for (const caller of ["deck", "cli", "capsule", `tailnet:${OWNER}`]) {
+  // with the kernel on, a tailnet node is not a person by its label (the built-in network replaces it); the person's own surfaces carry the listener's facts (test/link-harness.js)
+  for (const caller of ["deck", "cli", "capsule", ...(s.box.kernel ? [] : [`tailnet:${OWNER}`])]) {
     const c = await asBox(s, "projects.catalog", { limit: 100 }, caller);
     assert.deepEqual(c.sources, [{ source: "box", machine: "testbox", ok: true, total: 1 }, { source: "mac", machine: "test-mac", ok: true, total: mac.total }], caller);
     assert.equal(c.total, 1 + mac.total);
@@ -95,7 +98,7 @@ test("federation reads: the person on the box reads both machines, every row lab
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: home(s.boxWork, "harlow") })).error);
   assert.ok(!(await s.macCall("projects.create", { name: "Northwind Bakery", home: home(s.macWork, "northwind") })).error);
   const projects = await asBox(s, "projects.list", {});
-  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["Harlow Legal", "box", "testbox"], ["Northwind Bakery", "mac", "test-mac"]]);
+  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["General", "box", "testbox"], ["Harlow Legal", "box", "testbox"], ["General", "mac", "test-mac"], ["Northwind Bakery", "mac", "test-mac"]], "every Space has its General project");
   assert.deepEqual(projects.sources, [{ source: "box", machine: "testbox", ok: true }, { source: "mac", machine: "test-mac", ok: true }]);
   assert.deepEqual(projects.problems, []);
 });
@@ -103,23 +106,28 @@ test("federation reads: the person on the box reads both machines, every row lab
 test("federation reads: machines local, agents, MCP, guests and modules that do not ask get the box's rows only", async t => {
   const s = await world(t);
   const boxOnly = async (caller, input = {}) => {
-    const c = await asBox(s, "projects.catalog", { limit: 100, ...input }, caller);
+    // projects.catalog lists every session with its first message, so a model, a guest and an unknown label are refused it by the callers list (group D, kernel-declare); the person's surfaces and modules get the box's rows.
+    const private_ = !/^(deck|cli|module:)/.test(caller);
+    let c;
+    try { c = await asBox(s, "projects.catalog", { limit: 100, ...input }, caller); } catch (e) { if (private_ && /not available/.test(String(e && e.message))) c = null; else throw e; }
+    if (!c) { assert.ok(private_, caller); } else {
     assert.equal(c.total, 1, `${caller}: ${JSON.stringify(c.sources)}`);
     assert.equal(c.sources, undefined, caller);
     assert.deepEqual(c.sessions.map(r => r.id), [BOX_ID], caller);
     assert.ok(c.sessions.every(r => r.source === undefined), `${caller}: rows are as they were, unlabelled`);
+    }
     // Recall's own scope (memory-iq 6f898294, core/recall/index.js's own reach(), a 1:1 mirror of
     // core/memory's — it does NOT call projects.reach; that's core/projects/core/files' own door,
     // a separate copy by design so recall never waits on projects being installed at all) may
     // refuse a caller outright, but ONLY one that names an agent this world never created, or one
     // recall's own OWNER/ownSession/ownerDevice never recognises as the owner (a tailnet guest,
-    // "unknown"): those cover "deck", "cli", every "module:" caller (module:x included) and a
-    // bare "mcp" session, so none of those may ever come back denied here, or a real regression
+    // "unknown"): those cover "deck", "cli" and every "module:" caller (module:x included; a bare "mcp"
+    // is an unnamed model session, never the person: MS-1, RC-1 3b98bbd80), so none of those may ever come back denied here, or a real regression
     // that refused the person's own surfaces (or a module) would pass this test silently
     // (reviewer, on the integrator's earlier "denied" is fine for every caller check — verified
     // by temporarily dropping "deck" from recall's own OWNER set: this now fails loudly instead
     // of passing quiet).
-    const mayDeny = /agent:/.test(caller) || caller === "unknown" || caller.startsWith("tailnet-guest:");
+    const mayDeny = /agent:/.test(caller) || caller === "mcp" || caller === "unknown" || caller.startsWith("tailnet-guest:");
     const recall = async (tool, args) => {
       const r = await s.boxCall(tool, args, caller, caller.startsWith("tailnet:") ? { peer: PHONE } : {});
       if (r.error) {
@@ -130,7 +138,8 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
       return r.data;
     };
     const rows = await recall("recall.sessions", { limit: 50, ...input });
-    if (rows) assert.deepEqual(rows.map(x => x.id), [BOX_ID], caller);
+    // A bare `mcp` is an unnamed model session: never the person (MS-1, KW-1, RC-1 3b98bbd80), it reads only its own thread's project, and a bare one has no thread, so it reads no sessions.
+    if (rows) assert.deepEqual(rows.map(x => x.id), caller === "mcp" ? [] : [BOX_ID], caller);
     else assert.ok(mayDeny, `${caller}: recall.sessions was refused but must have answered`);
     const hits = await recall("recall.search", { q: "intake form", ...input });
     if (hits) assert.ok(hits.every(h => h.session === BOX_ID), caller);
@@ -166,6 +175,7 @@ test("federation reads: an offline Mac leaves the box's rows, says mac_offline, 
   assert.ok(hits.length > 0 && hits.every(h => h.source === "box"));
   const th = await s.boxCall("recall.thread", { session: MAC_ID });
   assert.match(th.error.message, /mac_offline/);
+  assert.equal(th.error.code, "not_found");
   assert.deepEqual((await asBox(s, "threads.list", {})), []);
 });
 
@@ -185,7 +195,7 @@ test("federation reads: recall.thread opens a Mac session from the box and store
   assert.deepEqual(db.prepare("SELECT id FROM recall_sessions").all().map(r => r.id), [BOX_ID]);
   assert.equal(Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM recall_turns WHERE session != ?").get(BOX_ID)).n), 0);
   assert.deepEqual(db.prepare("SELECT COUNT(*) AS n FROM recall_turns").get(), before);
-  const events = JSON.stringify(db.prepare("SELECT * FROM events").all());
+  const events = JSON.stringify(s.box.events.since(0, { limit: 1_000_000 }));
   assert.ok(!events.includes("above the fold") && !events.includes(MAC_ID), "no event carries the Mac's words or its session");
 });
 
@@ -199,7 +209,7 @@ test("federation reads: recall.transcript reads a Mac session as blocks from the
   assert.ok(tr.blocks.length > 0);
   assert.deepEqual(tr.blocks, mac.blocks, "the Mac's own blocks, as the Mac reads them");
   // The same from the owner's phone over the tailnet.
-  assert.equal((await asBox(s, "recall.transcript", { session: MAC_ID }, `tailnet:${OWNER}`)).source, "mac");
+  assert.equal((await asBox(s, "recall.transcript", { session: MAC_ID }, s.box.kernel ? "deck" : `tailnet:${OWNER}`)).source, "mac");
   // The box's own session is the box's, labelled.
   const own = await asBox(s, "recall.transcript", { session: BOX_ID });
   assert.deepEqual([own.source, own.session.id], ["box", BOX_ID]);
@@ -269,7 +279,7 @@ test("federation reads: a Mac session picked into a box project resolves through
   const s = await world(t);
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: path.join(s.boxWork, "harlow") })).error);
   // juno is granted this project, so the registry lets it read it (an agent with no grant is refused).
-  assert.ok(!(await s.boxCall("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
+  assert.ok(!(await kernelCaller(s.box, s.boxRoot)("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
   // The Mac's session as the Mac answers it by id, and the box's own picked alongside it.
   const [mac] = (await s.macCall("recall.sessions", { ids: [MAC_ID] })).data;
   assert.equal(mac.id, MAC_ID);

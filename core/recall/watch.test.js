@@ -2,6 +2,7 @@
 // recall.watch: a live tail of a session's transcript as session.turn events, in a registry with
 // only the recall module and a temp transcript that the test appends to.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -9,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 

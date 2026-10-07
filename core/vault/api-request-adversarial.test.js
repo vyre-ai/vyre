@@ -7,6 +7,7 @@
 // the whole request path with a fake lookup and a fake transport, so nothing reaches a network.
 // Every host is a .test name and every address is documentation-range or reserved.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

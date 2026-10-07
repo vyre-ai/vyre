@@ -3,6 +3,7 @@
 // and conflicts, read-only members, removal with a new key and rotation flags, and what a peer
 // refuses. Each vault is a real Vault in a temp home; sync goes straight to the home's handler.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -230,4 +231,57 @@ test("event-driven pull: the home pokes members after a write; only the home may
   try { d.v.devices.start(); } finally { globalThis.setInterval = real; }
   d.v.devices.stop();
   assert.ok(seen.length && seen.every(ms => ms >= 10 * 60_000), `timers: ${seen}`);
+});
+
+test("vault.move completes from a member's own vault: both members read it, the local copy is gone, a live pass or a rejected role leaves nothing half moved", async t => {
+  const a = mk(t, "alex"), d = mk(t, "dana");
+  await know(a, d, "dana"); await know(d, a, "alex");
+  await a.v.shared.create({ name: "team" }, "cli");
+  await d.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "dana" }, "cli")).invite }, "cli");
+  const pw = fake("move");
+  await d.v.put({ name: "crm-login", kind: "login", fields: { username: "dana", password: pw } }, "cli");
+  const out = await d.v.shared.move({ name: "crm-login", to: "team" }, "cli");
+  assert.equal(out.moved, "crm-login");
+  assert.equal(await value(a, "team/crm-login", "password"), pw, "the home reads what a member moved in");
+  assert.equal(await value(d, "team/crm-login", "password"), pw);
+  assert.equal(d.v.row("crm-login"), undefined, "the local copy goes once the shared one is written");
+
+  // Read-only: the shared write is refused and the local copy stays.
+  await a.v.shared.role({ vault: "team", person: "dana", role: "read-only" }, "cli");
+  await d.v.shared.sync({}, "cli");
+  await d.v.put({ name: "second", fields: { value: fake("s") } }, "cli");
+  await assert.rejects(d.v.shared.move({ name: "second", to: "team" }, "cli"), /read .* not write|denied/);
+  assert.ok(d.v.row("second"), "a refused move leaves the local item");
+  assert.equal(a.v.row("team/second"), undefined);
+
+  // Role changes by a non-admin, or of the owner, are refused before any write.
+  await assert.rejects(d.v.shared.role({ vault: "team", person: "alex", role: "member" }, "cli"), /only an owner or admin|owner/);
+  await assert.rejects(a.v.shared.role({ vault: "team", person: "alex", role: "member" }, "cli"), /owner's role/);
+
+  // Rotate keeps the values and moves both to a new key version.
+  const r = await a.v.shared.rotate({ vault: "team" }, "cli");
+  assert.equal(r.kv, 2);
+  await d.v.shared.sync({}, "cli");
+  assert.equal(await value(d, "team/crm-login", "password"), pw);
+});
+
+test("vault.move into a real shared vault: a live pass and a provider sign-in token are refused, recorded, and leave the local item and the vault untouched", async t => {
+  const a = mk(t, "alex"), d = mk(t, "dana");
+  await know(a, d, "dana");
+  await a.v.shared.create({ name: "team" }, "cli");
+  await d.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "dana" }, "cli")).invite }, "cli");
+  await a.v.put({ name: "example-api", fields: { value: fake("api") }, hosts: ["https://api.example.com"] }, "cli");
+  await a.v.createPass({ holder: "Dana", card: (await d.v.card()).card, items: ["example-api"] }, "cli");
+  await assert.rejects(a.v.shared.move({ name: "example-api", to: "team" }, "cli"), /revoke the pass first/);
+  assert.ok(a.v.row("example-api"), "the local item stays");
+  assert.equal(a.v.shared.byName(a.v.shared.row("team").id, "example-api"), null, "nothing was written to the shared vault");
+
+  const tok = fake("claude");
+  await a.v.put({ name: "claude-setup-token", fields: { value: tok } }, "cli");
+  await assert.rejects(a.v.shared.move({ name: "claude-setup-token", to: "team" }, "cli"), /never moved into a shared vault/);
+  await d.v.shared.sync({}, "cli");
+  assert.equal(d.v.list().items.filter(i => i.name.startsWith("team/")).length, 0, "dana sees neither");
+  const refused = a.events.filter(e => e.type === "vault.refused");
+  assert.ok(refused.length >= 2 && refused.every(e => e.payload.action === "move"));
+  assert.ok(!JSON.stringify([a.events, a.logs]).includes(tok));
 });

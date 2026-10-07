@@ -1,0 +1,250 @@
+// @ts-check
+// ONE registry, ONE id (lead ruling, 4 Oct): a Space made through `spaces.create` is made in the kernel's Spaces registry with the kernel's id (`spc_` and 12 base32 characters) and its
+// built-in store attached at once, so `records.*` and `tasks.*` answer in it; and the person the kernel knows as the home's owner IS the claimed identity, so `records.me`,
+// `spaces.identity.status` and `spaces.list` agree. On a real vyred against the stand-in names directory (scripts/standin-directory.mjs).
+import "../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import net from "node:net";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { tempHome, present } from "./helpers.js";
+import { start } from "../core/daemon/index.js";
+import { call } from "../core/daemon/client.js";
+import { CONTACT } from "../kernel/conformance/suite.js";
+
+const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "standin-directory.mjs");
+const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => res(p)); }); });
+
+
+test("a Space made through spaces.create is the kernel's Space (one id, a store at once), and the kernel's owner is the claimed identity", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "walk-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 800)}`); return r.data; };
+
+  const made = await ok("spaces.identity.create", { name: "alex" });
+  const sp = await ok("spaces.create", { name: "estatedev", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(sp.status, "done", JSON.stringify(sp));
+  const space = sp.space;
+  assert.match(space, /^spc_[a-z2-7]{12}$/, "the kernel's id format is THE id");
+  // the kernel hosts it, and records and tasks answer in it under the caller's own chain
+  assert.ok(d.kernel.spaces.hosts(space), "the Space is in the kernel's registry");
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const hosted = d.kernel.spaces.hosted(space);
+  await hosted.gateway.records.define(hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.id, path: "direct", session: "s" }), { add_types: [CONTACT] });
+  const rec = await ok("records.create", { space, type: "contact", data: { name: "Jane", age: 40 } });
+  assert.ok(rec.record.urn.startsWith(`vyre://${space}/`));
+  assert.equal((await ok("records.list", { space, type: "contact" })).rows.length, 1);
+  assert.deepEqual(rec.acted_in, { id: space, label: "estatedev" }, "records.create names the space it acted in");
+  assert.deepEqual((await ok("records.list", { space, type: "contact" })).acted_in, { id: space, label: "estatedev" });
+  // with no `space` a call acts in the space the person made (the home's own space stays internal) and says so; a made-up id is refused, not answered empty
+  const homeMe = await ok("records.me");
+  assert.equal(homeMe.acted_in.label, "estatedev", "no space given: the only space the person made");
+  assert.equal(homeMe.acted_in.id, space);
+  assert.equal((await ok("records.me", { space })).acted_in.id, space, "records.me with the created id acts in it");
+  const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
+  assert.equal(bogus.error && bogus.error.code, "not_found", JSON.stringify(bogus).slice(0, 200));
+  assert.deepEqual((await ok("tasks.list", { space })).tasks, []);
+  // `vyre space add-agent`: the kernel's actor membership; without the person's proof it is refused plainly and nothing is added
+  const addAgent = await deck("spaces.members.add-agent", { space, agent: "kit" });
+  assert.equal(addAgent.error && addAgent.error.code, "presence_required", JSON.stringify(addAgent).slice(0, 200));
+  assert.equal(await d.kernel.spaces.hosted(space).gateway.grants.members.list(d.kernel.spaces.hosted(space).kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.id, path: "direct", session: "s" })).then(l => l.length), 1, "nothing was added");
+  // with the development stand-in (a hand-made file in a development build) the person's proof is satisfied and the agent joins as an actor, and again is no error
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone");
+  const SI = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: made.id, path: "relay", session: "ps_1" } };
+  const added = await d.registry.call("spaces.members.add-agent", { space, agent: "kit" }, "cli", SI);
+  assert.ok(!added.error, JSON.stringify(added).slice(0, 300));
+  assert.deepEqual(added.data.agent, { kind: "agent", id: "kit" });
+  assert.equal((await d.registry.call("spaces.members.add-agent", { space, agent: "Bad Name!" }, "cli", SI)).error.code, "bad_input");
+  // the CLI against this live daemon: `vyre space use <name>` remembers the space, `vyre call` passes it to a tool that takes one, `vyre status` shows it, and --space overrides it
+  const { execFile } = await import("node:child_process");
+  const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
+  const cli = (/** @type {string[]} */ args) => new Promise(resolve => execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 }, (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, stdout, stderr })));
+  const used = /** @type {any} */ (await cli(["space", "use", "estatedev"]));
+  console.log("CLI space use:", used.code, JSON.stringify(used.stdout.trim()), used.stderr.trim());
+  assert.equal(used.code, 0, used.stdout + used.stderr);
+  const viaCli = /** @type {any} */ (await cli(["call", "records.me"]));
+  console.log("CLI call records.me:", viaCli.code, viaCli.stdout.replace(/\s+/g, " ").slice(0, 300));
+  assert.equal(JSON.parse(viaCli.stdout).acted_in.id, space, "the remembered space was passed to records.me");
+  const overridden = /** @type {any} */ (await cli(["call", "--space", space, "records.me"]));
+  assert.equal(JSON.parse(overridden.stdout).acted_in.id, space);
+  assert.equal(JSON.parse(/** @type {any} */ ((await cli(["space", "--json"]))).stdout).space, space);
+  assert.equal((await cli(["space", "use", "--clear"])).code, 0);
+  assert.equal(JSON.parse((/** @type {any} */ (await cli(["call", "records.me"]))).stdout).acted_in.id, space, "cleared: the only space the person made again (not the home's own)");
+  // one id for the space everywhere
+  const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
+  const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
+  assert.equal(row.id, space, "spaces.list names the kernel's id");
+  assert.equal((await ok("spaces.get", { space })).id, space, "spaces.get too");
+  // one person: the claimed identity is the kernel's owner
+  const status = await ok("spaces.identity.status");
+  assert.equal(status.id, made.id);
+  assert.equal((await ok("records.me")).person, status.id, "records.me is the identity");
+  assert.equal(d.kernel.id.owner, status.id, "the kernel's owner is the identity");
+  const tg = await deck("wink.pair.targets");
+  if (!tg.error) assert.ok(tg.data.targets.some(x => x.kind === "identity" && x.id === status.id), `the pairing's identity target is the claimed identity: ${JSON.stringify(tg.data.targets)}`);
+  // two spaces made and none named: a question for the app, never a guess
+  const second = await ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(second.status, "done", JSON.stringify(second));
+  const ask = await deck("records.me");
+  assert.equal(ask.error && ask.error.code, "needs_space", JSON.stringify(ask).slice(0, 300));
+  assert.match(ask.error.message, /estatedev.*northwind|northwind.*estatedev/);
+  assert.equal((await ok("records.me", { space })).acted_in.id, space, "naming one still works");
+  void ownerChain;
+});
+
+test("the claimed identity is the home kernel's owner at once (no spaces call after the claim), on a fresh home, and on an existing home that claimed before the kernel ran", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const cfg = (/** @type {string} */ root, /** @type {string} */ name) => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const lines = /** @type {string[]} */ ([]);
+  const agree = async (/** @type {string} */ root, /** @type {any} */ d, /** @type {string} */ label) => {
+    const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+    const st = await deck("spaces.identity.status");
+    assert.ok(!st.error, label + JSON.stringify(st.error));
+    // records.me is the kernel's own tool: it must already name the identity, with no spaces call in between
+    let me = await deck("records.me");
+    for (let i = 0; i < 20 && !me.error && me.data.person !== st.data.id; i++) { await new Promise(r => setTimeout(r, 100)); me = await deck("records.me"); }
+    assert.ok(!me.error, label + JSON.stringify(me.error));
+    assert.equal(me.data.person, st.data.id, `${label}: records.me is the identity :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 600)}`);
+    assert.equal(d.kernel.id.owner, st.data.id, `${label}: the kernel's owner is the identity`);
+    const tg = await deck("wink.pair.targets");
+    assert.ok(!tg.error, `${label}: wink.pair.targets ${JSON.stringify(tg.error)}`);
+    assert.ok(tg.data.targets.some((/** @type {any} */ x) => x.kind === "identity" && x.id === st.data.id), `${label}: pair targets name the identity :: ${JSON.stringify(tg.data.targets)}`);
+  };
+  // fresh home: claim, then read at once
+  const a = tempHome(t); cfg(a, "fresh-box");
+  const da = await start({ root: a, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => da.stop());
+  // SF-1 (reviewer-2): calls that return before the first await (module start, a spaces tool BEFORE any claim) must not leave the single-flight guard stuck, or the claim is never adopted
+  for (let i = 0; i < 3; i++) assert.ok(!(await call("spaces.identity.status", {}, { root: a, caller: "cli" })).error);
+  const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "cli" });
+  assert.ok(!casey.error, JSON.stringify(casey.error));
+  await agree(a, da, "fresh home");
+  // existing home: claimed with the kernel off, then started with it on
+  const b = tempHome(t); cfg(b, "existing-box");
+  const off = await start({ root: b, kernel: false, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "cli" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  await off.stop();
+  const on = await start({ root: b, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => on.stop());
+  await agree(b, on, "existing home");
+  assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "cli" })).data.id, made.data.id, "the id did not change");
+});
+
+test("lend is the one switch: it makes the kernel's compute offers (the space's side and the member's own) and turning it off withdraws them", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "lend-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), ""); // the development stand-in for Face ID (a development build only; every use is logged as a stand-in)
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, kernel: true, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => d.stop());
+  const standIn = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli", headers: standIn });
+  const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.slice(-6).join(" ; ").slice(0, 600)}`); return r.data; };
+  const made = await ok("spaces.identity.create", { name: "alex" });
+  const sp = await ok("spaces.create", { name: "lenddev", home: { kind: "this-computer", confirmed: true } });
+  const hosted = d.kernel.spaces.hosted(sp.space);
+  const q = { member: made.id, device: made.eid, device_key: made.eid };
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false });
+  const on = await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: true });
+  assert.equal(on.lent, true);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: true, memberAccepts: true }, "one switch made both kernel offers");
+  assert.equal((await ok("spaces.devices.lend.status", { space: sp.space, device: made.eid })).lent, true);
+  const off = await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: false });
+  assert.equal(off.lent, false);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "off withdrew both");
+  // taking the device out of the space takes the offers with it, and the stored first grant goes too
+  assert.equal((await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: true })).lent, true);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: true, memberAccepts: true });
+  await ok("spaces.devices.remove", { space: sp.space, device: made.eid });
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "a removed device is not lent");
+  assert.equal((await ok("spaces.devices.lend.status", { space: sp.space, device: made.eid })).first_grant_at, null);
+});
+
+test("PA-1: creating a space is all or nothing in the kernel's registry too: a refused name, ten failures and a cancel leave no hosted Space and no folder", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "pa1-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  assert.ok(!(await deck("spaces.identity.create", { name: "alex" })).error);
+  const hostedCount = () => d.kernel.spaces.list().length;
+  const folders = () => { try { return fs.readdirSync(path.join(root, "kernel", "spaces")).length; } catch { return 0; } };
+  const first = await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(first.data && first.data.status, "done", JSON.stringify(first));
+  const base = [hostedCount(), folders()];
+  // the same name again is refused: nothing is left behind, however often it is tried
+  for (let i = 0; i < 10; i++) {
+    const r = await deck("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+    assert.ok(r.error || (r.data && r.data.status !== "done"), `try ${i}: ${JSON.stringify(r)}`);
+    assert.deepEqual([hostedCount(), folders()], base, `try ${i} left a hosted Space behind: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  // a creation that has not been confirmed (this computer must stay on) asks first and makes nothing: no hosted Space, no folder, no row, and nothing to cancel
+  const w = await deck("spaces.create", { name: "northwind", home: { kind: "this-computer" } });
+  assert.ok(!w.error, JSON.stringify(w.error));
+  assert.equal(w.data.status, "needs_confirmation");
+  assert.equal(w.data.space, undefined);
+  assert.deepEqual([hostedCount(), folders()], base, "asking left nothing behind");
+  // the finished space still works
+  assert.ok(!(await deck("spaces.get", { space: first.data.space })).error);
+});
+
+test("a Space this home hosted with the first-start owner (made before the claim, or by an older build) takes the claimed identity as its owner too (devbox)", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "hosted-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  // a Space hosted for the home's first-start owner, before any identity exists
+  const old = d.kernel.id.owner;
+  const stale = await d.kernel.spaces.host({ owner: old, name: "stale" });
+  assert.equal((await stale.gateway.grants.members.list(stale.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: old, path: "direct", session: "s" }))).map((/** @type {any} */ m) => m.person)[0], old);
+  const made = await deck("spaces.identity.create", { name: "alex" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.ok(!(await deck("spaces.list")).error);
+  const chain = stale.kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.data.id, path: "direct", session: "s" });
+  const members = await stale.gateway.grants.members.list(chain);
+  assert.deepEqual(members.map((/** @type {any} */ m) => [m.person, m.role]), [[made.data.id, "owner"]], "the hosted Space's owner is the identity, the old id is gone");
+});

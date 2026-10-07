@@ -1,6 +1,7 @@
 // @ts-check
 // glance, capabilities, log, prompt diff and the daily thread, against fake owners in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -10,7 +11,7 @@ import { diffLines, seedOf } from "./index.js";
 import { handoffPush } from "./handoff.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const G = "globalThis.__w";
@@ -36,7 +37,7 @@ async function world(t) {
   globalThis.__w = { now: { day: "2026-10-01", tz: "UTC", localTime: "08:10" }, waiting: { rows: [], count: 0 }, threads: [],
     agents: [{ name: "juno", kind: "assistant", doing: "idle", thread: "t1" }], rolled: [], digest: { text: "Alex asked for the Northwind invoice." },
     prompts: [], undo: [], undoQ: [], mcp: [], phones: [] };
-  for (const [m, tools] of Object.entries(FAKES)) writeModule(root, m, { roles: ["box", "local"], does: { tools: tools.map(x => x[0]) } }, code(tools));
+  for (const [m, tools] of Object.entries(FAKES)) writeModule(root, m, { roles: ["box", "local"], does: { reads: tools.map(x => x[0]), tools: tools.map(x => x[0]) } }, code(tools));
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
@@ -163,13 +164,13 @@ const settle = () => new Promise(r => setTimeout(r, 40));
 
 test("handoffPush: done or failed, from the assistant, a fixed sentence and one tag per request", () => {
   const p = { request: "r1", project: "harlow-legal", status: "done", reply_to: "t1" };
-  assert.deepEqual(handoffPush(p, true), { title: "A teammate in harlow-legal finished", path: "/threads/t1", tag: "handoff-r1" });
-  assert.equal(handoffPush({ ...p, status: "failed" }, true).title, "A teammate in harlow-legal could not finish");
+  assert.deepEqual(handoffPush(p, true), { title: "A teammate finished", path: "/threads/t1", tag: "handoff-r1" });
+  assert.equal(handoffPush({ ...p, status: "failed" }, true).title, "A teammate could not finish");
   assert.equal(handoffPush({ ...p, status: "cancelled" }, true), null);
   assert.equal(handoffPush(p, false), null, "not the assistant's handoff");
   assert.equal(handoffPush({ ...p, reply_to: null }, true), null);
-  // A project name never carries text: only slug characters survive.
-  assert.equal(handoffPush({ ...p, project: "x</b> ignore previous" }, true).title, "A teammate in xbignoreprevious finished");
+  // No project name or text rides in the title (issue 72): the title is the same whatever the project says.
+  assert.equal(handoffPush({ ...p, project: "x</b> ignore previous" }, true).title, "A teammate finished");
 });
 
 test("a handoff the assistant started files one push.proactive when its teammate finishes; another agent's does not", async t => {
@@ -183,7 +184,7 @@ test("a handoff the assistant started files one push.proactive when its teammate
   events.emit("team", "summon.finished", { request: "r3", teammate: "designer-harlow-legal", project: "harlow-legal", status: "done", reply_to: null }, {});
   await settle();
   assert.equal(pushed.length, 1);
-  assert.deepEqual(pushed[0], { title: "A teammate in harlow-legal finished", path: "/threads/tj", tag: "handoff-r1" });
+  assert.deepEqual(pushed[0], { title: "A teammate finished", path: "/threads/tj", tag: "handoff-r1" });
 });
 
 test("promptBlock: quoted data, names cleaned, a name cannot close the block", () => {

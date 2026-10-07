@@ -1,5 +1,5 @@
 // @ts-check
-// A throwaway world for the phone apps: the Deck's world (deck/test/world.js: the fictional
+// A throwaway world for the phone apps: the Deck's world (web/test/world.js: the fictional
 // corpus, two projects, two held Gate items) on a box, with every request looking like alex's
 // phone on the tailnet. A test helper, not part of the product. Never touches ~/.vyre.
 //
@@ -26,8 +26,9 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildHome, makeProjects, makeAgents, heldItems } from "../../deck/test/world.js";
+import { buildHome, makeProjects, makeAgents, heldItems } from "../../web/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { asOwner } from "../../test/helpers.js";
 import { setPeerHosting } from "../../core/daemon/peer.js";
 
 // This world hosts vyred in its own process and drives it from that process and its children:
@@ -83,7 +84,12 @@ const w = buildHome(root, {
 
 const { start } = await import("../../core/daemon/index.js");
 const d = await start({ root });
+// the world's own calls as "cli" arrive as the owner's device, as on the real socket (the chat gate refuses a caller with no person)
+asOwner(d, root);
 const handle = d.registry.deps.handler({});
+// PW-1: on a box a one-time code enrols a key only from the owner's own PAIRED device (a confirmed Wink record), not from a tailnet login. This world is alex's phone on the tailnet and no real pairing runs here, so the
+// phone stands in for the paired owner device: the presence layer's `ownerDevice` answers true for exactly the world's one caller. (The real rule is tested in core/presence and test/wink-paired.test.js.)
+d.registry.deps.presence.ownerDevice = async (/** @type {string} */ caller) => String(caller || "").toLowerCase() === `tailnet:${OWNER}`.toLowerCase();
 
 // Fake credentials for both senders, put and granted to the Gate by alex at the Mac with a Capsule
 // key that is removed again at once, so the phone starts with nothing but a code to enroll with.
@@ -114,12 +120,15 @@ await makeProjects(w);
 await makeAgents(root);
 // An agent's item names it by caller. One that names a thread comes in as the Deck world's does,
 // with no caller at all: vyred confirms a thread only for a session it launched.
-const agentCaller = body => (body && typeof body.thread === "string" ? "anonymous" : body && typeof body.agent === "string" ? `mcp:agent:${body.agent}` : "mcp");
+// gate.request declares its callers (core/gate/index.js) and "anonymous" is not among them, so a thread item comes in as a plain mcp caller.
+const agentCaller = body => (body && typeof body.agent === "string" && typeof body.thread !== "string" ? `mcp:agent:${body.agent}` : "mcp");
 // The Deck world's items, with the billing request pointed at the local fake host.
 const local = item => item.via !== "billing" ? item
   : { ...item, to: [OUT], content: { ...item.content, url: OUT + new URL(item.content.url).pathname } };
 for (const item of heldItems(w.threads).map(local)) {
-  const r = await d.registry.call("gate.request", item, agentCaller(item));
+  // A thread is confirmed only for a session vyred launched, which this world has none of: the item is held without it (the registry refuses an unconfirmable thread).
+  const { thread: _thread, ...held } = item;
+  const r = await d.registry.call("gate.request", held, agentCaller(item));
   if (r.error) console.error(`mobile world: could not hold an item: ${r.error.message}`);
 }
 
@@ -131,13 +140,15 @@ const reply = (res, r) => json(res, r.error ? 400 : 200, r);
 
 /** The test endpoints. Each calls the registry directly, as a module or a model would. */
 const TEST = {
-  "/__test/code": async () => d.registry.call("presence.code", {}, "module:test"),
+  // presence.code is no longer open to module callers (it needs the person), so the world mints the code on the presence store itself, as a test helper.
+  "/__test/code": async () => ({ data: await d.registry.deps.presence.mintCode() }),
   "/__test/outbox": async () => ({ data: sent }),
   "/__test/hold": async body => {
     const item = body && body.kind ? body : { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], project: "harlow-legal",
       why: "A reply to a client waits for you.", content: { subject: "Intake form, next steps", body: "Hi Dana,\n\nThe intake form is ready for a last look. Two fields changed since Friday.\n\nAlex" } };
     return d.registry.call("gate.request", item, agentCaller(body));
   },
+  "/__test/asks": async () => d.registry.call("threads.asks", {}, "cli"),
   "/__test/ask": async () => {
     const cwd = path.join(w.work, "harlow-site");
     const file = path.join(cwd, `notes-${Date.now()}.txt`);

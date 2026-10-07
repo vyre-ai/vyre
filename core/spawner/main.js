@@ -55,6 +55,13 @@ if (!process.getuid || process.getuid() !== 0) {
     if ((st.mode & 0o007) !== 0) asVyre("chmod", "o-rwx", WORK);
   } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
+  // The box agent's home is its own group's (an older volume has it in the /work group, which an account's session under /work joins): the agent, who owns it, moves it, with no capability.
+  try {
+    const ah = env.VYRE_AGENT_HOME || "/home/vyre-agent";
+    if (fs.statSync(ah).gid !== AGENT.gid) { const asAgentUid = (...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, "--clear-groups", "--inh-caps=-all", "--", ...argv], { stdio: "ignore" }); asAgentUid("chgrp", "-R", String(AGENT.gid), ah); asAgentUid("chmod", "2750", ah); }
+  } catch (e) { log(`spawner: the agent's home is not closed to the /work group: ${/** @type {Error} */ (e).message}`); }
+  // The accounts folder is entered, never listed: a session's uid learns no other account's uid from it (each home is closed to everyone else). vyred and the spawner need only to pass through.
+  try { fs.chmodSync(env.VYRE_ACCOUNTS_HOME || "/home/acct", 0o711); } catch (e) { log(`spawner: ${env.VYRE_ACCOUNTS_HOME || "/home/acct"} could not be made unlistable: ${/** @type {Error} */ (e).message}`); }
 
   // Claude Code: the global install, and the Agent SDK's own binary (ADR 0030) where it is bundled.
   // It lives in the image's own node_modules, or where sessions installs it (/opt/vyre-sessions-sdk).
@@ -63,7 +70,9 @@ if (!process.getuid || process.getuid() !== 0) {
     const sdk = path.join(base, "node_modules", "@anthropic-ai");
     try { for (const n of fs.readdirSync(sdk)) if (/^claude-agent-sdk-linux-/.test(n) && fs.existsSync(path.join(sdk, n, "claude"))) bundled.push(path.join(sdk, n, "claude")); } catch {}
   }
-  const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
+  // The image's own Codex (and its ACP adapter) and Grok Build, for sign-in and for sessions as an account's uid (box/Dockerfile pins them).
+  // confine-probe.sh: the fixed, read-only self-test of a session's own uid (core/spawner/confine.js); it only reports what its uid can reach.
+  const allow = ["/usr/local/bin/claude", "/usr/local/bin/codex", "/usr/local/bin/codex-acp", "/usr/local/bin/grok", path.join(path.dirname(fileURLToPath(import.meta.url)), "confine-probe.sh"), ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
   const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
   const makeDir = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
@@ -81,7 +90,7 @@ if (!process.getuid || process.getuid() !== 0) {
   // vyred is in every account's group (gid = uid, 2000-2063), so it can read each account's
   // transcripts through the group and no account can read another's.
   const accountGids = []; for (let g = accounts.min; g <= accounts.max; g++) accountGids.push(g);
-  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
+  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, AGENT.gid, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/bin/sh", LOOP], { ...env, HOME: env.VYRE_USER_HOME || "/home/vyre", VYRE_SPAWNER_SOCKET: SOCKET });
   child.on("exit", async (code, signal) => { await srv.close(); process.exit(code ?? (signal ? 1 : 0)); });
 }

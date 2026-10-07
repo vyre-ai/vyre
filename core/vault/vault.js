@@ -11,6 +11,7 @@
 //   - Giving access needs a person; taking it away never does. An agent's grants and passes
 //     wait as pending until someone approves them.
 
+import { BUILD_KIND } from "../../lib/build-kind.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -187,6 +188,8 @@ export function ensureMacColumns(db) {
 
 const ACCOUNT = "account.json";
 const TOUCHID = "touchid.json";
+/** The wrong-password count and the end of a lock-out, kept in the vault folder so a restart or a crash does not hand out five fresh tries. */
+const THROTTLE = "unlock-throttle.json";
 const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
@@ -196,6 +199,8 @@ const isShared = cls => String(cls || "").startsWith("shared:");
 export { KINDS };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
+/** Is this a module name a grant may name? (index.js checks every grant on a put BEFORE anything is written.) */
+export const validModuleName = /** @param {unknown} m */ m => typeof m === "string" && MODULE.test(m);
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
@@ -212,6 +217,14 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 
 /** A caller's kind, as the registry sees it. */
 const kindOf = callerKind;
+/**
+ * The provider sign-in tokens Vyre already stores: core/onboard makes them (from `claude setup-token`, or an Anthropic key pasted on the setup page) and sessions chooses between
+ * them per session. One mechanism: these items, handed to the session launcher through the credentials port in index.js.
+ * @type {Record<string, { item: string, kind: string }>}
+ */
+export const LAUNCHER_ITEMS = Object.freeze({ claude: { item: "claude-setup-token", kind: "secret" }, anthropic: { item: "anthropic-api-key", kind: "api-key" } });
+const LAUNCHER_NAMES = new Set(Object.values(LAUNCHER_ITEMS).map(x => x.item));
+export const launcherItem = /** @param {string} name */ name => LAUNCHER_NAMES.has(name);
 const moduleOf = c => (String(c).startsWith("module:") ? String(c).slice(7) : null);
 
 /** "30d", "12h", "90m", an ISO date or ms since epoch, to ms since epoch. */
@@ -304,7 +317,7 @@ export class Vault {
    *   testKdf: tests only, a cheap password KDF (`{ kdf: "argon2id", m, t, p }`) used for a new
    *   account and allowed on unlock. Nothing outside a test passes it; the defaults never drop.
    */
-  constructor({ db, dir, config, emit, log = () => {}, testKdf = null }) {
+  constructor({ db, dir, config, emit, log = () => {}, testKdf = null, clock = Date.now, buildKind = BUILD_KIND }) {
     this.db = db; this.dir = dir; this.log = log;
     /** Set by sync (devices.js): told of every event, so a local write can be pushed. */
     /** @type {((type: string, payload: any) => void) | null} */ this.onEmit = null;
@@ -344,6 +357,8 @@ export class Vault {
     this.shared = new Shared(this);
     /** This person's other devices: join, approve, and syncing items between them (devices.js). */
     this.devices = new Devices(this);
+    /** The time agent grants expire by; tests pass a fake one instead of sleeping. */
+    this.clock = clock;
     /** Agent logins (ADR 0028, decision 2). */
     this.agents = new AgentGrants(this);
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
@@ -357,6 +372,10 @@ export class Vault {
     // "require": a relayed request also needs the tailnet policy to grant the calling peer
     // vyre.run/cap/vault for the item (ADR 0014, part 7). Only whois carries caps, so under any
     // other identity every relayed request is refused. The grant narrows; it never stands in for a pass.
+    // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. On by default now that sessions reads through the port and onboard no longer attaches grants (`vault.launcherOnly: false` turns it off).
+    // `launcherOnly: false` is honoured only in a development build (lib/build-kind.js): a packaged release always has it on, whatever a config file says (reviewer-2 VP-6).
+    this.launcherOnly = opts.launcherOnly !== false || buildKind !== "development";
+    if (opts.launcherOnly === false && buildKind !== "development") log("vault.launcherOnly: false in the config is ignored: this is a packaged build, which always keeps it on");
     this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
     /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
     /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();
@@ -683,30 +702,33 @@ export class Vault {
     // Every password attempt comes through here (unlock and enrolling Touch ID), so the guess limit lives here. The password is its own
     // proof (no separate presence prompt), so after 5 wrong tries in a row every try is refused for 30 s, doubling to 15 minutes; a right
     // password resets it. A refused try is not tested against the key at all.
-    const f = this.unlockFails || (this.unlockFails = { n: 0, until: 0 });
+    const f = this.unlockFails || (this.unlockFails = (() => { try { const j = readJsonFile(this.dir, THROTTLE); return j && Number.isFinite(j.n) && Number.isFinite(j.until) ? { n: Math.max(0, j.n), until: j.until } : { n: 0, until: 0 }; } catch { return { n: 0, until: 0 }; } })());
+    const persist = () => { try { writeJsonFile(this.dir, THROTTLE, { n: f.n, until: f.until }); } catch { /* the in-memory count still holds */ } };
     const t0 = now();
     if (t0 < f.until) {
       this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
-      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
+      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled", detail: { retry_after_s: Math.ceil((f.until - t0) / 1000) } });
     }
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet · vyre vault account create"), { code: "no_account" });
     await this.key();
     const params = clampKdf(rec, { test: Boolean(this.testKdf) });
     const text = await this.secretKeys.read();
-    if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
+    if (!text) throw Object.assign(new Error("this device has no Secret Key for the account · use your recovery kit"), { code: "no_secret_key" });
     const { acct, bytes } = parseSecretKey(text);
-    if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
+    if (acct !== rec.acct) { bytes.fill(0); throw Object.assign(new Error("the Secret Key on this device belongs to another account"), { code: "wrong_account" }); }
+    // The try is counted BEFORE it is tested and written down (a crash in the middle is a wrong try, not a free one); a right password resets the count.
+    f.n++;
+    if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
+    persist();
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
       unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
-      f.n = 0; f.until = 0;
+      f.n = 0; f.until = 0; persist();
       return { auk, rec, acct };
     } catch {
-      f.n++;
-      if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
       this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
-      throw new Error("that password does not open your personal vault");
+      throw Object.assign(new Error("that password does not open your personal vault"), { code: "wrong_password" });
     } finally { bytes.fill(0); }
   }
 
@@ -1015,6 +1037,17 @@ export class Vault {
       .run(now(), action, name ?? null, String(who), ok ? 1 : 0, why, where.origin ?? null, where.surface ?? null);
   }
 
+  /**
+   * A refused attempt, as a record of its own (distinct from a write): who tried, what, which item and why, never a value. One audit row (ok false, "refused: ...") and one `vault.refused` event, so an
+   * owner can see that something tried, for instance, to attach a module grant to a provider sign-in token.
+   * @param {string} action @param {string | null} name @param {string} who @param {string} why
+   */
+  refuse(action, name, who, why) {
+    const w = String(why).slice(0, 200), n = name === null || name === undefined ? null : String(name).slice(0, 128);
+    this.audit(action, n, who, false, `refused: ${w}`);
+    this.emit("vault.refused", { action, name: n, who: String(who).slice(0, 80), why: w });
+  }
+
   auditTrail({ name, limit = 100 } = {}) {
     const rows = name
       ? this.db.prepare("SELECT * FROM vault_audit WHERE name = ? ORDER BY id DESC LIMIT ?").all(name, Math.min(1000, limit))
@@ -1075,6 +1108,46 @@ export class Vault {
     let raw;
     try { raw = JSON.parse(fields.config); } catch { throw new Error(`${row.name} has a config that is not JSON`); }
     return { row, config: normalizeApiCredential(raw), secret: fields.secret };
+  }
+
+  /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
+  async apiCredentialNames() {
+    await this.key();
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
+  }
+
+  /**
+   * A provider's session sign-in token, for the session launcher and nothing else (the credentials port in index.js is the one caller; no tool returns it). The items are the
+   * ones core/onboard already makes and sessions already chooses between (LAUNCHER_ITEMS); this reads whichever the provider has. @param {string} provider @returns {Promise<string | null>}
+   */
+  async providerToken(provider) {
+    const spec = Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? LAUNCHER_ITEMS[String(provider)] : null; if (!spec) return null;
+    await this.key();
+    const row = this.row(spec.item); if (!row) return null;
+    const f = await this.fields(row);
+    const v = ["value", "api-key", "token"].map(k => f[k]).find(x => typeof x === "string" && x);
+    if (!v) return null;
+    this.audit("provider-token", row.name, "launcher", true, "handed to the session launcher");
+    return v;
+  }
+
+  /**
+   * The key of an API-key account (kind "api-key": what `sessions.accounts.key` stores), for the Space's lent-computer credential route and nothing else (the credentials port in index.js is the one caller;
+   * no tool returns it). One request at a time, never cached by the caller. A sign-in token, a password or any other kind of item is not an API key and answers null. @param {string} name @returns {Promise<string | null>}
+   */
+  async apiKeyValue(name) {
+    await this.key();
+    const row = this.row(String(name)); if (!row || row.kind !== "api-key") return null;
+    const f = await this.fields(row);
+    const v = ["value", "api-key", "token"].map(k => f[k]).find(x => typeof x === "string" && x);
+    if (!v) return null;
+    this.audit("api-key-use", row.name, "lent", true, "handed to the lent-computer credential route");
+    return v;
+  }
+
+  /** Which launcher sign-in tokens are stored and when each was added or last changed: names and times, never a value. */
+  providerTokens() {
+    return Object.entries(LAUNCHER_ITEMS).flatMap(([provider, spec]) => { const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(spec.item)); return r && this.rowOk("vault_items", r) ? [{ provider, item: spec.item, stored: true, added: r.updated }] : []; });
   }
 
   /**
@@ -1160,6 +1233,11 @@ export class Vault {
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
     // person's own surface writes or replaces one (reviewer N4), whatever it was before.
     const prior = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+    // A provider's sign-in token (claude-setup-token, anthropic-api-key) is the person's own: only they, or the setup page that runs `claude setup-token` for them (core/onboard), add or
+    // replace one, and nothing may attach a module's read grant to it once the launcher takes it through the credentials port (config vault.launcherOnly).
+    if (launcherItem(String(name))) {
+      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, add or replace it`);
+    }
     if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
       if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
       if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
@@ -1243,6 +1321,7 @@ export class Vault {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
     if (!r) throw new Error(`no item named ${name}`);
     if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
+    if (launcherItem(String(name)) && !(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, remove it`);
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
@@ -1278,6 +1357,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
+    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
@@ -1331,6 +1411,16 @@ export class Vault {
   }
 
   /**
+   * Is this item granted to this module (and, for a watcher, to exactly that watcher)? The one check: `release` asks it before it hands a value over, and a caller that only needs the answer
+   * (a watcher reading through a service the vault does not hold the token of) asks it through `vault.granted`. A grant to the module as a whole is not a grant to a watcher.
+   * @param {{ name: string, module: string, watcher?: string, project?: string }} q
+   */
+  granted({ name, module, watcher = "", project }) {
+    return this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, module, watcher)
+      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+  }
+
+  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1346,8 +1436,7 @@ export class Vault {
     const who = watcher ? `${caller}/${watcher}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher)
-      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+    const g = this.granted({ name, module: mod, watcher, project });
     if (!g) {
       this.audit("release", name, who, false, "no grant");
       throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
@@ -1577,6 +1666,18 @@ export class Vault {
     if (!PERSON.test(String(holder || ""))) throw new Error("a holder is a person's name");
     if (!Array.isArray(items) || !items.length) throw new Error("a pass needs at least one item");
     if (!["relayed", "sealed"].includes(mode)) throw new Error("mode is relayed or sealed");
+    // Everything that can refuse is checked BEFORE a card is pinned or a row written (a refused pass must change nothing).
+    const narrowed0 = Array.isArray(hosts) && hosts.length ? hosts.map(origin) : null;
+    if (narrowed0 && narrowed0.includes(null)) throw new Error("hosts must be origins such as https://api.example.com");
+    const ms0 = Array.isArray(methods) && methods.length ? methods.map(m => String(m).toUpperCase()) : null;
+    if (ms0 && !ms0.every(m => /^[A-Z]{3,10}$/.test(m))) throw new Error("methods are HTTP methods such as GET or POST");
+    const ps0 = Array.isArray(paths) && paths.length ? paths.map(String) : null;
+    if (ps0 && !ps0.every(x => x.startsWith("/"))) throw new Error("paths start with /, such as /v1/charges");
+    if (mode === "sealed" && (ms0 || ps0)) throw new Error("methods and paths narrow a relayed pass; a sealed pass hands the value over");
+    for (const n of items) {
+      const r = this.mustRow(n);
+      if (mode === "relayed" && !json(r.hosts, []).filter(h => !narrowed0 || narrowed0.includes(h)).length) throw new Error(`${n} has no hosts it may be sent to, so it cannot be relayed · put it again with --host, or pass it sealed`);
+    }
     if (card) {
       // An agent's new or changed card waits for a person, and so does the pass that needs it.
       const added = await this.share.addPerson({ card, name: holder }, caller);

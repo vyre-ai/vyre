@@ -52,6 +52,15 @@ SYSTEMD_DIR=/etc/systemd/system
 SYSTEMD_SEAM=
 UPDATER_NAME=vyre-update
 CHOME_SEAM=
+SPACES_ROOT=/var/lib/vyre-spaces
+SPACES_UNIT=vyre-spaces
+CTR_NAME=vyre-vyre-1
+DAEMON_UID=1000
+SPACES_CAP=16
+SPACES_UP_PER_MIN=6
+SPACES_SPOOL_CAP=64
+ADMIN_NOTTY=0
+SPACES_WATCH_ONCE=0
 # The stack folder: a person's or a model's run takes it from VYRE_DIR (their own choice, no trust in it). A root run never does: it
 # reads the folder root recorded when it installed the updater (only \`vyre updater\`, which the installer runs, takes it from the
 # environment, once, to record it).
@@ -66,7 +75,7 @@ fi
 # A root run reads no override: any VYRE_* in its environment other than the one the installer passes to \`updater\` is refused.
 root_guard() {
   [ "$(id -u)" = 0 ] || return 0
-  case "\${1:-}" in update|update-from-request|publish-release|updater) ;; *) return 0 ;; esac
+  case "\${1:-}" in update|update-from-request|publish-release|updater|space-helper-run|space-helper|admin) ;; *) return 0 ;; esac
   extra=$(env | sed -n 's/^\\(VYRE_[A-Za-z0-9_]*\\)=.*/\\1/p' | grep -vx 'VYRE_DIR' | head -n 1 || true)
   if [ -n "$extra" ]; then echo "vyre: $extra is set in the environment of a root run, and a root run reads no override; nothing was changed" >&2; exit 1; fi
 }
@@ -79,7 +88,8 @@ root_guard() {
 
 /** The overrides that must not survive into the release build (the build-clean test uses the same list). */
 export const SEAMS = ["VYRE_RELEASE_KEY", "VYRE_COSIGN_IMAGE", "VYRE_BOX_URL", "VYRE_RELEASES_API", "VYRE_RELEASES_REPO", "VYRE_UPDATE_ROOT", "VYRE_ROOT_UID",
-  "VYRE_CHAIN_TOP", "VYRE_WRAPPER", "VYRE_UPDATE_WAIT", "VYRE_UPDATE_MIN_GAP", "VYRE_SYSTEMD_DIR", "VYRE_UPDATER_NAME", "VYRE_CONTAINER_HOME"];
+  "VYRE_CHAIN_TOP", "VYRE_WRAPPER", "VYRE_UPDATE_WAIT", "VYRE_UPDATE_MIN_GAP", "VYRE_SYSTEMD_DIR", "VYRE_UPDATER_NAME", "VYRE_CONTAINER_HOME",
+  "VYRE_SPACES_ROOT", "VYRE_SPACES_UNIT", "VYRE_CTR_NAME", "VYRE_DAEMON_UID", "VYRE_SPACES_CAP", "VYRE_SPACES_UP_PER_MIN", "VYRE_SPACES_SPOOL_CAP", "VYRE_ADMIN_NO_TTY", "VYRE_SPACES_WATCH_ONCE"];
 
 if (process.argv[1] && process.argv[1].endsWith("strip-wrapper.mjs")) {
   const file = process.argv[2];

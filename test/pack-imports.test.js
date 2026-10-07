@@ -2,6 +2,7 @@
 // The package ships every file its code imports (0.1.0-rc.1 left packages/module-sdk out, and
 // every `vyre` call failed to start). Reads `npm pack --dry-run`'s file list; nothing is packed.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

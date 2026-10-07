@@ -49,6 +49,15 @@ export function boxName(): string {
   }
 }
 
+/** The box's origin when it is reached directly; "" when only the relay reaches it. */
+export function boxOrigin(): string {
+  try {
+    return base ? new URL(base).origin : "";
+  } catch {
+    return "";
+  }
+}
+
 const store = memoryStore();
 
 // The biometric key is enrolled at the native sign-in and proves HUMAN_ONLY calls (e2e, ADR 0032).
@@ -63,6 +72,7 @@ const makePerson = (at: string) =>
     path: () => pathNow(),
     send: (path, init) => (transport ? transport(path, init) : Promise.reject(new Error("not connected to the box"))),
     name: boxName(),
+    route: paired ? paired.route : undefined,
   });
 /** Where the person session was made for, so a new pairing makes a new one. */
 let personAt = "";
@@ -105,6 +115,7 @@ const b = makeBox(async () => {
     base: base || relayBase(paired as Pairing),
     // One path for follow(): which way the box is reached is the paths layer's job.
     paths: ["box"],
+    socket: (path) => p.socket(path),
     open: o.open,
     caller: (_base, co) => o.caller(co),
     outboxStore: store,
@@ -125,7 +136,12 @@ const b = makeBox(async () => {
   };
 });
 
-export const { connect, listen, call, send, prove, disconnect } = b;
+export const { connect, listen, call, send, prove, disconnect, socket } = b;
+
+/** The phone proves presence with its biometric key inside call(); it has no route of its own to post. */
+export async function post(_path: string, _input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {
+  return { error: { code: "unsupported", message: "this build proves presence with its device key" } };
+}
 
 /** A hint that need not outlive the app (push.seen): one call, never queued, never thrown. */
 export async function beacon(tool: string, input: Record<string, unknown>): Promise<void> {

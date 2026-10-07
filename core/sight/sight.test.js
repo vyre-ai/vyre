@@ -2,13 +2,14 @@
 // The sight module against fake computers, hands-desktop, chrome, hands and screen modules in a
 // temp home. Nothing here reads a real screen: every screen is a fake that answers fixed text.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { normalize, bareUrl, cleanSummary, offMac, KEEP } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 // Words that must never reach an event or the table. Built here, so a leak names itself.
@@ -20,7 +21,7 @@ const QUERY = "session=abc123";
 const screenSrc = (answer = "normal") => `
 let calls = 0;
 export default { async start(ctx) {
-  ctx.tool("screen.context", { input: { type: "object", properties: { text: { type: "boolean" }, textMax: { type: "integer" } } },
+  ctx.tool("screen.context", { effect: "read", input: { type: "object", properties: { text: { type: "boolean" }, textMax: { type: "integer" } } },
     run: async (i, meta) => {
       if (meta && meta.peer) throw Object.assign(new Error("stays on this Mac"), { code: "local_only" });
       calls++;
@@ -38,9 +39,9 @@ export default { async start(ctx) {
 const computersSrc = `export default { async start(ctx) {
   const view = a => ({ agent: a, state: a === "kit" ? "running" : "frozen", screen: a === "kit" ? 1 : null, thread: null, viewers: 0,
     takeover: a === "kit" ? "glass:laptop" : null, paused: false });
-  ctx.tool("computers.list", { run: async () => ({ driver: "fake", screens: 2, computers: [view("juno"), view("kit")] }) });
-  ctx.tool("computers.get", { run: async ({ agent }) => view(agent) });
-  ctx.tool("computers.watch", { run: async (i, { caller }) => {
+  ctx.tool("computers.list", { effect: "read", run: async () => ({ driver: "fake", screens: 2, computers: [view("juno"), view("kit")] }) });
+  ctx.tool("computers.get", { effect: "read", run: async ({ agent }) => view(agent) });
+  ctx.tool("computers.watch", { effect: "read", run: async (i, { caller }) => {
     if (!i.surface) throw new Error("surface must name a person's screen");
     return { ticket: "t-" + i.agent, path: "/v1/streams/computers/glass?ticket=t-" + i.agent, width: 1280, height: 800, asked: caller, slow: i.slow === true };
   } });
@@ -48,7 +49,7 @@ const computersSrc = `export default { async start(ctx) {
 } };`;
 
 const desktopSrc = `export default { async start(ctx) {
-  ctx.tool("hands-desktop.tree", { run: async ({ agent, app }) => ({ app: app || "Files", controls: [
+  ctx.tool("hands-desktop.tree", { effect: "read", run: async ({ agent, app }) => ({ app: app || "Files", controls: [
     { path: "0/1", role: "push button", name: "Open", enabled: true, frame: { x: 1, y: 2, w: 3, h: 4 } },
     { path: "0/2", role: "text", name: "Search", enabled: true, value: ${JSON.stringify(FIELD_VALUE)}, focused: true, identifier: "q" },
   ] }) });
@@ -56,12 +57,12 @@ const desktopSrc = `export default { async start(ctx) {
 } };`;
 
 const agentsSrc = `export default { async start(ctx) {
-  ctx.tool("agents.list", { run: async () => ([{ name: "kit", kind: "worker" }, { name: "vyre", kind: "assistant" }]) });
+  ctx.tool("agents.list", { effect: "read", run: async () => ([{ name: "kit", kind: "worker" }, { name: "vyre", kind: "assistant" }]) });
   return {};
 } };`;
 
 const chromeSrc = `export default { async start(ctx) {
-  ctx.tool("chrome.snapshot", { run: async ({ agent }) => {
+  ctx.tool("chrome.snapshot", { effect: "read", run: async ({ agent }) => {
     ctx.events.emit("chrome.acted", { agent, action: "snapshot", ok: true, summary: "2 controls" });
     return { title: "Harlow Legal", url: "https://harlow.example/intake?${QUERY}", controls: [{ role: "textbox", name: "Email", value: ${JSON.stringify(FIELD_VALUE)} }], named: 1, nameless: 0 };
   } });
@@ -79,7 +80,7 @@ async function world(t, fakes) {
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "sight");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], { firstPartyRoots: [root] }) /* the fakes stand in for shipped modules (hands-desktop emits desktop.acted) */], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); delete /** @type {any} */ (globalThis).__screenCalls; });
   const stepped = () => events.since(0).filter(e => e.type === "sight.stepped");
   return { reg, db, events, stepped };
@@ -299,7 +300,7 @@ test("agentCaller: the real caller behind a claim, exempting the assistant and n
 
 test("sight.frame: one small JPEG of an agent's screen with its last step; never the Mac", async t => {
   const shotSrc = `export default { async start(ctx) {
-    ctx.tool("hands-desktop.screenshot", { run: async i => ({ image: Buffer.from(JSON.stringify(i)).toString("base64"), mime: i.format === "jpeg" ? "image/jpeg" : "image/png" }) });
+    ctx.tool("hands-desktop.screenshot", { effect: "read", run: async i => ({ image: Buffer.from(JSON.stringify(i)).toString("base64"), mime: i.format === "jpeg" ? "image/jpeg" : "image/png" }) });
     return {};
   } };`;
   const { reg, events } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);
@@ -322,7 +323,7 @@ test("sight.frame refuses a surface-prefixed agent claim, not only \"mcp:agent:\
   // shape itself, the same as sight.watch, since it is what stands between such a caller and a
   // proxied "module:sight" forward.
   const shotSrc = `export default { async start(ctx) {
-    ctx.tool("hands-desktop.screenshot", { run: async i => ({ image: Buffer.from("x").toString("base64"), mime: "image/jpeg" }) });
+    ctx.tool("hands-desktop.screenshot", { effect: "read", run: async i => ({ image: Buffer.from("x").toString("base64"), mime: "image/jpeg" }) });
     return {};
   } };`;
   const { reg } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);

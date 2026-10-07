@@ -58,12 +58,20 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: The tag's commit is on main or the 0.2 stage line (a publishing run signs; a commit off both never does)
+      - name: The tag's commit is on main or the 0.2 stage line, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --no-tags origin main work/stage-0.2
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2 \
-            || { echo "the tag's commit is on neither main nor work/stage-0.2; refusing to build and sign a release from it"; exit 1; }
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2; then
+            echo "the tag's commit is on main or work/stage-0.2"
+          else
+            # a patch release: the newest published stable release is its ancestor, the tag is that release's next patch, and the commit is on hotfix/<tag>
+            git fetch --no-tags origin "+refs/heads/hotfix/$GITHUB_REF_NAME:refs/remotes/origin/hotfix/$GITHUB_REF_NAME" || true
+            node scripts/check-release-lineage.mjs "$GITHUB_SHA" "$GITHUB_REF_NAME" \
+              || { echo "the tag's commit is not on main or work/stage-0.2 and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
+          fi
       - name: Version, channel, notes
         id: v
         env:
@@ -102,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows .github/actions scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -116,6 +124,8 @@ jobs:
             head -n 300 "$RUNNER_TEMP/lock-changes.txt"
             echo '```'
             if [ "$(wc -l < "$RUNNER_TEMP/lock-changes.txt")" -gt 301 ]; then echo "**The list is cut at 300 lines; read apps/app/package-lock.json's diff.**"; fi
+            # Lumen's Swift sources are built into the app that gets signed, but are too many to read here: say how many files changed.
+            echo "Lumen sources changed since the base: $(git diff --name-only "$base" HEAD -- local/capsule/native/Sources | wc -l | tr -d ' ') files (local/capsule/native/Sources; read them in the full diff or the compare view)"
             # shellcheck disable=SC2086
             if git diff --quiet "$base" HEAD -- $paths; then
               echo "no changes to the signing path"
@@ -147,14 +157,35 @@ jobs:
           name: signing-diff
           path: signing-diff/signing-diff.txt
           retention-days: 14
+      # The saved Twenty database a new Space starts from rides in the release: built here, before the pack, pinned to the Twenty image's digest and hashed (stores/twenty/provision.js findGolden refuses a dump whose
+      # hash is not the one the build recorded). Without it a first Space migrates Twenty from an empty database, which takes minutes and has failed on small servers.
+      - uses: ./.github/actions/twenty-golden
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh
-          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+          # the signed list of first-party modules (scripts/modules-manifest.mjs, by build-site.sh): one more file in the list SHA256SUMS covers
+          [ -f site/box/modules.json ] && cp site/box/modules.json dist/ || { echo "build-site made no modules.json"; exit 1; }
+          # the signed list of the web app's files (scripts/appbuild-manifest.mjs, lib/app-build.js): the daemon serves /app/ only from files on it
+          [ -f site/box/appbuild.json ] && cp site/box/appbuild.json dist/ || { echo "build-site made no appbuild.json"; exit 1; }
+          # shell.json carries the module list and the app record as exact text (scripts/shell-hashes.mjs, lib/release-shell.js): the one file an OLD updater fetches and publishes, so a 0.2.x server updated to this release still receives them
+          [ -f site/box/shell.json ] && cp site/box/shell.json dist/ || { echo "build-site made no shell.json"; exit 1; }
+          # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
+          node scripts/setup-hashes.mjs dist
+      - name: The Wink node program for a Mac server (wink-forwarder-darwin-<arch>), built in the pinned Go image the box image uses
+        run: |
+          # The Mac installer (scripts/install-mac-server.sh setup_wink_net) takes it from the signed SHA256SUMS like every file. Same Go image digest as box/Dockerfile's winknode stage.
+          img=$(sed -n 's/^FROM \(golang:[^ ]*\) AS winknode$/\1/p' box/Dockerfile)
+          [ -n "$img" ] || { echo "box/Dockerfile has no winknode stage"; exit 1; }
+          for a in arm64 amd64; do
+            docker run --rm -v "$PWD/wink/forwarder:/src:ro" -v "$PWD/dist:/out" -w /src -e CGO_ENABLED=0 -e GOOS=darwin -e GOARCH=$a "$img" \
+              go build -trimpath -ldflags="-s -w" -o /out/wink-forwarder-darwin-$a .
+          done
+          ls -l dist/wink-forwarder-darwin-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared
@@ -227,6 +258,9 @@ jobs:
           outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.COMPUTER_IMAGE) || 'type=docker,name=vyre-computer:dry' }}
           cache-from: type=gha,scope=release-computer-${{ matrix.arch }}
           cache-to: type=gha,scope=release-computer-${{ matrix.arch }},mode=max
+      - name: The box image carries the saved Twenty database (a fresh Space must not migrate Twenty from empty, #91)
+        if: needs.prepare.outputs.publish != 'true'
+        run: docker run --rm --entrypoint node vyre-box:dry -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: A dry run boots the box image it built
         if: needs.prepare.outputs.publish != 'true'
         run: |
@@ -258,6 +292,22 @@ jobs:
       contents: read
     with:
       tag: ${{ needs.prepare.outputs.tag }}
+
+  # The Lumen Mac app, stable only: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg (and their zips), built inside this run by the reusable
+  # mac-app workflow. It holds no release key. On a publish it runs in the protected GitHub Environment "apple" (the same approver as the release
+  # environment); that environment holds the Apple secrets, and only the workflow's package step receives them, so a rehearsal on a branch never
+  # sees them. Each of Developer ID signing and notarization runs only when its secret is present and otherwise prints a skip line. A build that is
+  # not Developer ID signed and notarized is checked and uploaded to the run but never goes into dist (the release job below), so an unsigned run
+  # publishes no dmg and the site keeps "built on your Mac".
+  mac:
+    needs: prepare
+    if: needs.prepare.outputs.channel == 'stable'
+    uses: ./.github/workflows/mac-app.yml
+    permissions:
+      contents: read
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
@@ -358,9 +408,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web, windows]
+    needs: [prepare, images, manifests, app-web, windows, mac]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the
@@ -399,6 +449,44 @@ jobs:
           cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
           cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
           echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: env.CHANNEL == 'stable'
+        with:
+          name: mac-app
+          path: ${{ runner.temp }}/mac
+      - name: Add the Lumen Mac files to dist (stable only; only a Developer ID signed, notarized and Gatekeeper-checked build)
+        if: env.CHANNEL == 'stable'
+        env:
+          MAC_SIGNING: ${{ vars.MAC_SIGNING }}
+        run: |
+          # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
+          # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built: unless BOTH
+          # are signed=developer-id, notarized=yes and gatekeeper=accepted (spctl and stapler validate passed in the package script), nothing goes
+          # into dist, the gate does not ask for a dmg, and the release says why.
+          ok=yes
+          for arch in aarch64 x86_64; do
+            st="$RUNNER_TEMP/mac/mac-app-$arch.status"
+            [ -f "$st" ] || { echo "the Mac build has no status for $arch; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
+            sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
+            grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
+          done
+          # The repo variable MAC_SIGNING=required turns "no signed build" from a quiet skip into a failure on a publish, so a missing or expired
+          # certificate cannot ship a release without the Mac files unnoticed. Set it once the Developer ID is in the "apple" environment.
+          if [ "$ok" != yes ] && [ "$PUBLISH" = true ] && [ "$MAC_SIGNING" = required ]; then
+            echo "MAC_SIGNING is required but the Mac build is not Developer ID signed, notarized and Gatekeeper-checked; failing the release"; exit 1
+          fi
+          if [ "$ok" != yes ]; then
+            echo "Mac: no dmg in this release (not Developer ID signed and notarized); the site keeps 'built on your Mac'" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for arch in aarch64 x86_64; do
+            for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
+              [ -f "$RUNNER_TEMP/mac/$f" ] || { echo "the Mac build has no $f; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
+              cp "$RUNNER_TEMP/mac/$f" "dist/$f"
+            done
+          done
+          echo "MAC_FLAG=--mac" >> "$GITHUB_ENV"
+          echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, signed, notarized and Gatekeeper-checked" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -409,6 +497,18 @@ jobs:
           node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
           grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
           grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
+      - name: The signed module list matches the tarball and the BUILT image (one byte of difference bricks that module on every box)
+        run: |
+          # The list is made from the unpacked vyre.tgz; the image is built from a context that is not the tarball. The kernel's own check (kernel/modules/release-list.js
+          # verifyTrees) runs on both, and the release fails on any difference. On a dry run there is no pushed image: the packaged-boot job covers the image.
+          d=$(mktemp -d); tar -xzf dist/vyre.tgz -C "$d" --strip-components=1
+          node scripts/verify-list-trees.mjs "$d" dist/modules.json
+          if [ "$PUBLISH" = true ] && [ -n "$BOX" ]; then
+            docker pull -q "$BOX" >/dev/null
+            id=$(docker create "$BOX"); mkdir -p "$RUNNER_TEMP/image-root"
+            docker cp "$id:/opt/vyre/." "$RUNNER_TEMP/image-root/"; docker rm "$id" >/dev/null
+            node scripts/verify-list-trees.mjs "$RUNNER_TEMP/image-root" dist/modules.json
+          fi
       - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
@@ -426,10 +526,11 @@ jobs:
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
+          # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer
+            node scripts/check-release-dist.mjs dist --modules --installer --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

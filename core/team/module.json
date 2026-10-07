@@ -2,22 +2,337 @@
   "name": "team",
   "version": "0.1.0",
   "description": "Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.",
-  "roles": ["box", "local"],
-  "requires": ["threads", "projects", "sessions"],
-  "does": { "tools": [{"name": "team.add", "projectArg": "project", "summary": "add a teammate to a project", "reach": "asked", "target": "team.act.target"}, {"name": "team.retire", "projectArg": "project", "summary": "retire a teammate", "reach": "asked", "target": "team.act.target"}, {"name": "team.charter.get", "projectArg": "project", "reach": "anyone"}, {"name": "team.charter.set", "projectArg": "project", "reach": "person"}, {"name": "team.charter.history", "projectArg": "project", "reach": "anyone"}, {"name": "team.charter.diff", "projectArg": "project", "reach": "anyone"}, {"name": "team.charter.revert", "projectArg": "project", "reach": "person"}, {"name": "team.charter.draft", "projectArg": "project", "reach": "anyone"}, {"name": "team.role.fill", "projectArg": "project", "summary": "have one of your agents fill a role", "reach": "asked", "target": "team.act.target"}, {"name": "team.act.target", "summary": "the destination an asked team call must be said for", "reach": "modules"}, {"name": "team.roster", "summary": "a project's live roles and duties, for recording what the person asked for", "reach": "modules"}, {"name": "team.duties.create", "projectArg": "project", "reach": "anyone"}, {"name": "team.duties.list", "projectArg": "project", "reach": "anyone"}, {"name": "team.duties.update", "reach": "anyone"}, {"name": "team.duties.start", "summary": "turn a proposed duty on when the person asked for exactly it", "reach": "asked", "target": "team.act.target"}, {"name": "team.duties.enable", "reach": "person"}, {"name": "team.duties.disable", "reach": "person"}, {"name": "team.duties.delete", "reach": "person"}, {"name": "team.duties.run-now", "reach": "person"}, {"name": "team.list", "projectArg": "project", "reach": "anyone"}, {"name": "team.ask", "projectArg": "project", "reach": "anyone"}, {"name": "team.status", "reach": "anyone"}, {"name": "team.cancel", "reach": "anyone"}, {"name": "team.done", "reach": "anyone"}, {"name": "team.fail", "reach": "anyone"}, {"name": "team.merge", "reach": "anyone"}, {"name": "team.notes", "reach": "anyone"}, {"name": "team.default.get", "projectArg": "project", "reach": "anyone"}, {"name": "team.default.set", "projectArg": "project", "reach": "person"}, {"name": "team.project-has-any", "projectArg": "project", "reach": "anyone"}, {"name": "team.project-append", "projectArg": "project", "reach": "anyone"}] },
-  "watches": { "emits": ["teammate.created", "teammate.retired", "teammate.charter-changed", "team.role-changed", "teammate.duty-changed", "summon.queued", "summon.started", "summon.finished", "summon.cancelled", "teammate.default-changed"] },
-  "shows": { "cli": ["team"] },
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [
+    "threads",
+    "projects",
+    "sessions"
+  ],
+  "does": {
+    "reads": [
+      "team.list",
+      "team.status"
+    ],
+    "tools": [
+      {
+        "name": "team.add",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "summary": "add a teammate to a project",
+        "reach": "asked",
+        "target": "team.act.target",
+        "effect": "write"
+      },
+      {
+        "name": "team.retire",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "summary": "retire a teammate",
+        "reach": "asked",
+        "target": "team.act.target",
+        "effect": "write"
+      },
+      {
+        "name": "team.charter.get",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.charter.set",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.charter.history",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.charter.diff",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.charter.revert",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.charter.accept",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.charter.draft",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.role.fill",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "summary": "have one of your agents fill a role",
+        "reach": "asked",
+        "target": "team.act.target",
+        "effect": "write"
+      },
+      {
+        "name": "team.act.target",
+        "summary": "the destination an asked team call must be said for",
+        "reach": "modules"
+      },
+      {
+        "name": "team.roster",
+        "summary": "a project's live roles and duties, for recording what the person asked for",
+        "reach": "modules"
+      },
+      {
+        "name": "team.duties.create",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.list",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.duties.update",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.start",
+        "summary": "turn a proposed duty on when the person asked for exactly it",
+        "reach": "asked",
+        "target": "team.act.target",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.enable",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.disable",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.delete",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.duties.run-now",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.list",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone"
+      },
+      {
+        "name": "team.ask",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "team.cancel",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.done",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.fail",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.merge",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.notes",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "team.default.get",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.default.set",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "team.project-has-any",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "team.project-append",
+        "projectArg": "project",
+        "projectIsRecord": true,
+        "reach": "anyone",
+        "effect": "read"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "teammate.created",
+      "teammate.retired",
+      "teammate.charter-changed",
+      "team.role-changed",
+      "teammate.duty-changed",
+      "summon.queued",
+      "summon.started",
+      "summon.finished",
+      "summon.cancelled",
+      "teammate.default-changed"
+    ]
+  },
+  "shows": {
+    "cli": [
+      "team"
+    ]
+  },
   "needs": {},
   "settings": [
-    {"key": "team.default", "group": "teammates", "label": "Default new work to teammates", "help": "Ongoing work (design, review, research, QA) steers to a project teammate over a subagent, and @role creates one on first use. Off leaves existing teammates working, just stops steering new work at them.", "type": "bool", "default": true, "levels": ["project"], "apply": "session", "store": {"tool": {"get": {"tool": "team.default.get", "input": {"project": "$project"}, "read": "enabled"}, "set": {"tool": "team.default.set", "input": {"project": "$project", "enabled": "$value"}}}}}
+    {
+      "key": "team.default",
+      "group": "teammates",
+      "label": "Default new work to teammates",
+      "help": "Ongoing work (design, review, research, QA) steers to a project teammate over a subagent, and @role creates one on first use. Off leaves existing teammates working, just stops steering new work at them.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "project"
+      ],
+      "apply": "session",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "team.default.get",
+            "input": {
+              "project": "$project"
+            },
+            "read": "enabled"
+          },
+          "set": {
+            "tool": "team.default.set",
+            "input": {
+              "project": "$project",
+              "enabled": "$value"
+            }
+          }
+        }
+      }
+    }
   ],
   "teaches": {
     "tips": [
-      {"id": "ask-cli", "text": "Send work to a teammate from the terminal: `vyre team ask design \"Make the estate intake calmer\"`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team ask design \"Make the estate intake calmer\"", "docs": "reference/cli.md#vyre-team"},
-      {"id": "list", "text": "See this project's teammates, their state and queue with `vyre team`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team", "docs": "reference/cli.md#vyre-team"},
-      {"id": "add", "text": "Give the project a teammate: `vyre team add design --brief \"visual design and UI copy\"`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre team add design --brief \"visual design and UI copy\"", "docs": "reference/cli.md#vyre-team"},
-      {"id": "urgent", "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the box-wide slot queue.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-team"},
-      {"id": "default-off", "text": "Stop steering new work at teammates in this project with `team.default.set`. Existing teammates still work.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-team"}
+      {
+        "id": "ask-cli",
+        "text": "Send work to a teammate from the terminal: `vyre team ask design \"Make the estate intake calmer\"`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre team ask design \"Make the estate intake calmer\"",
+        "docs": "reference/cli.md#vyre-team"
+      },
+      {
+        "id": "list",
+        "text": "See this project's teammates, their state and queue with `vyre team`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre team",
+        "docs": "reference/cli.md#vyre-team"
+      },
+      {
+        "id": "add",
+        "text": "Give the project a teammate: `vyre team add design --brief \"visual design and UI copy\"`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre team add design --brief \"visual design and UI copy\"",
+        "docs": "reference/cli.md#vyre-team"
+      },
+      {
+        "id": "urgent",
+        "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the box-wide slot queue.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "reference/cli.md#vyre-team"
+      },
+      {
+        "id": "default-off",
+        "text": "Stop steering new work at teammates in this project with `team.default.set`. Existing teammates still work.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "reference/cli.md#vyre-team"
+      }
     ]
   }
 }

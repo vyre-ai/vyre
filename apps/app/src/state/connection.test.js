@@ -1,6 +1,8 @@
 // @ts-check
 // The R3 connection states and the outbox rows (connection.ts), without React: the store is read
 // through getState.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,7 +41,7 @@ test("connection: the store follows the stream and the network", { skip: !strip 
 
 test("connection: a write shows as sending at once and leaves only on the box's answer", { skip: !strip }, async () => {
   const { connection } = await load();
-  const e = { key: "k1", tool: "threads.send", input: { thread: "kit", text: "Harlow Legal filing" }, at: 1 };
+  const e = { key: "k1", tool: "threads.send", input: { thread: "kit", text: "Juniper Studio filing" }, at: 1 };
   connection.sending(e);
   assert.deepEqual(connection.get().outbox.map(i => [i.key, i.status]), [["k1", "sending"]]);
   // Another entry's change arrives before the outbox has stored k1: the row stays.

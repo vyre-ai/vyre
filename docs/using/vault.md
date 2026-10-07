@@ -33,7 +33,7 @@ In practice:
   passkey or a code typed in your terminal. See [presence](../concepts/presence.md). A call from
   Claude alone cannot pass it.
 
-Vyre asks you to prove you are there (Touch ID on a Mac, a passkey in the Deck or on the phone)
+Vyre asks you to prove you are there (Touch ID on a Mac, a passkey in the Vyre app or on the phone)
 for three kinds of thing: pairing a new Mac, releasing a vault secret (show, copy, fill, a
 one-time code, a backup), and anything that goes out as you, which is a send, a post, a payment or
 a delete. Reading a list of names asks for nothing. Unlocking your personal vault with its password
@@ -45,7 +45,7 @@ only opens the vault, and a secret still needs its own proof to be released.
 1. Run `put` with the item's name, kind and the origins it may be sent to:
 
    ```
-   vyre vault put stripe-live --kind api-key --description "Harlow Legal Stripe" --host https://api.stripe.com
+   vyre vault put stripe-live --kind api-key --description "Juniper Studio Stripe" --host https://api.stripe.com
    ```
 
 2. Type the value at the hidden prompt, or pipe it on stdin. Never put a value on the command
@@ -77,8 +77,8 @@ Kinds say what an item is, so the vault knows which field to hand over and what 
 ```
 vyre vault put kit-github --kind pat --provider github --scope repo --scope read:org --expires 90d
 vyre vault put northwind-aws --kind cloud                # access key id, then the secret, hidden
-vyre vault put harlow-gcp --kind cloud --from sa.json   # a service account file
-vyre vault put harlow-tls --kind cert --from cert.pem --key-from key.pem
+vyre vault put juniper-gcp --kind cloud --from sa.json   # a service account file
+vyre vault put juniper-tls --kind cert --from cert.pem --key-from key.pem
 vyre vault put northwind-guest --kind wifi --ssid "Northwind Guest"
 ```
 
@@ -96,7 +96,7 @@ Other ways in:
 
 ```
 vyre vault import ~/Downloads/1password-export.csv   # any password manager's export, or .env files
-vyre vault generate --words 5 harlow-wifi             # stored, never printed, because it is named
+vyre vault generate --words 5 juniper-wifi             # stored, never printed, because it is named
 vyre vault ssh generate deploy-key                    # prints only the public key
 ```
 
@@ -111,13 +111,13 @@ nothing.
 A project's `.env` files come in the same way, a file or a whole folder at once:
 
 ```
-vyre vault import ~/code/harlow-intake --preview   # every .env under it, typed, never a value
-vyre vault import ~/code/harlow-intake --rewrite   # store them, then swap the values for references
+vyre vault import ~/code/juniper-intake --preview   # every .env under it, typed, never a value
+vyre vault import ~/code/juniper-intake --rewrite   # store them, then swap the values for references
 vyre run -- npm start                              # reads ./.env's references; same environment as before
 ```
 
-Each file becomes one env-set named after where it lives (`harlow-intake.env`,
-`harlow-intake-apps-web.env.local`). Only secrets move: API keys, tokens, passwords, database URLs
+Each file becomes one env-set named after where it lives (`juniper-intake.env`,
+`juniper-intake-apps-web.env.local`). Only secrets move: API keys, tokens, passwords, database URLs
 with a password, private keys. Plain settings such as `PORT` or a public URL stay in the file. The
 preview names each variable's type and provider (`api-key openai`, `db-url postgres`), flags a
 public name holding a secret value (`NEXT_PUBLIC_...=sk_live_...`), and says when a file is
@@ -129,7 +129,7 @@ file, and leaves a file alone when its values differ from the vault's (a conflic
 ## Leaks and rotation
 
 ```
-vyre vault sweep ~/code/harlow-intake --history   # files and every commit; places and names only
+vyre vault sweep ~/code/juniper-intake --history   # files and every commit; places and names only
 vyre vault sweep --shell                          # also ~/.zsh_history and friends
 vyre vault rotate kit-gitlab                      # a new token at GitLab, stored, the old one revoked
 ```
@@ -159,12 +159,12 @@ its current code and the next one, so a code about to roll over is never a guess
 
 ```
 vyre vault codes                         # every code: current, next, seconds left
-vyre vault totp harlow-google            # one
+vyre vault totp juniper-google            # one
 vyre vault codes import --from codes.txt # Google Authenticator's export, as scanned text
 ```
 
 To leave Google Authenticator, open it, choose Transfer accounts, then Export, and scan the QR
-codes with the Vyre phone app or the Deck's camera. A large export is split across several codes;
+codes with the Vyre phone app. A large export is split across several codes;
 the import waits until every part is scanned, in any order. A seed already in the vault is
 recognised and skipped. Counter-based (HOTP) codes are not supported. `otpauth://totp/` links
 work the same way.
@@ -177,22 +177,18 @@ vyre vault get stripe-live    # one item's metadata
 vyre vault audit stripe-live  # who used it, when, and whether it was allowed
 ```
 
-In the Deck, **Vault** (`/vault`) lists items by kind, with **Watchtower** (weak, reused, old or
-missing two-factor), **Passes**, **Shared with you** and **Devices**. Every field shows as twelve
-dots whatever its length.
-
-![The Vault in the Deck: a secret, a login, an env set, an API key, a card and a secure note, listed by name, kind and holder, with no values shown](shots/deck-vault.png)
+In the Vyre app, **Vault** (`/u/vault`) has the sections **Items**, **Passes**, **Shared**,
+**Devices** and **Health**. Health is the Watchtower: it flags weak or reused values and can check
+for known breaches.
 
 ## Show, copy or fill a value yourself
-
-![One Vault item, harlow-gmail, in the Deck: its fields sealed until you reveal or copy them, who holds it, and its history](shots/deck-vault-item.png)
 
 Each of these is for one value, and asks you to prove presence first:
 
 ```
 vyre vault get stripe-live --copy       # to the clipboard, cleared after 90 seconds
-vyre vault get harlow-portal --otp      # the current one-time code
-vyre vault totp harlow-portal           # the same
+vyre vault get juniper-portal --otp      # the current one-time code
+vyre vault totp juniper-portal           # the same
 vyre vault read vault://stripe-live/value   # one field alone on stdout, for $(...) and pipes
 ```
 
@@ -202,19 +198,18 @@ The terminal asks for Touch ID (or your Mac password). After you cancel, the nex
 30 seconds.
 ::: tab On a server
 A terminal on the box cannot prove presence: the box has no Touch ID, and it does not accept a
-terminal code. There, only a passkey from the Deck proves you are there. Use the Deck, or your
+terminal code. There, only a passkey from the Vyre app proves you are there. Use the app, or your
 Mac.
 :::
 
-- **Deck**: Copy asks Vyre to write the clipboard; the value never comes back to the page.
-  Reveal shows one field in the item pane and hides it again after 30 seconds, when the window
-  loses focus, or when you leave the item.
+- **Vyre app**: **Copy** puts the value on the clipboard of the device you are on. **Reveal**
+  shows one field and masks it again after 30 seconds.
 - **Lumen**: press Control twice, type the item's name, and choose **Fill in the front app**,
   **Copy the password or key**, **Copy username**, **Copy one-time code** or **Show the one-time
   code**. Fill types the login into the app in front through a helper; the value never returns
   to Lumen (`vault.fill.native`).
 
-The Deck, Lumen and the browser extension open a short **session** with one proof. While
+The Vyre app, Lumen and the browser extension open a short **session** with one proof. While
 it lasts, reveal, copy and one-time codes do not ask again, except for cards, which ask every
 time. A session ends after 10 minutes idle or 12 hours at most, when the Mac sleeps or its screen
 locks, or on `vyre vault lock`. Set other limits in `config.json` under `vault.lock`, for example
@@ -228,8 +223,8 @@ agent's setup token or API key is granted to `agents` (see [agents](agents.md)).
 
 ```
 vyre vault grant stripe-live billing                      # a module
-vyre vault grant billing-inbox watchers --watcher harlow-invoices
-vyre vault revoke billing-inbox watchers --watcher harlow-invoices
+vyre vault grant billing-inbox watchers --watcher juniper-invoices
+vyre vault revoke billing-inbox watchers --watcher juniper-invoices
 ```
 
 When Claude asks for a grant (`vault.grant`), it only creates a pending request. You approve it:
@@ -237,13 +232,13 @@ When Claude asks for a grant (`vault.grant`), it only creates a pending request.
 1. List what waits: `vyre vault pending`.
 
    ```output
-     g_4f2a  grant billing-inbox to watchers/harlow-invoices
+     g_4f2a  grant billing-inbox to watchers/juniper-invoices
 
      vyre vault approve <id>
    ```
 
-2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Passes** in the Deck, where
-   what waits for you is at the top.
+2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Passes** in the Vyre app, where
+   what waits for you is listed.
 
 Taking access away never needs presence; giving it does.
 
@@ -299,7 +294,7 @@ vyre vault connections --surface agents
 ```output
   cn_Vq3k9x0aB2c  kit at Northwind kit@northwind.test · google-dwd · service-account
                   can send_mail, read_mail, calendar · capsule, chat
-  cn_Lm8Pz1yQw4r  Harlow Legal Gmail alex@harlowlegal.test · mcp · oauth
+  cn_Lm8Pz1yQw4r  Juniper Studio Gmail alex@juniperstudio.test · mcp · oauth
                   can send_mail, read_mail · capsule, chat
 ```
 
@@ -378,7 +373,7 @@ own Vyre.
 A pass is one of two kinds:
 
 - **Relayed** (the default): the value never leaves your box. Dana's calls go through your Vyre
-  over Tailscale with `vyre vault relay` (`vault.relay`), your Vyre adds the value, and revoking
+  with `vyre vault relay` (`vault.relay`), your Vyre adds the value, and revoking
   ends her access at once. `--host`, `--method` and `--path` on `vyre vault pass create` narrow
   what her calls may reach.
 - **Sealed** (`--sealed`): Dana gets an encrypted copy, for offline use. Revoking a sealed pass
@@ -462,7 +457,7 @@ a payment provider's own frame (Stripe Elements and the like) are not filled yet
 ### Passkeys
 
 With the extension paired, a site that offers a passkey asks Vyre first: "Save a passkey for
-harlow.test in Vyre?" when you make one, and "Sign in to harlow.test as alex with Vyre?" when you
+juniper.test in Vyre?" when you make one, and "Sign in to juniper.test as alex with Vyre?" when you
 use one. Continue works inside your unlock window. **Use another device** hands the request to
 the browser's own authenticator (a phone, a security key, iCloud Keychain). Passkeys are items of
 kind `passkey`; their private keys stay in the vault and only sign, so nothing can show, copy or
@@ -487,7 +482,7 @@ keep what is granted to them while your personal vault is locked.
 
 > [!SNAG] The vault is locked (exit code 4)
 > With the passphrase keystore, run `vyre vault unlock`. For your personal vault, run
-> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Deck.
+> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Vyre app.
 > Unlocking with Touch ID meets the `presence_required` problem above. Unlocking with the password
 > asks once, for the password itself. After five wrong passwords in a row, Vyre refuses every try
 > for 30 seconds, then 60, doubling up to 15 minutes, and a right password starts the count over.
@@ -495,10 +490,10 @@ keep what is granted to them while your personal vault is locked.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Lumen | Claude |
+| Task | Terminal | Vyre app | Lumen | Claude |
 | --- | --- | --- | --- | --- |
-| Add an item | `vyre vault put`, `import` | Add, per kind | | `vault.import` (a file path), never a value |
-| List items | `vyre vault` | `/vault` | type a name | `vault.list` (names only) |
+| Add an item | `vyre vault put`, `import` | Add an item | | `vault.import` (a file path), never a value |
+| List items | `vyre vault` | `/u/vault` | type a name | `vault.list` (names only) |
 | Copy, reveal, code | `get --copy`, `--reveal`, `--otp`, `totp` | Copy, Reveal | Copy, Show the code | never |
 | Fill a login | | | Fill in the front app | never |
 | Grant | `vyre vault grant`, `approve` | Passes | | `vault.grant` (waits as pending) |

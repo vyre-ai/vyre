@@ -1,6 +1,7 @@
 // @ts-check
 // The about module against fake agents, projects and memory modules in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,7 +9,7 @@ import path from "node:path";
 import { compose, safe, BUDGET } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 test("compose: name, assistant, busiest projects and their people, then memory's profile", () => {

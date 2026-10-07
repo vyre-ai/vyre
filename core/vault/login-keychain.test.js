@@ -5,6 +5,7 @@
 // Mac. Here a vyred runs the same way (NODE_TEST_CONTEXT removed) with a fake `security` first
 // on PATH that records every call, and the vault must use the file keystore and never call it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -100,7 +101,7 @@ test("a temp home that asks for the keychain keystore is refused, not written to
 });
 
 test("every dev world and demo script passes VYRE_NO_DIALOGS and the file keystore", () => {
-  for (const f of ["deck/test/world.js", "deck/test/vault-shots.js"]) {
+  for (const f of ["web/test/world.js", "web/test/vault-shots.js"]) {
     const src = fs.readFileSync(path.join(REPO, f), "utf8");
     assert.match(src, /VYRE_NO_DIALOGS: "1"/, `${f} sets VYRE_NO_DIALOGS`);
     assert.match(src, /keystore: "file"/, `${f} uses the file keystore`);

@@ -1,0 +1,8 @@
+# The modules that are OFF by default on a packaged box (checked by name by scripts/packaged-boot-proof.sh): every other module the signed list names must be running, none failed.
+# A module appearing here or disappearing from here is a decision, made in this file, not a count that drifts from 63 to 61 and still passes.
+apps
+capsule
+hands
+screen
+sideview
+voice

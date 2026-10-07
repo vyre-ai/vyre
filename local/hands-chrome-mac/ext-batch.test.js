@@ -1,6 +1,7 @@
 // @ts-check
 // batch.run: ordered steps inside the worker, no host round trip, halting on stop, floor, failure
 // and hold, with "$0.path" references.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCtx } from "./extension/lib/ctx.js";
@@ -189,4 +190,37 @@ test("batch.run: a held write the module's budget covers is run again with write
   assert.equal((await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, moved, { writeBudget: { ...budget } })).covered, undefined);
   const none = await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, ctx, {});
   assert.equal(none.covered, undefined);
+});
+
+test("batch.parallel reads several tabs at once, each on its own tab; a failing step does not stop the others", async () => {
+  const { ctx } = world();
+  const r = await dispatchT("batch.parallel", { steps: [{ op: "tabs.list", args: { tab: 1 } }, { op: "page.snapshot", args: { tabId: 3 } }, { op: "page.snapshot", args: { tabId: 2 } }] }, ctx);
+  assert.equal(r.results.length, 3);
+  assert.equal(r.results[0].ok, true);
+  assert.equal(r.results[2].ok, false, "tab 2 is a blind page: its step is refused");
+  assert.equal(r.ok, false);
+  assert.ok(r.done >= 1);
+});
+
+test("batch.parallel refuses an acting op, two steps on one tab, a step with no tab, and more than 6 steps", async () => {
+  const { ctx } = world();
+  const bad = async steps => dispatchT("batch.parallel", { steps }, ctx);
+  await assert.rejects(bad([{ op: "page.act", args: { tab: 1 } }]), e => e.code === "bad_request" && /not a reading op/.test(e.message));
+  await assert.rejects(bad([{ op: "batch.run", args: { tab: 1 } }]), e => e.code === "bad_request");
+  await assert.rejects(bad([{ op: "tabs.list", args: { tab: 1 } }, { op: "tabs.list", args: { tabId: 1 } }]), e => /twice/.test(e.message));
+  await assert.rejects(bad([{ op: "tabs.list", args: {} }]), e => /name its tab/.test(e.message));
+  await assert.rejects(bad(Array.from({ length: 7 }, (_, i) => ({ op: "tabs.list", args: { tab: i + 1 } }))), e => /at most 6/.test(e.message));
+  await assert.rejects(bad([]), e => e.code === "bad_request");
+});
+
+test("batch.parallel runs the steps together: the wall time is the slowest step, not the sum", async () => {
+  const { ctx } = world();
+  register({ name: "slow", ops: { "slow.read": async () => { await new Promise(r => setTimeout(r, 150)); return { ok: true }; } } });
+  const { READING } = await import("./extension/shared/proto.js");
+  READING.add("slow.read");
+  try {
+    const r = await dispatchT("batch.parallel", { steps: [1, 3].map(tab => ({ op: "slow.read", args: { tab } })) }, ctx);
+    assert.equal(r.done, 2);
+    assert.ok(r.ms < 260, "two 150 ms reads took " + r.ms + " ms");
+  } finally { READING.delete("slow.read"); }
 });

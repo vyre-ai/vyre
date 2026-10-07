@@ -1,25 +1,186 @@
 {
   "name": "hooks",
   "version": "0.1.0",
-  "description": "Inbound webhooks from the public internet through Tailscale Funnel: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
-  "roles": ["box"],
+  "description": "Inbound webhooks from the public internet: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
+  "roles": [
+    "box"
+  ],
   "requires": [],
-  "does": { "tools": [{ "name": "hooks.enable", "reach": "person" }, { "name": "hooks.list", "reach": "anyone" }, { "name": "hooks.open", "reach": "person" }, { "name": "hooks.close", "reach": "person" }, { "name": "hooks.status", "reach": "anyone" }, { "name": "hooks.delivery", "reach": "anyone" }] },
-  "watches": { "emits": ["hook.received", "hook.opened", "hook.closed"] },
-  "shows": { "deck": [], "capsule": [], "cli": ["hooks"] },
-  "needs": { "vault": ["per-route"] },
+  "does": {
+    "reads": [
+      "hooks.list",
+      "hooks.status"
+    ],
+    "tools": [
+      {
+        "name": "hooks.enable",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "hooks.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "hooks.open", "outward": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "hooks.close",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "hooks.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "hooks.delivery",
+        "reach": "anyone",
+        "effect": "read"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "hook.received",
+      "hook.opened",
+      "hook.closed"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": [
+      "hooks"
+    ]
+  },
+  "needs": {
+    "vault": [
+      "per-route"
+    ]
+  },
   "teaches": {
     "tips": [
-      {"id": "turn-on", "text": "Webhooks stay off until `vyre hooks on`. vyred then listens on loopback only, at `127.0.0.1:7310`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre hooks on", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "open-route", "text": "Open one route at a time: `vyre hooks open northwind-orders --scheme stripe --secret northwind-orders-hook`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre hooks open <name> --scheme <s> --secret <item>", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "schemes", "text": "`--scheme github` and `--scheme stripe` read the provider's own signature header. `hmac-sha256` uses the header you name.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "--scheme", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "status-address", "text": "`vyre hooks status` gives the public address to hand the sender, and flags anything Funnel publishes that does not line up.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre hooks status", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "port-8443", "text": "Publish a route with Funnel on port 8443, never 443: vyred binds 443 on the tailnet addresses itself.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "close-funnel", "text": "`vyre hooks close <name>` answers 404 at once, but Funnel keeps forwarding until you run the `tailscale funnel` line it prints.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre hooks close <name>", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "dry-run-delivery", "text": "Dry-run a watcher on a real delivery: take its id from `vyre hooks`, then pass it to `watchers.test`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre hooks", "docs": "using/watchers.md#look-after-running-watchers"},
-      {"id": "what-for", "text": "A service that reports only by webhook, like a payment processor or form service, can reach a watcher on your box through `vyre hooks`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre hooks", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "list-routes", "text": "Run `vyre hooks` to see each open route, its scheme and secret, and its three latest deliveries.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre hooks", "docs": "reference/cli.md#vyre-hooks"},
-      {"id": "retries-once", "text": "A body seen before on the same route gets a 200 and is not announced again, so a sender's retries never double up.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "reference/cli.md#vyre-hooks"}
+      {
+        "id": "turn-on",
+        "text": "Webhooks stay off until `vyre hooks on`. vyred then listens on loopback only, at `127.0.0.1:7310`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre hooks on",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "open-route",
+        "text": "Open one route at a time: `vyre hooks open northwind-orders --scheme stripe --secret northwind-orders-hook`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre hooks open <name> --scheme <s> --secret <item>",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "schemes",
+        "text": "`--scheme github` and `--scheme stripe` read the provider's own signature header. `hmac-sha256` uses the header you name.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "--scheme",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "status-address",
+        "text": "`vyre hooks status` shows your routes and says whether the internet can reach them yet.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre hooks status",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "port-8443",
+        "text": "A route is stored and verified on the server now; it is reachable from the internet once public links are available.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "close-funnel",
+        "text": "`vyre hooks close <name>` answers 404 at once, so nothing gets in.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre hooks close <name>",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "dry-run-delivery",
+        "text": "Dry-run a watcher on a real delivery: take its id from `vyre hooks`, then pass it to `watchers.test`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre hooks",
+        "docs": "using/watchers.md#look-after-running-watchers"
+      },
+      {
+        "id": "what-for",
+        "text": "A service that reports only by webhook, like a payment processor or form service, can reach a watcher on your box through `vyre hooks`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre hooks",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "list-routes",
+        "text": "Run `vyre hooks` to see each open route, its scheme and secret, and its three latest deliveries.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "command": "vyre hooks",
+        "docs": "reference/cli.md#vyre-hooks"
+      },
+      {
+        "id": "retries-once",
+        "text": "A body seen before on the same route gets a 200 and is not announced again, so a sender's retries never double up.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "reference/cli.md#vyre-hooks"
+      }
     ]
   }
 }

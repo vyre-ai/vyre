@@ -3,6 +3,8 @@
 // where clearing really happens), and the clear after 30 s only while the clipboard is still
 // ours. Time and the clipboard are fakes. Loaded through Node's type stripping, so skipped on a
 // Node without it. The module imports nothing, so this runs from the repo root as well.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

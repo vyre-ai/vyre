@@ -24,7 +24,7 @@ export const REACHES = ["anyone", "asked", "person", "modules", "hook"];
 /** The reaches an outward tool may have: only a person or an asking agent can start one. */
 const OUTWARD_REACH = ["anyone", "asked"];
 /** Manifest keys only Vyre's own modules may use in 0.2, each with where it lives. */
-const BUILT_IN_ONLY = [["does", "providers"], ["shows", "streams"], ["needs", "vault"]];
+const BUILT_IN_ONLY = [["does", "providers"], ["shows", "streams"], ["needs", "vault"], ["needs", "daemon"]];
 
 /** @type {any} */
 export const SCHEMA = JSON.parse(fs.readFileSync(new URL("./manifest.schema.json", import.meta.url), "utf8"));
@@ -162,7 +162,15 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   }
   // Every module, built in or added: only a person or an asking agent can start an outward tool.
   for (const t of entries) {
-    if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
+    if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && t.outward !== true && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
+  }
+  // A tool a Flow may call says so with a risk, and an outward one is marked outward too (so the one yes holds it); only Vyre's own modules offer one for now.
+  for (const t of entries) {
+    if (!TYPES.object(t) || typeof t.name !== "string" || t.flowAction === undefined) continue;
+    if (!TYPES.object(t.flowAction) || (t.flowAction.risk !== "read" && t.flowAction.risk !== "outward")) out.push(`tool "${t.name}": flowAction is { "risk": "read" | "outward" }`);
+    else if (t.flowAction.risk === "outward" && !t.outward) out.push(`tool "${t.name}": a flowAction with risk "outward" must be marked outward: true`);
+    else if (t.flowAction.risk === "read" && t.outward) out.push(`tool "${t.name}": an outward tool's flowAction risk is "outward"`);
+    if (!firstParty) out.push(`tool "${t.name}": flowAction is built in only; an added module can't offer a Flow step yet`);
   }
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.
@@ -202,6 +210,7 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     ...Object.entries(TYPES.object(does.apps) ? does.apps : {}).flatMap(([app, a]) =>
       Object.entries(TYPES.object(a) && TYPES.object(a.actions) ? a.actions : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.apps.${app}.actions.${k}`, t]))),
   ];
+  for (const r of Array.isArray(does.reads) ? does.reads : []) if (typeof r !== "string" || !tools.includes(r)) out.push(`does.reads names ${String(r)}, which is not under does.tools`);
   for (const [where, t] of mapped) if (typeof t === "string" && !tools.includes(t)) out.push(`${where} names ${t}, which is not under does.tools`);
   // The same rules as the loader's settings check (core/config/settings.js validateDecls).
   const seen = new Set();
@@ -254,6 +263,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     const names = Array.isArray(e[key]) ? e[key] : [e[key]];
     if (!names.length || names.some(n => typeof n !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(n))) out.push(`tool "${e.name}": ${key} must be an input field name, or a list of them`);
   }
+  // crossSpace names the one kernel action another Space's authorize must allow before this tool runs there for a module (ctx.kernel.for(space).call); a tool without it is never run that way.
+  for (const e of toolEntries(m)) if (e.crossSpace != null && (typeof e.crossSpace !== "string" || !/^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace))) out.push(`tool "${e.name}": crossSpace must be a kernel action name`);
   // An asked tool's `target` names one internal tool of this module (built in only, see addedCheck).
   for (const e of toolEntries(m)) {
     if (!e.target) continue;
@@ -298,6 +309,13 @@ export function toolEntries(m) {
     if (typeof t.target === "string") extra.target = t.target;
     if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
+    if (t.projectIsRecord === true) extra.projectIsRecord = true;
+    if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
+    if (t.asks === true) extra.asks = true;
+    if (TYPES.object(t.flow) && typeof t.flow.risk === "string") extra.flow = { risk: t.flow.risk, ...(typeof t.flow.label === "string" ? { label: t.flow.label } : {}) };
+    if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;
+    // A tool a Flow's call step may run: `flowAction: { risk: "read" | "outward" }` (an outward one is also `outward: true`, so it is held for a yes before it runs).
+    if (TYPES.object(t.flowAction) && (t.flowAction.risk === "read" || t.flowAction.risk === "outward")) extra.flowAction = { risk: t.flowAction.risk };
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }

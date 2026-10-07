@@ -29,6 +29,47 @@ export const MESSAGES = Object.freeze({
   mismatch: "The four words did not match, so that was not your server. Close this page and start again.",
 });
 
+/** The ten steps of the one flow, in order. `where` groups them on the timeline; `optional` ones carry a tag and a Skip. */
+export const STEPS = Object.freeze([
+  { id: "install", title: "Install", where: "On your server", optional: false },
+  { id: "words", title: "Check the words", where: "On your server", optional: false },
+  { id: "address", title: "Choose your address", where: "In your browser", optional: false },
+  { id: "network", title: "Your network", where: "In your browser", optional: false },
+  { id: "ai", title: "Sign in to your AI", where: "In your browser", optional: false },
+  { id: "phone", title: "Add your phone", where: "In your browser", optional: true },
+  { id: "passkey", title: "Create your passkey", where: "At your address", optional: false },
+  { id: "assistant", title: "You and your assistant", where: "At your address", optional: false },
+  { id: "computers", title: "Your computers", where: "At your address", optional: true },
+  { id: "history", title: "Your history", where: "At your address", optional: true },
+]);
+
+/** The step the person is on, 1 to 10 (0 before the setup begins). Taken only from the flow's own stage, never from a progress line. @param {FlowState} s */
+export function stepNumber(s) {
+  switch (s.stage) {
+    case "start": return 0;
+    case "install": return 1;
+    case "found": return s.confirm === "pending" ? 2 : 3;
+    case "named": return 3;
+    case "network": return 4;
+    case "ai": return 5;
+    case "devices": return 6;
+    case "claim": return 7;
+    case "done": return 8;
+    default: return s.stoppedAt || 0;
+  }
+}
+
+/** Every step with where it stands: done, current, skipped, failed or todo. Pure, so the same list draws on the page and (from the server) at the person's address. @param {FlowState} s */
+export function stepList(s) {
+  const at = stepNumber(s), stopped = s.stage === "stopped";
+  return STEPS.map((st, i) => {
+    const n = i + 1;
+    const skipped = s.skipped.includes(st.id) && n < at;
+    const status = stopped && n === at ? "failed" : skipped ? "skipped" : n < at ? "done" : n === at && s.stage !== "start" ? "current" : "todo";
+    return { ...st, n, status };
+  });
+}
+
 /** A first guess at an address from the server's own name: lower case letters, digits and hyphens. */
 export function suggestName(text) {
   const s = String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
@@ -36,7 +77,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"network"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -44,11 +85,11 @@ export function suggestName(text) {
  *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
  *   domain: { open: boolean, input: string, checking: boolean, error: string|null,
  *     result: null | { domain: string, ok: boolean, cname: { host: string, expected: string, found: string[], ok: boolean }, caa: { present: boolean, ok: boolean|null, optional: boolean } } },
- *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
- *     address: null | { phase: string, why: string|null } },
- *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
+ *   network: { status: null | { state: "connected"|"relayed"|"offline"|"joining"|"unknown", path: string|null }, busy: boolean, error: string|null },
+ *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[], keyKind: null|"openai-compatible"|"anthropic-compatible"|"openrouter", keyBusy: boolean },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
+ *   skipped: string[], stoppedAt: number, activity: string[],
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -66,13 +107,13 @@ export function createFlow(o) {
   const pollMs = o.pollMs ?? 3000;
   const debounceMs = o.debounceMs ?? 350;
   /** @type {FlowState} */
-  const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
-  const blankAi = () => ({ accounts: [] });
+  const blankNet = () => ({ status: null, busy: false, error: null });
+  const blankAi = () => ({ accounts: [], keyKind: null, keyBusy: false });
   const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -85,8 +126,23 @@ export function createFlow(o) {
   let sess = null;
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
-  const set = patch => { state = { ...state, ...patch }; emit(); };
-  const fail = code => { run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
+  /** What the page itself saw happen, in its own fixed words (never text from the network): one line per step as it moves. */
+  const seen = (a, b) => {
+    const out = [];
+    if (a.confirm !== "matched" && b.confirm === "matched") out.push("The four words matched.");
+    if (a.channel !== "ready" && b.channel === "ready") out.push("Connected to your server.");
+    if (a.stage !== "named" && b.stage === "named" && b.named) out.push(`Claimed ${b.named.name}.vyre.run.`);
+    if (!a.network.status && b.network.status) out.push(b.network.status.state === "relayed" ? "Your server is reachable through the relay." : b.network.status.state === "connected" ? "Your server is reachable directly." : "Looked at your server's network.");
+    for (const acc of b.ai.accounts) { const was = a.ai.accounts.find(x => x.id === acc.id); if (acc.step === "done" && (!was || was.step !== "done")) out.push(`${acc.provider === "claude" ? "Claude" : acc.provider === "codex" ? "ChatGPT (Codex)" : "Grok"} signed in.`); }
+    if (b.skipped.includes("ai") && !a.skipped.includes("ai")) out.push("Skipped the AI sign-in. One can be added later in Settings.");
+    if (a.devices.phone !== "paired" && b.devices.phone === "paired") out.push("Your phone paired.");
+    if (b.skipped.includes("phone") && !a.skipped.includes("phone")) out.push("Skipped adding a phone.");
+    if (a.claim.phase !== "ready" && b.claim.phase === "ready") out.push("Made a one-time link to your server.");
+    if (a.stage !== "done" && b.stage === "done") out.push("Passkey made. Setup carries on at your address.");
+    return out;
+  };
+  const set = patch => { const prev = state; state = { ...state, ...patch }; const more = seen(prev, state); if (more.length) state = { ...state, activity: [...state.activity, ...more].slice(-MAX_LINES) }; emit(); };
+  const fail = code => { const at = stepNumber(state); run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", stoppedAt: at || state.stoppedAt, listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
@@ -105,7 +161,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), network: blankNet(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -233,7 +289,7 @@ export function createFlow(o) {
   async function checkDomain(text) {
     if (!chan || !domainOk() || state.domain.checking) return;
     const domain = tidy(text ?? state.domain.input);
-    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example harlowlegal.com.", result: null } });
+    if (!DOMAIN_SHAPE.test(domain)) return set({ domain: { ...state.domain, input: domain, error: "That does not look like a domain, for example juniperstudio.example.", result: null } });
     const mine = run;
     set({ domain: { ...state.domain, input: domain, checking: true, error: null } });
     try {
@@ -273,8 +329,6 @@ export function createFlow(o) {
     }
   }
 
-  // ---- Tailscale: the box joins, and the address is published once it has a tailnet address ----
-
   /** A link the box hands back is followed only if it is a plain https address with no login in it. @param {unknown} u @param {(host: string) => boolean} [okHost] */
   function safeUrl(u, okHost) {
     try {
@@ -283,118 +337,46 @@ export function createFlow(o) {
       return !okHost || okHost(x.hostname) ? x.href : null;
     } catch { return null; }
   }
-  const isTailscaleHost = h => h === "tailscale.com" || h.endsWith(".tailscale.com");
 
-  /** After the recovery code is saved: on to the AI sign-in. */
-  function continueToAi() {
+  // ---- Your network: built in, so there is nothing to connect; the page only shows how the server is reachable ----
+
+  /** After the recovery code is saved: on to the network step, which reads the server's status once. */
+  function continueToNetwork() {
     if (state.stage !== "named" || !state.named || (state.named.recoveryCode && !state.named.saved)) return;
+    set({ stage: "network", network: blankNet() });
+    readNetwork(run);
+  }
+
+  /** Read how the server is reachable: network.wink.status, the one network tool this channel may call. Said in fixed words, never in text from the network. */
+  async function readNetwork(mine) {
+    if (!chan || state.stage !== "network" || state.network.busy) return;
+    set({ network: { ...state.network, busy: true, error: null } });
+    try {
+      const st = await chan.call("network.wink.status");
+      if (mine !== run) return;
+      const rows = st && Array.isArray(st.spaces) ? st.spaces : [];
+      const first = rows[0] || null;
+      const ok = first && ["connected", "relayed", "offline", "joining"].includes(first.state) ? first.state : st && st.relay && (st.relay.ok || st.relay.connected) ? "relayed" : "unknown";
+      set({ network: { status: { state: /** @type {any} */ (ok), path: first && first.path ? String(first.path).slice(0, 20) : null }, busy: false, error: null } });
+    } catch (e) { if (mine === run) set({ network: { ...state.network, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  }
+
+  /** On to the AI sign-in, once the page has looked at the network (an answer or an error: it never blocks the setup). */
+  function continueToAi() {
+    if (state.stage !== "network" || (!state.network.status && !state.network.error)) return;
     set({ stage: "ai" });
   }
 
-  /** One signed-in AI is enough: on to Tailscale. */
-  function continueToTailscale() {
+  /** One signed-in AI is enough: on to the phone. */
+  function continueToDevices() {
     if (state.stage !== "ai" || !state.ai.accounts.some(a => a.step === "done")) return;
-    set({ stage: "tailscale", tailscale: blankTs() });
-    watchTailscale(run);
+    set({ stage: "devices", devices: blankDevices() });
   }
 
-  /**
-   * Read the box's Tailscale state now, then again whenever the box says it changed (tailscale.changed) until it is connected and
-   * the address is up. If the box's event stream is not there or breaks, a capped poll takes over: every few seconds, for at most
-   * fifteen minutes, stopping at once when the box says the setup is over or answers with an error.
-   */
-  let watching = false;
-  async function watchTailscale(mine) {
-    if (watching) return;
-    watching = true;
-    try { await watchTailscaleLoop(mine); } finally { watching = false; }
-  }
-  async function watchTailscaleLoop(mine) {
-    let stopFollow = () => {};
-    let poked = false, over = false;
-    // Serving, or failed: either way there is nothing more to wait for (a failed one says why, and Connect tries again).
-    const done = () => Boolean(state.tailscale.address && (state.tailscale.address.phase === "serving" || state.tailscale.address.phase === "failed"));
-    const read = async () => {
-      const st = await chan.call("network.tailscale.status");
-      if (mine !== run) return;
-      const status = { state: String(st.state || ""), login: st.login ? String(st.login).slice(0, 120) : null, tailnet: st.tailnet ? String(st.tailnet).slice(0, 120) : null, tailnetKind: st.tailnetKind ? String(st.tailnetKind) : null, ip: st.ip ? String(st.ip).slice(0, 60) : null };
-      set({ tailscale: { ...state.tailscale, status, error: null, loginUrl: status.state === "connected" ? null : state.tailscale.loginUrl } });
-      if (status.state === "connected" && !done()) await publishAddress(mine);
-    };
-    const live = () => mine === run && state.stage === "tailscale" && chan;
-    // The address goes from dns to certificate to serving on the box without a tailscale.changed: the certificate says so through its own
-    // events. They are read from the start of the list each time (a short read), so one that landed before this page looked is not missed.
-    let lastCert = 0;
-    const certEvery = () => Math.max(pollMs, 1000);
-    const certCheck = async () => {
-      if (!chan || !state.named || !state.tailscale.address || done() || typeof chan.events !== "function") return;
-      lastCert = now();
-      // The backstop: the box's own answer for its name, so a missed event can never strand a person on "Publishing your address".
-      try {
-        const st = await chan.call("names.status");
-        if (mine !== run) return;
-        if (st && st.phase === "serving") return void set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
-        if (st && st.phase === "failed") return void set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: st.why ? String(st.why).slice(0, 200) : "the address could not be published" } } });
-      } catch { /* a box that does not answer this (older) leaves it to the events below */ }
-      const mineName = event => { const n = event && event.payload && event.payload.name; return !n || String(n).toLowerCase().startsWith(state.named.name + "."); };
-      const issued = (await chan.events("certificate.issued", 0)).filter(mineName).reduce((n, e) => Math.max(n, e.id), 0);
-      const failed = (await chan.events("certificate.failed", 0)).filter(mineName).reduce((m, e) => (e.id > m.id ? e : m), { id: 0, payload: null });
-      if (mine !== run) return;
-      if (issued > 0 && issued > failed.id) set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
-      else if (failed.id > 0) set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: failed.payload && failed.payload.why ? String(failed.payload.why).slice(0, 200) : "the certificate could not be made" } } });
-    };
-    try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
-    if (!live() || done()) return;
-    // Events first: each one is a reason to read again, and nothing polls while the box is quiet.
-    let fellBack = typeof chan.follow !== "function";
-    if (!fellBack) {
-      stopFollow = chan.follow("tailscale.changed", () => { poked = true; }, err => { if (err && err.status === 401) over = true; fellBack = true; });
-      while (live() && !done() && !fellBack && !over) {
-        if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
-        if (poked) { poked = false; try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); stopFollow(); return; } }
-        await sleep(200);
-      }
-      stopFollow();
-    }
-    if (!live() || done() || over) return;
-    // The fallback: capped, and it stops when the box says the setup is over.
-    const until = now() + 15 * 60_000;
-    while (live() && !done() && now() < until) {
-      await sleep(Math.max(pollMs, 1000));
-      if (!live()) return;
-      if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
-      if (done()) return;
-      try { await read(); } catch (e) {
-        if (!live()) return;
-        // Any error ends the watching (setup_over most of all); Connect starts it again.
-        set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
-        return;
-      }
-    }
-  }
-
-  /** With a tailnet address the name is claimed again, which publishes it and gets its certificate (names.claim's second run). */
-  async function publishAddress(mine) {
-    if (!chan || !state.named) return;
-    try {
-      const r = await chan.call("names.claim", { name: state.named.name });
-      if (mine !== run) return;
-      set({ tailscale: { ...state.tailscale, address: { phase: String((r && r.phase) || "dns"), why: r && r.why ? String(r.why).slice(0, 200) : null } } });
-    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
-  }
-
-  /** "Connect": ask the box for Tailscale's own sign-in link. It is shown as a link to click, never opened for the person. */
-  async function connectTailscale() {
-    if (!chan || state.stage !== "tailscale" || state.tailscale.busy) return;
-    const mine = run;
-    set({ tailscale: { ...state.tailscale, busy: true, error: null } });
-    try {
-      const r = await chan.call("network.tailscale.login");
-      if (mine !== run) return;
-      const url = r && r.loginUrl ? safeUrl(r.loginUrl, isTailscaleHost) : null;
-      set({ tailscale: { ...state.tailscale, busy: false, loginUrl: url, error: r && r.loginUrl && !url ? "The box gave a sign-in link that is not Tailscale's, so it was not shown." : null } });
-      watchTailscale(mine);
-    } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  /** "Skip for now": no AI yet. It stays on the list as skipped, and one can be added later in Settings. */
+  function skipAi() {
+    if (state.stage !== "ai" || state.ai.accounts.some(a => a.step === "done")) return;
+    set({ stage: "devices", devices: blankDevices(), skipped: [...state.skipped, "ai"] });
   }
 
   // ---- Sign in to your AI: each provider's own login, one is enough to go on ----
@@ -405,8 +387,8 @@ export function createFlow(o) {
     const mine = run;
     const id = `${provider}-${state.ai.accounts.length + 1}`;
     const row = { id, provider, flow: null, step: /** @type {const} */ ("starting"), url: null, code: null, paste: false, error: null };
-    set({ ai: { accounts: [...state.ai.accounts.filter(a => a.provider !== provider || a.step === "done"), row] } });
-    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
+    set({ ai: { ...state.ai, accounts: [...state.ai.accounts.filter(a => a.provider !== provider || a.step === "done"), row] } });
+    const upd = patch => { if (mine === run) set({ ai: { ...state.ai, accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
     try {
       const r = await chan.call("sessions.accounts.signin", { provider });
       const hosts = o.signinHosts;
@@ -431,13 +413,44 @@ export function createFlow(o) {
     }
   }
 
+  // ---- an API key instead of a login: one of three kinds, checked and stored by the box, never shown again ----
+
+  const KEY_KINDS = /** @type {const} */ (["openai-compatible", "anthropic-compatible", "openrouter"]);
+
+  /** Open (or close) the form for one kind of key. @param {string} kind */
+  function openAiKey(kind) {
+    if (!chan || state.stage !== "ai" || state.ai.keyBusy || !KEY_KINDS.includes(/** @type {any} */ (kind))) return;
+    set({ ai: { ...state.ai, keyKind: state.ai.keyKind === kind ? null : /** @type {any} */ (kind) } });
+  }
+
+  /**
+   * Send a key to the box, which checks it with one small call, puts it in its vault and makes an account bound to its address. The key is held only for this call:
+   * it is never put in the state, an error never carries it, and the form closes on success.
+   * @param {{ kind: string, key: string, base_url?: string, model?: string }} f
+   */
+  async function submitAiKey(f) {
+    if (!chan || state.stage !== "ai" || state.ai.keyBusy || !KEY_KINDS.includes(/** @type {any} */ (f.kind))) return;
+    const mine = run;
+    const id = `key-${f.kind}-${state.ai.accounts.length + 1}`;
+    const key = String(f.key || "").trim();
+    const row = { id, provider: f.kind, flow: null, step: /** @type {const} */ ("waiting"), url: null, code: null, paste: false, error: null };
+    if (key.length < 12 || key.length > 400 || /\s/.test(key)) { set({ ai: { ...state.ai, accounts: [...state.ai.accounts.filter(a => a.provider !== f.kind || a.step === "done"), { ...row, step: "failed", error: "That does not look like an API key." }] } }); return; }
+    set({ ai: { ...state.ai, keyBusy: true, accounts: [...state.ai.accounts.filter(a => a.provider !== f.kind || a.step === "done"), row] } });
+    const upd = (/** @type {any} */ patch, /** @type {any} */ extra = {}) => { if (mine === run) set({ ai: { ...state.ai, ...extra, accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
+    try {
+      const input = { kind: f.kind, key, ...(f.base_url && String(f.base_url).trim() ? { base_url: String(f.base_url).trim().slice(0, 300) } : {}), ...(f.model && String(f.model).trim() ? { model: String(f.model).trim().slice(0, 100) } : {}) };
+      await chan.call("sessions.accounts.key", input);
+      upd({ step: "done", error: null }, { keyBusy: false, keyKind: null });
+    } catch (e) { upd({ step: "failed", error: String(/** @type {Error} */ (e).message).split(key).join("[key]").slice(0, 200) }, { keyBusy: false }); }
+  }
+
   /** A code the person pasted back from the provider's page. @param {string} id @param {string} code */
   async function submitAiCode(id, code) {
     const a = state.ai.accounts.find(x => x.id === id);
     const text = String(code || "").trim();
     if (!chan || !a || !a.flow || !a.paste || !text || text.length > 400) return;
     const mine = run;
-    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(x => (x.id === id ? { ...x, ...patch } : x)) } }); };
+    const upd = patch => { if (mine === run) set({ ai: { ...state.ai, accounts: state.ai.accounts.map(x => (x.id === id ? { ...x, ...patch } : x)) } }); };
     upd({ step: "waiting", error: null });
     try {
       const r = await chan.call("sessions.accounts.signin", { flow: a.flow, code: text });
@@ -452,55 +465,17 @@ export function createFlow(o) {
     } catch (e) { upd({ step: "failed", paste: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
   }
 
-  // ---- Devices: a phone pairs by scanning a ring drawn from the one ticket this page may make ----
-
-  /** Once the address is live: on to devices. */
-  function continueToDevices() {
-    if (state.stage !== "tailscale" || !state.tailscale.address || state.tailscale.address.phase !== "serving") return;
-    set({ stage: "devices", devices: blankDevices() });
-  }
-
-  /** "Add my phone": make the ticket (the setup key may make exactly one, good for five minutes) and wait for a phone to pair with it. */
-  async function addPhone() {
-    if (!chan || state.stage !== "devices" || (state.devices.phone !== "idle" && state.devices.phone !== "failed")) return;
-    const mine = run;
-    set({ devices: { ...state.devices, phone: "minting", error: null } });
-    let baseline = 0;
-    try {
-      // Anything already on record does not count: only a pairing after this moment.
-      const before = await chan.events("relay.paired", 0);
-      baseline = before.reduce((n, e) => Math.max(n, e.id), 0);
-      const r = await chan.call("relay.pair.ticket");
-      if (mine !== run) return;
-      ticket = String(r.ticket);
-      set({ devices: { ...state.devices, phone: "showing", expiresAt: Number(r.expiresAt) || now() + 5 * 60_000 } });
-    } catch (e) { if (mine === run) set({ devices: { ...state.devices, phone: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
-    watchPairing(mine, baseline);
-  }
-
-  /** Follows the one ticket until a phone pairs with it or it runs out. */
-  async function watchPairing(mine, baseline) {
-    while (mine === run && state.stage === "devices" && state.devices.phone === "showing") {
-      if (now() >= state.devices.expiresAt) { ticket = null; return set({ devices: { ...state.devices, phone: "expired" } }); }
-      try {
-        const got = await chan.events("relay.paired", baseline);
-        if (mine !== run) return;
-        if (got.length) {
-          ticket = null;
-          const name = got[0].payload && got[0].payload.name ? String(got[0].payload.name).slice(0, 60) : null;
-          return set({ devices: { ...state.devices, phone: "paired", paired: name } });
-        }
-      } catch { /* a dropped poll: ask again */ }
-      await sleep(Math.min(pollMs, Math.max(50, state.devices.expiresAt - now())));
-    }
-  }
+  // ---- Devices: this page makes no pairing ticket. The first device pairs through the install terminal's own gated flow (a QR or a long code, then three words), and
+  // everything after that is set up on the person's device, never here (the user's ruling, 4 Oct 2026; one pairing path). `addPhone` stays so the screen's button table is
+  // unchanged, and does nothing.
+  async function addPhone() { /* no ticket is made here */ }
 
   // ---- Arrive and claim: a one-time link to the person's own address, where the passkey is made ----
 
   /** From devices, whatever happened there (a phone can be added later): on to claiming. */
   function continueToClaim() {
     if (state.stage !== "devices" || state.devices.phone === "minting") return;
-    set({ stage: "claim", claim: blankClaim() });
+    set({ stage: "claim", claim: blankClaim(), skipped: state.devices.phone === "paired" ? state.skipped : [...state.skipped, "phone"] });
     // The box ends the setup session itself when the first owner enrols, and says so only by answering 401 setup_over or closing
     // the channel (4401). A session that ends before the hour is up was claimed (or replaced); at the hour it expired.
     const mine = run;
@@ -542,8 +517,8 @@ export function createFlow(o) {
   return {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
-    continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
-    continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
+    continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => null,
+    continueToAi, continueToNetwork, readNetwork: () => readNetwork(run), skipAi, startAi, submitAiCode, openAiKey, submitAiKey,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */

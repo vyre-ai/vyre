@@ -8,9 +8,10 @@
 // every check runs at once, each has its own timeout, and the whole run is cut off at 2 s, so a
 // box that does not answer is a line that says so, not a hang.
 //
-// On a Mac it checks vyred, Tailscale here, the box (through Tailscale, its address, and through
-// the link for what only the box knows), the phone, the Capsule, whether every module on THIS
-// machine started, and the install. On a box it checks the same things from the box's side.
+// On a Mac it checks vyred, who is signed in, the link to each space, the path to the server (direct or
+// through the relay), the relay, the server's door, storage and the clock (all from network.wink.status),
+// then what only the box knows through the link, the Capsule, whether every module on THIS machine
+// started, and the install. On a box it checks the same things from the box's side.
 //
 // --json: { ok, role, ms, checks: [{ id, label, ok, detail?, fix? }] }. --view draws the same
 // checks live: a checks frame as each one answers (data null), then the whole result as the last.
@@ -18,12 +19,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import dns from "node:dns/promises";
 import { request, call } from "../../daemon/client.js";
 import { REPO } from "../../daemon/index.js";
 import { label as buildLabel } from "../../daemon/build.js";
 import * as config from "../../config/index.js";
-import { status as tailscaleStatus, probe } from "../tailnet.js";
 import { appPath as capsuleApp } from "./capsule-native.js";
 import { shadows } from "../shadow.js";
 import { progressLine } from "../../recall/progress.js";
@@ -74,7 +73,6 @@ export function installSize(dir = REPO, cap = 200_000) {
 /**
  * Every check, given how to reach things. Pure of the terminal, so a test gives fakes.
  * @param {{ health?: () => Promise<any>, tool?: (name: string, input?: any) => Promise<{ data?: any, error?: any }>,
- *   tailscale?: () => Promise<any>, resolve?: (h: string) => Promise<any>, probe?: (a: string, ms: number) => Promise<any>,
  *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null,
  *   modules?: () => Promise<{ data?: any, error?: any }>,
  *   path?: () => ReturnType<typeof shadows>, onCheck?: (i: number, c: Check | null) => void }} [deps] onCheck hears each
@@ -86,7 +84,6 @@ export async function diagnose(deps = {}) {
   const tool = deps.tool || ((name, input = {}) => call(name, input, { timeout: STEP_MS }));
   const health = deps.health || (async () => { const r = await request("GET", "/v1/health", undefined, { timeout: STEP_MS }); return r.error ? null : r.data; });
   const role = deps.role || config.load().role || "local";
-  const ts = within((deps.tailscale || (() => tailscaleStatus(process.env, { timeout: STEP_MS })))(), STEP_MS, () => null);
   const h = within(health(), STEP_MS, () => null);
 
   // --------------------------------------------------------------- vyred
@@ -105,60 +102,88 @@ export async function diagnose(deps = {}) {
     return (l && l.data && l.data.box && l.data.box.address) || deps.box || config.load().network?.box || null;
   })();
 
-  // --------------------------------------------------------------- Tailscale here
-  const here = role === "box" ? "this box" : "this Mac";
-  const tailscale = ts.then(t => {
-    if (!t) return unknown("tailscale", `Tailscale on ${here}`, "tailscale status did not answer in time", "open Tailscale and check it is running");
-    if (!t.installed) return failed("tailscale", `Tailscale on ${here}`, "not installed", "install it: https://tailscale.com/download");
-    if (!t.running) return failed("tailscale", `Tailscale on ${here}`, t.why || t.backend || "not running", "open Tailscale and sign in");
-    return pass("tailscale", `Tailscale on ${here}`, t.login ? `signed in as ${t.login}` : "running");
-  });
-  const magic = ts.then(t => {
-    if (!t || !t.running) return unknown("magicdns", "MagicDNS and HTTPS on the tailnet", "Tailscale is not running here");
-    const off = [t.magicDNS === false ? "MagicDNS" : "", !t.certDomains?.length ? "HTTPS certificates" : ""].filter(Boolean);
-    if (off.length) return failed("magicdns", "MagicDNS and HTTPS on the tailnet", `${off.join(" and ")} off`, "turn them on: https://login.tailscale.com/admin/dns");
-    return pass("magicdns", "MagicDNS and HTTPS on the tailnet", t.certDomains[0]);
+  // --------------------------------------------------------------- the network, as the Wink node sees it
+  // One read, network.wink.status, shared by the seven checks below. Read-only; a machine whose vyred has no network tools answers "?" lines, never a cross.
+  const net = up ? within(tool("network.wink.status"), STEP_MS, () => ({ error: { message: "no answer" } })) : Promise.resolve(null);
+  const view = net.then(r => (r && r.data && !r.error ? r.data : null));
+  const noAnswer = (id, label) => unknown(id, label, up ? "did not answer in 2 s" : "vyred is not running");
+  const spaces = view.then(d => (d && Array.isArray(d.spaces) ? d.spaces : []));
+
+  const identity = view.then(d => {
+    const label = "Signed in to Vyre";
+    if (!up) return unknown("identity", label, "vyred is not running", "vyre up");
+    if (!d) return noAnswer("identity", label);
+    if (d.identity && d.identity.signedIn === null) return unknown("identity", label, "could not check");
+    if (!d.identity || d.identity.signedIn === false) return failed("identity", label, "this computer is not signed in", "open the Vyre app and sign in, or run: vyre up");
+    const n = d.identity.devices;
+    return pass("identity", label, [d.identity.name, typeof n === "number" ? `${n} device${n === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ") || null);
   });
 
-  // --------------------------------------------------------------- the box, over the tailnet
-  const boxTailscale = Promise.all([ts, box]).then(([t, address]) => {
-    const labelBox = "Tailscale on the box, same account";
-    if (role === "box") return null;
-    if (!address) return unknown("tailscale-box", labelBox, "this Mac knows no box yet", "vyre up --connect <your box's address>");
-    if (!t || !t.running) return unknown("tailscale-box", labelBox, "Tailscale is not running on this Mac");
-    const name = host(address);
-    const peer = t.peers.find(p => p.dnsName === name || name.startsWith(p.dnsName.split(".")[0] + "."));
-    if (!peer) return failed("tailscale-box", labelBox, `${name} is not on this Mac's tailnet`, `sign the box in to Tailscale as ${t.login || "you"}, or share it with you`);
-    if (!peer.online) return failed("tailscale-box", labelBox, `${peer.hostName} is offline on the tailnet`, "on the box: sudo tailscale up");
-    if (!peer.tagged && t.userId && peer.userId !== t.userId) return failed("tailscale-box", labelBox, `${peer.hostName} is signed in to another account`, `on the box: sudo tailscale up, and sign in as ${t.login || "you"}`);
-    return pass("tailscale-box", labelBox, `${peer.hostName}${peer.tagged ? ", a tagged node" : ""}`);
+  const spaceLink = Promise.all([view, spaces]).then(([d, list]) => {
+    if (!d) return noAnswer("space-link", "Link to your space");
+    if (!list.length) return unknown("space-link", "Link to your space", "this computer has not joined a space", "vyre up");
+    return list.map(sp => {
+      const label = `Link to ${sp.name || sp.id}`;
+      if (sp.relayOnly || (d.otherVpn && sp.path === "relay")) return unknown("space-link", label, "using the relay, because another VPN is running here");
+      if (sp.state === "connected" || sp.state === "relayed") return pass("space-link", label, `up, ${sp.peers} other device${sp.peers === 1 ? "" : "s"} seen`);
+      if (sp.state === "joining") return unknown("space-link", label, "still coming up");
+      const gone = /unreachable|no path|did not answer|no internet/i.test(String(sp.why || ""));
+      return failed("space-link", label, "down", gone ? "the server is off or has no internet" : "on the server that hosts it, run: vyre doctor");
+    });
   });
-  const phone = ts.then(t => {
-    const labelPhone = "Your phone on the tailnet";
-    if (!t || !t.running) return unknown("phone", labelPhone, `Tailscale is not running on ${here}`);
-    const mine = t.peers.filter(p => /^(ios|android)$/i.test(p.os) && (!t.userId || p.userId === t.userId));
-    if (!mine.length) return failed("phone", labelPhone, "no phone signed in to your tailnet", `install Tailscale on your phone and sign in${t.login ? " as " + t.login : ""}`);
-    const on = mine.find(p => p.online);
-    if (!on) return failed("phone", labelPhone, `${mine[0].hostName} is offline`, "open Tailscale on your phone and turn it on");
-    return pass("phone", labelPhone, on.hostName);
+
+  const pathCheck = Promise.all([view, spaces]).then(([d, list]) => {
+    const label = "Path to your server";
+    if (!d) return noAnswer("path", label);
+    if (role === "box" && !list.some(sp => sp.path)) return null;
+    const sp = list.find(x => x.path) || list.find(x => !x.door || !x.door.listening);
+    if (!sp) return unknown("path", label, "no server paired yet", "run: vyre up");
+    const ms = typeof sp.latencyMs === "number" ? `${sp.latencyMs} ms` : "";
+    if (sp.state === "connected" || sp.state === "relayed") return pass("path", label, sp.path === "direct" ? ["direct", ms].filter(Boolean).join(", ") : `through the relay${ms ? ", " + ms : ""} (no direct path yet)`);
+    return failed("path", label, "none", "check this computer's internet connection");
   });
-  const address = box.then(async a => {
-    const labelAddr = "The box's address answers";
-    if (!a) return role === "box"
-      ? failed("address", labelAddr, "this box has no address yet", "vyre name")
-      : unknown("address", labelAddr, "this Mac knows no box yet", "vyre up --connect <your box's address>");
-    if (role === "box") {
-      // A box cannot ask its own address (its listener refuses itself, ADR 0002): names.status says.
-      const n = await names;
-      const phase = n && n.data && n.data.phase;
-      return phase === "serving" ? pass("address", labelAddr, a) : failed("address", labelAddr, `${a} is ${phase || "not serving"}`, "vyre name");
-    }
-    const name = host(a);
-    const found = await within((deps.resolve || (x => dns.lookup(x)))(name), STEP_MS, () => null);
-    if (!found) return failed("address", labelAddr, `${name} does not resolve`, "turn on MagicDNS on this Mac: open Tailscale, Settings, Use Tailscale DNS");
-    const hh = await within((deps.probe || probe)(a, STEP_MS), STEP_MS, () => null);
-    if (!hh) return failed("address", labelAddr, `${a} does not answer`, "on the box: vyre status, then vyre up");
-    return pass("address", labelAddr, `${a} · ${buildLabel({ version: hh.version, commit: hh.commit ?? null, dirty: hh.dirty ?? null })}`);
+
+  const relayCheck = view.then(d => {
+    const label = "Relay";
+    if (!d) return noAnswer("relay", label);
+    const r = d.relay || {};
+    if (r.enabled === false) return unknown("relay", label, "turned off on this server");
+    if (r.reachable === true) return pass("relay", label, `answering${typeof r.latencyMs === "number" ? ", " + r.latencyMs + " ms" : ""}`);
+    if (r.reachable === false) return failed("relay", label, "not answering", "a firewall may block outbound HTTPS (port 443); the relay is the path that always works");
+    return unknown("relay", label, "could not check");
+  });
+
+  const door = spaces.then(async list => {
+    const label = "Server door";
+    if (!(await view)) return noAnswer("door", label);
+    if (list.some(sp => sp.door && sp.door.refused)) return failed("door", label, "refused this device (not on the list)", "ask an owner to add it, or pair again with: vyre up");
+    const hosted = list.filter(sp => sp.door && sp.door.listening);
+    if (hosted.length) return pass("door", label, "accepting linked devices");
+    if (role === "box") return failed("door", label, "not listening", "on the server: restart Vyre");
+    return unknown("door", label, "only a server has one");
+  });
+
+  const storage = view.then(d => {
+    if (!d) return null;
+    return (d.storage || []).map(x => {
+      const label = `Storage: ${x.name || x.id}`;
+      if (x.reachable) {
+        const gb = typeof x.free === "number" ? x.free / 1e9 : null;
+        return pass("storage", label, gb === null ? "reachable" : `reachable, ${gb >= 1000 ? (gb / 1000).toFixed(1) + " TB" : Math.round(gb) + " GB"} free`);
+      }
+      return failed("storage", label, "not reachable", "check the access details saved for it in the vault");
+    });
+  }).then(a => (a && a.length ? a : null));
+
+  const clock = view.then(d => {
+    const label = "Clock";
+    if (!d) return noAnswer("clock", label);
+    const ms = d.clock && d.clock.skewMs;
+    if (typeof ms !== "number") return unknown("clock", label, "could not reach the relay to compare");
+    const s = Math.abs(ms) / 1000;
+    if (s <= 2) return pass("clock", label, "within 2 s of the relay");
+    if (s <= 30) return pass("clock", label, `${Math.round(s)} s from the relay's, close enough`);
+    return failed("clock", label, `${Math.round(s)} s off, so pairing and device lists will be refused`, "turn on automatic date and time in this computer's settings");
   });
 
   // --------------------------------------------------------------- what only the box knows
@@ -231,16 +256,16 @@ export async function diagnose(deps = {}) {
     const labelPath = "This is the vyre your shell runs";
     const tilde = p => p.replace(os.homedir(), "~");
     const first = s.others.find(o => o.first);
-    if (first) return failed("path", labelPath, `${tilde(first.path)} comes first on PATH${first.target !== first.path ? " (" + tilde(first.target) + ")" : ""}`, `rm ${tilde(first.path)}, then hash -r`);
-    if (s.others.length) return failed("path", labelPath, `another vyre is also on PATH: ${tilde(s.others[0].path)}; a shell that remembers it runs that one`, `rm ${tilde(s.others[0].path)}, then hash -r`);
-    if (!s.ours) return unknown("path", labelPath, "this vyre is not on PATH (run through a full path?)");
-    return pass("path", labelPath);
+    if (first) return failed("vyre-on-path", labelPath, `${tilde(first.path)} comes first on PATH${first.target !== first.path ? " (" + tilde(first.target) + ")" : ""}`, `rm ${tilde(first.path)}, then hash -r`);
+    if (s.others.length) return failed("vyre-on-path", labelPath, `another vyre is also on PATH: ${tilde(s.others[0].path)}; a shell that remembers it runs that one`, `rm ${tilde(s.others[0].path)}, then hash -r`);
+    if (!s.ours) return unknown("vyre-on-path", labelPath, "this vyre is not on PATH (run through a full path?)");
+    return pass("vyre-on-path", labelPath);
   });
 
   // Every module started: a manifest that under- or over-declares a tool or event fails that
   // module alone, silently to a person just watching Chat or the Deck (every other module still
   // loads, so "no such tool" from something that quietly never registered is the only symptom
-  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (docs/work/
+  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (team/archive/work-journals/
   // tailnet.md, 28 Sep 2026). vyred's own log already names the module and the exact manifest key
   // (core/modules/index.js's startOne), but nothing surfaced it here until now, and the log is
   // the only place it was loud. /v1/modules is this machine's own registry (box or Mac, whichever
@@ -261,18 +286,20 @@ export async function diagnose(deps = {}) {
     return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
   }) : Promise.resolve(null);
 
-  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, modules, recall, onPath, size];
+  const all = [vyred, identity, spaceLink, pathCheck, relayCheck, door, storage, clock, paired, passkey, claude, capsule, modules, recall, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
   const named = (c, i) => c && c.id === "?" ? { ...c, id: IDS[i], label: LABELS[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c;
+  // A check that has one line per space or per storage device answers a list; onCheck hears the worst of it, the result has every line.
+  const worst = list => list.find(c => c.ok === false) || list.find(c => c.ok === null) || list[0];
   const results = await Promise.all(all.map((p, i) => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))
-    .then(c => { const n = named(c, i); if (deps.onCheck) deps.onCheck(i, n || null); return n; })));
-  const checks = results.filter(Boolean);
+    .then(c => { const n = Array.isArray(c) ? c : named(c, i); if (deps.onCheck) deps.onCheck(i, Array.isArray(n) ? (n.length ? worst(n) : null) : n || null); return n; })));
+  const checks = results.flat().filter(Boolean);
   return { role, checks: /** @type {Check[]} */ (checks), ms: Date.now() - t0 };
 }
 
 /** Every check's id and short label, in the order diagnose runs them. */
-export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "modules", "recall", "path", "install"];
-const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
+export const IDS = ["vyred", "identity", "space-link", "path", "relay", "door", "storage", "clock", "paired", "passkey", "claude", "capsule", "modules", "recall", "vyre-on-path", "install"];
+const LABELS = ["vyred", "Signed in to Vyre", "Link to your space", "Path to your server", "Relay", "Server door", "Storage", "Clock", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
 
 /**
  * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
@@ -305,7 +332,7 @@ async function live() {
 
 export default {
   name: "doctor", order: 12, usage: "vyre doctor [--json]",
-  summary: "check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix",
+  summary: "check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {

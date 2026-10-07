@@ -4,6 +4,7 @@
 // Fixtures under test/fixtures/modules/v<major>.<minor>/ are never edited, only added. A module
 // that names a newer contract is refused cleanly: one plain line, its code never imported.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -16,7 +17,7 @@ import * as v1 from "../packages/module-sdk/compat/v1.js";
 import { createTestContext } from "../packages/module-sdk/testing.js";
 import { discover, validate, Registry } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -104,7 +105,7 @@ for (const [vyre, message] of [
 
 test("module api compat: a module naming 1.0 with keys this Vyre doesn't know loads, and the keys only warn", async t => {
   const { mod, mark } = trap(t, "1.0");
-  fs.writeFileSync(path.join(mod, "index.js"), `export default { async start(ctx) { ctx.tool("harlow.docket", { input: { type: "object" }, examples: [{ input: {} }], run: () => ({ cases: 0 }) }); return { async stop() {} }; } };\n`);
+  fs.writeFileSync(path.join(mod, "index.js"), `export default { async start(ctx) { ctx.tool("harlow.docket", { effect: "read", input: { type: "object" }, examples: [{ input: {} }], run: () => ({ cases: 0 }) }); return { async stop() {} }; } };\n`);
   const r = await conformModuleFull(mod);
   assert.deepEqual(r.failures, []);
   assert.ok(r.warnings.some(w => /does\.timeline is not a key in module contract 1\.0/.test(w)), r.warnings.join("; "));

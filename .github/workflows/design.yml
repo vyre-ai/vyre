@@ -12,7 +12,7 @@ on:
       - "scripts/lib/tokens.js"
       - "scripts/lib/theme.js"
       - "lib/theme/**"
-      - "deck/css/tokens.css"
+      - "web/css/tokens.css"
       - ".github/workflows/design.yml"
   pull_request:
     paths:
@@ -23,7 +23,7 @@ on:
       - "scripts/lib/tokens.js"
       - "scripts/lib/theme.js"
       - "lib/theme/**"
-      - "deck/css/tokens.css"
+      - "web/css/tokens.css"
   workflow_dispatch:
 permissions:
   contents: read

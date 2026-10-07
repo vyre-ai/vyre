@@ -5,6 +5,7 @@
 // it against the key it pinned at pairing before it runs threads.answer as "link:box". Agents,
 // MCP, guests and modules never reach the Mac. The checks one by one: core/link/assert.test.js.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -116,7 +117,7 @@ test("federation answer: a Mac's ask reaches the box labelled with the Mac, and 
 test("federation answer: the owner's phone answers only inside a person session, the device and the person in what the box signs", async t => {
   const w = await world(t);
   const { ask } = await macAsk(w, "npm test");
-  const phone = { peer: { stableId: "nPHONE", node: "test-phone", login: "owner@example.com" } };
+  const phone = { peer: { stableId: "nPHONE0001", node: "test-phone", login: "owner@example.com" } };
   // A device without a person session: refused on the box, nothing signed, nothing sent.
   const bare = await w.boxCall("threads.answer", { ask, decision: "deny" }, "tailnet:owner@example.com", phone);
   assert.equal(bare.error.code, "person_session_required");
@@ -124,9 +125,9 @@ test("federation answer: the owner's phone answers only inside a person session,
   // In a person session, an ungated ask takes no proof (the no-nag rule).
   const r = await w.boxCall("threads.answer", { ask, decision: "deny", message: "not now" }, "tailnet:owner@example.com", { ...phone, person: { id: "ps-alex-phone", kind: "passkey" } });
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.deepEqual(w.linked[0].by, { caller: "tailnet:owner@example.com", device: "nPHONE", person: "ps-alex-phone" });
+  assert.deepEqual(w.linked[0].by, { caller: "tailnet:owner@example.com", device: "nPHONE0001", person: "ps-alex-phone" });
   assert.deepEqual([r.data.answered, r.data.decision, r.data.machine], [true, "deny", "alex-mac"]);
-  assert.deepEqual(answersRun(w)[0].input, { ask, decision: "deny", message: "not now", surface: "box:tailnet:owner@example.com" });
+  assert.deepEqual(answersRun(w)[0].input, { ask, decision: "deny", message: "not now", surface: process.env.VYRE_KERNEL === "0" ? "box:tailnet:owner@example.com" : "box:phone" }); // kernel on: the surface is named by the device (its paired row, "phone"), not by the label
 });
 
 test("federation answer: an agent, MCP, a guest or a module on the box never reaches the Mac", async t => {
@@ -190,7 +191,7 @@ test("federation answer: an ask that approves a floor tool needs a fresh proof o
 
   // Signed by the box without a fresh proof (as a changed box would), the Mac still refuses.
   for (const presence of [undefined, "session"]) {
-    const r = await w.boxCall("link.macs.call", { tool: "threads.answer", as: "person", by: { caller: "deck", ...(presence ? { presence } : {}) }, input: { ask, decision: "allow", surface: "deck" } }, "module:test");
+    const r = await w.boxCall("link.macs.call", { tool: "threads.answer", as: "person", by: { caller: "deck", ...(presence ? { presence } : {}) }, input: { ask, decision: "allow", surface: "deck" } }, "module:test", { origin: "deck" }); // a module acting for the person (the origin names the person's surface), as the Switchboard relays an answer
     assert.equal(r.data[0].ok, false);
     assert.equal(r.data[0].error.code, "denied");
     assert.match(r.data[0].error.message, /fresh proof of presence/);

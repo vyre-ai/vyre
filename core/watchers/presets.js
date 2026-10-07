@@ -4,6 +4,8 @@
 // a preset watcher does is decided by a model's code: the model is only asked for a yes or a no.
 
 import { parseWhen } from "./when.js";
+import { connectorPreset } from "./connector-preset.js";
+import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 
 export const MAIL_INSTRUCTION = "Important: from a client, a court or agency, or asking for something with a deadline. Not newsletters, receipts, notifications or marketing.";
 
@@ -268,7 +270,27 @@ export function feedPreset(o) {
       do: `Files a short quoted note into ${o.project} for each new entry, marked as from outside. Entries already seen are not filed again.` } } };
 }
 
-export const PRESET_KINDS = ["mail", "calendar", "repo", "slack", "feed"];
+// ------------------------------------------------------------------ pr (review comments for a session)
+
+export const PR_WATCH_JS = `// Nothing to run: Vyre itself reads this session's pull-request comments (source in watcher.json).
+export default async function watch() {}
+`;
+
+/** @param {{ project: string, session: string, when?: string, label?: string, maxPerDay?: number }} o */
+export function prPreset(o) {
+  const session = String(o.session || "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(session)) throw new Error("session is the id of the session the review comments are for");
+  const when = schedule(o.when, "every 10 minutes", 5), t = parseWhen(when), name = nameFor("pr", o.label || session);
+  const maxPerDay = o.maxPerDay === undefined ? 5 : Number(o.maxPerDay);
+  if (!Number.isInteger(maxPerDay) || maxPerDay < 1 || maxPerDay > 20) throw new Error("maxPerDay is 1 to 20");
+  return { name, code: PR_WATCH_JS, json: {
+    name, project: o.project, schedule: t.schedule, emits: "pr.comment", timeout: 60,
+    source: { tool: "github.session.review" }, about: { session }, owner: { kind: "session", thread: session }, act: true, wake: { maxPerDay },
+    summary: { when: `${when[0].toUpperCase()}${when.slice(1)}`, check: "Only comments from other people on this session's open pull requests (your own replies never count)",
+      do: `Posts what is new into session ${session}, up to ${maxPerDay} times a day, as quoted notes that are data and never instructions. Nothing on GitHub is changed.` } } };
+}
+
+export const PRESET_KINDS = ["mail", "calendar", "repo", "slack", "feed", "pr", "connector"];
 
 /** @param {any} o */
 export function buildPreset(o) {
@@ -285,6 +307,12 @@ export function buildPreset(o) {
     if (typeof o.credential !== "string" || !o.credential) throw new Error("a slack preset needs credential: the name of the Slack api-credential in the vault");
     return slackPreset({ ...o, project: String(o.project || "") });
   }
+  if (o.kind === "connector") {
+    const decl = declared(String(o.connector || ""));
+    if (!decl) throw new Error(`a connector preset names a connector this build declares (connector: ${Object.keys(DECLARATIONS).join(", ")})`);
+    return connectorPreset({ project: String(o.project || ""), connector: decl, poll: String(o.poll || ""), credential: o.credential === undefined ? undefined : String(o.credential), ...(o.google ? { google: String(o.google) } : {}), vars: o.vars, when: o.when, label: o.label, lookback_days: o.lookback_days });
+  }
+  if (o.kind === "pr") return prPreset({ ...o, project: String(o.project || "") });
   if (o.kind === "feed") return feedPreset({ ...o, project: String(o.project || "") });
   throw new Error(`no preset "${o.kind}"; there is ${PRESET_KINDS.join(", ")}`);
 }

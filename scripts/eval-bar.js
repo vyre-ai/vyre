@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // @ts-check
-// eval-bar: the 0.2 memory quality bar (the 0.2 plan, section 0; docs/work/iq.md, task 1).
+// eval-bar: the 0.2 memory quality bar (the 0.2 plan, section 0; team/archive/work-journals/iq.md, task 1).
 // Memory ships in 0.2 only if every measure passes; this is how every later change is measured.
 //
 //   node scripts/eval-bar.js                 the open 0.2 world, as a report
-//   node scripts/eval-bar.js --world open    the same (the sealed half is added when it is written)
+//   node scripts/eval-bar.js --world open    the same
+//   node scripts/eval-bar.js --world sealed  the sealed half: scores only, never its questions or answers
 //   node scripts/eval-bar.js --json          the same, as JSON
 //   node scripts/eval-bar.js --gate          exit 1 when any measure FAILs
 //   node scripts/eval-bar.js --explain --json  also every question's answer and every leak probe's reach
@@ -47,12 +48,15 @@ import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
 import { Budget, openrouterOnce, marginFor, keyUsage, StartRefused, START_LIMIT_USD } from "./lib/eval-openrouter.js";
 import { embedAll, correct, CONFIDENT } from "./eval-answer.js";
 import * as open02 from "../test/fixtures/iq02-open.js";
+import * as sealed02 from "../test/fixtures/iq02-sealed.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BAR_FILE = path.join(ROOT, "test/eval/bar.json");
 export const WORLDS = {
   real: () => worldFromFile(String(process.env.VYRE_EVAL_REAL_WORLD || "")),
   open: () => ({ world: open02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-open.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-open.json"), sealed: false }),
+  // The sealed half: scored, never read. Its questions and answers are never printed, never explained, never recorded by a workflow here.
+  sealed: () => ({ world: sealed02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-sealed.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-sealed.json"), sealed: true }),
 };
 /**
  * A world from a file of { sessions: [{ id, start, turns }], questions: [{ q, class, expect }] }: the real-use test's scrubbed corpus
@@ -152,7 +156,7 @@ async function timedAsk(mem, q, caller, input) {
 }
 
 /**
- * @param {{ world?: "open", only?: number, record?: boolean, freshness?: boolean, explain?: boolean }} [opts]
+ * @param {{ world?: "open"|"sealed", only?: number, record?: boolean, recordSealed?: boolean, freshness?: boolean, explain?: boolean }} [opts]
  *   only: the first n questions of each class (the smoke test). explain: every question's result
  *   and every leak probe's reach, for tuning (never on a sealed world).
  */
@@ -175,8 +179,12 @@ export async function runBar(opts = {}) {
   const w = WORLDS[name];
   if (!w) throw new Error(`no world called ${name} (${Object.keys(WORLDS).join(", ")})`);
   const { world, gold, asks: asksDefault, sealed } = w();
-  const asks = opts.asks || asksDefault;
+  const asks = opts.recordSealed ? path.join(os.tmpdir(), `vyre-sealed-asks-${process.pid}.json`) : opts.asks || asksDefault;
   if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
+  // A sealed world is recorded only by the dispatch-only memory-sealed-record workflow (the protected `eval` environment): replies are kept in the
+  // runner's temp folder for that one run, never in the repository or an artifact, and only scores are printed.
+  if (opts.recordSealed && !(sealed && process.env.VYRE_EVAL_SEALED_RECORD === "1" && process.env.GITHUB_ACTIONS === "true")) throw new Error("a sealed world is recorded only by the memory-sealed-record workflow");
+  if (opts.record && sealed && !opts.recordSealed) throw new Error("a sealed world is never recorded outside the memory-sealed-record workflow");
   const bar = JSON.parse(fs.readFileSync(BAR_FILE, "utf8"));
   let questions = gold.questions;
   if (opts.classes) questions = questions.filter(q => opts.classes.includes(q.class));
@@ -308,7 +316,7 @@ export async function runBar(opts = {}) {
       for (const fq of world.FRESH.questions) {
         const r = (await tryCall(mem, "memory.ask", { question: fq.q }, "cli")).r || {};
         const rt = (await tryCall(mem, "memory.retrieve", { question: fq.q, k: 8 }, "cli")).r || {};
-        res.push({ q: fq.q, answered: correct(r.answer, fq.expect), unrecorded: r.why === "no model",
+        res.push({ ...(sealed ? {} : { q: fq.q }), answered: correct(r.answer, fq.expect), unrecorded: r.why === "no model",
           retrievable: (rt.passages || []).some(p => p.session === s.id), ms: round(performance.now() - f0) });
       }
       fresh = { pass_ms: round(pass), questions: res, answered_ms: res.every(x => x.answered) ? Math.max(...res.map(x => x.ms)) : null,
@@ -393,6 +401,11 @@ async function main(argv) {
     process.exit(2);
   }
   const wi = argv.indexOf("--world");
+  const recordSealed = argv.includes("--record-sealed");
+  if (recordSealed && !(wi >= 0 && argv[wi + 1] === "sealed" && process.env.VYRE_EVAL_RECORD === "1" && process.env.VYRE_EVAL_SEALED_RECORD === "1" && process.env.GITHUB_ACTIONS === "true")) {
+    process.stderr.write("eval-bar: --record-sealed runs only for --world sealed, in the memory-sealed-record workflow.\n");
+    process.exit(2);
+  }
   if (argv.includes("--record") && wi >= 0 && argv[wi + 1] !== "open") {
     process.stderr.write("eval-bar: only the open world is recorded here; a sealed world is never recorded by a workflow.\n");
     process.exit(2);
@@ -400,7 +413,7 @@ async function main(argv) {
   // The budget guard: a recording through OpenRouter reads the key's own usage first and refuses to start at $14 or more (or when it cannot
   // read it). While it runs it stops before a call that could pass $15 of the key's total; after, the usage is printed again. Never the key.
   const key = String(process.env.OPENROUTER_EVAL_KEY || "");
-  const viaOpenRouter = argv.includes("--record") && process.env.VYRE_EVAL_RUNNER === "openrouter";
+  const viaOpenRouter = (argv.includes("--record") || recordSealed) && process.env.VYRE_EVAL_RUNNER === "openrouter";
   const usd = (/** @type {number} */ n) => `$${n.toFixed(4)}`;
   if (viaOpenRouter) {
     try {
@@ -413,7 +426,7 @@ async function main(argv) {
       process.exit(3);
     }
   }
-  const r = await runBar({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), record: argv.includes("--record"), explain: argv.includes("--explain") });
+  const r = await runBar({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), record: argv.includes("--record") || recordSealed, recordSealed, explain: argv.includes("--explain") });
   if (viaOpenRouter) {
     try { const after = await keyUsage({ key }); process.stdout.write(`eval-bar: key usage after: ${usd(after.usage)}${keyBase != null ? ` (this run ${usd(after.usage - keyBase)})` : ""}\n`); }
     catch (e) { process.stdout.write(`eval-bar: key usage after: unavailable (${/** @type {Error} */ (e).message})\n`); }

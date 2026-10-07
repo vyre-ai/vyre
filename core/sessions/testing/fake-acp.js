@@ -8,6 +8,7 @@
 //   "term <command>"   runs it through terminal/create and says its output
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
+//   "ctxused <n>"      reports n tokens used of a 258,400 window (usage_update), as Codex does
 //   anything else      echoes "echo: <prompt>"
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
@@ -29,7 +30,10 @@ let authed = false;
 const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }, { id: "agent-full-access", name: "Full access" }, ...(process.env.FAKE_ACP_EXTRA_MODE ? [{ id: process.env.FAKE_ACP_EXTRA_MODE, name: process.env.FAKE_ACP_EXTRA_MODE }] : [])] };
 
 async function prompt(id, blocks) {
-  const t = blocks.map(b => b.text || "").join("");
+  // FAKE_ACP_LOG gets every prompt as the blocks it arrived in, so a test can see what rode ahead of the person's words.
+  log({ prompt: blocks.map(b => b.text || "") });
+  // The environment brief and the role ride in a block of their own at the head of a process's first prompt (core/sessions/environment.js): the commands below are read from the blocks after it, and "echo" says it all.
+  const t = (blocks.length > 1 && String(blocks[0].text || "").startsWith("[Vyre environment]") ? blocks.slice(1) : blocks).map(b => b.text || "").join("");
   cancelled = false;
   let m;
   if ((m = /^bash (.+)$/.exec(t))) {
@@ -104,6 +108,10 @@ async function prompt(id, blocks) {
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "current_mode_update", currentModeId: m[1] } } });
     await new Promise(r => setTimeout(r, 300));
     say("switched");
+  } else if ((m = /^ctxused (\d+)$/.exec(t))) {
+    // The agent's own report of how full its window is (Codex's usage_update): used of size, as a rollover reads it.
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "usage_update", used: Number(m[1]), size: 258400 } } });
+    say(`context ${m[1]}`);
   } else if (t === "mode") say("mode: " + mode);
   else say("echo: " + t);
   // FAKE_ACP_USAGE=acp: the standard ACP usage on the response (Codex); =grok: the same names in _meta (Grok Build), no usage_update either way.
@@ -117,7 +125,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (m.method === undefined && waits.has(m.id)) { const w = waits.get(m.id); waits.delete(m.id); return m.error ? w.reject(Object.assign(new Error(m.error.message), { code: m.error.code })) : w.resolve(m.result || {}); }
   if (m.method === "initialize") {
     clientCaps = m.params.clientCapabilities || {};
-    log({ launch: process.argv.slice(2), home: process.env.HOME || null, clientCaps });
+    log({ launch: process.argv.slice(2), home: process.env.HOME || null, grokImports: [process.env.GROK_CLAUDE_MCPS_ENABLED || null, process.env.GROK_CURSOR_MCPS_ENABLED || null], clientCaps });
     // FAKE_ACP_AUTH: like the real codex-acp and Grok, session/new answers "Authentication required" (-32000) until authenticate {methodId} was called.
     return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: process.env.FAKE_ACP_AUTH ? [{ id: "api-key", name: "API Key" }, { id: "chat-gpt", name: "ChatGPT" }, ...(clientCaps && clientCaps.auth && clientCaps.auth._meta && clientCaps.auth._meta.gateway ? [{ id: "gateway", name: "Custom model gateway" }] : [])] : [] } });
   }

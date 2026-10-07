@@ -2,6 +2,7 @@
 // Who may call each watchers tool (ADR 0047 reach), against the real Registry and the real manifest:
 // every tool names its reach, a model cannot turn a watcher on unless the person's own words asked
 // for it, and only the person deletes, runs or resumes one. No daemon, no children: a temp home and stubs.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -9,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validate, discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -33,7 +34,10 @@ test("reach holds against the real registry: asked for a model, person for delet
   const stub = { ...manifest, requires: [], needs: {}, teaches: {} };
   const names = Object.keys(REACH);
   writeModule(root, "watchers", stub, `export default { async start(ctx) {
-    for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
+    // watchers.test and watchers.pause are writes by declaration (kernel-declare, RG-1), so a write open to anyone is the person's surfaces and modules unless the tool names its callers: the real module
+    // does (core/watchers/index.js: people, module, mcp, harness), and a stub that left it out would test the default, not the module.
+    const OPEN = ["watchers.test", "watchers.pause"];
+    for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, ...(OPEN.includes(name) ? { callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"] } : {}), run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
     return { async stop() {} };
   } };`);
   writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },
@@ -58,7 +62,9 @@ test("reach holds against the real registry: asked for a model, person for delet
   // Person: never an agent, never a module.
   for (const tool of ["watchers.delete", "watchers.run", "watchers.resume"]) {
     assert.equal(await code(tool, "cli"), "ran", tool);
-    assert.equal(await code(tool, "tailnet:alex"), "ran", tool);
+    // the owner's device is the person only with the person's own session (reach person needs it, the sign-in the registry asks of a device)
+    assert.equal(await code(tool, "tailnet:alex"), "person_session_required", tool);
+    assert.equal((await reg.call(tool, { name: "w" }, "tailnet:alex", { person: { id: "ps1" } })).error, undefined, `${tool} with the person's session`);
     // "cli:agent:kit" is left out on purpose: the registry's person reach lets that caller string through today
     // (a cli transport with an agent claim), which platform owns; every other agent, the harness and a module are refused.
     for (const c of ["mcp", "mcp:agent:kit", "harness", "module:team"]) assert.equal(await code(tool, c), "denied", `${tool} for ${c}`);
@@ -217,4 +223,12 @@ test("through the real module and the real registry: an agent with a grant sees 
   assert.deepEqual(names(await thread("t-gone")), [], "a thread that cannot be looked up");
   assert.equal((await thread("t-harlow", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
   assert.equal((await thread("t-harlow", "watchers.card", { name: "mail-harlow-legal" })).data.name, "mail-harlow-legal");
+
+  // A dry run on a real event is the person's own: every kind of model caller is refused, thread claims included
+  // (nothing runs: the refusal comes before any child).
+  const dry = (caller, meta = {}) => reg.call("watchers.test", { name: "mail-harlow-legal", event: { route: "r", id: "d1" } }, caller, meta);
+  for (const [caller, meta] of [[kit, {}], [juno, {}], ["cli:agent:kit", {}], ["mcp", {}], ["harness", {}], ["mcp:thread:t-harlow", { thread: "t-harlow" }], ["mcp", { thread: "t-harlow" }], ["mcp", { peerSession: "1:2", peerCwd: "/work/h" }]]) {
+    const r = await dry(caller, meta);
+    assert.ok(r.error && /owner's/.test(r.error.message), `${caller} ${JSON.stringify(meta)} was not refused: ${JSON.stringify(r)}`);
+  }
 });

@@ -300,38 +300,15 @@ async function emptyCatalog(q) {
   return "no Claude Code sessions on this machine yet · they show up here once you have some; vyre threads list shows headless ones";
 }
 
-/** `vyre projects move [--dry-run]`: the box's homes to /work/projects, through projects.move. */
-async function moveHomes(args) {
-  const { flags, pos } = parse(args, { bool: ["dry-run"], values: [], cmd: "projects" });
-  if (pos.length) return usage("vyre projects move takes no names", "vyre projects move --dry-run shows what would move");
-  if (!(await up())) return 5;
-  const dry = Boolean(flags["dry-run"]);
-  const r = await tool("projects.move", { dry });
-  if (!r) return 1;
-  if (json()) return emit(r);
-  out("");
-  if (r.done) { out(dim(`  ${r.next}`)); return 0; }
-  out(`  ${bold(dry ? "Would move" : "Moved")} ${r.moved.length} project${r.moved.length === 1 ? "" : "s"} ${dim(`${tilde(r.from)} -> ${tilde(r.to)}`)}`);
-  for (const s of r.moved) out(`   ${s}`);
-  for (const s of r.skipped) out(beacon(`   ${s.slug}: ${s.why}`));
-  if (dry && r.rewrites && r.rewrites.length) out(dim(`  and ${r.rewrites.length} rewrite${r.rewrites.length === 1 ? "" : "s"} of markers and rows (--json lists them)`));
-  if (r.next) { out(""); out(dim(`  ${r.next}`)); }
-  else if (dry) { out(""); out(dim("  nothing has changed; vyre projects move runs it, once box-deploy has validated it on a copy")); }
-  return 0;
-}
-
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a server, move moves the homes to /work/projects",
+    name: "projects", order: 20, usage: "vyre projects [list] [--json]", summary: "every project",
     verbs: [
       // --json: projects.list's rows [{ slug, name, home, threads, ... }]
       { verb: "list", summary: "every project", usage: "", read: true },
-      // --json: { moved: [slug], skipped: [{ slug, why }], from, to, rewrites?, next?, done? }
-      { verb: "move", summary: "on a server, move the project homes to /work/projects", usage: "[--dry-run]" },
     ],
     async run(args) {
       if (args[0] === "list") args = args.slice(1);
-      if (args[0] === "move") return moveHomes(args.slice(1));
       parse(args, { values: [], cmd: "projects" });
       if (!(await up())) return 5;
       const list = await tool("projects.list", {});

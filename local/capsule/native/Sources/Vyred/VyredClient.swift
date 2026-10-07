@@ -220,7 +220,9 @@ struct HTTPHead {
 
 enum VyHTTP {
     static func requestBytes(_ method: String, _ path: String, body: Data?, accept: String = "application/json", headers: [String: String] = [:]) -> Data {
-        var s = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nAccept: \(accept)\r\nx-vyre-caller: capsule\r\n"
+        // Every call says which zone this Mac is in (the IANA name, read each time so a trip is followed), so vyred reads times in it and hands it to a model call's time line (lib/time).
+        let zone = TimeZone.autoupdatingCurrent.identifier.filter { $0.isLetter || $0.isNumber || "/_+-".contains($0) }
+        var s = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nAccept: \(accept)\r\nx-vyre-caller: capsule\r\nx-vyre-zone: \(zone)\r\n"
         // Extra headers (x-vyre-presence), with anything that could end a header line taken out.
         for (k, v) in headers.sorted(by: { $0.key < $1.key }) {
             s += "\(k.filter { $0.isLetter || $0.isNumber || $0 == "-" }): \(v.filter { $0 != "\r" && $0 != "\n" })\r\n"
@@ -388,7 +390,14 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     public init(socket: String = vyredSocketPath()) { self.socket = socket }
 
     public var isUp: Bool { lock.lock(); defer { lock.unlock() }; return up }
-    public func has(_ tool: String) -> Bool { lock.lock(); defer { lock.unlock() }; return tools.contains(tool) }
+    /// The server this Mac is paired to, when it is (BoxLink.swift): its asks and its events come through here.
+    public let box = BoxLink()
+    public func has(_ tool: String) -> Bool {
+        lock.lock()
+        let local = tools.contains(tool), linkCall = tools.contains(WinkServer.call) || tools.contains(WinkServer.legacyCall)
+        lock.unlock()
+        return local || (linkCall && box.offers(tool))
+    }
     public var toolNames: Set<String> { lock.lock(); defer { lock.unlock() }; return tools }
 
     func setUp(_ v: Bool) { lock.lock(); up = v; if !v { tools = [] }; lock.unlock() }
@@ -502,6 +511,13 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     /// A tool with no draft answers plain JSON, which reads as any other call.
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval,
                      onDraft: @escaping @Sendable (_ id: String, _ text: String) -> Void) async -> VyredResult {
+        // A paired Mac's memory is the server's: wink.server.call carries no live draft, so it asks plain (the server's memory.thinking events
+        // still draw the stage line, on the same id).
+        if box.routes(tool, input) {
+            var plain = input
+            plain["stream"] = nil
+            return await box.call(self, tool, plain, timeout: timeout)
+        }
         guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
         let socket = self.socket
         return await withCheckedContinuation { (k: CheckedContinuation<VyredResult, Never>) in
@@ -531,6 +547,12 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     }
 
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
+        if box.routes(tool, input) { return await box.call(self, tool, input, timeout: timeout) }
+        return await callLocal(tool, input, timeout: timeout)
+    }
+
+    /// The same call to this Mac's own vyred, never to the server.
+    func callLocal(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
         guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
         return await send("POST", "/v1/tools/" + Glass.encode(tool), body, timeout: timeout)
     }
@@ -681,7 +703,7 @@ public final class VyredFollower {
             onOpen: { [weak self] in
                 onMain {
                     guard let self, gen == self.generation else { return }
-                    Task { await self.client?.refreshTools(); if gen == self.generation { self.onState?(.open) } }
+                    Task { await self.client?.refreshTools(); if let c = self.client { await c.box.refresh(c) }; if gen == self.generation { self.onState?(.open) } }
                 }
             },
             onEvent: { [weak self] json in

@@ -20,27 +20,33 @@
 //   --resume <id> for an existing one; --plugin-dir <harness> so every thread loads Vyre.
 
 import { spawnSession, killGroup } from "../sessions/spawn.js";
+import { vyreMcpConfig } from "../../lib/mcp-config.js";
 
 /**
  * The command line for a headless session. `system` is the composed system prompt (ADR 0030):
  * appended to Claude Code's own, or replacing it; without it, `append` is appended as before.
- * `tools: "none"` is `--tools ""` (no built-in tools) and `--strict-mcp-config` with no config
- * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
+ * `tools: "none"` is `--tools ""` (no built-in tools). Every session is `--strict-mcp-config` with Vyre's own server only (vyreMcpConfig). `settings: false` is `--setting-sources ""`: none of the user's settings,
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
- * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, native?: string|null, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
   // A fork continues another session's conversation as a new one, with the id given here.
-  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // native: the session id this thread's Claude runs under now, when a rollover gave it a fresh one (a session id names one transcript); else the thread's own id.
+  const sid = o.native || o.id;
+  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", sid] : ["--session-id", sid]));
   // A rewind: resume only up to this entry, as Claude Code's double Esc does (the flag the SDK passes).
   if (o.resumeAt && (o.resume || o.forkFrom)) a.push("--resume-session-at", o.resumeAt);
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
-  if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
+  if (o.tools === "none") a.push("--tools", "");
+  // Only Vyre's own MCP server, never what the account or the machine adds: a logged-in Claude loads its claude.ai connectors (Gmail, Drive, Docs, Slack...) into every
+  // session, and those act as the person outside Vyre's Gate. --strict-mcp-config ignores every other source (the account's connectors, user and project servers,
+  // other plugins' servers), and the plugin's own .mcp.json with them, so Vyre's server is named here.
+  a.push("--strict-mcp-config", "--mcp-config", JSON.stringify(vyreMcpConfig(o.plugin)));
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
   if (o.effort) a.push("--effort", o.effort);
@@ -91,7 +97,7 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
  */
 export function run(o) {
   // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
-  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
+  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn });
   let buf = "", err = "", exited = false, n = 0;
   /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
   const asked = new Map();

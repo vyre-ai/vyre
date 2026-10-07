@@ -15,21 +15,27 @@
 
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
+import { environmentOf } from "./environment.js";
+import { timeLine, zoneFrom } from "../../lib/time/index.js";
+import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
 import crypto from "node:crypto";
+import { resolveSafe, pinnedFetch, loopbackRefused } from "../../lib/api-endpoint.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPerson } from "../../lib/caller.js";
+import { callerKind } from "../modules/index.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
 import { codexProvider } from "./drivers/codex.js";
 import { openrouterProvider } from "./drivers/openrouter.js";
+import { throughDoor } from "../../lib/door-bridge.js";
 import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
@@ -67,6 +73,9 @@ export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
   if (m.asked) return;
+  // The box's own setup page (`setup:<id>`, made only by the relay's setup channel, which reaches only the tools a module declares under setupTools): the person is at it, setting up their box.
+  // Not a person anywhere else (reviewer-3 LB-2): the label is refused on the socket and every other tool's reach list.
+  if (callerKind(m.caller) === "setup" && m.peer) return;
   // The verified assistant (vyred's meta.agent, never the label) may start an account for the person; the account stays pending until the
   // person finishes it on their own device (accounts.js pending), so this lets it start, never finish.
   if (assistant && m.agent && m.agentKind === "assistant") return;
@@ -81,6 +90,8 @@ export function askedOnly(meta, what, { assistant = false } = {}) {
  */
 export const testBase = u => { try { const x = new URL(String(u)); return x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname); } catch { return false; } };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
+const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
@@ -90,6 +101,7 @@ export default {
     const db = ctx.store.db;
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
+    try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
     // A provider with exactly one account has it as its default (earlier installs left it unset).
     try { db.exec("UPDATE sessions_accounts SET is_default = 1 WHERE is_default = 0 AND provider IN (SELECT provider FROM sessions_accounts GROUP BY provider HAVING COUNT(*) = 1)"); } catch {}
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
@@ -210,18 +222,25 @@ export default {
     // the tiny core/providers module since a tool name must start with its own module's name
     // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
     // internal snapshot that module calls through ctx.call.
-    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }];
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }, { id: "openai-compatible", label: "OpenAI-compatible" }];
     // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
     // with strictest-approval flags at every start and its own sign-in in the account's HOME.
     const acpSessions = provider => ({
       get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
       set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
     });
-    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }),
-      // The last rung: a plain API-key driver, its conversation kept here so a resume carries on.
-      openrouter: openrouterProvider({ ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
-        get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
-        set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
+    // The plain API-key chat driver, its conversation kept here so a resume carries on: OpenRouter, and "OpenAI-compatible" (any chat endpoint the person gives a
+    // key and an address for, on the setup screen). Both share the one store, keyed by thread.
+    const chatStore = {
+      get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
+      set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } };
+    // Every model call goes through the inference door (contract 8.4): ctx.model is the door, ctx.chainFor(o) the kernel chain of a session. With no door a
+    // provider refuses to run unless VYRE_LEGACY_DIRECT_MODEL=1 (one warning per provider); see lib/door-bridge.js and team/archive/work-journals/door-retrofit.md.
+    const doorCfg = { door: /** @type {any} */ (ctx).model, legacyDirect: process.env.VYRE_LEGACY_DIRECT_MODEL === "1", chainFor: /** @type {any} */ (ctx).chainFor, warn: m => { try { ctx.log ? ctx.log(m) : process.stderr.write(m + "\n"); } catch {} } };
+    const drivers = { codex: throughDoor(codexProvider({ sessions: acpSessions("codex") }), doorCfg), grok: throughDoor(grokProvider({ sessions: acpSessions("grok") }), doorCfg),
+      // The last rung: a plain API-key driver.
+      openrouter: openrouterProvider({ ...doorCfg, ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
+      "openai-compatible": openrouterProvider({ ...doorCfg, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
     const providerModels = provider => {
@@ -365,6 +384,12 @@ export default {
       const p = th && th.data && th.data.thread && th.data.thread.project;
       return p ? String(p) : null;
     };
+    // A provider account signing in or out is announced as account.changed (the onboarding module's assistant check listens): { provider, account, signed_in, why }. Announced only when the
+    // account's usability changed, never for a label or scope edit, and never carrying anything of the credential.
+    const accountChanged = (/** @type {any} */ row, /** @type {boolean} */ signedIn, /** @type {string} */ why) => {
+      if (!row) return;
+      try { ctx.events.emit("account.changed", { provider: String(row.provider), account: String(row.id), signed_in: signedIn, why }); } catch { /* an emit never fails the call */ }
+    };
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
@@ -377,8 +402,12 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
-        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
-      });
+        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
+        const added = accounts.add(i);
+        // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
+        if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
+        return added;
+      }, ASSISTANT);
 
     // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
     const signins = new Signins({ spawn: (bin, args, { account }) => {
@@ -389,6 +418,51 @@ export default {
       const acctHome = usesSpawner() ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(account.uid)) : /** @type {string} */ (home);
       return spawnSession(bin, args, { cwd: acctHome, env: { PATH: process.env.PATH, ...(home ? { HOME: home } : {}), TERM: "dumb", NO_COLOR: "1", BROWSER: "none" }, ...(usesSpawner() && account.uid != null ? { account: { uid: account.uid, shared: false } } : {}) });
     } });
+    // ---- an API key instead of a login: "Sign in to your AI" on the setup screen takes one of three kinds. The key goes into the Vault (never shown again), is checked with
+    // one cheap read-only call to the address it will be used with, and becomes an api-key account bound to that address.
+    const KEY_KINDS = /** @type {Record<string, { provider: string, label: string, base: string|null, custom: boolean }>} */ ({
+      "openai-compatible": { provider: "openai-compatible", label: "OpenAI-compatible", base: "https://api.openai.com/v1", custom: true },
+      "anthropic-compatible": { provider: "claude", label: "Anthropic-compatible", base: "https://api.anthropic.com", custom: true },
+      openrouter: { provider: "openrouter", label: "OpenRouter", base: "https://openrouter.ai/api/v1", custom: false },
+    });
+    /** One cheap, read-only call that proves the key works at the address (no model is run, nothing is spent). Redirects are refused so the key never follows one elsewhere. */
+    const checkKey = async (/** @type {string} */ kind, /** @type {string} */ base, /** @type {string} */ key) => {
+      const url = kind === "anthropic-compatible" ? `${base.replace(/\/v1$/, "")}/v1/models` : kind === "openrouter" ? "https://openrouter.ai/api/v1/auth/key" : `${base}/models`;
+      const headers = kind === "anthropic-compatible" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
+      const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 15_000);
+      try {
+        const pin = await resolveSafe(url);
+        if (!pin) throw Object.assign(new Error("that address is not a place a key may be sent"), { code: "bad_input" });
+        const r = await pinnedFetch(url, { headers, signal: ac.signal }, pin);
+        // The answer is read for nothing; a server that streams without end is cut off after about 1 MB.
+        if (r.body) { let n = 0; for await (const c of /** @type {any} */ (r.body)) { n += c.length; if (n > 1_000_000) { ac.abort(); break; } } }
+        if (r.status === 401 || r.status === 403) throw Object.assign(new Error("the service refused that key"), { code: "bad_input" });
+        if (!r.ok) throw Object.assign(new Error(`the service answered ${r.status} when the key was checked`), { code: "bad_input" });
+      } catch (e) {
+        if (/** @type {any} */ (e).code === "bad_input") throw e;
+        throw Object.assign(new Error(/** @type {any} */ (e).name === "AbortError" ? "the service did not answer in time" : "could not reach the service to check the key"), { code: "bad_input" });
+      } finally { clearTimeout(timer); }
+    };
+    tool("sessions.accounts.key", "Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault (bound to that address) and never returned or shown again; the key is sent only to that host, which is looked up again on every turn and refused if it points at a private, tailnet or metadata address. Removing the account removes the key. Only the person (or their own words) adds one.",
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
+      async (i, meta) => {
+        askedOnly(meta, "Adding an API key");
+        const k = KEY_KINDS[String(i.kind)];
+        if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
+        const key = String(i.key || "").trim();
+        if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
+        const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
+        if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
+        await checkKey(String(i.kind), base, key);
+        const id = crypto.randomBytes(6).toString("hex");
+        const item = `ai-key-${k.provider}-${id}`;
+        const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
+        if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
+        const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        accountChanged(row, true, "key");
+        return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
+      });
     tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
       { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
       async (i, meta) => {
@@ -410,24 +484,37 @@ export default {
             ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
         }
         const account = row;
-        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
+        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); accountChanged(accounts.row(account.id), true, "signed_in"); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
         catch (e) { if (created) accounts.remove(account.id); throw e; }
-      });
+      }, ASSISTANT);
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
-      async (i, meta) => { if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" }); return accounts.remove(i.id); });
+      async (i, meta) => {
+        if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" });
+        const row = accounts.row(String(i.id));
+        const out = accounts.remove(i.id);
+        if (row && !row.pending) accountChanged(row, false, "removed");
+        // A key this module vaulted goes with its account (the Vault refuses to delete anything else of ours).
+        if (row && row.kind === "api-key" && /^ai-key-/.test(String(row.vault_item || ""))) await ctx.call("vault.delete", { name: row.vault_item }).catch(() => {});
+        return out;
+      });
 
     tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
       async (i, meta) => {
         askedOnly(meta, "Binding an account", { assistant: true });
-        if (isPerson(meta || {})) return accounts.bind({ ...i, confirm: true });
+        if (isPerson(meta || {})) {
+          const was = accounts.row(String(i.id)), bound = accounts.bind({ ...i, confirm: true });
+          const now = await bound;
+          if (was && was.pending && now && !now.pending && !(now.kind === "login" && now.signed_in_at == null)) accountChanged(now, true, "confirmed");
+          return bound;
+        }
         // Not a person's surface: only to the project the request came from, never "*", an agent or a default; it never finishes a pending account.
         const project = await requestProject(meta);
         if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
         return accounts.bind({ id: i.id, project });
-      });
+      }, ASSISTANT);
 
     // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and returned as base64, for
     // the Switchboard to hand to artifacts. Internal: only Vyre's modules call it. The read runs as the account's uid on a box.
@@ -594,12 +681,53 @@ export default {
       run: async i => ({ mode: i.project ? (projectMode(i.project) || { mode: null }).mode : null }),
     });
 
+    /**
+     * The environment brief for one agent (environment.js), from live reads: what it can reach (the registry's own list for its caller class), the Space and the others the person
+     * belongs to, the record types, the connectors, the team. Each read is optional: one that fails drops its line. Spaces come from spaces.brief and the types from work.space-brief (the person's own tools refuse a module); a build
+     * whose kernel does not answer says "ask records.types" instead of listing them.
+     * @param {{ agent?: string, agent_kind?: string, project?: string, provider?: string }} i
+     */
+    const environment = async i => {
+      const label = i.agent ? `mcp:agent:${i.agent}` : "mcp";
+      const ok = (/** @type {any} */ r) => (r && !r.error ? r.data : null);
+      let names = [];
+      try { names = (ctx.modules.tools(label) || []).map((/** @type {any} */ t) => String(t.name)); } catch { names = []; }
+      // An assistant does what its person can: the person-reach tools the agent rules leave open are its too.
+      if (i.agent_kind === "assistant") { try { const all = new Set((ctx.modules.tools("cli") || []).map((/** @type {any} */ t) => String(t.name))); for (const t of AGENT_OPEN) if (all.has(t) && !names.includes(t)) names.push(t); } catch { /* none */ } }
+      const [agent, sp, ty, mcp, team] = await Promise.all([i.agent ? ctx.call("agents.list", {}).then(ok, () => null) : null, ctx.call("spaces.brief", {}).then(ok, () => null), ctx.call("work.space-brief", {}).then(ok, () => null),
+        ctx.call("mcp.servers", {}).then(ok, () => null), ctx.call("team.list", {}).then(ok, () => null)]);
+      // The brief is cut to the asking agent (ENV-1): only the identity-level assistant, or the person's own session, is told of every Space, connector and teammate. Any other agent hears of the current Space,
+      // the connectors it holds a tool of, and the teammates only if it may list them; a read that cannot be cut to the agent is dropped.
+      const scoped = Boolean(i.agent) && i.agent_kind !== "assistant";
+      const spaces = (sp && Array.isArray(sp.spaces) ? sp.spaces : []).filter((/** @type {any} */ x) => !scoped || x.current).map((/** @type {any} */ x) => ({ name: String(x.name || ""), role: x.role || null, current: Boolean(x.current), zone: typeof x.zone === "string" ? x.zone : null })).filter((/** @type {any} */ x) => x.name);
+      const types = ty && Array.isArray(ty.types) ? ty.types.map((/** @type {any} */ t) => ({ name: String(t.name), fields: Array.isArray(t.fields) ? t.fields.map((/** @type {any} */ f) => String(f.name || f)) : [] })) : null;
+      const a = (Array.isArray(agent) ? agent : agent && Array.isArray(agent.agents) ? agent.agents : []).find((/** @type {any} */ x) => x && x.name === i.agent);
+      // The person's zone is the device's (the launch's `zone`); the space's is its setting (spaces.brief); an unknown person zone falls back to the space's, then UTC, and the line says so by naming it.
+      const here = spaces.find((/** @type {any} */ x) => x.current);
+      const spaceZone = zoneFrom(i.space_zone || (here && here.zone), "") || null;
+      const personZone = zoneFrom(i.zone, spaceZone || "UTC");
+      const timeText = timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: personZone, space: spaceZone, contacts: Array.isArray(i.contacts) ? i.contacts : [] });
+      return environmentOf({
+        timeLine: timeText,
+        agent: i.agent ? { name: i.agent, kind: i.agent_kind || null, projects: a && (a.projects === "*" || Array.isArray(a.projects)) ? a.projects : undefined } : null,
+        project: i.project || null, provider: i.provider || "claude", tools: names, spaces, space: spaces.find((/** @type {any} */ x) => x.current) || null, types,
+        connectors: (Array.isArray(mcp) ? mcp : []).filter((/** @type {any} */ c) => !scoped || names.some(n => n.startsWith(`${c.name}.`) || n.startsWith(`${c.name}_`) || n.startsWith(`mcp__${c.name}__`))).map((/** @type {any} */ c) => ({ name: c.name, state: c.state })),
+        team: scoped && !names.includes("team.list") ? [] : (Array.isArray(team) ? team : team && Array.isArray(team.teammates) ? team.teammates : []).map((/** @type {any} */ x) => ({ name: x.name, role: x.role })),
+        artifactsDir: i.artifacts_dir ? String(i.artifacts_dir) : null,
+      });
+    };
+    ctx.tool("sessions.environment", {
+      description: "The environment brief an agent starting now is told (what Vyre is, its Space, its records, how to work, approvals, memory, what it can reach), built from live reads and cut to a budget. The same text goes to every model and driver.", internal: true,
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, provider: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
+      run: async i => environment(i),
+    });
+
     ctx.tool("sessions.prompt.compose", {
-      description: "The system prompt for a session starting now: the levels around Vyre's own launch text. purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
-      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str } } },
+      description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => i.purpose === "capsule"
-        ? composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") })
-        : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null }),
+        ? (r => ({ ...r, text: `${r.text}\n\n${timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: zoneFrom(i.zone, zoneFrom(i.space_zone, "UTC")), space: zoneFrom(i.space_zone, "") || null, contacts: Array.isArray(i.contacts) ? i.contacts : [] })}` }))(composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") }))
+        : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null, environment: (await environment(i)).text, context: i.context || null }),
     });
 
     return { async stop() { clearInterval(sweeper); signins.stop(); } };

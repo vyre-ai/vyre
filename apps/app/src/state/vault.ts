@@ -25,7 +25,7 @@ let inflight: Promise<void> | null = null;
 
 /** A call that never throws: a box not reached yet is an offline answer. */
 const call = <T,>(tool: string, input: Record<string, unknown> = {}): Promise<Result<T>> =>
-  boxCall<T>(tool, input).catch((e: Error) => ({ error: { code: "offline", message: e.message || "the box did not answer" } }));
+  boxCall<T>(tool, input).catch((e: Error) => ({ error: { code: "offline", message: e.message || "your home did not answer" } }));
 
 export function refreshVault(): Promise<void> {
   return (inflight ??= (async () => {
@@ -72,7 +72,7 @@ const clip = makeClip(board, { set: (f, ms) => setTimeout(f, ms), clear: (id) =>
  */
 export function copy(name: string, field: string): Promise<Outcome> {
   const out: { refusal?: Outcome } = {};
-  const pending = call<{ value: string }>("vault.reveal", { name, field, purpose: "copy" }).then((r) => {
+  const pending = call<{ value: string }>("vault.reveal", { name, field }).then((r) => {
     if (r.error) {
       out.refusal = refused(r.error);
       return null;

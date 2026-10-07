@@ -10,8 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { start } from "../../daemon/index.js";
-import { call } from "../../daemon/client.js";
-import { tempHome, present, writeModule } from "../../../test/helpers.js";
+import { tempHome, present, writeModule, asOwner } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { installed } from "../sdk.js";
 
@@ -25,6 +24,9 @@ export const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 fs.chmodSync(FAKE, 0o755);
 export const SDK = process.env.VYRE_SESSIONS_SDK_DIR || "";
 export const noSdk = !SDK || !installed(SDK) ? "the Agent SDK is not installed here (set VYRE_SESSIONS_SDK_DIR)" : false;
+
+// A development build opts out of the session sandbox (daemon/index.js, VYRE_SESSION_SANDBOX_OFF): with the kernel on a session is confined by bwrap, which hides the fake claude's log and transcript folders in the temp home. The sandbox has its own tests.
+process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
 export const until = async (fn, what, ms = 15_000) => {
   const end = Date.now() + ms;
@@ -67,22 +69,28 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   // The probe and any modules given here stand in for Vyre's own (internal tools, session
   // providers), so the home's modules folder loads as first party (ADR 0047). Test only.
   const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine.
   const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  // through the registry as the owner's device (asOwner above): over ssh the socket's "cli" is no person (its ancestry is not measured), and the chat gate would refuse it
+  const tool = (name, input, caller = "cli") => d.registry.call(name, input, caller);
   for (const [name, value] of Object.entries(vault)) {
     assert.ok((await tool("vault.put", { name, kind: name === "anthropic-api-key" ? "api-key" : "secret", fields: { value } })).data);
+    // The provider sign-in items are never granted to a module (vault.launcherOnly): the session launcher reads them through the credentials port the daemon holds. Any other item is still a grant.
+    if (name === "claude-setup-token" || name === "anthropic-api-key") continue;
     assert.equal((await tool("vault.grant", { name, module: "threads" })).data.grant.status, "active");
   }
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const events = async id => (await tool("threads.get", { thread: id, limit: 500 })).data.events;
   const finished = async (id, n = 1) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n} of ${id.slice(0, 8)}`);
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
+  /** Every prompt an ACP agent received, as the blocks it arrived in (the fake agent logs them when FAKE_ACP_LOG is set). */
+  const acpPrompts = () => { try { return fs.readFileSync(process.env.FAKE_ACP_LOG || "", "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(x => x.prompt).map(x => x.prompt); } catch { return []; } };
   const internal = (name, input = {}) => d.registry.call(name, input, "module:vyred");
-  return { root, d, work, tool, internal, launches, events, finished, said, transcripts };
+  return { root, d, work, tool, internal, launches, events, finished, said, acpPrompts, transcripts };
 }
 
 /**

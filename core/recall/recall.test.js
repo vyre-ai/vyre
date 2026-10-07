@@ -3,6 +3,7 @@
 // Vectors use a fake embedder: tests never download a model, and pass whether or not the
 // optional package is installed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -520,4 +521,30 @@ test("recall: a turn row says which provider and model spoke, and an older row r
   assert.deepEqual(rows.map(r => ({ ...r })), [{ role: "user", provider: "claude", model: null }, { role: "assistant", provider: "claude", model: "claude-opus-4-1" }]);
   // The words stay the indexed column: a search still finds them and the snippet is the text.
   assert.equal(e.rows("SELECT snippet(recall_turns, 4, '[', ']', '', 8) AS s FROM recall_turns WHERE recall_turns MATCH 'menu' ORDER BY seq")[0].s.includes("[menu]"), true);
+});
+
+test("recall: each indexed batch is handed once to the capture port, scrubbed, and a rewrite says so", async t => {
+  const e = setup(t);
+  const got = [];
+  e.ix.capture = async c => { got.push(c); };
+  e.writeTurns(["my key is sk-ant-" + "a1b2c3d4e5".repeat(4), "noted"]);
+  await e.index(); await e.ix.captured;
+  assert.equal(got.length, 1);
+  assert.equal(got[0].session, "s1");
+  assert.equal(got[0].rewritten, false);
+  assert.deepEqual(got[0].lines.map(l => [l.seq, l.role]), [[0, "user"], [1, "assistant"]]);
+  assert.ok(!got[0].lines[0].text.includes("a1b2c3d4"), "the captured line is the scrubbed one");
+  e.writeTurns(["my key is sk-ant-" + "a1b2c3d4e5".repeat(4), "noted", "thanks"]);
+  await e.index(); await e.ix.captured;
+  assert.equal(got.length, 2);
+  assert.deepEqual(got[1].lines.map(l => l.seq), [2], "only the new turn goes the second time");
+  e.writeTurns(["something else entirely", "ok"]);
+  await e.index(); await e.ix.captured;
+  assert.equal(got[2].rewritten, true);
+  await e.index(); await e.ix.captured;
+  assert.equal(got.length, 3, "an unchanged transcript captures nothing");
+  e.ix.capture = async () => { throw new Error("boom"); };
+  e.writeTurns(["something else entirely", "ok", "more"]);
+  const s = await e.index(); await e.ix.captured;
+  assert.equal(s.failed, 0, "a refusing capture never fails the pass");
 });

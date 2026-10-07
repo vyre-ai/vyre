@@ -1,6 +1,6 @@
 ---
 title: Watchers
-summary: Ask Claude to watch something and file what it finds into a project, see the dry run before it turns on, and look after running watchers from the terminal and the Deck.
+summary: Ask Claude to watch something and file what it finds into a project, see the dry run before it turns on, and look after running watchers from the terminal and the Vyre app.
 audience: users, agents
 owner: docs
 status: stable
@@ -23,7 +23,7 @@ room and nowhere else.
 
 In any Claude Code session with Vyre, say what to watch and where it goes:
 
-> Watch the billing inbox for new invoices and file them into Harlow Legal.
+> Watch the billing inbox for new invoices and file them into Juniper Studio.
 
 Claude uses the **write-a-watcher** skill. It:
 
@@ -44,8 +44,8 @@ schedule, and a watcher cannot widen its own credentials after you approved it.
 
 ```json
 {
-  "name": "harlow-invoices",
-  "project": "harlow-legal",
+  "name": "juniper-invoices",
+  "project": "juniper-legal",
   "schedule": "*/15 * * * *",
   "net": { "mail.example": { "vault": "billing-inbox" } },
   "emits": "invoice.seen"
@@ -92,11 +92,11 @@ grant.
 
 ```
 vyre vault put billing-inbox --kind api-key          # if it is not in the Vault yet
-vyre vault grant billing-inbox watchers --watcher harlow-invoices
+vyre vault grant billing-inbox watchers --watcher juniper-invoices
 ```
 
 Until you run it, the dry run fails with "billing-inbox is not granted to
-watchers/harlow-invoices", followed by the grant command to run. If Claude asked for the grant
+watchers/juniper-invoices", followed by the grant command to run. If Claude asked for the grant
 itself, it waits as pending: run `vyre vault pending` and `vyre vault approve <id>` (see the
 [Vault](vault.md) page for a known problem with `approve`). Any value released during a run is scrubbed
 from the run's logs and errors, and an item that carries one fails the run, so a credential never
@@ -106,22 +106,22 @@ reaches a project or memory.
 
 ```
 vyre watchers                          # every watcher: state, project, schedule, items filed, next run
-vyre watchers test harlow-invoices     # dry-run it now; files nothing
-vyre watchers create harlow-invoices   # turn on what was just dry-run
-vyre watchers pause harlow-invoices
-vyre watchers resume harlow-invoices   # also clears its failure count
-vyre watchers logs harlow-invoices     # recent runs: when, why, items seen and filed, errors
-vyre watchers items harlow-invoices    # what it filed; a project slug lists that project's items
+vyre watchers test juniper-invoices     # dry-run it now; files nothing
+vyre watchers create juniper-invoices   # turn on what was just dry-run
+vyre watchers pause juniper-invoices
+vyre watchers resume juniper-invoices   # also clears its failure count
+vyre watchers logs juniper-invoices     # recent runs: when, why, items seen and filed, errors
+vyre watchers items juniper-invoices    # what it filed; a project slug lists that project's items
 ```
 
 A dry run says what it would file, then lists up to ten items:
 
 ```output
-  harlow-invoices would file 3 items into harlow-legal · every 15 minutes · 640ms
+  juniper-invoices would file 3 items into juniper-legal · every 15 minutes · 640ms
   · Invoice 1042 from Northwind Bakery  https://mail.example/m/81
       invoice.seen · 2026-09-26 09:14
 
-  vyre watchers create harlow-invoices to turn it on
+  vyre watchers create juniper-invoices to turn it on
 ```
 
 States are `draft`, `on`, `paused`, `changed` and `invalid`. `vyre watchers items` with no name
@@ -144,19 +144,19 @@ For a `"webhook"` watcher, `vyre watchers create` prints the route (`POST
 /v1/watchers/<name>/hook`), the header (`x-vyre-token`) and the token the sender must use. The
 request body reaches the watcher as `hook`.
 
-In the Deck, an agent's board (`/agents/<name>`) lists its watchers, each with a switch that pauses
+In the Vyre app, an assistant's page (under **Assistants**) lists its watchers, each with a switch that pauses
 it and turns it back on. Filed items appear in the project and in its memory room.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Claude |
+| Task | Terminal | Vyre app | Claude |
 | --- | --- | --- | --- |
 | Write a watcher | | | the write-a-watcher skill |
 | Dry-run | `vyre watchers test` | | `watchers.test` |
 | Turn on | `vyre watchers create` | | `watchers.create`, after your yes |
-| List | `vyre watchers` | an agent's board | `watchers.list` |
+| List | `vyre watchers` | an assistant's page | `watchers.list` |
 | Pause, resume | `vyre watchers pause`, `resume` | the pause switch | `watchers.pause`, `watchers.resume` |
-| Runs and items | `vyre watchers logs`, `items` | the project | `watchers.logs`, `watchers.items` |
+| Runs and items | `vyre watchers logs`, `items` | | `watchers.logs`, `watchers.items` |
 
 ## Standing duties are watchers too
 
@@ -199,6 +199,16 @@ agencies, anything with a deadline; not newsletters or receipts), and each yes b
 note in that project's memory, marked as from outside so it is never treated as an instruction. It
 sends and changes nothing. It starts off: you see its card, run the one grant command it shows, and
 turn it on.
+
+## A watcher that wakes a session
+
+A watcher made for one session (a PR's review comments, say) can post what it finds into that session.
+Its `watcher.json` names the session (`about`), is owned by it (`owner`), says `act: true`, and may set
+`wake.maxPerDay` (default 5, at most 20). Each run that files something new posts one note to the
+session, and the note is quoted data: Vyre says so in its own words first, then puts the items inside a
+marked block the item cannot close, so a comment from outside can be read but never obeyed. It posts only
+to its own session, only in its own project, and never more than the day's limit. The card shows this
+before you turn it on.
 
 ## Presets for common sources
 

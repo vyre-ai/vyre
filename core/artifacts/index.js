@@ -32,6 +32,7 @@ import { findSecrets } from "../../lib/secret-text.js";
 import { openStore } from "./store.js";
 import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp } from "./render.js";
 import { MEDIA, MAX_MEDIA, mediaFormatOf, isMediaFormat, parseRange } from "./media.js";
+import { probe } from "./probe.js";
 
 export const MIGRATIONS = [
   `
@@ -108,10 +109,13 @@ export const _test = {
   /** How long a folder event for a media file waits for the file to settle, in ms. */
   mediaDebounce: 1500,
   /** The most generated media one project and one thread may hold, in bytes (plain refusal beyond it). */
-  mediaCaps: { project: 5 * 1024 ** 3, thread: 1024 ** 3 },
+  mediaCaps: { project: 5 * 1024 ** 3, thread: 1024 ** 3, total: 20 * 1024 ** 3 },
 };
 
 const PERSONAL = "personal";
+/** Who may call a tool that changes state: the person's own surfaces and Vyre's modules (PEOPLE), and for the tools a model uses to make and keep its own work, a model session too (WITH_AGENTS). Every one of those tools scopes what a model reaches to its own project or own work (scopeOf). */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const WITH_AGENTS = [...PEOPLE, "mcp", "harness"];
 const DAY = 86_400_000;
 const EXPIRES = /** @type {Record<string, number|null>} */ ({ "1d": DAY, "7d": 7 * DAY, "30d": 30 * DAY, never: null });
 const UNDO_DAYS = 30;
@@ -325,10 +329,40 @@ export default {
 
     const hashOf = (/** @type {string} */ token) => crypto.createHash("sha256").update(token).digest("hex");
 
+    /**
+     * Publish an image, a video or a sound: its file is copied into the public folder beside a small meta that names it
+     * and says when the link ends. The share server serves exactly that file, with a type it derives itself from the
+     * file's name (never from meta), nosniff and a sandbox. Media has one version. The file is served as it is, so a
+     * photograph's own metadata goes with it.
+     * @param {any} r @param {string} token @param {number|null} expires_at
+     */
+    const publishMedia = async (r, token, expires_at) => {
+      const m = JSON.parse(r.media);
+      const hash = hashOf(token);
+      const dir = path.join(publicDir, hash);
+      const tmp = path.join(publicDir, `.${hash}.${process.pid}`);
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.mkdirSync(tmp, { mode: 0o770 });
+      try {
+        const out = path.join(tmp, m.file);
+        await fs.promises.copyFile(store.mediaPath(r.project, r.id, m.file), out);
+        fs.chmodSync(out, 0o640);
+        fs.writeFileSync(path.join(tmp, "meta.json"), JSON.stringify({ expires_at, media: { file: m.file, bytes: m.bytes } }), { mode: 0o640 });
+      } catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); throw e; }
+      let seen = null;
+      try { seen = fs.readFileSync(path.join(dir, "views"), "utf8"); } catch {}
+      if (seen !== null) fs.writeFileSync(path.join(tmp, "views"), seen);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.renameSync(tmp, dir);
+      fs.rmSync(path.join(publicDir, `${hash}.gone`), { force: true });
+      db.prepare("UPDATE artifacts_shares SET published = ? WHERE artifact = ?").run(r.head, r.id);
+      return r.head;
+    };
+
     /** Write the stripped public snapshot for one version (or the latest). @param {any} r @param {string} token
      * @param {number|null} version @param {number|null} expires_at */
     const publish = async (r, token, version, expires_at) => {
-      if (isMediaFormat(r.format)) throw refuse("public links for images, video and audio arrive in a later update", "not_available");
+      if (isMediaFormat(r.format)) return publishMedia(r, token, expires_at);
       const { files } = await filesAt(r, version ?? r.head);
       const found = findSecrets(Object.values(files).join("\n"));
       if (found.length) throw refuse(`this looks like it holds a secret (${[...new Set(found.map(f => f.kind))].join(", ")} on line ${found.map(f => f.line).join(", ")}); remove it and share again`, "secret_found", { findings: found });
@@ -599,10 +633,21 @@ export default {
     /** Refuse when adding `bytes` would pass a cap. @param {string} project @param {string} thread @param {number} bytes */
     const checkMediaCaps = (project, thread, bytes) => {
       const gb = (/** @type {number} */ n) => (n / 1024 ** 3).toFixed(n >= 1024 ** 3 ? 0 : 1);
+      const all = Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS n FROM artifacts_items WHERE media IS NOT NULL").get()).n);
+      if (all + bytes > _test.mediaCaps.total) throw refuse(`generated media on this box is at its limit (${gb(_test.mediaCaps.total)} GB). Delete some images, video or audio to make room`, "quota");
       if (mediaHeld("project", project) + bytes > _test.mediaCaps.project) throw refuse(`this project's generated media is at its limit (${gb(_test.mediaCaps.project)} GB). Delete some images, video or audio to make room`, "quota");
       if (mediaHeld("thread", thread) + bytes > _test.mediaCaps.thread) throw refuse(`this conversation's generated media is at its limit (${gb(_test.mediaCaps.thread)} GB). Delete some to make room`, "quota");
     };
 
+
+    /** Size and length from the stored file's own header. @param {string} project @param {string} id @param {string} format @param {number} bytes */
+    const probeStored = async (project, id, format, bytes) => {
+      let fh;
+      try { fh = await fs.promises.open(store.mediaPath(project, id, MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (format)]), "r"); }
+      catch { return {}; }
+      try { return await probe(format, bytes, async (o, n) => { const b = Buffer.alloc(n); const { bytesRead } = await fh.read(b, 0, n, o); return b.subarray(0, bytesRead); }); }
+      finally { await fh.close(); }
+    };
 
     /**
      * Keep media a module hands over as bytes (a provider's content block, base64 in the stream) without a
@@ -623,11 +668,11 @@ export default {
       const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
       const t = await threadOf(i.thread);
       const clip = (/** @type {unknown} */ v, /** @type {number} */ n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-      const prov = { provider: String(i.provider || (t && t.provider) || "").slice(0, 60) || null, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "content-block" };
+      const prov = { provider: String(i.provider || (t && t.provider) || "").slice(0, 60) || null, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "content-block", privacy: i.privacy === "zdr" || i.privacy === "off" ? i.privacy : null };
       const dup = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_items WHERE thread = ? AND deleted_at IS NULL AND media IS NOT NULL AND json_extract(media, '$.sha256') = ? LIMIT 1").get(i.thread, sha256));
       if (dup) {
         const old = JSON.parse(dup.media), next = { ...old };
-        for (const k of ["provider", "model", "prompt"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
+        for (const k of ["provider", "model", "prompt", "privacy"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
         db.prepare("UPDATE artifacts_items SET media = ?, text = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), [dup.title, next.provider, next.model, next.prompt].filter(Boolean).join("\n"), now(), dup.id);
         return shape(row(dup.id));
       }
@@ -646,7 +691,7 @@ export default {
         await store.purge(project, idNew).catch(() => {});
         throw e;
       }
-      const full = { mime: MEDIA[format].mime, bytes: bytes.length, sha256, file: MAIN_FILE[format], ...prov };
+      const full = { mime: MEDIA[format].mime, bytes: bytes.length, sha256, file: MAIN_FILE[format], ...(await probeStored(project, idNew, format, bytes.length)), ...prov };
       db.prepare("INSERT INTO artifacts_versions (artifact, n, sha, at, by, message, size) VALUES (?,?,?,?,?,?,?)").run(idNew, 1, sha, at, JSON.stringify(by), "registered", bytes.length);
       db.prepare("UPDATE artifacts_items SET head = 1, text = ?, media = ?, updated_at = ? WHERE id = ?").run([title, prov.provider, prov.model, prov.prompt].filter(Boolean).join("\n"), JSON.stringify(full), at, idNew);
       const fresh = row(idNew);
@@ -672,7 +717,7 @@ export default {
       const t = await threadOf(i.thread);
       const provider = String(i.provider || (t && t.provider) || "").slice(0, 60) || null;
       const clip = (/** @type {unknown} */ v, /** @type {number} */ n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-      const prov = { provider, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "file" };
+      const prov = { provider, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "file", privacy: i.privacy === "zdr" || i.privacy === "off" ? i.privacy : null };
       const known = /** @type {any} */ (db.prepare("SELECT artifact FROM artifacts_capture_files WHERE thread = ? AND name = ?").get(i.thread, name));
       const cur = known && row(known.artifact);
       const meta = { caller: "module:artifacts", firstParty: true, thread: i.thread };
@@ -683,7 +728,7 @@ export default {
         const old = JSON.parse(cur.media);
         if (old.sha256 === m.sha256) {
           const next = { ...old };
-          for (const k of ["provider", "model", "prompt"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
+          for (const k of ["provider", "model", "prompt", "privacy"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
           if (prov.source !== "file" && (!old.source || old.source === "file")) next.source = prov.source;
           db.prepare("UPDATE artifacts_items SET media = ?, text = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), [cur.title, next.provider, next.model, next.prompt].filter(Boolean).join("\n"), now(), cur.id);
           mediaSig.set(`${i.thread}/${name}`, await sigOf(i.thread, name));
@@ -707,7 +752,7 @@ export default {
         await store.purge(project, idNew).catch(() => {});
         throw e;
       }
-      const full = { mime: MEDIA[format].mime, bytes: measured.bytes, sha256: measured.sha256, file: MAIN_FILE[format], ...prov };
+      const full = { mime: MEDIA[format].mime, bytes: measured.bytes, sha256: measured.sha256, file: MAIN_FILE[format], ...(await probeStored(project, idNew, format, measured.bytes)), ...prov };
       db.prepare("INSERT INTO artifacts_versions (artifact, n, sha, at, by, message, size) VALUES (?,?,?,?,?,?,?)").run(idNew, 1, sha, at, JSON.stringify(by), `saved ${name}`, measured.bytes);
       db.prepare("UPDATE artifacts_items SET head = 1, text = ?, media = ?, updated_at = ? WHERE id = ?").run([title, prov.provider, prov.model, prov.prompt].filter(Boolean).join("\n"), JSON.stringify(full), at, idNew);
       db.prepare("INSERT OR REPLACE INTO artifacts_capture_files (thread, name, artifact) VALUES (?,?,?)").run(i.thread, name, idNew);
@@ -796,6 +841,7 @@ export default {
     const idIn = { type: "object", required: ["id"], properties: { id: str } };
 
     ctx.tool("artifacts.create", {
+      callers: WITH_AGENTS,
       description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. An interactive page or app (HTML) runs your code in a locked frame, but it can still send the browser to another address and put anything it contains into that address, which no header stops: put nothing in one that the person has not chosen to send to the internet, and prefer a document, report, dashboard, diagram or deck, which run no code. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
       input: { type: "object", required: ["kind", "content"], properties: {
         kind: { type: "string", enum: Object.keys(KINDS) }, format: { type: "string", enum: Object.keys(MAIN_FILE) },
@@ -805,6 +851,7 @@ export default {
     });
 
     ctx.tool("artifacts.update", {
+      callers: WITH_AGENTS,
       description: "Save a new version of an artifact: new content (and data, for a dashboard), a new title, or both. Earlier versions stay, and artifacts.diff shows what changed.",
       input: { type: "object", required: ["id"], properties: { id: str, content: str, data: {}, title: str, message: str } },
       examples: [{ id: "a_3fK2x9LqWm1p", content: "# Intake, October\n\nNew matters: 46, against 39 in September.\n\nReferrals are up.", message: "add referrals" }],
@@ -925,6 +972,7 @@ export default {
     });
 
     ctx.tool("artifacts.restore", {
+      callers: WITH_AGENTS,
       description: "Go back to an earlier version. It becomes a new version, so nothing is lost and it can be undone the same way.",
       input: { type: "object", required: ["id", "version"], properties: { id: str, version: { type: "integer", minimum: 1 } } },
       examples: [{ id: "a_3fK2x9LqWm1p", version: 1 }],
@@ -943,6 +991,7 @@ export default {
     });
 
     ctx.tool("artifacts.move", {
+      callers: WITH_AGENTS,
       description: "Move an artifact, with every version, to another project (the person), or into an agent's own project from the person's own space.",
       input: { type: "object", required: ["id"], properties: { id: str, project: { type: ["string", "null"] } } },
       examples: [{ id: "a_3fK2x9LqWm1p", project: "harlow-legal" }],
@@ -962,6 +1011,7 @@ export default {
     });
 
     ctx.tool("artifacts.archive", {
+      callers: WITH_AGENTS,
       description: "Archive an artifact (it leaves the lists and any public link stops), or bring it back with archived: false.",
       input: { type: "object", required: ["id"], properties: { id: str, archived: { type: "boolean" } } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],
@@ -977,6 +1027,7 @@ export default {
     });
 
     ctx.tool("artifacts.delete", {
+      callers: WITH_AGENTS,
       description: `Delete an artifact. Its public link stops at once. artifacts.undelete brings it back for ${UNDO_DAYS} days; after that every version is gone.`,
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -990,6 +1041,7 @@ export default {
     });
 
     ctx.tool("artifacts.undelete", {
+      callers: WITH_AGENTS,
       description: `Bring back an artifact deleted in the last ${UNDO_DAYS} days. A public link it had stays off.`,
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -1019,6 +1071,7 @@ export default {
     });
 
     ctx.tool("artifacts.share", {
+      callers: PEOPLE,
       description: "Make a public link to an artifact that anyone with it can open, served by the person's own server. It shows the version shared unless version is \"latest\", and it expires (1d, 7d, 30d by default, or never). Sharing publicly is posting as the person: it runs when the person tapped it or asked for it, and otherwise waits for their approval. Refused when public links are off or when the artifact looks like it holds a secret.",
       input: { type: "object", required: ["id"], properties: { id: str, version: { oneOf: [{ type: "integer", minimum: 1 }, { type: "string", enum: ["latest"] }] }, expires: { type: "string", enum: Object.keys(EXPIRES) } } },
       examples: [{ id: "a_3fK2x9LqWm1p", expires: "30d" }],
@@ -1028,7 +1081,6 @@ export default {
         if (!isPerson(meta) && !(meta && meta.gate)) throw refuse("sharing publicly waits for the person: ask them, and their own words let it run", "not_asked");
         const r = await reach(i.id, meta);
         if (r.archived_at) throw refuse(`${r.id} is archived; bring it back first`, "archived");
-        if (isMediaFormat(r.format)) throw refuse("public links for images, video and audio arrive in a later update", "not_available");
         if (!kv.get("public_on")) throw refuse("public links are off. Turn them on in Settings, or ask to turn them on", "public_off", { fix: { tool: "artifacts.public.set", input: { on: true } } });
         const srv = serverState();
         if (!srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");
@@ -1048,6 +1100,7 @@ export default {
     });
 
     ctx.tool("artifacts.unshare", {
+      callers: WITH_AGENTS,
       description: "Stop an artifact's public link. It stops at once and never needs approval.",
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -1087,7 +1140,7 @@ export default {
     ctx.tool("artifacts.public.base", {
       description: "Vyre's network setup only: the public https address links use, or null.",
       input: { type: "object", required: ["base"], properties: { base: { type: ["string", "null"] } } },
-      examples: [{ base: "https://studio.tail1234.ts.net:8443" }],
+      examples: [{ base: "https://studio.vyre.run" }],
       run: async (i, meta) => {
         if (!(meta && meta.firstParty === true)) throw refuse("the public address is set by Vyre's network setup", "denied");
         if (i.base !== null && !/^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/.test(i.base)) throw refuse("base must be an https origin", "bad_input");
@@ -1148,11 +1201,53 @@ export default {
       },
     });
 
+
+    ctx.tool("artifacts.media.gallery", {
+      description: "Generated images, video and audio as a gallery: newest first, compact rows (title, kind, type, size, width and height or length when the file says them, provider, the start of the prompt), within what the caller may reach. Page with `before` (the created_at of the last row seen).",
+      input: { type: "object", properties: { project: str, kind: { type: "string", enum: ["image", "video", "audio"] }, provider: str, before: { type: "integer" }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
+      examples: [{ kind: "image", limit: 24 }],
+      run: async (i, meta) => {
+        const scope = await scopeOf(meta);
+        const where = ["deleted_at IS NULL", "archived_at IS NULL", "media IS NOT NULL"], args = [];
+        if (!("all" in scope)) { where.push("project = ?"); args.push("project" in scope ? scope.project : PERSONAL); }
+        else if (i.project) { where.push("project = ?"); args.push(i.project); }
+        if (i.kind) { where.push("kind = ?"); args.push(i.kind); }
+        if (Number.isInteger(i.before)) { where.push("created_at < ?"); args.push(i.before); }
+        const limit = i.limit || 30;
+        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`).all(...args, "own" in scope ? 5000 : limit * 3));
+        const out = [];
+        for (const r of rows) {
+          if (!inScope(r, scope)) continue;
+          const m = JSON.parse(r.media);
+          if (i.provider && String(m.provider || "").toLowerCase() !== String(i.provider).toLowerCase()) continue;
+          out.push({ id: r.id, title: r.title, kind: r.kind, format: r.format, project: r.project === PERSONAL ? null : r.project, mime: m.mime, bytes: m.bytes,
+            width: m.width ?? null, height: m.height ?? null, duration_s: m.duration_s ?? null, provider: m.provider || null, model: m.model || null, privacy: m.privacy || null,
+            prompt: m.prompt ? String(m.prompt).slice(0, 140) : null, created_at: r.created_at });
+          if (out.length >= limit) break;
+        }
+        return { items: out, next: out.length === limit ? out[out.length - 1].created_at : null };
+      },
+    });
+
+    ctx.tool("artifacts.media.usage", {
+      description: "How much generated media is kept, and the limits: the whole box, each project and each conversation. The person's own surfaces and Vyre's modules.",
+      input: { type: "object", properties: { project: str } },
+      examples: [{}],
+      run: async (i, meta) => {
+        if (!trustedCaller(meta)) throw refuse("the person's own surfaces and Vyre's modules read usage", "denied");
+        const sum = (/** @type {string} */ sql, /** @type {any[]} */ ...a) => /** @type {any[]} */ (db.prepare(sql).all(...a));
+        const total = Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS n, COUNT(*) AS c FROM artifacts_items WHERE media IS NOT NULL").get()).n);
+        const byProject = sum("SELECT project, COUNT(*) AS items, COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS bytes FROM artifacts_items WHERE media IS NOT NULL" + (i.project ? " AND project = ?" : "") + " GROUP BY project ORDER BY bytes DESC", ...(i.project ? [i.project] : []))
+          .map(r => ({ project: r.project === PERSONAL ? null : r.project, items: r.items, bytes: Number(r.bytes), limit: _test.mediaCaps.project }));
+        return { total_bytes: total, limit_bytes: _test.mediaCaps.total, per_conversation_limit: _test.mediaCaps.thread, projects: byProject };
+      },
+    });
+
     // ---- generated media: the tools ------------------------------------------------------------
 
     ctx.tool("artifacts.media.register", {
       description: "Keep an image, a video or a sound a provider made, which is a file in the thread's artifacts folder, as an artifact with its provider, model, prompt and session. Called by Vyre's session module when a provider hands over media (a content block, a file, a URL or a tool result is first saved as a file in the folder). A file already kept is not kept twice: its provenance is filled in. Two ways to hand it over: `name`, a file already in the thread's artifacts folder (any size up to 100 MB), or `data_b64` with `name` or `mime`, the bytes themselves (up to 20 MB, as a provider's content block arrives; nothing is written in any agent's folder).",
-      input: { type: "object", required: ["thread"], properties: { thread: str, name: str, mime: str, data_b64: str, title: str, provider: str, model: str, prompt: str, source: { type: "string", enum: ["file", "content-block", "url", "tool-result"] } } },
+      input: { type: "object", required: ["thread"], properties: { thread: str, name: str, mime: str, data_b64: str, title: str, provider: str, model: str, prompt: str, privacy: { type: "string", enum: ["zdr", "off"] }, source: { type: "string", enum: ["file", "content-block", "url", "tool-result"] } } },
       examples: [{ thread: "t1", name: "sunset.png", provider: "grok", model: "grok-imagine", prompt: "a sunset over a harbour", source: "content-block" }],
       run: async (i, meta) => {
         if (!trustedCaller(meta) || !MEDIA_REGISTRARS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's own session modules register media", "denied");
@@ -1161,6 +1256,7 @@ export default {
     });
 
     ctx.tool("artifacts.media.read", {
+      callers: PEOPLE,
       description: "The bytes of an image, a video or a sound, in chunks (offset and length up to 4 MB), for Vyre's own surfaces and modules such as Drive previews. A model does not read bytes here: it copies the file into its folder with artifacts.media.copy.",
       input: { type: "object", required: ["id"], properties: { id: str, offset: { type: "integer", minimum: 0 }, length: { type: "integer", minimum: 1, maximum: 4 * 1024 * 1024 } } },
       examples: [{ id: "a_3fK2x9LqWm1p", offset: 0, length: 1048576 }],
@@ -1178,6 +1274,7 @@ export default {
     });
 
     ctx.tool("artifacts.media.copy", {
+      callers: WITH_AGENTS,
       description: "Put an image, a video or a sound an earlier turn made (by any model) into your own artifacts folder, so you can open it as a file: \"use the image Grok made\". Returns the path. You reach what your project's artifacts reach, plus anything the person tagged into your thread with #.",
       input: { type: "object", required: ["id"], properties: { id: str, thread: str } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],
@@ -1220,6 +1317,7 @@ export default {
         if (req.method === "HEAD") return void res.end();
         const stream = fs.createReadStream(file, { start, end });
         stream.on("error", () => res.destroy());
+        res.on("close", () => stream.destroy());
         return void stream.pipe(res);
       }
       const n = url.searchParams.get("v") ? Number(url.searchParams.get("v")) : r.head;
@@ -1229,7 +1327,7 @@ export default {
       const body = Buffer.from(html, "utf8");
       res.writeHead(200, { ...pageHeaders({ scripts, framedBy: "self" }), "content-length": body.length });
       res.end(req.method === "HEAD" ? undefined : body);
-    });
+    }, { readOnly: true });
 
     return {
       async stop() {

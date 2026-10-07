@@ -5,6 +5,7 @@
 // alone rather than polling forever. The fault-proxy, real-vyred version of reconnect timing is
 // test/chaos/chaos.test.js; this file is the fast, synthetic one for stream.js's own logic.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { follow } from "./stream.js";

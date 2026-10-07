@@ -49,8 +49,8 @@ export const GROUPS = [
   ["Waiting on you", ["needs", "gate"]],
   ["Agents and watchers", ["agents", "watchers", "spend"]],
   ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "ringing", "dismiss", "todo", "notes"]],
-  ["Memory", ["recall", "index", "memory", "why", "learn"]],
-  ["Vault and presence", ["vault", "presence"]],
+  ["Memory", ["recall", "index", "roll", "memory", "why", "learn"]],
+  ["Vault and presence", ["vault", "presence", "signin", "signout"]],
   ["Box care", ["update", "backup", "restore"]],
   ["Under the hood", ["modules", "module", "tools", "call", "commands", "tips"]],
 ];

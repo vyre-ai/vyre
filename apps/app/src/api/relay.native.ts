@@ -13,7 +13,8 @@ import { gcm } from "@noble/ciphers/aes";
 import { nobleCrypto } from "@vyre/relay-client/noble.js";
 import { base64url, fromBase64url } from "@vyre/relay-client/bytes.js";
 import * as Keys from "../../modules/vyre-signer";
-import { fromB64url, spkiFromXY } from "../auth/person";
+import { keyStorage } from "../native/presence-model";
+import { fromB64url, spkiFromXY } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.native.ts on the phone, which exports neither
 import { readPairing, type Pairing } from "./pairing";
 
 const KEY = "vyre.relay.key";
@@ -48,12 +49,24 @@ export function relayKeyStore() {
   };
 }
 
-export async function presenceKey(): Promise<{ public_key: string; alg: number } | undefined> {
+/** Forget this phone's relay key (a removed device). */
+export async function forgetRelayKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEY, ONLY_HERE);
+}
+
+export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
   try {
     // The biometric-bound key, so every presence proof over the relay needs a fingerprint or face
     // (e2e: the pairing's presence key is vyre.human).
     const { x, y } = await Keys.ensureKey(Keys.HUMAN, { biometric: true });
-    return { public_key: spkiFromXY(x, y), alg: -7 };
+    // Where the key was made, from the platform's own key API (Secure Enclave on iOS, StrongBox or the TEE on Android); left out when it cannot say.
+    let storage: "hardware" | "software" | undefined;
+    try {
+      const i = Keys.info();
+      // info().level describes vyre.person, which may not exist yet; then the phone's own answer about its keystore decides.
+      storage = i.level === "none" ? (i.secureHardware ? "hardware" : "software") : keyStorage(i.level);
+    } catch { /* unknown */ }
+    return { public_key: spkiFromXY(x, y), alg: -7, ...(storage ? { storage } : null) };
   } catch {
     return undefined;
   }

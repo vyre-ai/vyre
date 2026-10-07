@@ -3,12 +3,13 @@
 // moves around, the gap and the daily cap holding across calls, dismiss and reset, what's new
 // after a version moves, and the hub switching tips off.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import tips, { seams } from "./index.js";
 import { migrate } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { callerAllowed } from "../modules/index.js";
 
 const MIN = 60_000, HOUR = 60 * MIN;

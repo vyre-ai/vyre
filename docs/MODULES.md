@@ -82,7 +82,7 @@ Point `$schema` at it for editor help. `x-` keys are free for experiments.
 | `does.watchers` | watcher preset files it ships, offered when someone asks for a watcher |
 | `does.hooks` | harness points (`brief`, `enrich`, `pretool`, `stop`), each served by one of its tools |
 | `watches.emits`, `watches.on` | the events it may emit and the patterns it may listen to |
-| `shows.deck` | slots in the web app on the Deck, Windows and the phone: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>` |
+| `shows.deck` | slots in the Vyre app on the web, Windows and the phone: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>` |
 | `shows.capsule` | results and actions in the Capsule on a Mac |
 | `shows.notices` | the notice kinds it raises |
 | `settings` | its settings, drawn in Settings and `vyre config` with no UI work |
@@ -137,6 +137,15 @@ Your tool's `run` only ever sees an approved call, and `meta.gate` says how it w
 you add has no other way to act as you, because it never holds your credentials: `ctx.vault.request`
 attaches them outside the sandbox, and a write through it is held at the Gate the same way.
 
+## A tool a Flow may run: `flowAction`
+
+A Flow's call step can run a tool only if its module says so: `{ "name": "mail.send", "outward": true, "flowAction": { "risk": "outward" } }`, or `"flowAction": { "risk": "read" }` for a read.
+Only Vyre's own modules offer one for now. The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+
+The runner does not ask the kernel's action table about a Flow tool, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
+otherwise. For an outward tool the Flow's one approval is spent at the call (once, for exactly that input), and that is the only gate beside the tool's own. For a read tool nothing else gates it.
+Every `flowAction` tool is listed with the guard it relies on in `test/flow-action-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a read tool with no gate of its own does not pass review.
+
 ## What a module gets: `ctx`
 
 Every member that reaches outside the module returns a promise. Types are in
@@ -163,6 +172,10 @@ Every member that reaches outside the module returns a promise. Types are in
 | `ctx.api.version`, `ctx.api.has(feature)` | find newer features without breaking on older Vyre | | now |
 
 A call without its declaration throws `undeclared`.
+
+## Relaying a call: who you act for
+
+When your tool calls another tool with `ctx.call`, Vyre records who the call you are handling came from and passes it on as the call's `origin`. You never set it and you cannot forget it: a client cannot send one, and a module cannot overwrite it. So a module that relays a model's call is judged as acting for that model on every tool that cares (`originClass(meta)`, `wantsMacs`, a person-only tool a module reaches only on a person's behalf). The one thing to know is that the origin lives only while your call is running. Work you start for later (a timer, an event you store, a job queue) has no running call and is your own, as if you had made the call yourself. If it should act for the caller, keep `ctx.origin()` next to the stored work and replay it with `ctx.withOrigin(origin, fn)`. `test/module-origin.test.js` shows both.
 
 ## House rules
 

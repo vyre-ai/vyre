@@ -2,6 +2,7 @@
 // The one app at /app/ (ADR 0027): its files from dist as a single-page app, its service worker
 // made from dist/precache.json, and its manifest.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { tempHome } from "../../test/helpers.js";
 import { socketPath } from "../config/index.js";
-import { serveApp, appWorker, appManifest } from "./app.js";
+import { serveApp, appWorker, appManifest, appBase } from "./app.js";
 import { start } from "./index.js";
 
 /** A response that records what serveApp wrote. */
@@ -76,9 +77,9 @@ test("app: no dist on this machine is no_app", t => {
   assert.equal(JSON.parse(r.body).error.code, "no_app");
 });
 
-test("app: vyred routes /app beside the Deck", async t => {
+test("app: with config app.root off, vyred serves the app at /app and nothing answers /", async t => {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [] }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: false } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
@@ -91,11 +92,11 @@ test("app: vyred routes /app beside the Deck", async t => {
   const b = /** @type {any} */ (await hit("/app/now"));
   if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.equal(b.status, 200);
   else assert.equal(JSON.parse(b.body).error.code, "no_app");
-  const deck = /** @type {any} */ (await hit("/now"));
-  assert.equal(deck.status, 200, "the Deck still answers everything else");
+  const other = /** @type {any} */ (await hit("/now"));
+  assert.equal(other.status, 404, "there is no other web app to answer a page address");
 });
 
-test("app: with config app.root, /app/* is a 301 to the same path under / instead of serving the app", async t => {
+test("app: with config app.root (the default), /app/* is a 301 to the same path under / instead of serving the app", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], app: { root: true } }));
   const d = await start({ root, log: () => {} });
@@ -111,8 +112,9 @@ test("app: with config app.root, /app/* is a 301 to the same path under / instea
   assert.deepEqual([b.status, b.headers.location], [301, "/"]);
   const c = /** @type {any} */ (await hit("/app/now?tab=chat"));
   assert.deepEqual([c.status, c.headers.location], [301, "/now?tab=chat"], "a deeper path and its query survive the redirect");
-  const deck = /** @type {any} */ (await hit("/now"));
-  assert.equal(deck.status, 200, "the Deck still answers everything else while the flag is on (it does not itself move / yet)");
+  const page = /** @type {any} */ (await hit("/now"));
+  if (fs.existsSync(path.join(import.meta.dirname, "..", "..", "apps", "app", "dist"))) assert.notEqual(page.status, 301, "the app answers a page address at /");
+  else assert.equal(JSON.parse(page.body).error.code, "no_app", "the app answers a page address at /, here it is not built");
 
   // The redirect must never become protocol-relative ("//host/path" is scheme-relative, so a
   // browser reading Location: //evil.example leaves the box entirely for it).
@@ -231,4 +233,61 @@ test("app: the manifest is scoped to /app/, or is the export's own", t => {
   assert.equal(get("/app/manifest.webmanifest", { dir }).headers["content-type"], "application/manifest+json");
   fs.writeFileSync(path.join(dir, "manifest.webmanifest"), JSON.stringify({ name: "Own", scope: "/app/" }));
   assert.equal(JSON.parse(appManifest({ dir })).name, "Own");
+});
+
+test("the verified-link files: absent until the signing identities are set, then exactly the app's package and paths", async () => {
+  const { associationFile } = await import("./app.js");
+  assert.equal(associationFile("/.well-known/apple-app-site-association", {}), null);
+  assert.equal(associationFile("/.well-known/assetlinks.json", {}), null);
+  assert.equal(associationFile("/.well-known/other", { VYRE_APPLE_TEAM_ID: "ABCDE12345" }), null);
+  const a = JSON.parse(/** @type {string} */ (associationFile("/.well-known/apple-app-site-association", { VYRE_APPLE_TEAM_ID: "ABCDE12345" })));
+  assert.deepEqual(a.applinks.details[0].appIDs, ["ABCDE12345.sh.vyre.app"]);
+  assert.deepEqual(a.applinks.details[0].components, [{ "/": "/app/join*" }, { "/": "/app/pair*" }]);
+  assert.equal(associationFile("/.well-known/apple-app-site-association", { VYRE_APPLE_TEAM_ID: "bad" }), null);
+  const fp = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, "0")).join(":").toUpperCase();
+  const l = JSON.parse(/** @type {string} */ (associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: fp })));
+  assert.equal(l[0].target.package_name, "sh.vyre.app"); assert.deepEqual(l[0].target.sha256_cert_fingerprints, [fp]);
+  assert.equal(associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: "12:34" }), null);
+});
+
+test("app at the root (config app.root, an export built with the root base): files, the shell for any route, a worker rooted at /", t => {
+  const dir = dist(t, { build: "r1", base: "", files: ["/index.html", "/_expo/static/js/web/entry-abc.js"] });
+  assert.equal(appBase(dir), "", "precache.json names the root");
+  const js = get("/_expo/static/js/web/entry-abc.js", { dir });
+  assert.deepEqual([js.status, js.headers["cache-control"]], [200, "public, max-age=31536000, immutable"]);
+  for (const p of ["/", "/u/now", "/session/42"]) {
+    const r = get(p, { dir });
+    assert.equal(r.status, 200, p);
+    assert.match(r.body, /<title>Vyre<\/title>/, p);
+  }
+  assert.equal(get("/_expo/static/js/web/entry-gone.js", { dir }).status, 404, "a stale hashed file is a 404, not the shell");
+  assert.equal(get("/../package.json", { dir }).status, 404, "a path above dist is refused");
+  assert.ok(!get("/../package.json", { dir }).body.includes("secret"));
+  const sw = get("/sw.js", { dir });
+  assert.equal(sw.headers["service-worker-allowed"], "/");
+  assert.match(sw.body, /const BASE = "";/);
+  assert.match(sw.body, /const PRECACHE = \["\/index\.html","\/_expo\/static\/js\/web\/entry-abc\.js"\];/);
+  const mf = JSON.parse(get("/manifest.webmanifest", { dir }).body);
+  assert.deepEqual([mf.start_url, mf.scope, mf.id], ["/", "/", "/"]);
+});
+
+test("app worker at the root: only the app's pages, never the box's own paths or /v1/", t => {
+  const dir = dist(t, { build: "r2", base: "", files: ["/index.html"] });
+  const src = appWorker({ dir });
+  /** @type {Record<string, Function>} */ const on = {};
+  const hits = [];
+  const self = { addEventListener: (/** @type {string} */ n, /** @type {Function} */ f) => { on[n] = f; }, registration: {}, clients: {} };
+  const ctx = vm.createContext({ self, caches: { open: async () => ({ match: async () => null, put: async () => {} }) }, fetch: async () => { throw new Error("offline"); }, Response: { error: () => 0 }, URL, location: { origin: "https://box.example" } });
+  vm.runInContext(src, ctx);
+  const handled = (/** @type {string} */ p, mode = "navigate") => { let r = false; on.fetch({ request: { url: "https://box.example" + p, method: "GET", mode }, respondWith: (/** @type {Promise<unknown>} */ p) => { r = true; p.catch(() => {}); }, waitUntil() {} }); return r; };
+  assert.equal(handled("/"), true);
+  assert.equal(handled("/u/now"), true);
+  for (const p of ["/v1/events", "/onboard/passkey", "/person/signin", "/release/SHA256SUMS", "/.well-known/assetlinks.json", "/sw.js"]) assert.equal(handled(p), false, p);
+  void hits;
+});
+
+test("app at /app/ is unchanged by the root support: a worker with BASE /app", t => {
+  const dir = dist(t);
+  assert.equal(appBase(dir), "/app", "no base in precache.json means /app");
+  assert.match(appWorker({ dir }), /const BASE = "\/app";/);
 });

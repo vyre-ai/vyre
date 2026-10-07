@@ -76,9 +76,13 @@ export default {
     };
 
     const compute = async () => {
-      const [agents, projects, me] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.profile", { limit: 12 })]);
+      const [agents, projects, st] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.identity.status")]);
+      // A person who keeps their identity memory sealed on a server has none of it in a file: this text is written to the disk in the clear, so it carries no fact of theirs then (their session gets
+      // those through the brief, in process). Only a home that keeps no sealed identity memory writes the profile lines.
+      const sealed = Boolean(st && st.kept && st.kept !== "none");
+      const me = sealed ? null : await ask("memory.profile", { limit: 12 });
       const profile = workFacts(me && me.facts);
-      // The names from onboarding's step 1, straight from config: onboard.status would probe Tailscale.
+      // The names from onboarding's step 1, straight from config: onboard.status would read the network.
       const you = (ctx.config && ctx.config.onboard) || null;
       return compose({ you, agents: Array.isArray(agents) ? agents : null,
         projects: projects && Array.isArray(projects.projects) ? projects.projects : Array.isArray(projects) ? projects : null,
@@ -114,6 +118,7 @@ export default {
     const off = ctx.events.on("*", e => { if (e.source !== "about" && WATCH.test(e.type)) schedule(); });
 
     ctx.tool("about.text", {
+      effect: "write",
       description: "What every Claude Code session is told about the user at its start, recomputed now. Empty when nothing is known.",
       input: { type: "object", properties: {} },
       callers: ["cli", "local", "module", "deck", "capsule"],

@@ -1,11 +1,11 @@
 // @ts-check
-// The three signature schemes on their own, and the Funnel status parser and its mismatches.
+// The three signature schemes on their own.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { verify, sign, TOLERANCE_S } from "./verify.js";
-import { parseFunnel, funnelNode, mismatches, openCommand, closeCommand, offCommand } from "./funnel.js";
 
 const SECRET = "whsec_northwind_test_4f1a9c2e7b";
 const BODY = Buffer.from(JSON.stringify({ order: 1041, customer: "alex@example.com", items: ["rye loaf"] }));
@@ -67,55 +67,4 @@ test("a refusal never carries the secret or the signature it expected", () => {
     assert.ok(!text.includes(sign("stripe", SECRET, BODY, T).split("v1=")[1]), text);
   }
   assert.equal(verify({ scheme: "github" }, { "x-hub-signature-256": sign("github", "", BODY) }, BODY, "", NOW).ok, false, "an empty secret checks nothing");
-});
-
-// ---- funnel -------------------------------------------------------------------------------
-
-const HOST = "vyre.tail0000.ts.net";
-const served = (paths, { port = 8443, funnel = true, target = p => `http://127.0.0.1:7310${p}` } = {}) => ({
-  TCP: { [port]: { HTTPS: true } },
-  Web: { [`${HOST}:${port}`]: { Handlers: Object.fromEntries(paths.map(p => [p, { Proxy: target(p) }])) } },
-  ...(funnel ? { AllowFunnel: { [`${HOST}:${port}`]: true } } : {}),
-});
-
-test("funnel status: handlers, which are public, foreground sessions and raw TCP", () => {
-  assert.deepEqual(parseFunnel({}), []);
-  assert.deepEqual(parseFunnel(served(["/hooks/northwind-orders"])), [{ host: HOST, port: 8443, path: "/hooks/northwind-orders", kind: "proxy", target: "http://127.0.0.1:7310/hooks/northwind-orders", funnel: true }]);
-  assert.equal(parseFunnel(served(["/hooks/a"], { funnel: false }))[0].funnel, false, "served on the tailnet only");
-  const fg = parseFunnel({ Foreground: { s1: served(["/"], { port: 10000, target: () => "http://127.0.0.1:3000" }) } });
-  assert.deepEqual(fg.map(s => [s.path, s.port, s.funnel]), [["/", 10000, true]]);
-  const tcp = parseFunnel({ TCP: { 10000: { TCPForward: "127.0.0.1:22" } }, AllowFunnel: { [`${HOST}:10000`]: true } });
-  assert.deepEqual(tcp, [{ host: "", port: 10000, path: "", kind: "tcp", target: "127.0.0.1:22", funnel: true }]);
-});
-
-test("funnel node: the funnel and https attributes and the allowed ports from CapMap", () => {
-  const st = { Self: { DNSName: `${HOST}.`, CapMap: { funnel: null, https: null, "https://tailscale.com/cap/funnel-ports?ports=443,8443,10000": null } } };
-  assert.deepEqual(funnelNode(st), { dnsName: HOST, funnel: true, https: true, ports: [443, 8443, 10000] });
-  assert.deepEqual(funnelNode({ Self: { DNSName: `${HOST}.`, CapMap: {} } }), { dnsName: HOST, funnel: false, https: false, ports: null });
-});
-
-test("funnel mismatches: a route not served, a path with no route, the wrong target, 443, and anything else public", () => {
-  const hooks = { port: 7310, enabled: true };
-  assert.deepEqual(mismatches(["northwind-orders"], parseFunnel(served(["/hooks/northwind-orders"])), hooks), []);
-  const none = mismatches(["northwind-orders"], [], hooks);
-  assert.equal(none[0].kind, "route-not-served");
-  assert.equal(none[0].fix, openCommand("northwind-orders", 7310));
-  // Served only on the tailnet is not published.
-  assert.equal(mismatches(["northwind-orders"], parseFunnel(served(["/hooks/northwind-orders"], { funnel: false })), hooks)[0].kind, "route-not-served");
-  const stale = mismatches([], parseFunnel(served(["/hooks/harlow-forms"])), hooks);
-  assert.deepEqual(stale.map(m => [m.kind, m.route, m.harmless]), [["funnel-without-route", "harlow-forms", true]]);
-  assert.match(stale[0].message, /404/);
-  assert.equal(stale[0].fix, closeCommand("harlow-forms"));
-  const wrong = mismatches(["northwind-orders"], parseFunnel(served(["/hooks/northwind-orders"], { target: () => "http://127.0.0.1:9999/" })), hooks);
-  assert.equal(wrong[0].kind, "wrong-target");
-  const on443 = mismatches(["northwind-orders"], parseFunnel(served(["/hooks/northwind-orders"], { port: 443 })), hooks).map(m => m.kind);
-  assert.ok(on443.includes("funnel-on-443") && on443.includes("wrong-target"), on443.join());
-  assert.equal(mismatches([], parseFunnel(served(["/"], { port: 10000, target: () => "http://127.0.0.1:3000" })), hooks)[0].kind, "funnel-other");
-  assert.ok(mismatches(["northwind-orders"], parseFunnel(served(["/hooks/northwind-orders"])), { port: 7310, enabled: false }).some(m => m.kind === "listener-off"));
-});
-
-test("funnel commands: 8443, never 443, a path per route, and the close and off lines", () => {
-  assert.equal(openCommand("northwind-orders", 7310), "tailscale funnel --bg --https=8443 --set-path=/hooks/northwind-orders http://127.0.0.1:7310/hooks/northwind-orders");
-  assert.equal(closeCommand("northwind-orders"), "tailscale funnel --https=8443 --set-path=/hooks/northwind-orders off");
-  assert.equal(offCommand(), "tailscale funnel --https=8443 off");
 });

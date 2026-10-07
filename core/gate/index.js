@@ -11,7 +11,7 @@
 // person is proving before they prove it, and every held item carries `presence: {required,
 // covered}` so a surface never guesses from the kind. A module may
 // approve only when config.json names it under gate.approvers, for a caller not already on the
-// explicit allowlist (deck, capsule); Vyre Chat is deck/chat/, so it calls as "deck" and needs no
+// explicit allowlist (deck, capsule); Vyre Chat in the app calls as "deck" and needs no
 // entry there.
 //
 // Credentials come from ctx.vault.fetch at the moment of sending (needs.vault "per-sender": the
@@ -19,6 +19,7 @@
 // gate`), or from vault.relay for a sender that uses someone else's relayed pass.
 
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
+import { isPerson } from "../../lib/caller.js";
 import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
@@ -71,14 +72,14 @@ export default {
     const stuck = gate.recover();
     if (stuck) ctx.log(`${stuck} item(s) were mid-send when vyred stopped; back to held, marked as possibly sent`);
 
-    /** Only a person, or a module the person named, lets something go. */
-    const person = caller => {
+    /** Only a person, or a module the person named, lets something go. The person is lib/caller.js isPerson (a person's own surface or device); mcp and harness in any form are never one (MH-1). */
+    const mayApprove = caller => {
       const c = String(caller || "");
-      if (c.startsWith("mcp")) throw new Error("only the user approves what goes out, never a model");
+      if (isPerson(c)) return c;
+      if (c.startsWith("module:")) { if (approvers.includes(c.slice(7))) return c; throw new Error(`${c.slice(7)} may not approve for the user \u00b7 add it to gate.approvers in config.json`); }
       // A guest from another tailnet, and an agent's own node, are never the user.
       if (c.startsWith("tailnet-guest:") || c.startsWith("tailnet:agent:")) throw new Error("only the user approves what goes out, never a guest or an agent");
-      if (c.startsWith("module:") && !approvers.includes(c.slice(7))) throw new Error(`${c.slice(7)} may not approve for the user · add it to gate.approvers in config.json`);
-      return c;
+      throw new Error("only the user approves what goes out, never a model");
     };
 
     /**
@@ -137,6 +138,8 @@ export default {
         asked: { type: "object", description: "A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds." },
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
+      // A model asks (the request is held for the person); the person's surfaces and modules (the MCP hub, mail, google) file requests too.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"],
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
       run: async (input, { caller, thread, agent }) => {
@@ -173,41 +176,43 @@ export default {
     ctx.tool("gate.held", {
       description: "What is held at the Gate waiting for the user, oldest first.",
       input: obj({ thread: str, project: str }),
+      // Held drafts are the person's own words and recipients: the person's surfaces and modules, as gate.get.
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
       run: (input, { peer }) => withPresence(gate.held(input), peer),
     });
 
     ctx.tool("gate.get", {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
       run: async (input, { peer }) => (await withPresence([gate.get(input)], peer))[0],
     });
 
     ctx.tool("gate.revise", {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
-      callers: ["cli", "local", "module", "tailnet"],
-      run: (input, { caller }) => { const c = person(caller); return gate.revise({ ...input, by: input.by || c }); },
+      callers: ["cli", "local", "module", "tailnet", "device"],
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.revise({ ...input, by: input.by || c }); },
     });
 
     ctx.tool("gate.approve", {
       description: "The user approves a held item, optionally with edits (the whole content as it should go out, or the fields that changed; an empty string clears one; `to` included). It sends exactly that, never the original, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device"],
       presence: {
         when: ({ id }) => needsProof(id),
         // One passkey or Touch ID opens a ~30 minute session on that device, and the sends after it ride it.
         session: ({ id }) => needsProof(id),
         summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; },
       },
-      run: (input, { caller }) => { const c = person(caller); return gate.approve({ ...input, by: input.by || c }); },
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.approve({ ...input, by: input.by || c }); },
     });
 
     ctx.tool("gate.reject", {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
-      run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device"],
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 
     ctx.tool("gate.settle", {
@@ -218,7 +223,7 @@ export default {
         const c = String(caller || "");
         // The item's own surface: the module whose sender holds it (mcp for a hub call). Any other
         // module, and every model or guest, goes through the same rule as approving.
-        const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : person(caller);
+        const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : mayApprove(caller);
         return gate.settle({ ...input, by: input.by || own });
       },
     });
@@ -232,7 +237,7 @@ export default {
 
     // What the person's own words asked to go out (P17). The intents live in the vault; these are
     // the person's two tools over them, so nothing here can record one. Taking one back needs no proof.
-    const asPerson = caller => { person(caller); return String(caller); };
+    const approvedBy = caller => { mayApprove(caller); return String(caller); };
     const vaultCall = async (tool, input) => {
       const r = await ctx.call(tool, input);
       if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message), { code: r.error.code });
@@ -246,7 +251,7 @@ export default {
       description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`. The assistant may read it for you.",
       input: obj({ thread: str, all: { type: "boolean" } }),
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: (input, { caller }) => { if (!isAssistant(caller)) asPerson(caller); return vaultCall("vault.said.list", input); },
+      run: (input, { caller }) => { if (!isAssistant(caller)) approvedBy(caller); return vaultCall("vault.said.list", input); },
     });
 
     ctx.tool("gate.said.add", {
@@ -265,7 +270,7 @@ export default {
           return `Allow a standing permission to ${i && i.kind} to ${to} for ${who}${cap ? ` (${cap})` : ""}`;
         },
       },
-      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
+      run: (input, { caller }) => { approvedBy(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
     });
 
     ctx.tool("gate.said.revoke", {
@@ -273,7 +278,7 @@ export default {
       input: obj({ id: str, thread: str }, ["id"]),
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (input, { caller }) => {
-        if (!isAssistant(caller)) { asPerson(caller); return vaultCall("vault.said.revoke", { id: input.id }); }
+        if (!isAssistant(caller)) { approvedBy(caller); return vaultCall("vault.said.revoke", { id: input.id }); }
         // The assistant acts for the person only on an intent of kind "revoke" that names this id,
         // recorded from the person's own turn in this thread (or its lineage), and used up by this call.
         if (!input.thread) throw new Error("say which thread the request came from: thread");

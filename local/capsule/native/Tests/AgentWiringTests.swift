@@ -14,7 +14,15 @@ private func world(_ v: FakeVyred) {
     v.tool("projects.catalog") { _ in ["sessions": [Any]()] }
     v.tool("agents.list") { _ in [["name": "kit", "kind": "agent", "computer": true, "thread": "tk"]] }
     v.tool("threads.list") { _ in [["id": "th1", "name": "Harlow intake", "cwd": "/home/alex/Work/harlow"]] }
-    v.tool("link.status") { _ in ["linked": true, "box": ["address": "https://box.example.ts.net"]] }
+    v.tool("wink.server.home") { _ in ["linked": true, "box": ["address": "https://box.example.ts.net"]] }
+    // A linked Mac asks its server for the agents (BoxLink.swift): the fake server answers through wink.server.call.
+    v.tool("wink.server.call") { i in
+        switch (i["tool"] as? String) ?? "" {
+        case "agents.list": return [["name": "kit", "kind": "agent", "computer": true, "thread": "tk"]] as [Any]
+        case "agents.ask": return ["ok": true, "thread": "tk"] as [String: Any]
+        default: return FakeError(code: "no_such_tool", message: "no tool")
+        }
+    }
     v.tool("threads.watch") { _ in ["watch": "w1"] }
     v.tool("threads.send") { _ in ["sent": true, "thread": "th1"] }
 }

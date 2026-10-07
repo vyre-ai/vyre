@@ -2,6 +2,7 @@
 // The module through the real Registry, over fakes: the manifest, the four tools, apps.list's
 // tiers, the targets cache, the act/send split, and apps.send's presence and its preview.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { discover, Registry, validate } from "../../core/modules/index.js";
 import { Presence } from "../../core/presence/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { fakeExec, fakeApp } from "./fake.js";
 
@@ -270,6 +271,19 @@ test("module: apps.setup answers only the surfaces a person drives", async t => 
   for (const caller of ["cli", "capsule", "deck", "tailnet:alex"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
 });
 
+
+test("module: apps.list and apps.targets (what is installed, what is in the person's notes) are refused to a guest, an anonymous or an unknown caller", async t => {
+  const home = tempHome(t);
+  const f = fakeExec(() => ({}));
+  const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
+  for (const caller of ["anonymous", "tailnet-guest:juno", "unknown"]) {
+    for (const [tool, input] of [["apps.list", {}], ["apps.targets", { app: "Notes" }]]) {
+      const r = await reg.call(tool, input, caller);
+      assert.equal(r.error && r.error.code, "denied", `${caller} ran ${tool}`);
+    }
+  }
+  for (const caller of ["cli", "capsule", "mcp"]) assert.ok(!(await reg.call("apps.list", {}, caller)).error, caller);
+});
 
 /** A stand-in for the box's planner module (ADR 0025): planner.add keeps what it is given. */
 function fakePlanner(/** @type {string} */ root, /** @type {string} */ answer = "{ id: 'itm_1', kind: i.kind || 'note', title: 'call juno' }") {

@@ -4,6 +4,7 @@
 // login file that must never move); the person scans, plans and starts through the Mac's own
 // tools; the sessions land on the box in Claude Code's shape, and the box's own reader parses
 // every one of them. Nothing here touches a real ~/.claude, ~/.codex or ~/.gemini.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

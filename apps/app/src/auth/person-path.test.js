@@ -4,6 +4,8 @@
 // request checked as the box checks it (node:crypto, DER, inputHash of {key}); sign-out forgetting
 // both; a 401 on the relay starting the device flow, not the browser; a closed prompt not shown
 // again on its own for 60 s. Node only, no native module, no network.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,7 @@ import { createHash, generateKeyPairSync, sign as nodeSign, verify as nodeVerify
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const load = () => import("./person.ts");
-const BOX = "https://harlow.example.ts.net";
+const BOX = "https://juniper.example.ts.net";
 const enc = new TextEncoder();
 const DIRECT = "directtok001.directsecretdirectsecret01";
 const RELAY = "relaytoken01.relaysecretrelaysecret0001";

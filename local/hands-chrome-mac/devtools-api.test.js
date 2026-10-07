@@ -2,6 +2,7 @@
 // api.learn / api.catalog / api.call over a fake ctx: catalog from the net buffer, storage by
 // origin, calls made from inside the page, credentials never returned, acting rules for writes.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import api from "./extension/caps/api.js";
@@ -125,4 +126,47 @@ test("floor refusal blocks api.learn and api.catalog with a tab", async () => {
   k.state.floor = () => ({ allow: false, why: "blind" });
   await assert.rejects(T(api.ops["api.learn"])({ tab: 1 }, k.ctx), e => e.code === "blocked");
   await assert.rejects(T(api.ops["api.catalog"])({ tab: 1 }, k.ctx), e => e.code === "blocked");
+});
+
+test("api.route: a read is tried through the learned API first and verified; anything else says route ui with why", async () => {
+  const { k } = await world();
+  await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
+  const hit = await T(api.ops["api.route"])({ tab: 1, hint: "contact details", params: { path: { id: CONTACT }, query: { locationId: LOC } } }, k.ctx);
+  assert.equal(hit.route, "api");
+  assert.equal(hit.status, 200);
+  assert.equal(hit.pathTemplate, "/contacts/{id}");
+  assert.ok(!ser(hit).includes(JWT) && !ser(hit).includes("LEAKEDTOKEN1234567890"), "the credential stays out of the answer");
+  const before = k.calls("Runtime.evaluate").length;
+  const none = await T(api.ops["api.route"])({ tab: 1, hint: "invoices payments" }, k.ctx);
+  assert.equal(none.route, "ui");
+  assert.match(none.why, /no learned read matches/);
+  assert.equal(k.calls("Runtime.evaluate").length, before, "no request is made when nothing matches");
+  const needs = await T(api.ops["api.route"])({ tab: 1, hint: "contact" }, k.ctx);
+  assert.equal(needs.route, "ui");
+  assert.match(needs.why, /missing path parameter/);
+  await assert.rejects(T(api.ops["api.route"])({ tab: 1, hint: "a of" }, k.ctx), e => e.code === "bad_request");
+});
+
+test("api.route never routes a write: it names the learned write beside route ui, and the write still asks", async () => {
+  const { k } = await world();
+  await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
+  const sent = k.calls("Runtime.evaluate").length;
+  const r = await T(api.ops["api.route"])({ tab: 1, hint: "contacts update", params: { path: { id: CONTACT } } }, k.ctx);
+  assert.ok(r.route === "api" || r.route === "ui");
+  assert.ok(!k.calls("Runtime.evaluate").slice(sent).some(c => /"method":"PUT"/.test(c.params.expression)), "no PUT was sent by routing");
+  assert.ok(!r.writes || r.writes.every(w => w.method !== "GET"));
+});
+
+test("api.route: a stored endpoint that stops answering is not trusted, and is dropped after two failures", async () => {
+  const dead = { "Runtime.evaluate": { result: { value: { status: 404, mime: "text/html", headers: {}, body: "gone" } } } };
+  const { k, st } = await world(dead);
+  await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
+  const ask = () => T(api.ops["api.route"])({ tab: 1, hint: "workflows status", params: { path: { id: "3f2b8c1e-9a47-4d55-b0c1-7e6d5a4c3b2a" } } }, k.ctx);
+  const a = await ask();
+  assert.equal(a.route, "ui");
+  assert.equal(a.status, 404);
+  assert.equal((await ask()).route, "ui");
+  const left = Object.values(st.m.get("api.catalog")).flatMap(o => o.entries).filter(e => e.pathTemplate === "/workflows/{id}/status");
+  assert.equal(left.length, 0, "dropped after two failures");
+  assert.match((await ask()).why, /no learned read matches/);
 });

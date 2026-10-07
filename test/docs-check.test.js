@@ -3,6 +3,7 @@
 // trees in temp folders. Also the pieces the checker leans on: GitHub-style slugs and the
 // reference generator (every tool a manifest declares is on the tools page, and two runs agree).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -244,4 +245,9 @@ test("reference: every declared tool is on the tools page, and the pages are det
     assert.ok(!text.includes("\u2014") && !text.includes("\u00a7"), rel);
     assert.ok(!text.includes(SCRATCH), `${rel} leaks the temp home`);
   }
+});
+
+test("docs-check: a picture under docs/work/shots is a work note, not a docs shot, and never warns", async t => {
+  const root = tree(t, { "work/shots/chat/old.png": "x" });
+  assert.deepEqual((await check({ root, reference: false })).filter(p => p.kind === "shots"), []);
 });

@@ -4,9 +4,9 @@
 // `/glass/box` for the box's files. The Capsule only opens that page in the default browser:
 // Tailscale identifies the user there, so there is no second trust path from here.
 //
-// Two rules keep it honest. The box's address comes from the link (`link.status`, the address
-// this Mac paired with) and nothing else; with no paired box there is no row at all, because a
-// guessed host would send the user somewhere they did not choose. And "Open Glass" shows only for
+// Two rules keep it honest. The box's address comes from the pairing (BoxLink.boxAddress, from
+// wink.server.home) and nothing else; with no paired box there is no row at all, because a
+// guessed host would send the user somewhere they did not choose. (Glass becomes Screen Share in 0.3.1.) And "Open Glass" shows only for
 // an agent that has a computer: an agent without one has no screen to watch.
 
 import AppKit
@@ -24,16 +24,6 @@ public struct GlassRow: Sendable, Equatable {
 public enum Glass {
     /// The box's own target: files only, it has no screen.
     public static let box = "box"
-
-    /// The box's address as the link knows it, or nil. Only an https origin counts: that is what
-    /// pairing accepts, and anything else is not a place to send a browser. `has` says whether this
-    /// vyred has link.status at all; without it nothing is asked.
-    public static func address(_ link: VyredLink, has: Bool = true) async -> String? {
-        guard has else { return nil }
-        let r = await link.call("link.status", [:])
-        guard let s = r.data as? [String: Any], VJ.truthy(s["linked"]), let b = s["box"] as? [String: Any] else { return nil }
-        return origin(VJ.str(b["address"]))
-    }
 
     /// An https origin (with its port, if any), or nil.
     public static func origin(_ value: String?) -> String? {
@@ -57,7 +47,7 @@ public enum Glass {
     }
 
     private static func row(_ target: String, _ sub: String, _ score: Double) -> GlassRow {
-        GlassRow(id: "glass:\(target)", target: target, label: target == box ? "Open the box's files in Glass" : "Open Glass · \(target)", sub: sub, score: score)
+        GlassRow(id: "glass:\(target)", target: target, label: target == box ? "Open your server's files in Glass" : "Open Glass · \(target)", sub: sub, score: score)
     }
 
     /// "Open Glass" rows for a bare query. Typed as a command (`glass`, `glass <agent>`, `glass
@@ -75,7 +65,7 @@ public enum Glass {
                 if who.isEmpty || name.lowercased() == who { out.append(row(name, "watch its computer in the browser", 3)) }
                 else if name.lowercased().hasPrefix(who) { out.append(row(name, "watch its computer in the browser", 2.5)) }
             }
-            if who.isEmpty || box.hasPrefix(who) { out.append(row(box, "the box's files in the browser", who == box ? 3 : 2.4)) }
+            if who.isEmpty || box.hasPrefix(who) { out.append(row(box, "your server's files in the browser", who == box ? 3 : 2.4)) }
             return out
         }
         if agents.isEmpty { return [] }
@@ -102,7 +92,7 @@ public enum Glass {
     /// target, never taken from a row, and it is https, so nothing can read it as a flag.
     public static func open(box: String?, target: String, opener: (URL) -> Bool = { NSWorkspace.shared.open($0) }) -> ActionOutcome {
         guard let u = url(box: box, target: target), let link = URL(string: u) else {
-            return .failed("No box is paired with this Mac (vyre link pair <address>).")
+            return .failed("No server is paired with this Mac (vyre link pair <address>).")
         }
         return opener(link) ? .close(nil) : .failed("The browser did not open \(u).")
     }

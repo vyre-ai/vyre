@@ -8,6 +8,7 @@
 // refresh token is saved back through the module; a pasted token connects a second app; nothing
 // secret reaches a result, an event, a log line or a table.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 
 // Presets for fakes on this machine are honoured only under this switch (production reads the shipped catalog).
@@ -212,4 +213,91 @@ test("connectors: who may use a connection is shown in the catalog and changed o
   assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "unchanged");
   assert.equal((await w.cli("connectors.scope", { name: "no-such-connection", scope: null })).error?.code, "not_found");
   assert.match((await w.cli("connectors.scope", { name: "fakevendor", scope: "everyone" })).error.message, /scope is/);
+});
+
+test("connectors: shipped declarations are listed for the person; only a person makes a credential from one, and the vault then holds a connector with its ops and outward flags", async t => {
+  const w = await world(t, url => [fakevendor(url)]);
+  // what is connected is the person's: a model session with no proof of its own, a guest and an anonymous caller get nothing
+  for (const who of ["mcp", "anonymous", "tailnet-guest:x"]) {
+    assert.ok((await w.d.registry.call("connectors.declared", {}, who)).error, `${who} gets no list of what is connected`);
+    assert.ok((await w.d.registry.call("connectors.logging", { connector: "gmail", address: "a@b.test", project: "p" }, who)).error, `${who} gets no logging recipe`);
+  }
+  const list = (await w.cli("connectors.declared", {})).data.connectors;
+  assert.deepEqual(list.map(c => c.id).sort(), ["gmail", "google-calendar", "stripe"]);
+  const gmail = list.find(c => c.id === "gmail");
+  assert.equal(gmail.installed, false);
+  assert.equal(gmail.ops.find(o => o.name === "drafts.create").outward, false, "a draft is not outward");
+  assert.equal(gmail.ops.find(o => o.name === "messages.send").outward, true);
+  assert.deepEqual(gmail.polls.map(p => p.name), ["mail.recent"]);
+  assert.equal((await w.cli("connectors.declared", { id: "nope" })).error.code, "not_found");
+
+  // a model never makes a credential
+  assert.equal((await w.mcpCall("connectors.declare", { id: "stripe", secret: "sk_test_x" })).error.code, "denied");
+  // the key is needed, and a key is refused where the connector signs in another way
+  assert.match((await w.cli("connectors.declare", { id: "stripe" })).error.message, /key/);
+  // Google is not made in the vault at all: it is signed in through the google module (the one Google path)
+  assert.match((await w.cli("connectors.declare", { id: "gmail", secret: "x" })).error.message, /Google module/);
+  assert.match((await w.cli("connectors.declare", { id: "google-calendar" })).error.message, /Google module/);
+  assert.equal((await w.cli("vault.list", {})).data.items.some(x => /^(gmail|google-calendar|google-api)$/.test(x.name)), false, "nothing was made");
+
+  const SECRET = "sk_test_declared_" + "a1b2c3d4e5f6a7b8";
+  const made = await w.cli("connectors.declare", { id: "stripe", secret: SECRET });
+  assert.equal(made.data?.name, "stripe", JSON.stringify(made));
+  assert.deepEqual(made.data.outward.sort(), ["customers.create", "refunds.create"]);
+  assert.equal((await w.cli("connectors.declared", { id: "stripe" })).data.connectors[0].installed, true);
+  // the vault has it as a connector: the catalog the lease module reads carries the declaration's extras, never the key or the host
+  const cat = (await w.d.registry.call("vault.service.catalog", {}, "module:leases")).data.connectors;
+  assert.deepEqual(cat.stripe.idempotency, { header: "Idempotency-Key" });
+  assert.equal(cat.stripe.ops.find(o => o.name === "refunds.create").outward, true);
+  assert.ok(!JSON.stringify(cat).includes(SECRET));
+  noLeak(w, [SECRET]);
+  // an item of another kind is never overwritten
+  assert.ok((await w.cli("vault.put", { name: "taken", kind: "secret", fields: { value: "not-an-api-credential-" + "x".repeat(12) } })).data);
+  assert.match((await w.cli("connectors.declare", { id: "stripe", name: "taken", secret: SECRET })).error?.message || "", /not an api credential/);
+});
+
+test("connectors: the logging recipe gives a watcher the watchers module accepts and a Flow that checks, and writes nothing itself", async t => {
+  const w = await world(t, url => [fakevendor(url)]);
+  const work = path.join(w.root, "work", "harlow-legal"); fs.mkdirSync(work, { recursive: true });
+  assert.ok(!(await w.cli("projects.create", { name: "Harlow Legal", home: work })).error);
+  // no Google account is connected yet: there is nothing to read the mailbox with
+  assert.equal((await w.cli("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).error?.code, "not_found");
+  assert.equal((await w.cli("connectors.declared", { id: "gmail" })).data.connectors[0].installed, false);
+  // a Google account connected to the google module (a service account in the vault, the fake Google as its base)
+  const fake = await startFakeGoogle(t);
+  assert.ok((await w.cli("vault.put", { name: "work-google", kind: "secret", fields: { value: fake.serviceAccount("alex@harlow.test") } })).data);
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "google" })).data.grant.status, "active");
+  assert.ok((await w.cli("google.add", { name: "work", email: "alex@harlow.test", auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
+  assert.deepEqual((await w.cli("connectors.declared", { id: "gmail" })).data.connectors[0].accounts, ["work"]);
+  const r = (await w.cli("connectors.logging", { connector: "gmail", address: "Alex@Harlow.test", project: "harlow-legal" })).data;
+  assert.deepEqual(r.watcher, { kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: "alex@harlow.test" } });
+  assert.equal((await w.cli("connectors.logging", { connector: "gmail", address: "alex@harlow.test", project: "harlow-legal", google: "nobody" })).error?.code, "not_found");
+  assert.equal(r.name, "gmail-alex-harlow-test"); assert.equal(r.flow.trigger.watcher, r.name);
+  const { checkFlow } = await import("../../kernel/flows/schema.js");
+  assert.deepEqual(checkFlow(r.flow), []);
+  assert.equal((await w.cli("watchers.list", {})).data.watchers.length, 0, "the recipe wrote no watcher");
+  // the watcher half is exactly what watchers.preset takes: a draft with a card, left off
+  const card = await w.cli("watchers.preset", r.watcher);
+  assert.equal(card.data?.name, r.name, JSON.stringify(card).slice(0, 600));
+  assert.equal(card.data.state, "draft"); assert.deepEqual(card.data.facts.reads, ["gmail.googleapis.com"]);
+  assert.equal(card.data.grant, `vyre vault grant work-google watchers --watcher ${r.name}`, "the person grants the account's vault item to this watcher, as for any credential");
+  assert.match(card.data.note, /connected Google account work, read only/);
+  // G-1: nothing is read until the person grants it, for a dry run by a model as for a run
+  const ungranted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
+  assert.match(JSON.stringify(ungranted), /not granted to this watcher/, "a dry run reads nothing without the grant (the same check whoever runs it): " + JSON.stringify(ungranted).slice(0, 300));
+  // a grant to the watchers module as a whole is not a grant to this watcher (the vault releases only against the exact watcher)
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "watchers" })).data.grant.status, "active");
+  assert.match(JSON.stringify(await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } })), /not granted to this watcher/, "a module-wide grant reads nothing");
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "watchers", watcher: r.name })).data.grant.status, "active");
+  const granted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
+  assert.doesNotMatch(JSON.stringify(granted), /not granted to this watcher/, "and with the grant it reads");
+  assert.deepEqual(card.data.facts.credentials, [{ host: "gmail.googleapis.com", item: "google:work", how: "your connected Google account, read only" }]);
+  // a calendar, with the switches
+  const c = (await w.cli("connectors.logging", { connector: "google-calendar", address: "primary", project: "harlow-legal", createUnknown: true, skipInternal: "harlow.test" })).data;
+  assert.equal(c.watcher.poll, "events.changed"); assert.deepEqual(c.watcher.vars, { calendar: "primary" });
+  assert.deepEqual(checkFlow(c.flow), []);
+  assert.match(JSON.stringify(c.flow), /endsWith/);
+  // refusals
+  assert.match((await w.cli("connectors.logging", { connector: "stripe", address: "x@y.test", project: "p" })).error.message, /logging is for/);
+  assert.match((await w.cli("connectors.logging", { connector: "gmail", address: "not-an-address", project: "p" })).error.message, /email address/);
 });

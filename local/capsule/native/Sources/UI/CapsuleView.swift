@@ -58,7 +58,6 @@ struct CapsuleView: View {
                         // The answer grows with its words up to the room left above a few results,
                         // then scrolls (AnswerScroll.swift). It never clips a line out of reach.
                         if model.asked != nil { answerCard(cap: CapsuleLayout.answerCap(model, alone: false)); Rule() }
-                        if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded, who: model.identities); Rule() }
                         HStack(alignment: .top, spacing: 0) {
                             if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
                             if let side {
@@ -106,7 +105,7 @@ struct CapsuleView: View {
             SummonMark(size: 20, replay: focus.count)
             if let vs = model.viewSession {
                 HStack(spacing: 5) {
-                    Image(systemName: vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2")
+                    Image(systemName: IconCache.safeSymbol(vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2"))
                         .font(Theme.subtitle)
                     Text(vs.command.title).font(Theme.type(Tokens.TypeScale.base, .medium)).lineLimit(1)
                 }
@@ -205,7 +204,7 @@ struct CapsuleView: View {
     @ViewBuilder private func chipIcon(_ c: VyreCandidate) -> some View {
         let spec = model.mentionIcon(c)
         if case .symbol(let name, _)? = spec {
-            Image(systemName: name).font(Theme.subtitle)
+            Image(systemName: IconCache.safeSymbol(name)).font(Theme.subtitle)
         } else if let spec, let img = model.icons.image(spec, points: 14, scale: 2) {
             Image(nsImage: img).resizable().interpolation(.high).frame(width: 14, height: 14)
         } else {
@@ -396,7 +395,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = Tokens.Control.sm
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.credentialAsk != nil || m.vaultPassword != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+        m.presenceAsk != nil || m.credentialAsk != nil || m.vaultPassword != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The open panel's height (560): the bar, the body and the footer.
@@ -428,12 +427,11 @@ enum CapsuleLayout {
     @MainActor static func answerCap(_ m: CapsuleModel, alone: Bool) -> CGFloat {
         let room = body(m)
         if alone { return room }
-        let memory: CGFloat = m.showsMemory ? 40 : 0
         // The first group, with up to two of its rows, stays in sight under the card.
         let results = m.groups.first { !$0.items.isEmpty }.map { g in
             6 + Theme.headerHeight + g.items.prefix(2).enumerated().reduce(0) { $0 + rowHeight($1.element, top: g.section == .top) }
         } ?? 0
-        return max(Theme.rowHeight * 2, room - 1 - memory - results)
+        return max(Theme.rowHeight * 2, room - 1 - results)
     }
 
     // MARK: copy
@@ -663,56 +661,10 @@ struct Pulse: View {
     }
 }
 
-/// The memory box (capsule-now rules 1, 2, 7): the fact first, then quotes as quotes with who
-/// said them and when. These same lines, and no others, go with a quick question. A recall-tinted
-/// rule on its left says it came from memory, where no model was used.
-struct MemoryBox: View {
-    let memory: MemoryAnswer
-    var inset = true
-    var body: some View {
-        let items = Memo.items(memory)
-        HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 1).fill(Theme.recall.opacity(0.85)).frame(width: 2)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkle.magnifyingglass").imageScale(.small)
-                    Text(memory.label)
-                }
-                .font(Theme.label).foregroundColor(Theme.recall)
-                ForEach(items) { it in
-                    if it.kind == .quote {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\u{201C}\(it.text)\u{201D}").font(Theme.title).foregroundColor(Theme.stone).lineLimit(2)
-                            HStack(spacing: 6) {
-                                Text("\(it.who ?? "You") said\(it.age.isEmpty ? "" : ", " + Memo.ago(it.age))")
-                                if let s = it.source { Text("·"); Text(s.name).lineLimit(1) }
-                            }
-                            .font(Theme.subtitle).foregroundColor(Theme.ash)
-                        }
-                    } else {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(it.text).font(Theme.type(Tokens.TypeScale.read, .medium)).foregroundColor(Theme.bone).lineLimit(2)
-                            if !it.age.isEmpty { Text(Memo.ago(it.age)).font(Theme.subtitle).foregroundColor(Theme.ash) }
-                        }
-                    }
-                }
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, inset ? Theme.inset : 0).padding(.vertical, inset ? 10 : 0)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Its height, for sizing before SwiftUI lays it out.
-    static func height(_ m: MemoryAnswer) -> CGFloat {
-        20 + 18 + Memo.items(m).reduce(0) { $0 + ($1.kind == .quote ? 36 : 22) }
-    }
-}
-
 /// Memory's answer as one line (the user asked for that over a wall of quotes): the answer, how
 /// sure memory is, and how many conversations it comes from; the sources fold away behind a click
 /// or ⌘→. Recall's colour says it came from memory, where no model was used. Shown only when there
-/// is an answer at all (CapsuleModel.showsMemory).
+/// is an answer at all.
 struct MemoryLine: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
@@ -905,7 +857,7 @@ struct Row: View, Equatable {
             // Symbols sit on a small tile so they line up with app icons beside them.
             RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).fill(Theme.raised)
                 .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
-                .overlay(Image(systemName: name).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
+                .overlay(Image(systemName: IconCache.safeSymbol(name)).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
                 .padding(1)
         } else if IconCache.isSlow(item.icon) {
             // A file's or an app's own icon is made off the main thread; the row draws without it

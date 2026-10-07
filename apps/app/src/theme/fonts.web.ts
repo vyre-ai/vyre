@@ -1,35 +1,18 @@
-// The web build: the fonts are bundled with the app (woff2, content-hashed, precached) and declared
-// once with @font-face, by weight, so the page loads no font from another host (the Deck's CSP).
-// Instrument Sans 400 and 600 and JetBrains Mono 400, from each font's own GitHub source, OFL
-// (assets/fonts/*/OFL.txt). font-display swap: text paints at once in the fallback, then swaps.
-import { Asset } from "expo-asset";
-import { tokens } from "./tokens";
-import type { Face } from "./fonts";
+// The web build: the platform's own font (system-ui: SF on Apple, Segoe UI on Windows, Roboto elsewhere).
+// Nothing is bundled and nothing downloads (the font ruling, 4 Oct 2026). Instrument Sans stays on the wordmark and the web pages.
+import type { Face, Faces } from "./fonts";
 
-const SANS = tokens.font.sans;
-const MONO = tokens.font.mono;
-const { regular, strong } = tokens.font.weight;
+const system = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+const mono = `ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+const serif = `"Iowan Old Style", "Palatino Linotype", Georgia, serif`;
+const face = (fontFamily: string, fontWeight: Face["fontWeight"]): Face => ({ fontFamily, fontWeight });
 
-const FACES: [family: string, weight: string, file: number][] = [
-  [SANS, regular, require("../../assets/fonts/instrument-sans/InstrumentSans-Regular.woff2")],
-  [SANS, strong, require("../../assets/fonts/instrument-sans/InstrumentSans-SemiBold.woff2")],
-  [MONO, regular, require("../../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2")],
-];
+const SYSTEM: Faces = { regular: face(system, "400"), medium: face(system, "500"), strong: face(system, "600"), mono: face(mono, "400") };
+const SERIF: Faces = { regular: face(serif, "400"), medium: face(serif, "600"), strong: face(serif, "700"), mono: SYSTEM.mono };
 
-if (typeof document !== "undefined" && !document.getElementById("vy-fonts")) {
-  const css = document.createElement("style");
-  css.id = "vy-fonts";
-  css.textContent = FACES.map(
-    ([family, weight, file]) =>
-      `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:swap;src:url("${Asset.fromModule(file).uri}") format("woff2")}`,
-  ).join("\n");
-  document.head.appendChild(css);
+export const faces: Faces = SYSTEM;
+
+/** The faces for the font chosen: "serif" is the serif stack; anything else (including the older "sans") is the system font. */
+export function facesFor(font?: string | null): Faces {
+  return font === "serif" ? SERIF : SYSTEM;
 }
-
-const sans = `"${SANS}", system-ui, -apple-system, "Segoe UI", sans-serif`;
-
-export const faces: { readonly regular: Face; readonly strong: Face; readonly mono: Face } = {
-  regular: { fontFamily: sans, fontWeight: regular },
-  strong: { fontFamily: sans, fontWeight: strong },
-  mono: { fontFamily: `"${MONO}", ui-monospace, Menlo, monospace`, fontWeight: regular },
-};

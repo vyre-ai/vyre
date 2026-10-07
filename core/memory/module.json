@@ -1,30 +1,422 @@
 {
   "name": "memory",
   "version": "0.1.0",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": [{ "name": "memory.graph", "projectArg": ["project", "room"] }, { "name": "memory.facts", "projectArg": ["project", "room"] }, { "name": "memory.relevant", "projectArg": ["project", "room"] }, { "name": "memory.why", "projectArg": ["project", "room"] }, "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats",
-    { "name": "memory.correct", "projectArg": ["project", "room"] }, { "name": "memory.corrections", "projectArg": ["project", "room"] }, "memory.uncorrect", "memory.merge", { "name": "memory.split", "projectArg": ["project", "room"] }, "memory.me", { "name": "memory.answer", "projectArg": ["project", "room"] }, "memory.profile", "memory.remember", "memory.read", { "name": "memory.context", "projectArg": ["project", "room"] }, "memory.retrieve", "memory.ask", "memory.suggest", { "name": "memory.today", "projectArg": ["project", "room"] }, "memory.device", "memory.contradictions", "memory.settle", { "name": "memory.card", "projectArg": ["project", "room"] }, "memory.pace", { "name": "memory.decisions", "projectArg": "project" }, { "name": "memory.brief", "projectArg": "project" }, { "name": "memory.prompt", "projectArg": "project" }, { "name": "memory.write", "projectArg": "project" }, { "name": "memory.writes", "projectArg": "project" }, { "name": "memory.write.forget", "projectArg": "project" }, { "name": "memory.write.restore", "projectArg": "project" }, { "name": "memory.heard", "projectArg": ["project", "room"] }, "memory.site.detail", "memory.site.forget", "memory.site.get", "memory.site.list", "memory.site.put", "memory.site.report", "memory.site.restore", "memory.site.sync"] },
-  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed", "memory.thinking", "memory.answered", "memory.fixed", "memory.suggested", "memory.updated", "memory.forgot", "memory.written", "memory.site-learned", "memory.graph-grew"] },
-  "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
-  "needs": {},
+  "does": {
+    "reads": [
+      "memory.me",
+      "memory.site.get",
+      "memory.site.list",
+      "memory.stats"
+    ],
+    "tools": [
+      {
+        "name": "memory.graph",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      {
+        "name": "memory.facts",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      {
+        "name": "memory.relevant",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      {
+        "name": "memory.why",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.pin",
+      "memory.mute",
+      "memory.teach",
+      "memory.curate",
+      "memory.stats",
+      {
+        "name": "memory.sealscan",
+        "reach": "person",
+        "summary": "report what memory holds that has the shape of a sealed value, counts only",
+        "effect": "read"
+      },
+      {
+        "name": "memory.correct",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "write"
+      },
+      {
+        "name": "memory.corrections",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.uncorrect",
+      "memory.merge",
+      {
+        "name": "memory.split",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "write"
+      },
+      "memory.me",
+      {
+        "name": "memory.answer",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.profile",
+      "memory.remember",
+      "memory.read",
+      {
+        "name": "memory.context",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.retrieve",
+      "memory.markers",
+      { "name": "memory.space.file", "reach": "anyone", "effect": "write" },
+      { "name": "memory.space.recall", "reach": "anyone", "effect": "read" },
+      { "name": "memory.space.retire", "reach": "anyone", "effect": "write" },
+      { "name": "memory.upgrade.plan", "reach": "modules", "effect": "read" },
+      { "name": "memory.upgrade.move", "reach": "modules", "effect": "write" },
+      { "name": "memory.personal.status", "reach": "person", "effect": "read" },
+      { "name": "memory.personal.set-cap", "reach": "person", "effect": "write" },
+      { "name": "memory.backup.status", "reach": "person", "effect": "read" },
+      { "name": "memory.backup.restore", "reach": "person", "effect": "write" },
+      { "name": "memory.backup.run", "reach": "person", "effect": "write" },
+      { "name": "memory.room.offer", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.export", "reach": "modules", "effect": "write" },
+      { "name": "memory.room.import", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.forget", "reach": "modules", "effect": "write" },
+      { "name": "memory.identity.status", "reach": "anyone", "effect": "read" },
+      { "name": "memory.identity.enroll", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.grant", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.revoke", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.unlock.begin", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.unlock.finish", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.lock", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.move", "reach": "person", "effect": "write" },
+      "memory.follow",
+      "memory.ask",
+      "memory.suggest",
+      {
+        "name": "memory.today",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.device",
+      "memory.contradictions",
+      "memory.settle",
+      {
+        "name": "memory.card",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "read"
+      },
+      "memory.pace",
+      {
+        "name": "memory.decisions",
+        "projectArg": "project",
+        "effect": "read"
+      },
+      {
+        "name": "memory.brief",
+        "projectArg": "project",
+        "effect": "read"
+      },
+      {
+        "name": "memory.prompt",
+        "projectArg": "project",
+        "effect": "read"
+      },
+      {
+        "name": "memory.write",
+        "projectArg": "project",
+        "effect": "write"
+      },
+      {
+        "name": "memory.writes",
+        "projectArg": "project",
+        "effect": "read"
+      },
+      {
+        "name": "memory.write.forget",
+        "projectArg": "project",
+        "effect": "write"
+      },
+      {
+        "name": "memory.write.restore",
+        "projectArg": "project",
+        "effect": "write"
+      },
+      {
+        "name": "memory.heard",
+        "projectArg": [
+          "project",
+          "room"
+        ],
+        "effect": "write"
+      },
+      "memory.site.detail",
+      "memory.site.forget",
+      "memory.site.get",
+      "memory.site.list",
+      "memory.site.put",
+      "memory.site.report",
+      "memory.site.restore",
+      "memory.site.sync"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "memory.curated",
+      "memory.corrected",
+      "memory.merged",
+      "memory.split",
+      "memory.remembered",
+      "memory.profile-changed",
+      "memory.thinking",
+      "memory.answered",
+      "memory.fixed",
+      "memory.suggested",
+      "memory.updated",
+      "memory.forgot",
+      "memory.written",
+      "memory.site-learned",
+      "memory.graph-grew", "memory.unlock-asked", "memory.sealed"
+    ]
+  },
+  "shows": {
+    "deck": [
+      "panel:memory"
+    ],
+    "capsule": [
+      "answer:memory.relevant"
+    ],
+    "cli": [
+      "memory",
+      "why"
+    ]
+  },
+  "needs": {
+    "kernel": {
+      "membership": true,
+      "sealDetect": true
+    }
+  },
   "teaches": {
     "tips": [
-      {"id": "about-one-thing", "text": "Run `vyre memory \"Harlow Legal\"` to see every fact memory holds about it, each with its age, confidence and source.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory <about>", "docs": "using/memory.md#see-what-memory-holds"},
-      {"id": "why-a-fact", "text": "Each fact line prints its own `vyre why` command. Run it to read the turns the fact came from.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre why <fact>", "docs": "using/memory.md#see-what-memory-holds"},
-      {"id": "gold-means-source", "text": "Text in gold came from memory or the search index, not a model, so Vyre can show you the turn behind it.", "surfaces": ["cli", "deck", "chat", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/memory.md#the-gold-marking"},
-      {"id": "correct-wrong", "text": "Fix a fact with `vyre memory correct '<fact id>' wrong`, or `ended --at 2026-08-01` when it stopped being true.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory correct <fact> wrong", "docs": "using/memory.md#correct-a-fact"},
-      {"id": "pin-mute", "text": "`vyre memory pin \"Harlow Legal\"` ranks it first wherever it is relevant; `vyre memory mute` stops a name being offered.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory pin <node>", "docs": "using/memory.md#steer-what-memory-offers"},
-      {"id": "one-room", "text": "Add `--project harlow-legal` to read one project's room alone, or `--project unfiled` for sessions in no project.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "--project", "docs": "using/memory.md#how-projects-keep-memory-apart"},
-      {"id": "ask-your-life", "text": "Ask about your own life with `vyre memory ask \"what car do I drive\"`. Add `--sources` to see the turns behind the answer.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre memory ask <question>", "docs": "reference/cli.md#vyre-memory"},
-      {"id": "floor-plan", "text": "Open Memory in the Deck to see the graph as a floor plan: one room per project, each fact a gold dot you can trace.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"},
-      {"id": "learned-today", "text": "The Deck's Now page lists what memory learned today, each fact beside the thread it came from.", "surfaces": ["deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"}
+      {
+        "id": "about-one-thing",
+        "text": "Run `vyre memory \"Harlow Legal\"` to see every fact memory holds about it, each with its age, confidence and source.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre memory <about>",
+        "docs": "using/memory.md#see-what-memory-holds"
+      },
+      {
+        "id": "why-a-fact",
+        "text": "Each fact line prints its own `vyre why` command. Run it to read the turns the fact came from.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre why <fact>",
+        "docs": "using/memory.md#see-what-memory-holds"
+      },
+      {
+        "id": "gold-means-source",
+        "text": "Text in gold came from memory or the search index, not a model, so Vyre can show you the turn behind it.",
+        "surfaces": [
+          "cli",
+          "deck",
+          "chat",
+          "capsule"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/memory.md#the-gold-marking"
+      },
+      {
+        "id": "correct-wrong",
+        "text": "Fix a fact with `vyre memory correct '<fact id>' wrong`, or `ended --at 2026-08-01` when it stopped being true.",
+        "surfaces": [
+          "cli",
+          "deck"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre memory correct <fact> wrong",
+        "docs": "using/memory.md#correct-a-fact"
+      },
+      {
+        "id": "pin-mute",
+        "text": "`vyre memory pin \"Harlow Legal\"` ranks it first wherever it is relevant; `vyre memory mute` stops a name being offered.",
+        "surfaces": [
+          "cli",
+          "deck"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre memory pin <node>",
+        "docs": "using/memory.md#steer-what-memory-offers"
+      },
+      {
+        "id": "one-room",
+        "text": "Add `--project harlow-legal` to read one project's room alone, or `--project unfiled` for sessions in no project.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "--project",
+        "docs": "using/memory.md#how-projects-keep-memory-apart"
+      },
+      {
+        "id": "ask-your-life",
+        "text": "Ask about your own life with `vyre memory ask \"what car do I drive\"`. Add `--sources` to see the turns behind the answer.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre memory ask <question>",
+        "docs": "reference/cli.md#vyre-memory"
+      },
+      {
+        "id": "floor-plan",
+        "text": "Open Memory in the Deck to see the graph as a floor plan: one room per project, each fact a gold dot you can trace.",
+        "surfaces": [
+          "deck"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "docs": "using/memory.md#see-what-memory-holds"
+      },
+      {
+        "id": "learned-today",
+        "text": "The Deck's Now page lists what memory learned today, each fact beside the thread it came from.",
+        "surfaces": [
+          "deck"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/memory.md#see-what-memory-holds"
+      }
     ]
   },
   "settings": [
-    {"key": "memory.model", "group": "memory", "label": "Use a model to learn facts", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.on"}},
-    {"key": "memory.plan_share", "group": "memory", "label": "How much of your Claude plan memory may use each day", "help": "It never costs money: memory reads on your Claude plan, and this is the share of its usage it may take. More learns faster.", "type": "enum", "enum": ["small", "medium", "large"], "labels": {"small": "A little", "medium": "A small share", "large": "More, to learn faster"}, "default": "medium", "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.share"}},
-    {"key": "memory.site.learn", "group": "memory", "label": "Learn how each website works", "help": "Vyre for Chrome remembers each site's layout, how to find its buttons, how to tell it is ready or that you must sign in, and the flows that worked, so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens. You can see and forget any of it.", "type": "bool", "default": true, "levels": ["account"], "apply": "live"},
-    {"key": "memory.site.sync", "group": "memory", "label": "Bring in what Vyre for Chrome learned on its own", "help": "Standalone Vyre for Chrome keeps what it learned on this computer. With this on, it is folded into your Vyre Memory once your box is reachable, and the other way round.", "type": "bool", "default": true, "levels": ["account"], "apply": "live"}
+    {
+      "key": "memory.model",
+      "group": "memory",
+      "label": "Use a model to learn facts",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "memory.model.on"
+      }
+    },
+    {
+      "key": "memory.plan_share",
+      "group": "memory",
+      "label": "How much of your Claude plan memory may use each day",
+      "help": "It never costs money: memory reads on your Claude plan, and this is the share of its usage it may take. More learns faster.",
+      "type": "enum",
+      "enum": [
+        "small",
+        "medium",
+        "large"
+      ],
+      "labels": {
+        "small": "A little",
+        "medium": "A small share",
+        "large": "More, to learn faster"
+      },
+      "default": "medium",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "memory.model.share"
+      }
+    },
+    {
+      "key": "memory.site.learn",
+      "group": "memory",
+      "label": "Learn how each website works",
+      "help": "Vyre for Chrome remembers each site's layout, how to find its buttons, how to tell it is ready or that you must sign in, and the flows that worked, so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens. You can see and forget any of it.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "memory.site.sync",
+      "group": "memory",
+      "label": "Bring in what Vyre for Chrome learned on its own",
+      "help": "Standalone Vyre for Chrome keeps what it learned on this computer. With this on, it is folded into your Vyre Memory once your box is reachable, and the other way round.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    }
   ]
 }

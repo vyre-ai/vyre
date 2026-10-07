@@ -31,7 +31,7 @@ export const MIGRATIONS = [
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
 const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal", "proactive", "notice"];
-const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"];
 /** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
 const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true, proactive: true, notice: true };
 /** The kinds nobody asked for in the moment: they share one daily budget (assistant.chattiness, default 3).
@@ -63,6 +63,20 @@ function fail(code, message) {
   return e;
 }
 
+/**
+ * The one place a push message is shaped before it leaves the box: a kind, a fixed title, an id path and tag, and the few fields a device needs to act (the planner's item, due and
+ * actions, a test's receipt). Free text from a thread, a goal, a message or a record never goes through; only the person's own planner label, when they turned that on, rides as `body`
+ * (issue 72, the lead's ruling: a notification carries no content, the device asks the box once it is opened).
+ * @param {any} m
+ */
+export function outgoing(m) {
+  /** @type {any} */ const out = { kind: String(m.kind), at: m.at };
+  for (const k of ["title", "path", "tag", "item", "due", "receipt"]) if (m[k] !== undefined) out[k] = m[k];
+  if (Array.isArray(m.actions)) out.actions = m.actions.filter(a => typeof a === "string").slice(0, 4);
+  if (m.kind === "planner" && typeof m.body === "string" && m.body) out.body = m.body;
+  return out;
+}
+
 /** For tests only: the clock and the hold. */
 export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
 
@@ -71,7 +85,7 @@ export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
  * `loud` rings through quiet hours: an alarm or a timer the user set themselves (ADR 0025).
  * @type {Record<string, (e: any, s: any) => { kind: string, title: string, path: string, tag: string, body?: string, actions?: string[], loud?: boolean } | null>}
  */
-const NOTES = {
+export const NOTES = {
   "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}` }),
   "gate.held": e => ({ kind: "draft", title: "Something is waiting for your approval", path: `/needs/${enc(e.payload.id)}`, tag: `draft-${e.payload.id}` }),
   "thread.watched": e => ({ kind: "watch",
@@ -88,19 +102,32 @@ const NOTES = {
     ...(s.planner_label && e.payload.title ? { body: String(e.payload.title).slice(0, 120) } : {}) }),
   // core/goals: a milestone landing, or the last one landing (the goal itself done). One push
   // per event, no escalation (unlike planner's rings) - a milestone does not need answering.
+  // The milestone's words never ride in the push: the device opens /goals/<id> and asks the box (issue 72).
   "goal.milestone": e => ({ kind: "goal", title: "A milestone is done", path: `/goals/${enc(e.payload.goal)}`,
-    tag: `goal-milestone-${e.payload.goal}-${e.payload.index}`, body: String(e.payload.text || "").slice(0, 120) }),
+    tag: `goal-milestone-${e.payload.goal}-${e.payload.index}` }),
   // Any proactive source (the assistant, watchers, duties) files one push through this event.
-  // The title is a fixed sentence the source wrote, never model text; over the daily budget it is dropped.
-  "push.proactive": e => ({ kind: "proactive", title: String(e.payload.title || "Something needs a look").slice(0, 120),
+  // The title is one of the fixed sentences in PROACTIVE_TITLES, never a source's own words (a project, a name or a result): anything else is the generic line (issue 72).
+  // Over the daily budget it is dropped.
+  "push.proactive": e => ({ kind: "proactive", title: PROACTIVE_TITLES.includes(String(e.payload.title)) ? String(e.payload.title) : PROACTIVE_GENERIC,
     path: String(e.payload.path || "/needs").slice(0, 200), tag: String(e.payload.tag || `proactive-${Date.now()}`).slice(0, 100) }),
   // An agent loosened a guard because the person asked (core/settings, settings.loosened): a notice, not an ask. It is
   // not counted in the daily budget and rings through quiet hours; the title is one fixed sentence around the setting's
   // own label (never model text), and the path opens that change, whose Undo needs no proof.
   "settings.loosened": e => ({ kind: "notice", title: `${String(e.payload.label || "A setting").slice(0, 80)} changed, as you asked. Undo`,
     path: `/settings?change=${enc(e.payload.change)}`, tag: `settings-loosened-${e.payload.change}`, loud: true }),
+  // core/spaces: the person's identity list changed (a new device, a recovery by the code or by contacts, a removal). Every device that sees
+  // it (each asks the directory for the list, spaces.identity.sync) rings its own push devices at once, through quiet hours and outside the
+  // daily budget, with a one-tap Remove. The words are fixed; the path carries only an entry id, which is a hash of a public key.
+  "identity.entry-added": e => ({ kind: "notice", title: "A new sign-in was added to your identity. Remove it if it was not you",
+    path: `/settings?section=identity&remove=${enc(e.payload.eid || (e.payload.entry && e.payload.entry.eid))}`, tag: `identity-entry-${e.payload.seq}-${e.payload.eid || (e.payload.entry && e.payload.entry.eid) || ""}`, actions: ["remove"], loud: true }),
+  "identity.recovered": e => ({ kind: "notice", title: "Your identity was recovered on a new device. Remove it if it was not you",
+    path: "/settings?section=identity", tag: `identity-recovered-${e.payload.seq}`, actions: ["remove"], loud: true }),
+  "identity.device-removed": e => ({ kind: "notice", title: "A device was removed from your identity", path: "/settings?section=identity", tag: `identity-removed-${e.payload.eid}`, loud: true }),
   "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };
+/** The fixed sentences a proactive source may use; any other title becomes PROACTIVE_GENERIC. */
+export const PROACTIVE_GENERIC = "Something needs a look";
+export const PROACTIVE_TITLES = Object.freeze([PROACTIVE_GENERIC, "A teammate finished", "A teammate could not finish"]);
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
 const enc = v => encodeURIComponent(String(v ?? ""));
 /** The planner's ring key, or the firing id from a planner that predates keys. */
@@ -169,7 +196,8 @@ export default {
     };
 
     /** Send one message to every device (or one), dropping those the service says are gone. */
-    const deliver = async (message, only = null) => {
+    const deliver = async (message0, only = null) => {
+      const message = outgoing(message0);
       const k = await key();
       const devices = /** @type {any[]} */ (db.prepare(`SELECT * FROM push_devices ${only ? "WHERE id = ?" : ""}`).all(...(only ? [only] : [])));
       const out = { sent: 0, failed: 0, dropped: 0 };
@@ -274,7 +302,9 @@ export default {
     /** When each surface last emitted push.seen. */
     const seenEvents = new Map();
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: PEOPLE });
+    /** What each tool does to state: key and devices only read; settings changes quiet hours and kinds for some inputs, so it writes. */
+    const EFFECT = { "push.key": "read", "push.devices": "read" };
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: PEOPLE, effect: EFFECT[name] || "write" });
     const str = { type: "string" };
 
     tool("push.key", "The public key a browser subscribes with (applicationServerKey, base64url).",

@@ -7,10 +7,16 @@
 // every one of them may be missing (not installed, failed, not built yet): each tool then
 // returns less, never an error, so Claude Code behaves exactly as it would without Vyre.
 
+import fs from "node:fs";
+import { timeLine, personZone } from "../../lib/time/index.js";
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
+import { agentName, modelKey } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
+import { withoutSeed } from "../../lib/seed.js";
+import { meterOf, wantsMillion, warning } from "./meter.js";
+import { claudeHome, transcriptFolders } from "../config/index.js";
 
 const MIGRATIONS = [
   `CREATE TABLE harness_files (
@@ -22,6 +28,9 @@ const MIGRATIONS = [
 
 /** Tools that change files, and where each keeps the path it changed. */
 const WRITERS = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
+
+/** The hooks of a model's own session (mcp, harness), the person's surfaces and modules; each body scopes a hook to its own session. */
+const HOOK_CALLERS = ["mcp", "harness", "cli", "local", "deck", "capsule", "module"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -107,6 +116,7 @@ export default {
 
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
+      callers: HOOK_CALLERS,
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
       run: async ({ cwd, session, source, project, projects, headless }, meta) => {
         await own(meta, session, { brief: true });
@@ -114,8 +124,10 @@ export default {
         const mine = Boolean(meta && typeof meta.thread === "string" && meta.thread === session);
         const verified = mine || !/^(?:mcp|harness)(?::|$)/.test(String((meta || {}).caller || ""));
         if (session && verified) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+        // The one time line every model brief carries (lib/time): now for the person, in the zone of the machine the call came from, and the Space's zone when it keeps its own.
+        const clock = timeLine({ now: Date.now(), person: personZone(meta), space: (ctx.config && typeof ctx.config.zone === "string" && ctx.config.zone) || null });
         const warning = session && !headless ? await secondWriter(session) : "";
-        const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
+        const withWarning = (/** @type {string} */ t) => [clock, warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
         // single pick. A session picked into several projects gets no brief rather than a guess.
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
@@ -142,7 +154,9 @@ export default {
         // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
         // nudge toward team_ask, ahead of the project's own brief - null when the person turned
         // team.default off for this project, or core/team is not running.
-        const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
+        // team's rows are keyed by the Project record's id: the thread still carries the short name.
+        const ref = slug ? await ask("work.project.ref", { project: slug }) : null;
+        const teamAppend = ref && ref.id ? await ask("team.project-append", { project: ref.id }) : null;
         const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
         // Defense in depth (both style and team already cap their own text; this bounds the sum
         // even if either drifts, or a third append joins them later): a hard ceiling at the one
@@ -154,17 +168,92 @@ export default {
       },
     });
 
+    /**
+     * Did the person type this prompt? The session's own transcript, read fresh through Recall (a module may ask for it), has as its LAST user line exactly this text. Not found,
+     * unreadable or different: no.
+     * @param {string} session @param {string} prompt
+     */
+    const typedByPerson = async (session, prompt) => {
+      try {
+        const t = await ask("recall.transcript", { session, limit: 8 });
+        const blocks = t && Array.isArray(t.blocks) ? t.blocks : [];
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          const b = blocks[i];
+          const kind = String(b.kind || b.type || b.role || "");
+          if (kind !== "user") continue;
+          const text = typeof b.text === "string" ? b.text : typeof b.content === "string" ? b.content : null;
+          return text !== null && text.trim() === prompt.trim() && prompt.trim() !== "";
+        }
+      } catch { /* unreadable: no */ }
+      return false;
+    };
+
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
-        interactive: { type: "boolean" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller, ...meta } = {}) => {
+        interactive: { type: "boolean" }, transcript: { type: "string", description: "the session's transcript file, for the window warning" } } },
+      run: async (input, extra = {}) => {
+        const r = await enrich(input, extra);
+        const notice = await rollNotice(input, extra);
+        return notice ? { ...r, notice } : r;
+      },
+    });
+
+    /**
+     * Once per crossing, a person's own terminal session is told its window is filling (see ./meter.js): never an agent's or a Vyre-run session (Vyre rolls those itself), and only when
+     * the session's own transcript, under a transcript folder, says so. Forgotten again when the window falls back under the line (a roll, a /clear, a compaction).
+     * @type {Set<string>}
+     */
+    const warned = new Set();
+    const rollNotice = async (/** @type {any} */ { session, transcript, agent: named }, /** @type {any} */ { caller, ...meta } = {}) => {
+      try {
+        if (!session || typeof transcript !== "string" || !transcript.endsWith(".jsonl") || agentOf(named, caller) || (typeof meta.thread === "string" && meta.thread)) return null;
+        if (path.basename(transcript, ".jsonl") !== String(session)) return null;
+        const folders = transcriptFolders(ctx.config.transcripts || [], ctx.paths?.root || "");
+        // Inside a transcript folder, by real path: a symlink out of one is outside it.
+        const real = fs.realpathSync(path.resolve(transcript));
+        const inside = (/** @type {string} */ dir) => { try { const r = path.relative(fs.realpathSync(dir), real); return Boolean(r) && !r.startsWith("..") && !path.isAbsolute(r); } catch { return false; } };
+        if (!folders.some(inside)) return null;
+        const on = await ask("settings.get", { key: "sessions.rollover" });
+        if (on && on.value === false) return null;
+        const at = await ask("settings.get", { key: "sessions.rollover_at" });
+        const line = (at && typeof at.value === "number" ? at.value : 60) / 100;
+        const m = meterOf(transcript, { million: wantsMillion(claudeHome(ctx.paths?.root)) });
+        if (!m) return null;
+        const key = String(session);
+        if (m.share < line - 0.1) { warned.delete(key); return null; }
+        if (m.share < line || warned.has(key)) return null;
+        warned.add(key);
+        return warning(m);
+      } catch { return null; }
+    };
+
+    const enrich = async (/** @type {any} */ { prompt: said, cwd, session, prompt_id, agent: named, projects, interactive }, /** @type {any} */ { caller, ...meta } = {}) => {
+        // A rolled session's first message carries Vyre's seed in front of the person's words (lib/seed.js): the transcript has it whole, everything that reads the person's words reads only theirs.
+        const prompt = withoutSeed(said);
         await own({ caller, ...meta }, session);
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
         // plain yes or no answer a lesson. An agent's thread never is.
-        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent }) : null;
+        // HD-4: `interactive` is a claim in the input, so it counts for nothing by itself. A bare yes or no answers a lesson only when (1) the PERSON is behind the call and (2) the session's
+        // own transcript, the line Claude Code wrote, says they typed exactly this prompt. (1) With the kernel on is the call's chain: exactly one person, no agent, no viewer or
+        // delegated hop, no Vyre thread. A caller label is no evidence either way. SHIM(legacy labels): with the kernel off, (1) is the hook's own label `harness` with no Vyre thread
+        // behind it, which is all a 0.2 daemon knows. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
+        let terminal = false;
+        if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
+          let typedBy = false;
+          if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+            const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
+            typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
+          } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
+          if (typedBy) {
+            const claimed = await ask("threads.claimed", { session: String(session) });
+            if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), said);
+          }
+        }
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: terminal }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
         // A lesson broken last turn opens this one, ahead of memory.
         const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
@@ -180,13 +269,15 @@ export default {
         // its folders go too, for a project Memory has not read yet. Outside every project a
         // session reads the unfiled room, never a folder prefix, so a session in the home folder
         // does not see every client (docs/adr/0007-intelligence.md).
+        // The assistant (scope "*") outside any project reads the whole account, not only the unfiled room: memory's job is to give it the
+        // relevant facts with their sources as context (#46, memory never stands in front of an assistant), and memory's own rule for the
+        // assistant decides what it may see.
         const where = project && project.slug ? { room: String(project.slug), ...(folders ? { project_cwds: folders } : {}) }
-          : folders ? { project_cwds: folders } : { room: "unfiled" };
+          : folders ? { project_cwds: folders } : projects === "*" ? {} : { room: "unfiled" };
         const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
         return { text: [inbox, ...(first ? [lessons, memory] : [memory, lessons])].filter(Boolean).join("\n\n") };
-      },
-    });
+    };
 
     const SUBAGENT = /^(Agent|Task)$/;
     /** Take a subagent slot for a session's Agent call: null when it may run, else why not. */
@@ -203,6 +294,7 @@ export default {
 
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
         plugin_root: { type: "string" } } },
       run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller, ...meta } = {}) => {
@@ -241,8 +333,9 @@ export default {
     const touch = db.prepare("INSERT INTO harness_files (session, path, tool, at) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET at = excluded.at");
     ctx.tool("harness.learn", {
       description: "PostToolUse and PostToolUseFailure: record which files a tool changed, so every change is visible (security floor rule 5), and tell Learning what became of the call (ok false: it failed).",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
-        tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
+        tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
       run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }, meta) => {
         await own(meta, session);
         if (SUBAGENT.test(String(tool_name)) && session && tool_use_id) await releaseSlots(session, tool_use_id);
@@ -267,12 +360,24 @@ export default {
 
     ctx.tool("harness.touched", {
       description: "Files changed in a thread, newest first.",
+      callers: HOOK_CALLERS,
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, limit: { type: "integer" } } },
       run: async ({ session, limit }, meta) => { await own(meta, session); return db.prepare("SELECT path, tool, at FROM harness_files WHERE session = ? ORDER BY at DESC LIMIT ?").all(session, limit || 100); },
     });
 
+    ctx.tool("harness.end", {
+      description: "SessionEnd: this session is over (clear, logout or exit). Says thread.stopped once, so the Project hub closes the session's summary. Never blocks.",
+      callers: HOOK_CALLERS,
+      input: { type: "object", properties: { session: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, prompt_id: { type: "string" }, reason: { type: "string" } } },
+      run: async ({ session, reason }, meta = {}) => {
+        await own(meta, session);
+        if (session) ctx.events.emit("thread.stopped", { session, reason: reason === "clear" || reason === "logout" || reason === "prompt_input_exit" ? "done" : String(reason || "done"), source: "terminal" });
+        return { ok: true };
+      },
+    });
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
+      callers: HOOK_CALLERS,
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller, ...meta } = {}) => {

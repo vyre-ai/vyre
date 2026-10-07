@@ -93,17 +93,13 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.url(box: BOX, target: ""), nil)
     }
 
-    t.test("the address comes from link.status, and only for a live pairing") {
-        @Sendable func link(_ data: Any) -> FakeLink { FakeLink { tool, _ in tool == "link.status" ? .success(data) : .failure(code: "no_such_tool", message: "no tool \(tool)") } }
-        let got = t.wait { () -> [String] in
-            [await Glass.address(link(["linked": true, "box": ["address": BOX + "/"]])) ?? "nil",
-             await Glass.address(link(["linked": false, "box": ["address": BOX]])) ?? "nil",
-             await Glass.address(link(["linked": true, "box": NSNull()])) ?? "nil",
-             await Glass.address(link(["linked": true, "box": ["address": "http://alex.vyre.run"]])) ?? "nil",
-             await Glass.address(FakeLink { _, _ in .failure(code: "unknown_tool", message: "no") }) ?? "nil",
-             await Glass.address(link(["linked": true, "box": ["address": BOX]]), has: false) ?? "nil"]
-        }
-        t.eq(got, [BOX, "nil", "nil", "nil", "nil", "nil"])
+    t.test("the address comes from wink.server.home, and only for a live pairing") {
+        let a = { (d: Any) in WinkServer.parseHome(d)?.address ?? "nil" }
+        t.eq([a(["linked": true, "box": ["address": BOX + "/"]]), a(["linked": true, "box": NSNull()]), a(["linked": true, "box": ["address": "http://alex.vyre.run"]]), a("not an object")],
+             [BOX, "nil", "nil", "nil"])
+        t.eq(WinkServer.parseHome(["linked": false])?.reachable, nil)
+        t.eq(WinkServer.parseHome(["linked": true])?.reachable, true)
+        t.eq(WinkServer.parseHome(["linked": true, "reachable": false, "name": "kit"])?.name, "kit")
     }
 
     t.test("an agent with a computer gets Open Glass, one without does not") {
@@ -129,7 +125,7 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.results("glass harper", glassCatalog()).map(\.id), ["glass:harper"])
         t.eq(Glass.results("Glass HAR", glassCatalog()).map(\.id), ["glass:harper"])
         t.eq(Glass.results("glass juno", glassCatalog()).count, 0, "no computer, no row, even when asked by name")
-        t.eq(Glass.results("glass box", glassCatalog()).map { "\($0.id)|\($0.label)" }, ["glass:box|Open the box's files in Glass"])
+        t.eq(Glass.results("glass box", glassCatalog()).map { "\($0.id)|\($0.label)" }, ["glass:box|Open your server's files in Glass"])
         t.eq(Glass.results("glass", glassCatalog()).map(\.id).sorted(), ["glass:box", "glass:harper", "glass:night owl"])
     }
 
@@ -138,7 +134,7 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.open(box: BOX, target: "night owl", opener: { opened.append($0.absoluteString); return true }), .close(nil))
         t.eq(opened, ["https://alex.vyre.run/glass/night%20owl"])
         guard case .failed(let why) = Glass.open(box: nil, target: "harper", opener: { opened.append($0.absoluteString); return true }) else { t.ok(false); return }
-        t.ok(why.contains("No box is paired"))
+        t.ok(why.contains("No server is paired"))
         t.eq(opened.count, 1, "no address, nothing opened")
         guard case .failed = Glass.open(box: BOX, target: "harper", opener: { _ in false }) else { t.ok(false, "a browser that failed is not success"); return }
     }

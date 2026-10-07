@@ -9,6 +9,8 @@
 // Every touch point with the OS (who, the terminal device, the Touch ID helper, WebAuthn) is
 // injectable, so tests never open a dialog or write to a real terminal.
 
+import { PERSON_SURFACES as PERSON_SURFACE_LIST } from "../../lib/person-surfaces.js";
+import { strengthOfMethod, strengthRefusal } from "../../kernel/seal/strength.js";
 import crypto from "node:crypto";
 import { normalizePublicKey, checkRsa } from "./keys.js";
 import fs from "node:fs";
@@ -45,7 +47,6 @@ export const HUMAN_ONLY = new Set([
   // and the sites that leave through the owner's Mac. Switching a share the owner already made
   // between read-only and read-write is the owner's own (PERSON_ONLY below).
   "files.drive.share", "files.drive.unshare",
-  "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
@@ -136,7 +137,9 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
  * `hook` or a guest kind — those already keep a model, an agent or another box's peer out on
  * their own, so a tool naming one of them is not "person-only" by its callers alone.
  */
-export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
+/** The only tools a development build's stand-in satisfies without the caller offering it. */
+const STAND_IN_AUTO = new Set(["vault.put", "vault.reveal"]);
+export const PERSON_SURFACES = new Set(PERSON_SURFACE_LIST);
 
 /**
  * A tool whose callers are person-only surfaces reads as person-only, but until now only
@@ -192,7 +195,7 @@ export function personOnly(name, def) {
   return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
 }
 
-export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session", "yes"];
 
 /**
  * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
@@ -221,6 +224,7 @@ export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
  * caller reaches a HUMAN_ONLY tool only with a person session as well (ADR 0032; the registry's
  * gate runs first), so a script on that device cannot borrow the node's identity here.
  */
+// SHIM(legacy labels): the kernel-off fallback; with a kernel the registry asks `personOf` (the chain) instead.
 const vaultSessionCaller = caller => {
   const c = String(caller || "");
   if (/(?:^|[\s:])agent:/.test(c)) return false;
@@ -236,6 +240,7 @@ const TERMINAL_WINDOW = 30 * 60_000;
  */
 export const TERMINAL_WINDOWED = new Set(["vault.approve", "vault.grant"]);
 
+export { isYou, yes, configureYes, yesReason, signOf, momentOf, plainFieldsOf, opFitsMoment, lineOfOp, MOMENT_OPS, MOMENTS, YES_REASONS } from "../../lib/one-yes.js";
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
     id TEXT PRIMARY KEY,
@@ -365,6 +370,59 @@ export const MIGRATIONS = [`
     removed INTEGER NOT NULL,
     PRIMARY KEY (id, kind)
   );
+`, `
+  -- An owner-paired device's person session (ADR 0032 section 2d). The pairing writes one grant for
+  -- the device: the key the owner confirmed, the presence key whose proof confirmed it, and a short
+  -- life. The device's first start proves it holds that key, and turns the grant into a session
+  -- with no maximum life (paired = 1), which still ends after 30 days unused.
+  ALTER TABLE presence_people ADD COLUMN paired INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE presence_people ADD COLUMN rotated INTEGER;
+  ALTER TABLE presence_people ADD COLUMN software INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE presence_pair_grants (
+    device TEXT PRIMARY KEY,
+    key_id TEXT NOT NULL,
+    device_key TEXT NOT NULL,
+    challenge TEXT NOT NULL,
+    software INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 0
+  );
+`, `
+  -- A command-line session (\`vyre signin\`, core/signin): a third kind of person session, carried as the bearer header, signed by no key and pinned to one terminal login (node cli:<login key>).
+  -- SQLite cannot widen a CHECK, so the table is rebuilt with the same columns.
+  CREATE TABLE presence_people_v2 (
+    id TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('cookie', 'bearer', 'cli')),
+    node TEXT NOT NULL,
+    label TEXT,
+    key TEXT,
+    created INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    max INTEGER NOT NULL,
+    key_id TEXT,
+    paired INTEGER NOT NULL DEFAULT 0,
+    rotated INTEGER,
+    software INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO presence_people_v2 (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) SELECT id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software FROM presence_people;
+  DROP TABLE presence_people;
+  ALTER TABLE presence_people_v2 RENAME TO presence_people;
+`, `
+  -- A paired device locked after three wrong sign-in answers (core/presence/module.js, presence.person.renew-allow lifts it): the lock lives here so a restart keeps it.
+  CREATE TABLE presence_renew_lock (device TEXT PRIMARY KEY, until INTEGER NOT NULL);
+`, `
+  -- The strength of the proof that opened a session, recorded on its row (core/presence/person.js strength()): software, hardware, "enclave, unattested", passkey. A paired session made before this
+  -- column existed proved nothing about its key's custody (its flag defaulted to 0), so it is marked software and reads as software: such a device opens a fresh session (startPaired) to prove its key.
+  ALTER TABLE presence_people ADD COLUMN strength TEXT;
+  UPDATE presence_people SET strength = 'software', software = 1 WHERE paired = 1;
+`, `
+  -- The strength a pairing grant carries into the session it opens (written from what the server verified at pairing or at the owner's approval, never from an app's claim).
+  ALTER TABLE presence_pair_grants ADD COLUMN strength TEXT;
+`, `
+  -- A sign-in a phone approved lasts at most this many ms (12 hours): the browser's session then ends and the next sign-in asks again.
+  ALTER TABLE presence_pair_grants ADD COLUMN cap_ms INTEGER;
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -376,8 +434,12 @@ const GRANT_TTL = 5 * 60_000;
 // about 30 minutes on that device). There is no shorter idle cutoff inside that.
 const SESSION_MAX = 30 * 60_000;
 const SESSION_IDLE = SESSION_MAX;
-/** The proofs strong enough to open a session: hardware or a key the model cannot read. */
-const SESSION_FROM = new Set(["touchid", "capsule", "device", "passkey"]);
+/**
+ * The proofs strong enough to open a session: a gesture method. A presence session and the terminal window are not methods of their own: each INHERITS the method of the proof that opened it (PS-1), recorded
+ * on the session row (`method`) and in `terminalOpener`, and every later `session` or `window` proof is checked with that opener through the one rule in kernel/seal/strength.js. `device` (a file key that a daemon
+ * or browser can use with nobody there) opens a session only where the server takes software proofs (a development build behind its switch, marked software), never on a release-kind server.
+ */
+const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
 const MAX_OPEN = 64;
 // No 0/O, 1/I/L: a code is read off a screen and typed by hand.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -506,12 +568,20 @@ export class Presence {
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
+  constructor({ db, events = null, standIn = () => false, softwareOk = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), ownerDevice = async () => false, who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
+    /** DEVELOPMENT ONLY: is the walk's presence stand-in on for this home? The daemon answers true only for a development build whose home holds a file the owner made by hand. */
+    this.standIn = standIn;
+    /** DEVELOPMENT ONLY: does this server take a software-strength proof (a `device` key) for a presence-required act? Always false on a release-kind server (PW-1). */
+    this.softwareOk = softwareOk;
+    /** The method that opened each terminal window, so a window inherits its opener's strength (PS-1). */
+    this.terminalOpener = new Map();
     /** A test's own link, or null for none; undefined reads the daemon's (core.link). */
     this.coreOpt = coreOpt;
     this.role = role;
     this.network = network;
+    /** Is this caller one of the OWNER's paired Wink devices (the owner confirmed it; not removed)? Given by the presence module from wink.device.record; false with none. @type {(caller: string) => Promise<boolean>} */
+    this.ownerDevice = ownerDevice;
     this.events = events;
     this.log = log;
     this.platform = platform;
@@ -633,7 +703,7 @@ export class Presence {
     const now = this.now();
     for (const [id, c] of this.challenges) if (c.expires <= now) this.challenges.delete(id);
     for (const [n, until] of this.nonces) if (until <= now) this.nonces.delete(n);
-    for (const [t, until] of this.terminals) if (until <= now) this.terminals.delete(t);
+    for (const [t, until] of this.terminals) if (until <= now) { this.terminals.delete(t); this.terminalOpener.delete(t); }
   }
 
   /**
@@ -700,13 +770,19 @@ export class Presence {
    * the client could use instead.
    * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|{ key: string, tty?: string|null }|null }} a terminal: the login vyred saw the caller in (key) and the terminal to write a notice to (tty)
    */
-  async verify({ tool, input, caller, proof, def, peer = null, terminal = null }) {
+  async verify({ tool, input, caller, proof, def, peer = null, terminal = null, meta = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
     // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
-    const refuse = async message => {
+    const refuse = async (message, code = "presence_required") => {
       if (method) this.emit("presence.refused", { tool, method, caller });
-      return { ok: /** @type {false} */ (false), code: "presence_required", message, methods: await this.methods() };
+      return { ok: /** @type {false} */ (false), code, message, methods: await this.methods() };
     };
+    // PW-1: the one strength rule (kernel/seal/strength.js) by METHOD. A method that needed a gesture (Touch ID through the pinned Capsule, a passkey with user verification, the terminal code, an attested key) is
+    // `hardware`; a `device` proof (a file key) is `software`: session only, refused for every presence-required act here with software_key unless this server takes software proofs (development, behind its switch),
+    // where it is accepted and marked method software. `session` and `window` inherit their opener's method (PS-1). `grant` and `code` only enrol the first passkey and are not presence for an act. `stand-in` is handled below.
+    const softOk = () => { try { return this.softwareOk() === true; } catch { return false; } };
+    const strengthGate = (/** @type {string} */ m, /** @type {string|null} */ opener = null) => (m === "grant" ? null : strengthRefusal(strengthOfMethod(m, opener), softOk()));
+    const SOFT_MSG = "this key is software; approve this in Vyre on your phone";
     this.prune();
     // The CLI's window: after one strong proof from a login (Touch ID, the Capsule, a passkey), the
     // same login's vault approvals and grants ask nothing for 30 minutes. vyred names the login from
@@ -721,16 +797,38 @@ export class Presence {
       ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
     const opens = cliLogin && SESSIONABLE.has(tool);
     if (cliLogin && TERMINAL_WINDOWED.has(tool) && (this.terminals.get(/** @type {any} */ (term).key) || 0) > this.now() && await sessionOk()) {
+      if (strengthGate("window", this.terminalOpener.get(/** @type {any} */ (term).key) || null)) return refuse(SOFT_MSG, "software_key");
       const tty = /** @type {any} */ (term).tty;
       this.windowNotice(tty, tool, input);
       this.emit("presence.proved", { tool, method: "window", caller });
       return { ok: /** @type {true} */ (true), method: "window", keyId: null, where: tty || null };
     }
+    if (method === "stand-in") {
+      // The automated walk's stand-in for a person's proof: honoured only where the daemon says so (a development build with the owner's hand-made file). Every event and audit row that follows
+      // carries method "stand-in", so a walk can never be mistaken for a real proof. A packaged build says so once and refuses.
+      let on = false; try { on = this.standIn() === true; } catch { on = false; }
+      if (!on) {
+        if (!this.standInSaid) { this.standInSaid = true; this.log("presence: a stand-in proof was offered and ignored: this build takes none"); }
+        return refuse("this build takes no presence stand-in");
+      }
+      this.emit("presence.proved", { tool, method: "stand-in", caller });
+      return { ok: /** @type {true} */ (true), method: "stand-in", keyId: null };
+    }
+    // DEVELOPMENT ONLY (lead's ruling, 5 Oct): on a development build whose owner made the hand-made stand-in file, a vault save or a reveal that offers no proof at all counts as the stand-in, so the app walk can run
+    // them. Method "stand-in" is in the event and every audit row after it, a packaged build never takes it, and nothing else (a recovery code replace included) is in this list.
+    if (!method && STAND_IN_AUTO.has(tool)) {
+      let on = false; try { on = this.standIn() === true; } catch { on = false; }
+      if (on) { this.emit("presence.proved", { tool, method: "stand-in", caller }); return { ok: /** @type {true} */ (true), method: "stand-in", keyId: null }; }
+    }
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
-    const proved = (keyId = null) => {
-      if (opens && SESSION_FROM.has(method)) this.terminals.set(/** @type {any} */ (term).key, this.now() + TERMINAL_WINDOW);
-      this.emit("presence.proved", { tool, method, caller });
+    const sessionFrom = (/** @type {string} */ m) => SESSION_FROM.has(m) || (m === "device" && softOk());
+    const proved = (keyId = null, opener = null) => {
+      // a software proof is refused for the act itself on release (it can open nothing either: no session, no window), and marked software where it is accepted
+      if (strengthGate(method, opener)) return refuse(SOFT_MSG, "software_key");
+      if (opens && sessionFrom(method)) { this.terminals.set(/** @type {any} */ (term).key, this.now() + TERMINAL_WINDOW); this.terminalOpener.set(/** @type {any} */ (term).key, method); }
+      const soft = strengthOfMethod(method, opener) === "software" && method !== "grant";
+      this.emit("presence.proved", { tool, method, caller, ...(soft ? { strength: "software" } : {}) });
       return { ok: /** @type {true} */ (true), method, keyId };
     };
 
@@ -840,7 +938,9 @@ export class Presence {
 
     if (method === "session") {
       if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
-      if (tool.startsWith("vault.") && !vaultSessionCaller(caller)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
+      // A session proves a vault tool only for the person: the kernel's chain for the call says so (`personOf`, set by the presence module from ctx.kernel), never the caller's label. With no
+      // kernel (development) the old label rule stays: SHIM(legacy labels).
+      if (tool.startsWith("vault.") && !(this.personOf ? await this.personOf(meta || { caller }) : vaultSessionCaller(caller))) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
       const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
       if (ok !== true) return refuse("this item needs its own proof every time");
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));
@@ -849,16 +949,15 @@ export class Presence {
       if (!same(sha(String(proof.secret || "")).toString("hex"), row.hash)) return refuse("that session secret is wrong");
       if (row.peer && row.peer !== peerId(peer)) return refuse("that session belongs to another device");
       this.db.prepare("UPDATE presence_sessions SET last_used = ? WHERE id = ?").run(now, row.id);
-      return proved(row.key_id);
+      return proved(row.key_id, row.method || null);
     }
 
     if (method === "code") {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
-      // So the code counts only from the owner's own device over the tailnet, where they cannot be.
+      // So the code counts only from the owner's own paired device (its confirmed Wink record), where they cannot be.
       if (isServer(this.role)) {
-        const owner = String((this.network() || {}).owner || "").toLowerCase();
-        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+        if (!(await this.ownerDevice(String(caller || "")))) return refuse("on the box, a passkey is enrolled from the owner's own paired device");
       }
       if (!this.useCode(proof.code)) return refuse("that code is wrong, used or expired");
       return proved();
@@ -867,11 +966,10 @@ export class Presence {
     if (method === "grant") {
       // The first owner passkey's grant (relay.setup.claim checked a signed claim token to mint it):
       // presence.enroll only, once, within five minutes, from the browser it was made for, and on the
-      // box from the owner's own device over the tailnet as a code is.
+      // box from the owner's own paired device as a code is.
       if (tool !== "presence.enroll") return refuse("a grant only enrolls the first passkey");
       if (isServer(this.role)) {
-        const owner = String((this.network() || {}).owner || "").toLowerCase();
-        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+        if (!(await this.ownerDevice(String(caller || "")))) return refuse("on the box, a passkey is enrolled from the owner's own paired device");
       }
       const h = sha(String(proof.grant || "")).toString("hex");
       const row = /** @type {any} */ (this.db.prepare("SELECT peer, host FROM presence_grants WHERE hash = ? AND used IS NULL AND expires > ?").get(h, this.now()));
@@ -892,7 +990,7 @@ export class Presence {
    * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
    */
   openSession({ method, keyId = null, peer = null } = {}) {
-    if (!method || !SESSION_FROM.has(method)) throw new Error("a session opens only after Touch ID, the Capsule, a device key or a passkey");
+    if (!method || !(SESSION_FROM.has(method) || (method === "device" && this.softwareOk() === true))) throw new Error("a session opens only after Touch ID, the Capsule or a passkey (a device key only on a development build)");
     const now = this.now();
     this.db.prepare("DELETE FROM presence_sessions WHERE expires <= ? OR last_used <= ?").run(now, now - SESSION_IDLE);
     const id = b64url(12), secret = b64url(32);
@@ -1034,6 +1132,8 @@ export class Presence {
         this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
       }
       this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      // PS-4: a grant for a device that the removed key confirmed is not left to be used for up to ten minutes.
+      try { this.db.prepare("DELETE FROM presence_pair_grants WHERE key_id = ?").run(String(id)); } catch { /* an older home without the table */ }
       this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
     }
     return removed;

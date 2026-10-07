@@ -8,7 +8,7 @@ status: stable
 
 # Tools and events
 
-Modules talk to the rest of Vyre in two ways. A **tool** is something a module can be asked to do: Claude, the Deck, the Capsule, the CLI and other modules all call it the same way. An **event** is a fact about something that already happened, written to vyred's event log for anyone to hear. Tools are requests; events are news. This page covers both, from Sections 5 and 6 of the [spec](../architecture/spec.md), and ends with a module you can install and run.
+Modules talk to the rest of Vyre in two ways. A **tool** is something a module can be asked to do: Claude, the Vyre app, the Capsule, the CLI and other modules all call it the same way. An **event** is a fact about something that already happened, written to vyred's event log for anyone to hear. Tools are requests; events are news. This page covers both, from Sections 5 and 6 of the [spec](../architecture/spec.md), and ends with a module you can install and run.
 
 The full contract, including every check the loader makes, is on [the module contract](module-contract.md).
 
@@ -34,7 +34,7 @@ One definition is reachable three ways:
 
 ```
 vyre call digest.files '{"session":"<session id>"}'      # the terminal
-POST /v1/tools/digest.files                              # a surface, over vyred's socket or the tailnet
+POST /v1/tools/digest.files                              # a surface, over vyred's socket or the box's network listener
 mcp__vyre__digest_files                                  # Claude, through the Harness MCP server
 ```
 
@@ -63,7 +63,7 @@ ctx.events.emit("digest.searched", { hits: 3 }, { thread });
 ```
 
 - `type` must be listed under `watches.emits` and read `noun.past-verb`: `digest.searched`, `invoice.filed`, `watcher.fired`. Name what happened, not a command.
-- `payload` is any JSON object. It must never carry a secret: the log refuses anything that looks like one (known API key prefixes, private keys, `"password": "..."` and similar) by throwing, because every module and the Deck can read the log. Leave out what the user typed, too.
+- `payload` is any JSON object. It must never carry a secret: the log refuses anything that looks like one (known API key prefixes, private keys, `"password": "..."` and similar) by throwing, because every module and the Vyre app can read the log. Leave out what the user typed, too.
 - The third argument, optional, files the event under a `project` or a `thread` (a Claude Code session id), which surfaces use to filter the log.
 
 Each stored event looks like this:

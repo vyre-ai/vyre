@@ -4,6 +4,7 @@
 // every string literal in the Deck's own code. A literal that must carry one of them (a module id compared in code,
 // never drawn) ends its line with `// internal-word: <why>`; nothing else is exempt.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -31,7 +32,8 @@ function literals(line) {
 
 test("no internal word (vyred, switchboard, no such tool, as Claude Code does) in any string the Deck draws", () => {
   const bad = [];
-  for (const dir of ["deck"]) for (const f of files(path.join(ROOT, dir))) {
+  // the Deck is removed in 0.2.9 (the app replaces it): a tree without it has nothing here to check
+  for (const dir of ["deck"].filter(d => fs.existsSync(path.join(ROOT, d)))) for (const f of files(path.join(ROOT, dir))) {
     const rel = path.relative(ROOT, f);
     fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
       const t = line.trim();
@@ -52,9 +54,8 @@ const ERR_CONTEXT = /(Error\(|refuse\(|fail\(|bad\(|throw |message:)/;
 const ERR_SKIP = /(^|\/)(test|testing|node_modules|vendor|fixtures)(\/|$)|\.test\.js$|^core\/(cli|daemon)\//;
 /** The lines per file that put an internal word inside a string literal on an error line. */
 const BASELINE = {
-  "core/computers/index.js": 3, "core/config/index.js": 1, "core/files/drop.js": 1, "core/gate/index.js": 1, "core/hooks/funnel.js": 2, "core/hooks/index.js": 1,
-  "core/modules/index.js": 2, "core/names/backup.js": 1, "core/names/system.js": 1, "core/push/index.js": 1, "core/term/index.js": 1, "core/vault/tools/cli.js": 2, "core/vyre-core/install-main.js": 1, "core/watchers/run.js": 1, "local/voice/listen.js": 1, "local/voice/talk.js": 1,
-  "modules/vault-extension/background.js": 3,
+  "core/computers/index.js": 3, "core/config/index.js": 1, "core/gate/index.js": 1, "core/hooks/index.js": 1,
+  "core/modules/index.js": 2, "core/names/backup.js": 1, "core/names/system.js": 1, "core/push/index.js": 1, "core/term/index.js": 1, "core/vault/tools/cli.js": 2, "core/vyre-core/install-main.js": 1, "core/watchers/run.js": 1,
 };
 
 test("the box's error texts: no file gains an internal word, and the counts only shrink", () => {

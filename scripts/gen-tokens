@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // @ts-check
 // gen-tokens: renders lib/theme/tokens.json, the one token source, for every surface:
-// the Expo app's tokens.ts, the Capsule's Swift file and the Deck's custom properties. Never edit
+// the Expo app's tokens.ts, the Capsule's Swift file and the pre-app pages' custom properties. Never edit
 // an output by hand; change the JSON and run this.
 //
 //   node scripts/gen-tokens              write every file
 //   node scripts/gen-tokens --check      exit 1 if a file is stale, write nothing
-// Either way a surface whose root folder (apps/app, local/capsule/native, deck) is not in the
+// Either way a surface whose root folder (apps/app, local/capsule/native, web) is not in the
 // tree is skipped.
 //   --ts <path> --swift <path> --css <path>   write only these, to these paths
 //   node scripts/gen-tokens --validate <theme.json>   check a theme override (ADR 0033): exit 1 and
@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { swift, ts, css, load, TOKENS } from "./lib/tokens.js";
+import { swift, ts, css, jsV3, load, TOKENS } from "./lib/tokens.js";
 import { applyOverride } from "./lib/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,13 +22,15 @@ export const SOURCE = TOKENS;
 export const OUTPUTS = {
   "apps/app/src/theme/tokens.ts": ts,
   "local/capsule/native/Sources/UI/Tokens.generated.swift": swift,
-  "deck/css/tokens.css": css,
+  "web/css/tokens.css": css,
+  "apps/app/src/store-core/tokens-v3.js": jsV3,
 };
 /** The folder each surface lives in: no folder, no surface in this tree, so nothing is written. */
 export const ROOTS = {
   "apps/app/src/theme/tokens.ts": "apps/app",
   "local/capsule/native/Sources/UI/Tokens.generated.swift": "local/capsule/native",
-  "deck/css/tokens.css": "deck",
+  "web/css/tokens.css": "web",
+  "apps/app/src/store-core/tokens-v3.js": "apps/app",
 };
 
 /** @returns {Record<string, string>} repo path to contents */

@@ -5,13 +5,14 @@
 // that chat with its name above a message field, and pressing Send (only through hands.commit)
 // records the words and empties the field.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discover, Registry } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeApp as fakeWindow } from "../hands-mac/fake.js";
 import { fakeExec, fakeApp as installApp } from "./fake.js";

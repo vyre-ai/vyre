@@ -3,6 +3,7 @@
 // inside a real vyred in a temp home, with a synthetic module that declares what it needs.
 // Every value is made at run time; none may appear in any reply, event or log line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -95,7 +96,9 @@ async function boot(t) {
     verify: async () => (pres.deny ? { ok: false, code: "presence_required", message: "prove presence" } : { ok: true, method: "test" }),
     challenge: async () => ({ error: { code: "bad_input", message: "no challenge in this test" } }) };
   const lines = [];
-  const d = await start({ root, presence: pres, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The talker stands for a module of Vyre's own that a person connected credentials to (needs.credentials, ctx.vault.fetch), so it sits in a first-party root: with the kernel on, an added module runs in the sandbox with no ctx and
+  // could never fetch a value (kernel/modules/child.js), which is the rule and not what this test is about.
+  const d = await start({ root, presence: pres, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   return { root, d, pres, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }

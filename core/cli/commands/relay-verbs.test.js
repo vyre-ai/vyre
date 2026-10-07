@@ -6,6 +6,7 @@
 // person. A browser from the web app, played by the test, pairs through the QR code's address.
 // No Tailscale, no Cloudflare, no dialogs.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -168,6 +169,14 @@ test("relay cli verbs: vyre commands lists every verb run() handles", async t =>
   assert.ok(verbs.filter(v => !v.read).every(v => v.person), "every change asks for a person");
   assert.deepEqual(verbs.find(v => v.verb === "rename").args, [{ name: "id", required: true }, { name: "name", required: true, repeat: true }]);
   assert.deepEqual(verbs.find(v => v.verb === "on").flags.map(f => f.name), ["url"]);
+});
+
+test("relay cli verbs: pair says the device it pairs cannot sign in as you until you confirm it from Devices", async t => {
+  const { root, url } = await world(t);
+  assert.equal((await run(root, ["relay", "on", "--url", url])).code, 0);
+  const r = await run(root, ["relay", "pair"]);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /This device can't sign in as you until you confirm it from Devices\./);
 });
 
 test("relay cli verbs: --view pair is a qr frame of the address, with the same data as --json", async t => {

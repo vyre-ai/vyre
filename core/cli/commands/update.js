@@ -123,13 +123,13 @@ async function fetchShellFiles(rel, dir, sums) {
 }
 
 /**
- * After a healthy update: the release's SHA256SUMS, signature and shell.json into the installed package's deck/release, which
+ * After a healthy update: the release's SHA256SUMS, signature and shell.json into the installed package's web/release, which
  * vyred serves at /release/. Not into a git checkout (a developer's tree), and never fails the update.
  */
 export function publishRelease(dir, pkg = REPO) {
   try {
     if (fs.existsSync(path.join(pkg, ".git"))) return;
-    const to = path.join(pkg, "deck", "release");
+    const to = path.join(pkg, "web", "release");
     fs.mkdirSync(to, { recursive: true });
     for (const f of ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]) {
       const from = path.join(dir, f);

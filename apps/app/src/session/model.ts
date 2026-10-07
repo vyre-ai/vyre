@@ -22,7 +22,7 @@ export function toSessionEvent(e: unknown, thread: string): SessionEvent | null 
 }
 
 /**
- * The record's raw status (apps/CONTRACT.md 3.2: starting|working|waiting|idle|stopped, the
+ * The record's raw status (team/archive/CONTRACT-native-apps.md 3.2: starting|working|waiting|idle|stopped, the
  * switchboard's own internal vocabulary, not a person's) in session-state's canonical words.
  * Mirrors lib/thread-status.js's threadStatus() (sessions owns that mapping) by hand, since this
  * file imports no runtime code but types: raw "waiting" (an ask is open) is "asking" to a person;
@@ -86,7 +86,7 @@ export function sendOutcome(r: { data?: unknown; error?: { code?: string; messag
     const id = typeof raw === "number" || typeof raw === "string" ? raw : null;
     return { ok: true, queued: true, id, uuid };
   }
-  if (d.sent === false) return { ok: false, reason: typeof d.note === "string" && d.note ? d.note : "The session did not take the message." };
+  if (d.sent === false) return { ok: false, reason: typeof d.note === "string" && d.note ? d.note : "The chat did not take the message." };
   return { ok: true, queued: false, uuid };
 }
 
@@ -159,7 +159,7 @@ export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
 }
 
 /** First guesses at row heights by kind (px), replaced by measurements (chat core window.js). */
-export const ESTIMATES: Record<string, number> = { user: 64, text: 96, reasoning: 36, tool: 36, run: 36, turn: 28, notice: 28, ask: 132, steer: 24 };
+export const ESTIMATES: Record<string, number> = { user: 64, text: 96, reasoning: 36, tool: 36, run: 36, turn: 28, notice: 28, ask: 132, steer: 24, block: 170 };
 
 /**
  * Did applying an event only change rows already drawn? Then only those rows repaint (a reply

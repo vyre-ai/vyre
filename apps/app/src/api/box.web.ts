@@ -7,15 +7,18 @@
 
 import { cursorStore, idbStore, lifecycle, over } from "@vyre/resilience/web.js";
 import { createPaths } from "@vyre/relay-client/paths.js";
-import { finishSignIn, startSignIn, webPerson } from "../auth/person.web";
+import { finishSignIn, hasToken, startSignIn, webPerson } from "../auth/person.web";
 import type { PersonSession } from "../auth/person";
 import { connection } from "../state/connection";
 import { relayCrypto, relayKeyStore, loadPairing, about } from "./relay";
 import { makeBox } from "./wire";
+import { peerCall, peerWanted } from "../real/peer";
 
 let base = "";
 let paths: string[] | undefined;
 let person: PersonSession | null = null;
+/** The paths layer's fetch (direct, then the relay): what post() uses for the few routes that are not tool calls. */
+let pathFetch: ReturnType<typeof createPaths>["fetch"] | null = null;
 
 /** The box's origin; "" (the default) is this page's origin, where the box serves the app. */
 export function configure(o: { base?: string; paths?: string[] }): void {
@@ -23,7 +26,8 @@ export function configure(o: { base?: string; paths?: string[] }): void {
   if (o.paths) paths = o.paths;
 }
 
-const boxOrigin = () => (base ? new URL(base).origin : location.origin);
+/** The box's origin (scheme, host, port): where a ticketed stream or a terminal page is reached directly. */
+export const boxOrigin = () => (base ? new URL(base).origin : location.origin);
 const crossOrigin = () => boxOrigin() !== location.origin;
 
 /** The box's host name: what its stores on this device (outbox, cursor, view cache) are keyed by. */
@@ -34,13 +38,15 @@ export function boxName(): string {
 const b = makeBox(async () => {
   const origin = boxOrigin();
   const name = boxName();
-  person = crossOrigin() ? webPerson(origin, () => connection.signIn(true)) : null;
   const pairing = await loadPairing();
+  // A browser paired over the relay holds a person token from presence.person.start-paired (src/auth/paired.ts): every request, over the relay too, carries it and its signed proof.
+  person = crossOrigin() || (pairing && (await hasToken(origin))) ? webPerson(origin, () => connection.signIn(true)) : null;
   const direct = (paths?.length ? paths : [origin]).map((p) => ({ kind: "direct" as const, base: p }));
   const p = createPaths({
     paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,
   });
   const o = over(p.fetch);
+  pathFetch = p.fetch;
   // Which path answers, for what may not go over the relay (Glass stills).
   p.onstate = (st) => connection.path(st.kind);
   connection.path(p.current);
@@ -48,6 +54,7 @@ const b = makeBox(async () => {
     base: origin,
     // One path for follow(): which way the box is reached is the paths layer's job.
     paths: ["box"],
+    socket: (path) => p.socket(path),
     open: o.open,
     caller: (_base, co) => o.caller(co),
     outboxStore: idbStore(name),
@@ -70,9 +77,26 @@ const b = makeBox(async () => {
       };
     },
   };
-});
+}, { wanted: peerWanted, call: (tool, input) => peerCall(tool, input) });
 
-export const { connect, listen, call, send, prove, disconnect } = b;
+export const { connect, listen, call, send, prove, disconnect, socket } = b;
+
+/**
+ * One POST of JSON to a box route that is not a tool call (the presence challenge), on whichever path
+ * answers, signed as the person like every other request. Resolves the parsed body, never throws on a status.
+ */
+export async function post(path: string, input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {
+  await connect();
+  if (!pathFetch) return { error: { code: "offline", message: "no path to the box" } };
+  const body = JSON.stringify(input);
+  const h = person ? await person.headers("POST", path, body) : {};
+  try {
+    const r = await pathFetch(path, { method: "POST", cache: "no-store", headers: { "content-type": "application/json", ...h }, body });
+    return JSON.parse(await r.text()) as never;
+  } catch (e) {
+    return { error: { code: "offline", message: (e as Error).message } };
+  }
+}
 
 /**
  * A hint the page may not outlive (push.seen on hide): straight to the box's origin with

@@ -140,7 +140,7 @@ export async function makeRig(o = {}) {
     cert,
     server: { env: {
       HOME: d("srv", "host"), PATH: `${d("srv", "bin")}:${d("srv", "fakebin")}:${SYSTEM_PATH}`, VYRE_DIR: d("srv", "vyre"),
-      VYRE_WRAPPER: d("srv", "bin", "vyre"), VYRE_TUN: "/dev/null", VYRE_BOX_URL: `file://${d("mirror")}/`, SSH_CONNECTION,
+      VYRE_WRAPPER: d("srv", "bin", "vyre"), VYRE_BOX_URL: `file://${d("mirror")}/`, SSH_CONNECTION,
       JOURNEY_RIG: d("rig.json"), LANG: "C",
     } },
     container: { env: {

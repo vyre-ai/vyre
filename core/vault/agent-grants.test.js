@@ -6,6 +6,7 @@
 // tool, an event or an audit row carries holds the password or the username. Every vault lives
 // under the checkout's scratch dir.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -23,13 +24,13 @@ const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /** A vault with one login lent-able to agents, one api key, and the agent tools on a map. */
-async function mk(t) {
+async function mk(t, clock = undefined) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-agent-grants-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   /** @type {{ type: string, p: any }[]} */
   const events = [];
-  const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: (type, p) => events.push({ type, p }), log: () => {} });
+  const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: (type, p) => events.push({ type, p }), log: () => {}, ...(clock ? { clock } : {}) });
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   const password = fake("password"), username = `alex.${crypto.randomBytes(6).toString("hex")}@harlow.test`;
   await v.put({ name: "harlow-drive", kind: "login", fields: { username, password }, url: `${APP}/login`, hosts: [APP, SSO] }, "cli");
@@ -123,15 +124,16 @@ test("from Claude a grant waits as pending; only vault.approve makes it active",
 });
 
 test("an expired grant is out of force and listed as expired", async t => {
-  const { v, run } = await mk(t);
-  const { grant } = await run("vault.agent.grant", { agent: "kit", item: "harlow-drive", origin: APP, expires: Date.now() + 150 });
+  let at = Date.now();
+  const { v, run } = await mk(t, () => at);
+  const { grant } = await run("vault.agent.grant", { agent: "kit", item: "harlow-drive", origin: APP, expires: at + 150 });
   assert.equal((await v.agentGrantFor("kit", "harlow-drive", APP))?.id, grant.id);
-  await wait(250);
+  at += 250;
   assert.equal(await v.agentGrantFor("kit", "harlow-drive", APP), null);
   assert.deepEqual((await run("vault.agent.grants", {})).grants.map(g => [g.id, g.status]), [[grant.id, "expired"]]);
   // An expired pending grant cannot be approved into force.
-  const p = (await run("vault.agent.grant", { agent: "juno", item: "harlow-drive", origin: APP, expires: Date.now() + 150 }, "mcp agent:juno")).grant;
-  await wait(250);
+  const p = (await run("vault.agent.grant", { agent: "juno", item: "harlow-drive", origin: APP, expires: at + 150 }, "mcp agent:juno")).grant;
+  at += 250;
   await assert.rejects(v.approve({ id: p.id }, "cli"), /expired before it was approved/);
 });
 

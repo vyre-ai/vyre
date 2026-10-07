@@ -2,6 +2,7 @@
 // The watchers module inside a real vyred: the real vault with a grant per watcher, real projects
 // and Memory, a watcher that reads a local feed, and the webhook route.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test as nodeTest } from "node:test";
 const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 import assert from "node:assert/strict";

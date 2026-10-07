@@ -102,7 +102,7 @@ Tab always sends them on.
 
 ## Fill a login from the Vault
 
-1. Type part of the login's name, for example `harlow`.
+1. Type part of the login's name, for example `juniper`.
 2. With the Vault row highlighted, press Enter to fill it into the app you were in.
 3. For more (copy the password, copy the username, copy or show the one-time code, lock the
    vault), press the right arrow or Command-K instead.
@@ -114,16 +114,15 @@ The Vault may ask for Touch ID first. See [Vault](vault.md).
 Type a question and press Enter. The "Sends to" row under the box shows where it will go before
 anything is sent, and Enter uses exactly that destination:
 
-- A question about your own work ("what did I promise Harlow Legal?") goes to your assistant,
-  which has your memory.
-- Any other question (one that ends in `?` or opens with a question word) goes to a fast model,
-  haiku. The down arrow offers your assistant and a deeper model, sonnet.
-- Anything that is not a question ("draft a reply to Northwind Bakery") goes to your assistant,
-  which can act.
-- With no assistant made yet, memory answers on its own, with no model.
+- What you type goes to your assistant, whatever it is about. The assistant has your memory: the
+  server adds the relevant facts to the assistant's own prompt, so Lumen sends your words as they
+  are. On a Mac paired to a server, this is the server's assistant.
+- The down arrow offers a fast model (haiku) and a deeper one (sonnet).
+- Memory answers on its own only when you ask it to: choose the **Ask memory** row, or start with
+  `memory:` ("memory: what car do I drive"). Its answer shows its sources, with Wrong? and Forget.
+- With no assistant made yet, a question goes to the fast model.
 
-Answers render in place as markdown, with a copy button and the cost. Anything that came from
-memory is drawn in gold, with its source.
+Answers render in place as markdown, with a copy button and the cost. An answer from Ask memory is drawn in gold, with its source.
 
 ## Ask about your screen
 
@@ -141,7 +140,7 @@ Type `@` to name one. It completes agents, projects and threads:
 - `@juno what is left on the intake form?` asks the agent juno, in its current thread
   . If your words match one of juno's other threads, "Sends to" offers that one
   too.
-- `@harlow-intake run the tests` types into that session as you. While you type
+- `@juniper-intake run the tests` types into that session as you. While you type
   you hold the session's keyboard (its lease). If another surface holds it, Lumen says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
@@ -171,16 +170,6 @@ you choose.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
      editable when you click them. Command-Enter sends exactly what is on screen.
      Discard drops it. Escape leaves a field.
-
-## Open Glass
-
-For an agent that has a computer, Lumen offers "Open Glass", which opens that agent's
-screen in the Deck in your browser. Type `glass` to list what you can open, `glass juno` for one
-agent, or `glass box` for the box's files. See [Glass](glass.md).
-
-> [!SNAG] No "Open Glass" row
-> The row only shows when this Mac is paired with a box (`vyre link`) and the agent has a
-> computer. Pair the Mac first: [Connect a Mac to your box](tailscale.md).
 
 ## Keys
 
@@ -218,7 +207,7 @@ and starts it hidden in the menu bar.
   `vyre capsule`, use its menu, or a tool calls `capsule.show`.
 - It does not send anywhere other than the destination the "Sends to" row showed.
 - It does not paste for you: a clipboard item waits for your Command-V.
-- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the [Deck](deck.md).
+- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the Vyre app.
 - It never reads a password field, a password manager, a sign-in dialog, security settings or
   Vyre's own windows: those show only the app and the window title.
 
@@ -237,7 +226,6 @@ silently ignored by a stale app: when the source changes, it rebuilds before it 
 
 ## Next
 
-- [Deck](deck.md), the same work in a browser and on your phone.
 - [Projects and threads](projects-and-threads.md), what `@` completes.
 - [Agents](agents.md), who you can talk to.
 - [CLI reference](../reference/cli.md#vyre-capsule) for every `vyre capsule` form.

@@ -2,6 +2,7 @@
 // net.*: the buffer, filters, bounded bodies, watch rate limit, Fetch rules (block, mock, headers),
 // rule ttl and cleanup, replay from inside the page, and redaction on every return path.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import net, { egressGuard, clearDenied, siteOf } from "./extension/caps/net.js";
@@ -794,4 +795,71 @@ test("egress guard: a worker the guard closed is never asked to enable Fetch aga
   await egressGuard(k.ctx, 1).then(g => g.stop());
   assert.equal(k.sent.filter(x => x.session === "S-DEAD" && x.method === "Fetch.enable").length, afterStop, "no Fetch.enable to the closed worker in the next guard");
   assert.ok(before >= 0);
+});
+
+test("egress guard: code the script built from a string is tagged by its scriptId from the Debugger domain, and a request it makes is judged after return", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  const tag = /** @type {any} */ (eg).tag;
+  assert.ok(k.calls("Debugger.enable").length >= 1, "the Debugger domain is on while the guard is up");
+  assert.ok(k.calls("Debugger.setSkipAllPauses").some(c => c.params.skip === true), "pauses are skipped");
+  k.push(1, "Debugger.scriptParsed", { scriptId: "s9", url: "", stackTrace: { callFrames: [{ url: tag }] } });
+  k.push(1, "Debugger.scriptParsed", { scriptId: "s8", url: "", stackTrace: { callFrames: [{ url: "https://app.example/app.js" }] } });
+  await eg.stop();
+  const send = (/** @type {string} */ id, /** @type {string} */ url, /** @type {string} */ scriptId) => {
+    k.push(1, "Network.requestWillBeSent", { requestId: id, type: "Fetch", documentURL: "https://app.example/w", initiator: { type: "script", stack: { callFrames: [{ url: "", scriptId }] } }, request: { url, method: "GET", headers: {} } });
+    k.push(1, "Fetch.requestPaused", { requestId: "p-" + id, networkId: id, resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+  };
+  send("d1", "https://attacker.example/str", "s9");
+  send("d2", "https://other.example/page", "s8");
+  await new Promise(r => setTimeout(r, 80));
+  const failed = k.calls("Fetch.failRequest").map(c => c.params.requestId);
+  assert.ok(failed.includes("p-d1"), "string-built code is judged: " + failed.join());
+  assert.ok(!failed.includes("p-d2"), "the page's own script is not");
+  k.push(1, "Debugger.paused", {});
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(k.calls("Debugger.resume").length >= 1, "a pause is resumed at once");
+});
+
+test("egress guard: string-built code stays tagged through 20 nested string timers, and a full tag set fails closed (an empty-url frame counts as the call's)", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  const tag = /** @type {any} */ (eg).tag;
+  // Chain: s0 names the tag; each next script's stack names only the previous script (no tag url), 20 deep.
+  k.push(1, "Debugger.scriptParsed", { scriptId: "n0", url: "", stackTrace: { callFrames: [{ url: tag }] } });
+  for (let i = 1; i <= 20; i++) k.push(1, "Debugger.scriptParsed", { scriptId: "n" + i, url: "", stackTrace: { callFrames: [{ url: "", scriptId: "n" + (i - 1) }] } });
+  // 4,000 more tagged scripts fill the set; the next tagged one overflows.
+  for (let i = 0; i < 4100; i++) k.push(1, "Debugger.scriptParsed", { scriptId: "f" + i, url: "", stackTrace: { callFrames: [{ url: tag }] } });
+  await eg.stop();
+  const send = (/** @type {string} */ id, /** @type {string} */ url, /** @type {any} */ frames) => {
+    k.push(1, "Network.requestWillBeSent", { requestId: id, type: "Fetch", documentURL: "https://app.example/w", initiator: { type: "script", stack: { callFrames: frames } }, request: { url, method: "GET", headers: {} } });
+    k.push(1, "Fetch.requestPaused", { requestId: "p-" + id, networkId: id, resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+  };
+  send("c1", "https://attacker.example/deep", [{ url: "", scriptId: "n20" }]);
+  send("c2", "https://attacker.example/overflow", [{ url: "", scriptId: "never-seen" }]);
+  send("c3", "https://other.example/page", [{ url: "https://app.example/app.js", scriptId: "own" }]);
+  await new Promise(r => setTimeout(r, 120));
+  const failed = k.calls("Fetch.failRequest").map(c => c.params.requestId);
+  assert.ok(failed.includes("p-c1"), "a script 20 string timers deep is still the call's: " + failed.join());
+  assert.ok(failed.includes("p-c2"), "with the tag set full an unnamed string-built frame is judged (fails closed)");
+  assert.ok(!failed.includes("p-c3"), "a frame with a url of its own is the page's");
+});
+
+test("egress guard: Debugger.enable is sent at every guard start, so a re-attach does not leave tagging off", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const a = await egressGuard(k.ctx, 1);
+  await a.stop();
+  const first = k.calls("Debugger.enable").length;
+  const b = await egressGuard(k.ctx, 1);
+  await b.stop();
+  assert.ok(k.calls("Debugger.enable").length > first, "a second guard enables the domain again");
 });

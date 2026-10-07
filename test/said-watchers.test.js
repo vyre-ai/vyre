@@ -4,6 +4,7 @@
 // refused. The real registry runs the real reach: "asked" gate against a fake watchers module (its
 // own target tool, like github's) and a fake vault.said.match built on lib/said/match.js.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -13,7 +14,7 @@ import { matches } from "../lib/said/match.js";
 import { createTarget, presetTarget } from "../core/watchers/targets.js";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome, writeModule } from "./helpers.js";
 
 const CARDS = [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail", state: "draft" }, { name: "repo-watch", hash: "cccc2222dddd", state: "draft" }];
@@ -22,7 +23,7 @@ const K = (name, hash) => `watchers.create:harlow-legal/${name}@${hash}`;
 
 const WATCHERS = `export default { async start(ctx) {
   ctx.tool("watchers.create.target", { internal: true, run: async ({ tool, input }) => { if (!input.hash) throw new Error("no hash"); return { to: [tool + ":harlow-legal/" + input.name + "@" + input.hash] }; } });
-  ctx.tool("watchers.create", { run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
+  ctx.tool("watchers.create", { effect: "read", run: async i => { (globalThis.__created ||= []).push(i); return { created: i.name }; } });
   return {};
 } };`;
 const VAULT = `export default { async start(ctx) {
@@ -126,4 +127,19 @@ test("no drift: the watchers module's own targets answer exactly the keys the re
   }
   // Changing a card's hash after it was shown moves the target away from what was recorded.
   assert.notDeepEqual(createTarget({ input: { name: "inbox-mail", hash: "aaaa1111bbbb" } }, { read: () => ({ ...folder, hash: "9999eeee0000" }) }).to, recorded);
+});
+
+test("watchers: \"watch the review comments on this PR\" is the pr preset, and wins over the repo it is in", () => {
+  const kinds = [...KINDS, "pr"];
+  const where = { project: "harlow-legal", kinds, watchers: [] };
+  for (const text of ["Please watch the review comments on this PR", "keep an eye on PR comments", "monitor the pull request comments in the github repo"]) {
+    const r = watchersIntents(text, where);
+    assert.equal(r.intents.length, 1, text);
+    assert.equal(r.intents[0].to[0], "watchers.preset:harlow-legal/pr", text);
+  }
+  // Not offered here: nothing recorded. A plain repo ask still means repo.
+  assert.deepEqual(watchersIntents("watch the review comments", { ...where, kinds: KINDS }).intents, []);
+  assert.equal(watchersIntents("watch my repo", where).intents[0].to[0], "watchers.preset:harlow-legal/repo");
+  // A question or a condition is not an ask.
+  assert.deepEqual(watchersIntents("should I watch the review comments?", where).intents, []);
 });

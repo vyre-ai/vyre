@@ -1,0 +1,34 @@
+# J2b (launch): the signed-update refusals against a REAL install on a runner: unsigned, wrong signer, a signature over
+# other bytes, a tampered signed file, a downgrade and the floor, with a correctly signed update as the positive control.
+# Push to work/launch-update-refusals or dispatch it.
+name: matrix-update-refusals
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/launch-update-refusals"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-update-refusals-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  refusals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          sh scripts/build-site.sh
+      - name: J2b, the update refusals
+        run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/update-refusals/install.log results/update-refusals/updater.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-update-refusals, path: results, retention-days: 14 }

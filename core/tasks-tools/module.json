@@ -1,0 +1,22 @@
+{
+  "name": "tasks",
+  "version": "0.1.0",
+  "description": "The app's way into a Space's tasks: one tool per Store call over the kernel's task store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] } },
+  "does": {
+    "tools": [
+      { "name": "tasks.list", "reach": "person", "effect": "read" },
+      { "name": "tasks.get", "reach": "person", "effect": "read" },
+      { "name": "tasks.request", "reach": "person", "effect": "write" },
+      { "name": "tasks.decide", "reach": "person", "effect": "write" },
+      { "name": "tasks.move", "reach": "person", "effect": "write" },
+      { "name": "tasks.submit", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

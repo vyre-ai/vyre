@@ -2,65 +2,1176 @@
   "name": "sessions",
   "version": "0.1.0",
   "description": "How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.",
-  "roles": ["box", "local"],
-  "requires": [],
-  "does": { "providers": ["codex", "grok", "openrouter"], "tools": [{ "name": "sessions.status", "reach": "anyone" }, { "name": "sessions.setup", "reach": "person" }, { "name": "sessions.prompt.get", "reach": "anyone" }, { "name": "sessions.prompt.set", "reach": "person" }, { "name": "sessions.prompt.history", "reach": "anyone" }, { "name": "sessions.prompt.revert", "reach": "person" }, { "name": "sessions.prompt.preview", "reach": "anyone", "projectArg": "project" }, { "name": "sessions.prompt.compose", "reach": "modules" }, { "name": "sessions.models", "reach": "anyone" }, { "name": "sessions.models.get", "reach": "anyone" }, { "name": "sessions.models.set", "reach": "person" }, { "name": "sessions.models.resolve", "reach": "modules" }, { "name": "sessions.mode.get", "reach": "anyone", "projectArg": "project" }, { "name": "sessions.mode.set", "reach": "person" }, { "name": "sessions.mode.resolve", "reach": "modules" }, { "name": "sessions.usage.report", "reach": "modules" }, { "name": "sessions.usage.get", "reach": "anyone" }, { "name": "sessions.usage.resume", "reach": "person" }, { "name": "sessions.slots", "reach": "modules" }, { "name": "sessions.slots.status", "reach": "anyone" }, { "name": "sessions.limits.get", "reach": "anyone", "projectArg": "project" }, { "name": "sessions.limits.set", "reach": "person" }, { "name": "sessions.providers.snapshot", "reach": "modules" }, { "name": "sessions.accounts.list", "reach": "anyone" }, { "name": "sessions.accounts.add", "reach": "anyone" }, { "name": "sessions.accounts.signin", "reach": "anyone" }, { "name": "sessions.accounts.remove", "reach": "person" }, { "name": "sessions.accounts.bind", "reach": "anyone" }, { "name": "sessions.accounts.resolve", "reach": "modules" }, { "name": "sessions.files.read", "reach": "modules" }, { "name": "sessions.accounts.set", "reach": "person" }, { "name": "sessions.providers.learn", "reach": "modules" }, { "name": "sessions.routes.get", "reach": "anyone" }, { "name": "sessions.routes.set", "reach": "person" }, { "name": "sessions.routes.next", "reach": "modules" }, { "name": "sessions.mention.search", "reach": "person" }, { "name": "sessions.mention.resolve", "reach": "modules" }] },
-  "setupTools": ["sessions.accounts.signin"],
-  "watches": { "emits": ["prompt.changed", "model.changed", "mode.defaulted", "usage.paused", "usage.resumed", "slot.taken", "slot.released", "slot.queued"] },
-  "mentions": [
-    { "kind": "account", "label": "Accounts", "icon": "user", "search": "sessions.mention.search", "resolve": "sessions.mention.resolve" }
+  "roles": [
+    "box",
+    "local"
   ],
-  "shows": { "cli": [] },
+  "requires": [],
+  "does": {
+    "reads": [
+      "sessions.accounts.list",
+      "sessions.limits.get",
+      "sessions.mode.get",
+      "sessions.models.get",
+      "sessions.prompt.get",
+      "sessions.prompt.history",
+      "sessions.prompt.preview",
+      "sessions.routes.get",
+      "sessions.slots.status",
+      "sessions.status",
+      "sessions.usage.get"
+    ],
+    "providers": [
+      "codex",
+      "grok",
+      "openrouter",
+      "openai-compatible"
+    ],
+    "tools": [
+      {
+        "name": "sessions.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.setup",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.prompt.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.prompt.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.prompt.history",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.prompt.revert",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.prompt.preview",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "sessions.prompt.compose",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.environment",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.models",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "sessions.models.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.models.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.models.resolve",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.mode.get",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "sessions.mode.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.mode.resolve",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.usage.report",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.usage.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.usage.resume",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.slots",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.slots.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.limits.get",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "sessions.limits.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.providers.snapshot",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.accounts.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.accounts.add",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.accounts.signin",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.accounts.key",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.accounts.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.accounts.bind",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.accounts.resolve",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.files.read",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.accounts.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.providers.learn",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.routes.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "sessions.routes.set",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "sessions.routes.next",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.mention.search",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "sessions.mention.resolve",
+        "reach": "modules"
+      }
+    ]
+  },
+  "setupTools": [
+    "sessions.accounts.signin",
+    "sessions.accounts.key"
+  ],
+  "watches": {
+    "emits": [
+      "prompt.changed",
+      "model.changed",
+      "mode.defaulted",
+      "account.changed",
+      "usage.paused",
+      "usage.resumed",
+      "slot.taken",
+      "slot.released",
+      "slot.queued"
+    ]
+  },
+  "mentions": [
+    {
+      "kind": "account",
+      "label": "Accounts",
+      "icon": "user",
+      "search": "sessions.mention.search",
+      "resolve": "sessions.mention.resolve"
+    }
+  ],
+  "shows": {
+    "cli": []
+  },
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "check-driver", "text": "Run `vyre call sessions.status` to see which driver, sign-in and Claude Code your sessions run on.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.status", "docs": "using/sessions.md#what-runs-them"},
-      {"id": "idle-close", "text": "A session nobody uses closes after 10 minutes and comes back on your next message. Set `idle_minutes` to change it.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#closed-when-idle-back-on-the-next-message"},
-      {"id": "model-per-purpose", "text": "Pick the model per purpose with `sessions.models.set`, for example scope `purpose:capsule` and model `sonnet`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.models.set '{\"scope\":\"purpose:capsule\",\"model\":\"sonnet\"}'", "docs": "using/sessions.md#which-model"},
-      {"id": "project-prompt", "text": "Give every Northwind Bakery session a house rule: `sessions.prompt.set` with scope `project:northwind-bakery`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#the-system-prompt"},
-      {"id": "prompt-preview", "text": "See what a Harlow Legal session will be told before it starts: `sessions.prompt.preview` with that project.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.prompt.preview '{\"project\":\"harlow-legal\"}'", "docs": "using/sessions.md#the-system-prompt"},
-      {"id": "prompt-revert", "text": "Undo a prompt edit with `sessions.prompt.revert` to an older version. Going back is a version too, so it undoes.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.prompt.history '{\"scope\":\"assistant\"}'", "docs": "using/sessions.md#the-system-prompt"},
-      {"id": "sdk-setup", "text": "Install the Agent SDK now instead of on first use with `vyre call sessions.setup`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call sessions.setup", "docs": "using/sessions.md#what-runs-them"},
-      {"id": "api-key-fallback", "text": "Keep an API key in the vault and a session that hits your subscription limit carries on under it, and says so.", "surfaces": ["chat", "deck", "cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/sessions.md#what-runs-them"},
-      {"id": "prompt-next-session", "text": "A prompt edit applies from the next session, never to one in the middle of a conversation.", "surfaces": ["cli", "chat"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/sessions.md#the-system-prompt"}
+      {
+        "id": "check-driver",
+        "text": "Run `vyre call sessions.status` to see which driver, sign-in and Claude Code your sessions run on.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre call sessions.status",
+        "docs": "using/sessions.md#what-runs-them"
+      },
+      {
+        "id": "idle-close",
+        "text": "A session nobody uses closes after 10 minutes and comes back on your next message. Set `idle_minutes` to change it.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#closed-when-idle-back-on-the-next-message"
+      },
+      {
+        "id": "model-per-purpose",
+        "text": "Pick the model per purpose with `sessions.models.set`, for example scope `purpose:capsule` and model `sonnet`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre call sessions.models.set '{\"scope\":\"purpose:capsule\",\"model\":\"sonnet\"}'",
+        "docs": "using/sessions.md#which-model"
+      },
+      {
+        "id": "project-prompt",
+        "text": "Give every Northwind Bakery session a house rule: `sessions.prompt.set` with scope `project:northwind-bakery`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#the-system-prompt"
+      },
+      {
+        "id": "prompt-preview",
+        "text": "See what a Harlow Legal session will be told before it starts: `sessions.prompt.preview` with that project.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre call sessions.prompt.preview '{\"project\":\"harlow-legal\"}'",
+        "docs": "using/sessions.md#the-system-prompt"
+      },
+      {
+        "id": "prompt-revert",
+        "text": "Undo a prompt edit with `sessions.prompt.revert` to an older version. Going back is a version too, so it undoes.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre call sessions.prompt.history '{\"scope\":\"assistant\"}'",
+        "docs": "using/sessions.md#the-system-prompt"
+      },
+      {
+        "id": "sdk-setup",
+        "text": "Install the Agent SDK now instead of on first use with `vyre call sessions.setup`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre call sessions.setup",
+        "docs": "using/sessions.md#what-runs-them"
+      },
+      {
+        "id": "api-key-fallback",
+        "text": "Keep an API key in the vault and a session that hits your subscription limit carries on under it, and says so.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#what-runs-them"
+      },
+      {
+        "id": "prompt-next-session",
+        "text": "A prompt edit applies from the next session, never to one in the middle of a conversation.",
+        "surfaces": [
+          "cli",
+          "chat"
+        ],
+        "level": "power",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#the-system-prompt"
+      }
     ]
   },
   "settings": [
-    {"key": "sessions.model.chat", "group": "models", "label": "Model for chat", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "opus", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.chat.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:chat", "model": "$value"}}}}},
-    {"key": "sessions.model.agent", "group": "models", "label": "Model for agent", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "opus", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.agent.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:agent", "model": "$value"}}}}},
-    {"key": "sessions.model.project", "group": "models", "label": "Model for project", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "opus", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.project.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:project", "model": "$value"}}}}},
-    {"key": "sessions.model.teammate", "group": "models", "label": "Model for teammate", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "opus", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.teammate.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:teammate", "model": "$value"}}}}},
-    {"key": "sessions.model.capsule", "group": "models", "label": "Model for capsule", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.capsule.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:capsule", "model": "$value"}}}}},
-    {"key": "sessions.model.job", "group": "models", "label": "Model for job", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "advanced": true, "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.job.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:job", "model": "$value"}}}}},
-    {"key": "sessions.model.memory", "group": "models", "label": "Model for memory", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "advanced": true, "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.memory.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:memory", "model": "$value"}}}}},
-    {"key": "sessions.model.planner", "group": "models", "label": "Model for planner", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "advanced": true, "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.planner.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:planner", "model": "$value"}}}}},
-    {"key": "sessions.model.learn", "group": "models", "label": "Model for learn", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "advanced": true, "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.learn.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:learn", "model": "$value"}}}}},
-    {"key": "sessions.model.helper", "group": "models", "label": "Model for helper", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account"], "apply": "session", "default": "haiku", "advanced": true, "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "purposes.helper.model"}, "set": {"tool": "sessions.models.set", "input": {"scope": "purpose:helper", "model": "$value"}}}}},
-    {"key": "sessions.model", "group": "models", "label": "Model for this project", "help": "Beats the model per purpose; an agent's own model beats this.", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["project"], "apply": "session", "store": {"tool": {"get": {"tool": "sessions.models.get", "input": {}, "read": "projects.$project"}, "set": {"tool": "sessions.models.set", "input": {"scope": "project:$project", "model": "$value"}}}}},
-    {"key": "sessions.fallback_model", "group": "models", "label": "Fallback model", "help": "Used when the main model is overloaded.", "type": "model", "choicesFrom": {"tool": "sessions.models.get", "read": "aliases"}, "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.effort", "group": "models", "label": "Thinking effort", "help": "How hard Claude thinks before answering. Empty means the model's own default.", "type": "enum", "enum": ["low", "medium", "high", "xhigh", "max"], "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.thinking", "group": "models", "label": "Show thinking", "type": "enum", "enum": ["folded", "open", "hidden"], "default": "folded", "levels": ["account"], "apply": "live"},
-    {"key": "sessions.fast", "group": "models", "label": "Fast mode", "type": "bool", "default": false, "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.mode", "group": "permissions", "label": "Permission mode new sessions start in", "help": "Shift+Tab changes it for one session.", "type": "enum", "enum": ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"], "labels": {"default": "Asks first", "acceptEdits": "Accepts edits", "plan": "Plan mode", "auto": "Auto (a model approves)", "dontAsk": "Only what is allowed", "bypassPermissions": "Doesn't ask"}, "default": "default", "levels": ["account", "project"], "apply": "session", "confirm": {"values": ["bypassPermissions", "dontAsk", "auto"]}, "loosens": "New sessions will run tools without asking you first."},
-    {"key": "sessions.allow", "group": "permissions", "label": "Always allow", "help": "Rules like Bash(npm test:*) or Edit. The terminal uses the same list.", "type": "list", "levels": ["account", "project"], "apply": "live", "confirm": true, "loosens": "Claude will run these without asking, here and in the terminal.", "store": {"claude": "permissions.allow"}},
-    {"key": "sessions.ask", "confirm": {"drops": true}, "loosens": "Claude will no longer ask before what you take off this list.", "group": "permissions", "label": "Always ask", "type": "list", "levels": ["account", "project"], "apply": "live", "store": {"claude": "permissions.ask"}},
-    {"key": "sessions.deny", "confirm": {"drops": true}, "loosens": "Claude will no longer be refused what you take off this list.", "group": "permissions", "label": "Never allow", "type": "list", "levels": ["account", "project"], "apply": "live", "store": {"claude": "permissions.deny"}},
-    {"key": "sessions.folders", "group": "permissions", "label": "Extra folders Claude may use", "type": "list", "levels": ["account", "project"], "apply": "session", "confirm": true, "loosens": "Claude will be able to read and edit these folders too.", "store": {"claude": "permissions.additionalDirectories"}},
-    {"key": "sessions.send_while_busy", "group": "sessions", "label": "When you send while Claude works", "help": "Steer: Claude reads it at its next step. Alt+Enter does the other.", "type": "enum", "enum": ["steer", "queue", "interrupt"], "default": "steer", "levels": ["account", "project"], "apply": "live"},
-    {"key": "sessions.tool_detail", "group": "sessions", "label": "Tool calls", "type": "enum", "enum": ["summary", "full"], "default": "summary", "levels": ["account"], "apply": "live"},
-    {"key": "sessions.checkpoints", "group": "sessions", "label": "Keep file checkpoints for rewind", "type": "bool", "default": true, "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.max_turns", "group": "sessions", "label": "Max turns per message", "type": "int", "min": 1, "max": 1000, "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.budget_usd", "group": "sessions", "label": "Spend cap per session (USD)", "type": "number", "min": 0, "levels": ["account", "project"], "apply": "session"},
-    {"key": "sessions.idle_minutes", "group": "sessions", "label": "Close an idle session after (minutes)", "type": "int", "min": 1, "max": 1440, "default": 10, "levels": ["account"], "apply": "live", "store": {"config": "sessions.idle_minutes"}},
-    {"key": "sessions.max_live", "group": "sessions", "label": "Sessions open at once on this machine", "help": "0 means no cap.", "type": "int", "min": 0, "max": 64, "levels": ["account"], "apply": "live", "store": {"config": "sessions.max_live"}},
-    {"key": "sessions.auth", "group": "sessions", "label": "How sessions sign in", "type": "enum", "enum": ["login", "setup-token", "api-key"], "levels": ["account"], "apply": "session", "advanced": true, "store": {"config": "sessions.auth"}},
-    {"key": "sessions.output_style", "group": "sessions", "label": "Output style", "type": "string", "levels": ["account", "project"], "apply": "session", "store": {"claude": "outputStyle"}},
-    {"key": "sessions.max_active", "group": "teammates", "label": "Teammates working at once", "type": "int", "min": 1, "max": 8, "levels": ["project"], "apply": "live", "store": {"tool": {"get": {"tool": "sessions.limits.get", "input": {"project": "$project"}, "read": "project.teammate"}, "set": {"tool": "sessions.limits.set", "input": {"project": "$project", "max_active": "$value"}}}}},
-    {"key": "sessions.max_subagents", "group": "teammates", "label": "Helpers (subagents) at once", "type": "int", "min": 0, "max": 16, "levels": ["project"], "apply": "live", "store": {"tool": {"get": {"tool": "sessions.limits.get", "input": {"project": "$project"}, "read": "project.subagent"}, "set": {"tool": "sessions.limits.set", "input": {"project": "$project", "max_subagents": "$value"}}}}},
-    {"key": "sessions.box_teammates", "group": "teammates", "label": "Box ceiling: teammates", "type": "int", "min": 1, "max": 32, "default": 6, "levels": ["account"], "apply": "live", "store": {"config": "sessions.limits.max_active_teammates"}},
-    {"key": "sessions.box_subagents", "group": "teammates", "label": "Box ceiling: helpers", "type": "int", "min": 0, "max": 64, "default": 8, "levels": ["account"], "apply": "live", "store": {"config": "sessions.limits.max_subagents"}},
-    {"key": "sessions.env", "confirm": true, "loosens": "What sessions run with changes: a variable like ANTHROPIC_BASE_URL or NODE_OPTIONS changes what the next session runs.", "secret": true, "group": "tools", "label": "Environment for sessions", "help": "Names and values Claude's tools see. Keep secrets in the vault.", "type": "object", "levels": ["account", "project"], "apply": "session", "advanced": true, "store": {"claude": "env"}},
-    {"key": "sessions.hooks", "secret": true, "group": "tools", "label": "Claude Code hooks", "type": "object", "levels": ["account", "project"], "apply": "live", "advanced": true, "confirm": true, "loosens": "Hooks run commands on your machine.", "store": {"claude": "hooks"}},
-    {"key": "sessions.plugins", "confirm": true, "loosens": "Turning a plugin on runs its code in every new session.", "group": "tools", "label": "Claude Code plugins on or off", "type": "object", "levels": ["account", "project"], "apply": "session", "advanced": true, "store": {"claude": "enabledPlugins"}}
+    {
+      "key": "sessions.model.chat",
+      "group": "models",
+      "label": "Model for chat",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "opus",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.chat.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:chat",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.agent",
+      "group": "models",
+      "label": "Model for agent",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "opus",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.agent.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:agent",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.project",
+      "group": "models",
+      "label": "Model for project",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "opus",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.project.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:project",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.teammate",
+      "group": "models",
+      "label": "Model for teammate",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "opus",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.teammate.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:teammate",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.capsule",
+      "group": "models",
+      "label": "Model for capsule",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.capsule.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:capsule",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.job",
+      "group": "models",
+      "label": "Model for job",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "advanced": true,
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.job.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:job",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.memory",
+      "group": "models",
+      "label": "Model for memory",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "advanced": true,
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.memory.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:memory",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.planner",
+      "group": "models",
+      "label": "Model for planner",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "advanced": true,
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.planner.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:planner",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.learn",
+      "group": "models",
+      "label": "Model for learn",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "advanced": true,
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.learn.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:learn",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model.helper",
+      "group": "models",
+      "label": "Model for helper",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "default": "haiku",
+      "advanced": true,
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "purposes.helper.model"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "purpose:helper",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.model",
+      "group": "models",
+      "label": "Model for this project",
+      "help": "Beats the model per purpose; an agent's own model beats this.",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "project"
+      ],
+      "apply": "session",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.models.get",
+            "input": {},
+            "read": "projects.$project"
+          },
+          "set": {
+            "tool": "sessions.models.set",
+            "input": {
+              "scope": "project:$project",
+              "model": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.fallback_model",
+      "group": "models",
+      "label": "Fallback model",
+      "help": "Used when the main model is overloaded.",
+      "type": "model",
+      "choicesFrom": {
+        "tool": "sessions.models.get",
+        "read": "aliases"
+      },
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.effort",
+      "group": "models",
+      "label": "Thinking effort",
+      "help": "How hard Claude thinks before answering. Empty means the model's own default.",
+      "type": "enum",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.thinking",
+      "group": "models",
+      "label": "Show thinking",
+      "type": "enum",
+      "enum": [
+        "folded",
+        "open",
+        "hidden"
+      ],
+      "default": "folded",
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.fast",
+      "group": "models",
+      "label": "Fast mode",
+      "type": "bool",
+      "default": false,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.mode",
+      "group": "permissions",
+      "label": "Permission mode new sessions start in",
+      "help": "Shift+Tab changes it for one session.",
+      "type": "enum",
+      "enum": [
+        "default",
+        "acceptEdits",
+        "plan",
+        "auto",
+        "dontAsk",
+        "bypassPermissions"
+      ],
+      "labels": {
+        "default": "Asks first",
+        "acceptEdits": "Accepts edits",
+        "plan": "Plan mode",
+        "auto": "Auto (a model approves)",
+        "dontAsk": "Only what is allowed",
+        "bypassPermissions": "Doesn't ask"
+      },
+      "default": "default",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session",
+      "confirm": {
+        "values": [
+          "bypassPermissions",
+          "dontAsk",
+          "auto"
+        ]
+      },
+      "loosens": "New sessions will run tools without asking you first."
+    },
+    {
+      "key": "sessions.allow",
+      "group": "permissions",
+      "label": "Always allow",
+      "help": "Rules like Bash(npm test:*) or Edit. The terminal uses the same list.",
+      "type": "list",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live",
+      "confirm": true,
+      "loosens": "Claude will run these without asking, here and in the terminal.",
+      "store": {
+        "claude": "permissions.allow"
+      }
+    },
+    {
+      "key": "sessions.ask",
+      "confirm": {
+        "drops": true
+      },
+      "loosens": "Claude will no longer ask before what you take off this list.",
+      "group": "permissions",
+      "label": "Always ask",
+      "type": "list",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live",
+      "store": {
+        "claude": "permissions.ask"
+      }
+    },
+    {
+      "key": "sessions.deny",
+      "confirm": {
+        "drops": true
+      },
+      "loosens": "Claude will no longer be refused what you take off this list.",
+      "group": "permissions",
+      "label": "Never allow",
+      "type": "list",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live",
+      "store": {
+        "claude": "permissions.deny"
+      }
+    },
+    {
+      "key": "sessions.folders",
+      "group": "permissions",
+      "label": "Extra folders Claude may use",
+      "type": "list",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session",
+      "confirm": true,
+      "loosens": "Claude will be able to read and edit these folders too.",
+      "store": {
+        "claude": "permissions.additionalDirectories"
+      }
+    },
+    {
+      "key": "sessions.send_while_busy",
+      "group": "sessions",
+      "label": "When you send while Claude works",
+      "help": "Steer: Claude reads it at its next step. Alt+Enter does the other.",
+      "type": "enum",
+      "enum": [
+        "steer",
+        "queue",
+        "interrupt"
+      ],
+      "default": "steer",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.tool_detail",
+      "group": "sessions",
+      "label": "Tool calls",
+      "type": "enum",
+      "enum": [
+        "summary",
+        "full"
+      ],
+      "default": "summary",
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.checkpoints",
+      "group": "sessions",
+      "label": "Keep file checkpoints for rewind",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.max_turns",
+      "group": "sessions",
+      "label": "Max turns per message",
+      "type": "int",
+      "min": 1,
+      "max": 1000,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.budget_usd",
+      "group": "sessions",
+      "label": "Spend cap per session (USD)",
+      "type": "number",
+      "min": 0,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session"
+    },
+    {
+      "key": "sessions.rollover",
+      "group": "sessions",
+      "label": "Roll a session over before its window fills",
+      "help": "Vyre ends the agent's session between turns and starts a fresh one with your decisions, the plan, an index of what came before and the last turns word for word. Every earlier turn stays stored and searchable. Turn it off to let the agent compact its own window.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.rollover_at",
+      "group": "sessions",
+      "label": "Roll a session over at (percent of its window)",
+      "help": "Between turns, once the window is this full and nothing is running. Vyre rolls at 75 percent whatever is running.",
+      "type": "int",
+      "min": 20,
+      "max": 90,
+      "default": 60,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.idle_minutes",
+      "group": "sessions",
+      "label": "Close an idle session after (minutes)",
+      "type": "int",
+      "min": 1,
+      "max": 1440,
+      "default": 10,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "sessions.idle_minutes"
+      }
+    },
+    {
+      "key": "sessions.max_live",
+      "group": "sessions",
+      "label": "Sessions open at once on this machine",
+      "help": "0 means no cap.",
+      "type": "int",
+      "min": 0,
+      "max": 64,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "sessions.max_live"
+      }
+    },
+    {
+      "key": "sessions.auth",
+      "group": "sessions",
+      "label": "How sessions sign in",
+      "type": "enum",
+      "enum": [
+        "login",
+        "setup-token",
+        "api-key"
+      ],
+      "levels": [
+        "account"
+      ],
+      "apply": "session",
+      "advanced": true,
+      "store": {
+        "config": "sessions.auth"
+      }
+    },
+    {
+      "key": "sessions.output_style",
+      "group": "sessions",
+      "label": "Output style",
+      "type": "string",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session",
+      "store": {
+        "claude": "outputStyle"
+      }
+    },
+    {
+      "key": "sessions.max_active",
+      "group": "teammates",
+      "label": "Teammates working at once",
+      "type": "int",
+      "min": 1,
+      "max": 8,
+      "levels": [
+        "project"
+      ],
+      "apply": "live",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.limits.get",
+            "input": {
+              "project": "$project"
+            },
+            "read": "project.teammate"
+          },
+          "set": {
+            "tool": "sessions.limits.set",
+            "input": {
+              "project": "$project",
+              "max_active": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.max_subagents",
+      "group": "teammates",
+      "label": "Helpers (subagents) at once",
+      "type": "int",
+      "min": 0,
+      "max": 16,
+      "levels": [
+        "project"
+      ],
+      "apply": "live",
+      "store": {
+        "tool": {
+          "get": {
+            "tool": "sessions.limits.get",
+            "input": {
+              "project": "$project"
+            },
+            "read": "project.subagent"
+          },
+          "set": {
+            "tool": "sessions.limits.set",
+            "input": {
+              "project": "$project",
+              "max_subagents": "$value"
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "sessions.box_teammates",
+      "group": "teammates",
+      "label": "Box ceiling: teammates",
+      "type": "int",
+      "min": 1,
+      "max": 32,
+      "default": 6,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "sessions.limits.max_active_teammates"
+      }
+    },
+    {
+      "key": "sessions.box_subagents",
+      "group": "teammates",
+      "label": "Box ceiling: helpers",
+      "type": "int",
+      "min": 0,
+      "max": 64,
+      "default": 8,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "sessions.limits.max_subagents"
+      }
+    },
+    {
+      "key": "sessions.env",
+      "confirm": true,
+      "loosens": "What sessions run with changes: a variable like ANTHROPIC_BASE_URL or NODE_OPTIONS changes what the next session runs.",
+      "secret": true,
+      "group": "tools",
+      "label": "Environment for sessions",
+      "help": "Names and values Claude's tools see. Keep secrets in the vault.",
+      "type": "object",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session",
+      "advanced": true,
+      "store": {
+        "claude": "env"
+      }
+    },
+    {
+      "key": "sessions.hooks",
+      "secret": true,
+      "group": "tools",
+      "label": "Claude Code hooks",
+      "type": "object",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live",
+      "advanced": true,
+      "confirm": true,
+      "loosens": "Hooks run commands on your machine.",
+      "store": {
+        "claude": "hooks"
+      }
+    },
+    {
+      "key": "sessions.plugins",
+      "confirm": true,
+      "loosens": "Turning a plugin on runs its code in every new session.",
+      "group": "tools",
+      "label": "Claude Code plugins on or off",
+      "type": "object",
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "session",
+      "advanced": true,
+      "store": {
+        "claude": "enabledPlugins"
+      }
+    }
   ]
 }

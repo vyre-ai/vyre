@@ -2,19 +2,23 @@
 // `vyre setup --name <n> --yes`: the setup page's naming step with no browser, for scripted installs and e2e journeys.
 //
 // It is a front for the exact flow the page runs: names.check, then names.claim, the same two tools through the same registry
-// (so the same validation, the same one-time recovery code, the same refusals). There is no second path. The passkey step that makes a
+// (so the same validation, the same refusals). There is no second path. The passkey step that makes a
 // person the box's owner stays in a browser by design (it is the person's fingerprint, face or key), so this command names the box and
 // stops there; the box is claimed by the person at its address afterwards.
 //
-// The recovery code is printed once, with a plain line to store it. A name that is taken, not valid, or fails to claim exits 1 with the
+// A name that is taken, not valid, or fails to claim exits 1 with the
 // reason in words. Claiming is for good, so without --yes a terminal is asked and a script is refused.
 //
-// --json: { name, address, phase, recoveryCode, why? } or { error }.
+// --json: { name, address, phase, why? } or { error }.
+//
+// With no --name it is the way back into setup (#11): `sudo vyre setup` prints where setup stands, in the same ten steps the page draws, read from the list the
+// box holds (onboard.setup), and the one place to continue. `--new-link` makes a fresh one-time link to carry on from if the page was closed.
 
 import readline from "node:readline/promises";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal } from "../style.js";
 import { json, emit, fail, failTool, usage } from "../kit.js";
+import { setupLines } from "../../../lib/setup-steps.js";
 
 const WAIT_MS = 90_000;
 const STEP_MS = 2000;
@@ -22,13 +26,34 @@ const STEP_MS = 2000;
 /** @param {number} ms */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/** Where setup stands, from the box's own list, and with --new-link a fresh one-time link to carry on from. @param {boolean} newLink */
+async function where(newLink) {
+  const r = await call("onboard.setup", {});
+  if (r.error) return failTool(r.error);
+  const d = r.data;
+  const link = newLink ? await call("onboard.link", {}) : null;
+  if (link && link.error) return failTool(link.error);
+  if (json()) return emit({ ...d, ...(link ? { link: link.data } : {}) });
+  const l = link && link.data ? link.data : null;
+  const notes = d.address ? { address: String(d.address).replace(/^https?:\/\//, "") } : {};
+  for (const line of setupLines(d, { address: d.address || null, notes })) out(`  ${line}`);
+  if (l && (l.url || l.passkeyUrl)) { out(""); out(`  New link: ${signal(l.url || l.passkeyUrl)}`); if (l.port) out(dim(`  It opens on this machine only (port ${l.port}); one use, and it expires.`)); }
+  else if (newLink) out(dim("  This box has no one-time link to give any more: open its address."));
+  return 0;
+}
+
 export default [
   {
-    name: "setup", order: 29, usage: "vyre setup --name <n> [--yes] [--json]", summary: "name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs)",
+    name: "setup", order: 29, usage: "vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]", summary: "where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run",
     async run(args) {
       /** @type {string|null} */ let name = null;
       let yes = false;
       const rest = args.filter(a => a !== "--json");
+      if (!rest.some(a => a === "--name" || a.startsWith("--name="))) {
+        const extra = rest.filter(a => a !== "--new-link");
+        if (extra.length) return usage(`vyre setup: unknown option ${extra[0]}`, "vyre setup  (or: vyre setup --new-link, vyre setup --name alex --yes)");
+        return where(rest.includes("--new-link"));
+      }
       for (let i = 0; i < rest.length; i++) {
         const a = rest[i];
         if (a === "--yes" || a === "-y") yes = true;
@@ -56,7 +81,6 @@ export default [
       const claimed = await call("names.claim", { name: want });
       if (claimed.error) return failTool(claimed.error);
       let d = claimed.data || {};
-      const recoveryCode = d.recoveryCode ? String(d.recoveryCode) : null;
       if (d.phase === "failed") return fail(`could not claim ${want}.vyre.run: ${d.why || "no reason given"}`, { code: "claim_failed" });
 
       // The claim answers at once and carries on in the background (address, certificate). Wait for it to rest.
@@ -69,14 +93,8 @@ export default [
       }
       if (d.phase === "failed") return fail(`${want}.vyre.run was claimed, but it could not be served: ${d.why || "no reason given"}`, { code: "serve_failed" });
 
-      if (json()) return emit({ name: want, address: d.address || c.address || null, phase: d.phase, recoveryCode, ...(d.why ? { why: String(d.why) } : {}) });
+      if (json()) return emit({ name: want, address: d.address || c.address || null, phase: d.phase, ...(d.why ? { why: String(d.why) } : {}) });
       out(`  ${signal(d.address || c.address || `https://${want}.vyre.run`)} ${dim(`· ${d.phase}`)}`);
-      if (recoveryCode) {
-        out("");
-        out(`  Recovery code: ${bold(recoveryCode)}`);
-        out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
-        out("");
-      } else out(dim("  This box already held that name, so there is no new recovery code."));
       if (d.phase === "named" && d.why) out(dim(`  ${d.why}`));
       return 0;
     },

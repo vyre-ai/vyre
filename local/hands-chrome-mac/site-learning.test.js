@@ -3,6 +3,7 @@
 // on a real socket, and the real memory and settings modules. The extension's site.put reaches memory.site.put through the module:
 // on, the structure is stored and no canary is; off (the person's memory.site.learn setting), nothing is stored; and an agent caller
 // is refused by memory.site.put itself.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discover, Registry } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeApp } from "../hands-mac/fake.js";
 import { fakeExtension, until } from "./fake-extension.js";

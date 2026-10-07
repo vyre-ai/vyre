@@ -17,6 +17,7 @@ import { isAgent, isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
+import { createDefs, MIGRATIONS as DEF_MIGRATIONS } from "./defs.js";
 
 /**
  * How often vyred looks for due watchers. Cron is minute-grained, so a tick faster than that
@@ -29,6 +30,11 @@ const TICK_MS = 60_000;
 let cachedWall = null;
 
 const str = { type: "string" };
+
+/** The person's own surfaces. A model reaches only what a tool lists beside them; a module hop is checked against the original caller by the registry. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+/** A model session (mcp) and the harness: the project-scoped tools below name them, since mustSee already limits a model to its granted projects. */
+const MODEL = ["mcp", "harness"];
 
 /** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. */
 function owned(name, caller) {
@@ -51,9 +57,16 @@ const named = { type: "object", required: ["name"], properties: { name: str } };
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    ctx.store.migrate(MIGRATIONS);
-    const rt = new Runtime({
-      db: ctx.store.db, dir: ctx.paths.watchers,
+    ctx.store.migrate([...MIGRATIONS, ...DEF_MIGRATIONS]);
+    // Definitions are hidden records where the kernel is on (core/watchers/defs.js); without it the folders are the whole definition, as before.
+    /** @type {any} */ let rtRef = null;
+    const defs = ctx.kernel && ctx.kernel.records ? createDefs({ kernel: ctx.kernel, dir: ctx.paths.watchers, db: ctx.store.db, log: ctx.log, onGone: name => { try { if (rtRef) rtRef.remove(name); } catch { /* it had no schedule row */ } } }) : null;
+    // The folders and the records are brought into step before a tool reads or changes a definition and after one is written, and every minute with the schedule's tick.
+    const sync = () => (defs ? defs.sync().catch(e => { ctx.log(`watchers: definitions not synced (${e && e.message})`); }) : Promise.resolve());
+    const SYNCED = new Set(["watchers.list", "watchers.test", "watchers.card", "watchers.create", "watchers.preset", "watchers.delete", "watchers.duty.create", "watchers.duty.update", "watchers.duty.delete"]);
+    const tool = (/** @type {string} */ name, /** @type {any} */ spec) => ctx.tool(name, defs && SYNCED.has(name) ? { ...spec, run: async (/** @type {any} */ i, /** @type {any} */ m) => { await sync(); const r = await spec.run(i, m); void sync(); return r; } } : spec);
+    const rt = rtRef = new Runtime({
+      db: ctx.store.db, dir: ctx.paths.watchers, defs,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
@@ -63,6 +76,18 @@ export default {
         if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
         return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0, provider: r.data.provider };
       },
+      thread: async id => { const r = await ctx.call("threads.get", { thread: id, limit: 1 }); return r.data && r.data.thread ? { project: r.data.thread.project ?? null } : null; },
+      post: async (thread, text, from) => { const r = await ctx.call("threads.post", { thread, text, kind: "watcher.item", from }); if (r.error) throw new Error(r.error.message || r.error.code || "threads.post refused"); },
+      // A Google account is read by a watcher only against a person's grant of the account's vault item to this watcher (`vyre vault grant <item> watchers --watcher <name>`), as for any credential.
+      googleItem: async account => { const r = await ctx.call("google.accounts", {}); const a = (Array.isArray(r.data) ? r.data : []).find(/** @param {any} x */ x => x.name === account); return a && a.auth && typeof a.auth.item === "string" ? a.auth.item : null; },
+      googleGranted: async (account, watcher) => {
+        const r = await ctx.call("google.accounts", {}); const a = (Array.isArray(r.data) ? r.data : []).find(/** @param {any} x */ x => x.name === account);
+        const item = a && a.auth && a.auth.item; if (!item) return false;
+        // the vault's own check, the one release makes: a grant to this module and exactly this watcher
+        const g = await ctx.call("vault.granted", { name: String(item), watcher });
+        return Boolean(g.data && g.data.granted);
+      },
+      google: async input => { const r = await ctx.call("google.api", input); if (r.error) throw new Error(r.error.message || r.error.code || "the google module refused the request"); return r.data; },
       request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },
       spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
       log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined), findWall: () => (cachedWall ||= findWall()), forgetWall: () => { cachedWall = null; },
@@ -79,24 +104,28 @@ export default {
     /** A card served to a thread is remembered as shown, with the hash it carried. */
     const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
 
-    ctx.tool("watchers.list", {
+    tool("watchers.list", {
       description: "Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.",
       input: { type: "object", properties: { project: str } },
       run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
     });
-    ctx.tool("watchers.test", {
+    tool("watchers.test", {
+      // A dry run executes the watcher's code in the sandbox (network, a granted credential, a model call) and records the run; a model dry-runs its own project's watchers before it asks to turn one on (the event input is the person's, checked below).
+      callers: [...PEOPLE, "module", ...MODEL],
       description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create. For a watcher that runs on an event, event is a real event's payload to run it on (for hook.received, { route, id } from hooks.list); it must match the watcher's where.",
       input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
       run: async ({ name, since = null, event = null }, meta = {}) => {
         const { caller } = meta;
-        // A dry run on a hook.received hands the watcher a webhook's body, which an agent may
-        // not read (hooks.delivery refuses agents); the watcher's logs and items would show it.
-        if (event && isAgent(caller)) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
+        // A dry run on a hook.received hands the watcher a webhook's body, which a model may not read
+        // (hooks.delivery refuses it); the watcher's logs and items would show it. Only the person's own
+        // surface may: an agent claim, a verified Vyre thread (meta.thread or a thread claim in the label),
+        // a bare model session and the harness are all refused, by a positive check on who is asking.
+        if (event && (!isPerson(caller) || isAgent(caller) || typeof meta.thread === "string")) throw new Error("a dry run on a real event is the owner's; a model dry-runs without event");
         await mustSee(meta, name);
         return rt.test(name, { since, event });
       },
     });
-    ctx.tool("watchers.create", {
+    tool("watchers.create", {
       description: "Turn on a watcher exactly as it was last dry-run (pass the card's hash). Runs once now, then on its schedule. For a model it runs only when the person's own words asked for it, after they have seen the card.",
       input: { type: "object", required: ["name"], properties: { name: str, hash: str } },
       run: async (i) => rt.create(i.name, { hash: i.hash || null }),
@@ -104,20 +133,20 @@ export default {
 
     // A teammate's standing duty is a watcher the teammates module manages for a person who turned it on (CHAT 09:21).
     // Its own tools, reach modules, so a model's "asked" gate on watchers.create never stands in a teammate's way.
-    ctx.tool("watchers.duty.create", {
+    tool("watchers.duty.create", {
       description: "Create and turn on a teammate's standing duty: name duty-<role>-<id>, project, owner {kind: teammate, teammate}, when (an event like thread.finished, a schedule like daily 07:00, or push gmail), instruction, act. The teammates module's call, for a duty a person turned on.",
       input: { type: "object", required: ["name", "project", "owner", "when", "instruction"], properties: { name: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
       run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.createDuty(i); },
     });
-    ctx.tool("watchers.duty.update", {
+    tool("watchers.duty.update", {
       description: "Change a teammate's duty: when, instruction or act. It keeps its cursor and stays on or paused as it was. The teammates module's call.",
       input: { type: "object", required: ["name"], properties: { name: str, when: str, instruction: str, act: { type: "boolean" } } },
       run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
     });
-    ctx.tool("watchers.duty.delete", { description: "Stop and forget a teammate's duty; its folder goes and its filed items stay. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.remove(name); } });
+    tool("watchers.duty.delete", { description: "Stop and forget a teammate's duty; its folder goes and its filed items stay. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.remove(name); } });
     ctx.tool("watchers.duty.run", { description: "Run a teammate's turned-on duty now and return what happened. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.run(name); } });
     ctx.tool("watchers.duty.resume", { description: "Resume a paused duty of a teammate that a person turned on. The teammates module's call.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.resume(name, { hash: hash || null }); } });
-    ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
+    tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
     // What an asked call acts on, for the registry's gate (reach asked, target): the keys lib/said/watchers.js records.
     ctx.tool("watchers.create.target", { description: "For the gate: the key watchers.create acts on, watchers.create:<project>/<name>@<hash> of the code now in the folder; no hash or a different hash answers nothing.", input: { type: "object" },
@@ -129,18 +158,18 @@ export default {
         const watchers = shown.list(thread);
         return { project: watchers.length ? watchers[watchers.length - 1].project : null, kinds: PRESET_KINDS, watchers };
       } });
-    ctx.tool("watchers.card", {
+    tool("watchers.card", {
       description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
       input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const c = rt.card(name); remember(meta, c); return c; },
     });
-    ctx.tool("watchers.preset", {
-      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
-      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str } },
+    tool("watchers.preset", {
+      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). kind \"connector\": project, connector (a declared connector: gmail, google-calendar, stripe), poll (one of its polls), credential (the vault credential for it; for gmail and google-calendar not a credential but google: the name of a connected Google account), vars (what the poll needs: mailbox or calendar), when, lookback_days (optional); polls any declared connector with no code of its own, files each new item once, read only. kind \"pr\": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
+      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, google: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str, session: str, maxPerDay: { type: "integer" }, connector: str, poll: str, vars: { type: "object" }, lookback_days: { type: "integer" } } },
       // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
       run: async (i, meta = {}) => { const c = await rt.createPreset(i); remember(meta, c); return c; },
     });
-    ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
+    ctx.tool("watchers.pause", { callers: [...PEOPLE, "module", ...MODEL], description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const m = /** @type {any} */ (meta); return rt.pause(name, `paused by ${m.agent || m.caller || "someone"}`); } });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { owned(name, caller); return rt.resume(name, { hash: hash || null }); } });
     ctx.tool("watchers.logs", {
@@ -166,9 +195,10 @@ export default {
       run: async ({ name, token, body }) => rt.hook(name, token, body),
     });
 
-    const timer = setInterval(() => rt.tick(), TICK_MS);
+    const timer = setInterval(() => { rt.tick(); void sync(); }, TICK_MS);
     timer.unref?.();
     rt.tick();
+    void sync();
     return { async stop() { clearInterval(timer); await rt.stop(); } };
   },
 };

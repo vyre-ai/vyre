@@ -1,6 +1,7 @@
 // @ts-check
 // agents: an agent's Effort (the Deck's agent page) is kept, listed, and checked. Temp home only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

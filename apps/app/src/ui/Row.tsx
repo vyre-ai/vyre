@@ -163,6 +163,9 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   // Padding 8 16: a 24 title makes the 44 single line, and title, gap and a 16 meta about 56.
   listRow: {
+    // An explicit full width: on Android a row in a modal route laid out at zero width and drew only its chevron.
+    alignSelf: "stretch",
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space[4],

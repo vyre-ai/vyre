@@ -9,6 +9,7 @@
 // either its primary one, set once by github.project, or added workspaces via add-repo; detect
 // only ever reads what's already on disk).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -90,12 +91,12 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
   };
   const mod = await github.start(ctx);
   t.after(() => mod.stop());
-  const as = (caller, { firstParty = false, asked = false, door = false, granted } = {}) => async (name, input = {}) => {
+  const as = (caller, { firstParty = false, asked = false, door = false, granted, thread } = {}) => async (name, input = {}) => {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: [] } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(thread ? { thread } : {}), ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: [] } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -424,8 +425,17 @@ test("github.session.push: validates before ever touching git - no primary repo,
   const deniedModule = await w.as("module:someone-else")("github.session.push", { project: "harlow", session: "s1" });
   assert.equal(deniedModule.error.code, "denied");
 
-  const viaAgent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s1" });
-  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity");
+  const viaAgent = await w.as("mcp:agent:kit", { granted: "*", thread: "s1" })("github.session.push", { project: "harlow", session: "s1" });
+  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity, for its own session");
+
+  // HD-7: another session's branch is not its to push, undo or redo
+  for (const caller of ["mcp:agent:kit", "mcp"]) for (const tool of ["github.session.push", "github.session.undo", "github.session.redo"]) {
+    const r = await w.as(caller, { granted: "*", thread: "s2" })(tool, { project: "harlow", session: "s1" });
+    assert.equal(r.error && r.error.code, "denied", `${caller} ${tool} on another session: ${JSON.stringify(r)}`);
+    assert.match(String(r.error.message), /its own branch only/);
+  }
+  const noThread = await w.as("mcp")("github.session.undo", { project: "harlow", session: "s1" });
+  assert.equal(noThread.error && noThread.error.code, "denied", "a model call with no verified session undoes nothing");
 });
 
 test("github.session.push: refuses a secret in the outgoing commits before ever attempting the network push, names the file and line", async t => {
@@ -459,7 +469,7 @@ test("github.session.push: an agent cannot lift the secret scan with allow_secre
   fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
   execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
-  const agent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
+  const agent = await w.as("mcp:agent:kit", { granted: "*", thread: "s2" })("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
   assert.equal(agent.error.code, "secret_found", "an agent's allow_secret alone changes nothing");
   // (The two allowed cases would go on to a real push to github.com, so the override itself is
   // proven at the git level, git.test.js, against an unreachable address.)
@@ -926,4 +936,63 @@ test("github.mcp.sync / github.remove: each connected account gets GitHub's host
   assert.equal(w.calls.filter(c => c.tool === "vault.grant").length, grantsBefore, "no grant for the item whose add failed");
   await person("github.remove", { name: "home" });
   assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work", "github-clash"], "only the removed account's row goes");
+});
+
+test("github.star.status and github.star: the person's own account stars vyre-ai/vyre; not connected, no scope and a dead token are said in plain words; a model and a module are refused", async t => {
+  const w = await world(t);
+  const seen = [];
+  let state = 404;
+  withFetch(t, async (url, opts = {}) => {
+    const u = new URL(String(url));
+    seen.push(`${opts.method || "GET"} ${u.pathname}`);
+    if (u.pathname !== "/user/starred/vyre-ai/vyre") throw new Error(`fake github: unexpected url ${url}`);
+    if (opts.method === "PUT") { if (state === 204 || state === 404) { state = 204; return { ok: true, status: 204 }; } return { ok: false, status: state, json: async () => ({}) }; }
+    return { ok: state === 204, status: state, json: async () => ({}) };
+  });
+  const none = await w.as("deck")("github.star.status", {});
+  assert.deepEqual(none.data, { connected: false, starred: null }, "no account: the Deck opens the repo page instead");
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "no_account");
+  assert.deepEqual(seen, [], "nothing is asked of GitHub with no account");
+
+  seedAccount(w.db);
+  assert.deepEqual((await w.as("deck")("github.star.status", {})).data, { connected: true, starred: false });
+  assert.deepEqual((await w.as("deck")("github.star", {})).data, { starred: true });
+  assert.deepEqual((await w.as("cli")("github.star.status", {})).data, { connected: true, starred: true });
+  assert.deepEqual(seen.slice(-2), ["PUT /user/starred/vyre-ai/vyre", "GET /user/starred/vyre-ai/vyre"]);
+
+  for (const caller of ["mcp", "mcp:agent:helper", "module:sessions", "module:someone-else"]) {
+    assert.equal((await w.as(caller)("github.star", {})).error.code, "denied", `${caller} may not star`);
+  }
+
+  state = 403;
+  const noScope = await w.as("deck")("github.star", {});
+  assert.equal(noScope.error.code, "scope");
+  assert.match(noScope.error.message, /public_repo/);
+  state = 401;
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "token_invalid");
+  assert.equal((await w.as("deck")("github.star.status", {})).error.code, "token_invalid");
+});
+
+test("github.session.review: new comments from other people on the session's open PRs, as outside text with a cursor; the account's own comments are left out; watchers and sessions only", async t => {
+  const w = await prWorld(t);
+  const wa = w.as("module:watchers", { firstParty: true });
+  const r = await wa("github.session.review", { project: "app", session: "s1" });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual(r.data.items.map(i => i.author).sort(), ["mallory", "mallory"], "alex's own inline comment is left out");
+  const review = r.data.items.find(i => i.kind === "review");
+  assert.equal(review.quote, "no, because");
+  assert.equal(review.id, "alex/app#7:review:1");
+  assert.equal(review.title, "mallory on alex/app#7");
+  assert.equal(r.data.cursor, "2026-01-03T00:00:00Z");
+  assert.ok(w.log.every(l => l.method === "GET"), "read only");
+  assert.ok(!JSON.stringify(r.data).includes("test-token"), "no token");
+  const later = await wa("github.session.review", { project: "app", session: "s1", since: "2026-01-03T00:00:00Z" });
+  assert.equal(later.data.items.filter(i => i.kind === "review").length, 0, "nothing at or before the cursor comes again");
+  assert.deepEqual((await wa("github.session.review", { project: "app", session: "none" })).data, { items: [], cursor: null });
+  assert.equal((await wa("github.session.review", { project: "app", session: "s1", since: "yesterday" })).error.code, "bad_input");
+  assert.equal((await wa("github.session.review", { project: "nope", session: "s1" })).error.code, "not_found");
+  for (const [caller, fp] of [["module:watchers", false], ["module:someone-else", true], ["module:projects", true]]) {
+    assert.equal((await w.as(caller, { firstParty: fp })("github.session.review", { project: "app", session: "s1" })).error.code, "denied", `${caller} first-party ${fp}`);
+  }
+  assert.equal((await w.as("module:threads", { firstParty: true })("github.session.review", { project: "app", session: "s1" })).error, undefined, "sessions and threads may read it too");
 });

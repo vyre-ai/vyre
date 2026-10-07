@@ -2,8 +2,8 @@
 // The public share server: the one thing that answers a public artifact link. A separate process
 // that imports nothing from Vyre and holds no socket, token or key of vyred's. It reads one folder
 // of published snapshots (<data>/public/<sha256 of the link token>/{index.html,meta.json}) and
-// nothing else, and listens on loopback only. Tailscale Funnel proxies https://<node>:8443/s/ to
-// it (tailnet owns turning Funnel on; plans/artifacts.md 3.6, AR6). The box image runs it under its
+// nothing else, and listens on loopback only. The Wink public gate (core/wink/control/gate.js) carries GET|HEAD /s/<token> from the internet to
+// it (plans/artifacts.md 3.6, AR6). The box image runs it under its
 // OWN user, never vyred's (reviewer-2 H2): given --not-uid <vyred's uid> it refuses to start as that
 // user, and it never runs as root. Run it under Node's permission model too, with read and write
 // limited to that folder. When it listens it writes <dir>/.server.json {pid, uid, port}; vyred turns
@@ -37,8 +37,8 @@ if (ME === 0 || ME === NOT_UID || NOT_UID < 0) {
 const TOKEN = /^[A-Za-z0-9_-]{22,64}$/;
 const HEADERS_404 = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" };
 
-// A small fixed budget: 60 requests a minute per link, 600 in all. Behind Funnel every request
-// comes from Tailscale's own relays, so a per-address limit would mean nothing.
+// A small fixed budget: 60 requests a minute per link, 600 in all. Behind a proxy every request
+// comes from the proxy's address, so a per-address limit would mean nothing.
 const budget = { all: 0, per: /** @type {Map<string, number>} */ (new Map()) };
 setInterval(() => { budget.all = 0; budget.per.clear(); }, 60_000).unref();
 
@@ -50,6 +50,40 @@ const views = hash => {
   const f = path.join(DIR, hash, "views");
   try { const n = Number(fs.readFileSync(f, "utf8")) || 0; fs.writeFileSync(f, String(n + 1)); } catch { try { fs.writeFileSync(f, "1"); } catch {} }
 };
+
+// Published media: one file named media.<ext>. The type comes from the extension here, never from meta.json, and the bytes
+// were checked against it when they were kept.
+const MEDIA_TYPES = /** @type {Record<string,string>} */ ({ png: "image/png", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4" });
+/** @param {string|undefined} h @param {number} size @returns {{ start: number, end: number } | null | "bad"} */
+function range(h, size) {
+  if (!h) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(h.trim());
+  if (!m || (m[1] === "" && m[2] === "")) return "bad";
+  let start, end;
+  if (m[1] === "") { const n = Number(m[2]); if (!n) return "bad"; start = Math.max(0, size - n); end = size - 1; }
+  else { start = Number(m[1]); end = m[2] === "" ? size - 1 : Math.min(Number(m[2]), size - 1); }
+  return !Number.isFinite(start) || start >= size || end < start ? "bad" : { start, end };
+}
+/** @param {http.IncomingMessage} req @param {http.ServerResponse} res @param {string} hash @param {string} dir @param {{ file?: string }} media */
+function serveMedia(req, res, hash, dir, media) {
+  const m = /^media\.(png|jpeg|webp|gif|mp4|webm|mp3|wav|ogg|m4a)$/.exec(String(media && media.file));
+  if (!m) return plain(res, 404, "Not found");
+  const file = path.join(dir, m[0]);
+  let size;
+  try { const st = fs.lstatSync(file); if (!st.isFile()) return plain(res, 404, "Not found"); size = st.size; } catch { return plain(res, 404, "Not found"); }
+  const r = range(req.headers.range, size);
+  const head = { "content-type": MEDIA_TYPES[m[1]], "x-content-type-options": "nosniff", "accept-ranges": "bytes", "content-security-policy": "sandbox; default-src 'none'", "content-disposition": "inline",
+    "referrer-policy": "no-referrer", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "cross-origin-resource-policy": "cross-origin" }; // public by design: a link is put in landing pages and emails
+  if (r === "bad") { res.writeHead(416, { "content-range": `bytes */${size}`, "cache-control": "no-store" }); return res.end(); }
+  const [start, end] = r ? [r.start, r.end] : [0, size - 1];
+  res.writeHead(r ? 206 : 200, { ...head, "content-length": end - start + 1, ...(r ? { "content-range": `bytes ${start}-${end}/${size}` } : {}) });
+  if (req.method === "HEAD") return res.end();
+  if (!r || start === 0) views(hash);
+  const stream = fs.createReadStream(file, { start, end });
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", "http://share.invalid");
@@ -71,6 +105,7 @@ const server = http.createServer((req, res) => {
     try { fs.rmSync(dir, { recursive: true, force: true }); fs.writeFileSync(path.join(DIR, `${hash}.gone`), ""); } catch {}
     return plain(res, 410, "This link has expired");
   }
+  if (meta.media) return serveMedia(req, res, hash, dir, meta.media);
   let body;
   try { body = fs.readFileSync(path.join(dir, "index.html")); } catch { return plain(res, 404, "Not found"); }
   const headers = meta.headers && typeof meta.headers === "object" ? meta.headers : {};

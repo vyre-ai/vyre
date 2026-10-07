@@ -6,6 +6,7 @@
 // or module:assistant and every other caller kind is refused by name; the person's tools list and
 // revoke; and a row edited in vyre.db stops matching. Every name and address is a sample.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -283,8 +284,9 @@ test("grants: a named agent withdraws only its own pending request, lists only w
   const asked = (await kit("vault.grant", { name: "api-a", module: "kit" })).data.grant;
   assert.equal(asked.status, "pending");
   assert.equal((await kit("vault.revoke", { name: "api-a", module: "kit" })).data.revoked, 1, "its own pending request");
-  // The person, and an unnamed session, revoke freely.
-  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "mcp")).data.revoked, 1);
+  // The person revokes freely; an unnamed model session may not (group D LOW).
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "mcp")).data.revoked, 0);
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "cli")).data.revoked, 1);
   // List: a named agent with no project scope sees nothing (the project-scoped rules are in the next test).
   assert.deepEqual((await kit("vault.list", {})).data.items, []);
   assert.equal((await cli("vault.list")).data.items.length, 2, "the person sees everything");

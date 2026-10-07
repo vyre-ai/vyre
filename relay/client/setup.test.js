@@ -2,6 +2,7 @@
 // The setup page's half (relay/client/setup.js) against the box's (core/relay/wire.js and the Node
 // relay): every derived value matches byte for byte, the hello is admitted only for the page's key
 // and Noise key, and the mailbox reader checks each line's HMAC and sequence.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

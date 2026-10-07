@@ -5,6 +5,7 @@
 // Each start runs in a child process (stop-quiet-child.mjs), so an error after stop is ours to record.
 // Found by the projects module's auto-seed, which kept retrying and writing after stop.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -55,7 +56,7 @@ for (const [label, extra, after] of /** @type {[string, any, number][]} */ ([
 test("stop: the check itself catches and names a module that writes after stop (control)", { timeout: 60_000 }, async t => {
   const root = home(t);
   writeModule(path.join(root, "modules"), "latewrite", { version: "0.1.0", apiVersion: 1, description: "writes after stop", roles: ["box", "local"], does: { tools: [{ name: "latewrite.ping", summary: "x" }] } },
-    `export default { async start(ctx) { ctx.tool("latewrite.ping", { run: async () => "pong" }); setTimeout(() => { ctx.store.db.prepare("SELECT 1").get(); }, 500); return { async stop() {} }; } };`);
+    `export default { async start(ctx) { ctx.tool("latewrite.ping", { effect: "read", run: async () => "pong" }); setTimeout(() => { ctx.store.db.prepare("SELECT 1").get(); }, 500); return { async stop() {} }; } };`);
   const r = await run(root, 0);
   assert.deepEqual(r.late.map(l => l.module), ["latewrite"], "the late write is caught, and named");
 });

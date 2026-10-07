@@ -1,6 +1,7 @@
 // @ts-check
 // personal/contradict: two values for one thing about the person's life are put to them; their
 // answer, told in their own words, settles it for good.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

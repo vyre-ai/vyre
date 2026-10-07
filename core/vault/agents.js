@@ -78,10 +78,10 @@ export class AgentGrants {
   }
 
   /** Whether a row is in force now: active, not revoked, not expired. */
-  live(g, t = now()) { return g.status === "active" && !g.revoked && (g.expires == null || Number(g.expires) > t); }
+  live(g, t = this.v.clock()) { return g.status === "active" && !g.revoked && (g.expires == null || Number(g.expires) > t); }
 
   /** What a listing shows for a row's status. */
-  statusOf(g, t = now()) {
+  statusOf(g, t = this.v.clock()) {
     if (g.revoked || g.status === "revoked") return "revoked";
     if (g.expires != null && Number(g.expires) <= t) return "expired";
     return g.status;
@@ -108,7 +108,7 @@ export class AgentGrants {
   async grant({ agent, item, origin, expires }, caller, pending) {
     await this.v.key();
     const { r, o } = this.check({ agent, item, origin });
-    const t = now();
+    const t = this.v.clock();
     if (expires <= t) throw new Error("that expiry is in the past");
     const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE item=? AND agent=? AND origin=?").get(r.name, agent, o));
     const good = old && this.v.rowOk("vault_agent_grants", old);
@@ -138,11 +138,11 @@ export class AgentGrants {
     await this.v.key();
     const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE id=? AND status='pending' AND revoked IS NULL").get(id));
     if (!g || !this.v.rowOk("vault_agent_grants", g)) return null;
-    if (g.expires != null && Number(g.expires) <= now()) throw new Error(`agent grant ${id} expired before it was approved; ask again`);
+    if (g.expires != null && Number(g.expires) <= this.v.clock()) throw new Error(`agent grant ${id} expired before it was approved; ask again`);
     // The login may have changed since: its hosts must still include the origin.
     const { r } = this.check({ agent: g.agent, item: g.item, origin: g.origin });
     if (r.vault === "personal") await this.v.reseal(r, "agents");
-    this.db.prepare("UPDATE vault_agent_grants SET status='active', by=?, at=? WHERE id=?").run(String(caller), now(), id);
+    this.db.prepare("UPDATE vault_agent_grants SET status='active', by=?, at=? WHERE id=?").run(String(caller), this.v.clock(), id);
     this.v.sign("vault_agent_grants", id);
     this.v.audit("agent-grant", g.item, caller, true, `approved agent:${g.agent}`, { origin: g.origin });
     this.v.emit("vault.agent-granted", { agent: g.agent, item: g.item, origin: g.origin });
@@ -155,7 +155,7 @@ export class AgentGrants {
     if (!g) throw new Error(`no agent grant ${id}`);
     if (g.revoked) return { revoked: false, grant: this.out(g) };
     const good = this.v.rowOk("vault_agent_grants", g);
-    const t = now();
+    const t = this.v.clock();
     this.db.prepare("UPDATE vault_agent_grants SET status='revoked', revoked=? WHERE id=?").run(t, g.id);
     if (good) this.v.sign("vault_agent_grants", g.id);
     this.v.audit("agent-revoke", g.item, caller, true, `agent:${g.agent}`, { origin: g.origin });

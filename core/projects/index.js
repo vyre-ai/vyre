@@ -3,18 +3,17 @@
 // ctx.call and are not listed under requires, because projects must still start, list and
 // brief without them; it only searches less and says so.
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Projects, MIGRATIONS, threadId } from "./projects.js";
 import { label } from "./brief.js";
-import { moveProjects, RECORD } from "./move.js";
-import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
-import { real } from "./markers.js";
+import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
+import { backupSources } from "./backup.js";
+import { grantReach, revokeReach, reachGrants, mayReach, asPerson } from "../../lib/project-reach.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -61,14 +60,14 @@ export async function withLive(ctx, cat) {
 const OWNER = ["cli", "local", "capsule", "deck"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
+/** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
+const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
 // (clear deletes them outright; a wildcard grant then re-applies as if they never happened).
 // Only agents (option (a)'s own sync) and this module itself (projects.create's own wildcard
 // grant) may reach them this way; everyone else keeps the owner-plus-presence door above.
-const MODULE_ALLOWED = new Set(["module:agents", "module:projects"]);
-const moduleOK = meta => MODULE_ALLOWED.has(String((meta && meta.caller) || ""));
 // Reviewer's MEDIUM on 7021d4e1: projects.create had no callers at all (open to an agent's own
 // MCP, a guest, a hook — anything), so an agent could map any folder into a brand-new project
 // and, through f8330ccc's own auto-grant, walk straight in with projects.access on it (a
@@ -106,15 +105,13 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
     });
     const setHistory = (project, state) => ctx.store.db.prepare("INSERT INTO projects_history (project, state, at) VALUES (?,?,?) ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at").run(project, state, Date.now());
-    // Only markers already known are read at start. Walking the roots waits for the first list
-    // or create, so starting vyred never crawls the user's folders unasked.
-    try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
+    try { P.refresh(); } catch (e) { ctx.log("could not read the projects: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
       input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
-      run: async (input, { caller } = {}) => {
-        if (!wantsMacs(ctx, input, caller)) return P.list({ archived: Boolean(input.archived) });
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        if (!(await wantsMacs(ctx, input, caller, meta))) return P.list({ archived: Boolean(input.archived) });
         // On the box, for the person: the box's projects, then each Mac's, every one labelled.
         const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
         return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
@@ -141,18 +138,7 @@ export default {
         }
         const before = P.previewHome(input);
         const created = P.create(input);
-        const r = await ctx.call("agents.list", {});
-        if (!r.error) {
-          const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
-          for (const a of list) {
-            if (!a || !a.name || a.kind === "assistant" || a.projects !== "*") continue;
-            // A brand-new project can never already have a projects.access row (grant/revoke
-            // both require it to exist first), so there is nothing here to weigh against a
-            // person's own earlier revoke: always safe to grant outright.
-            const g = await ctx.call("projects.access.grant", { project: created.slug, agent: a.name });
-            if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
-          }
-        }
+        // An agent whose `projects` is "*" holds ONE kernel grant on every project (made when it was given that scope), so a new project is reached without a grant per project.
         // Version history with no GitHub needed (charter): a new folder gets it quietly; an
         // existing folder that is not a repo gets one quiet offer, once. A module caller (sync,
         // github) maps folders it made itself and is never asked or offered anything.
@@ -235,11 +221,12 @@ export default {
       },
     });
     ctx.tool("projects.catalog", {
+      callers: CATALOG_READERS,
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, ...own } = input;
-        if (!wantsMacs(ctx, input, caller)) return withLive(ctx, await P.catalog(own));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return withLive(ctx, await P.catalog(own));
         // On the box, for the person: every Mac's sessions too, in one list in the catalogue's
         // order, capped at the limit. total counts every machine; sources says who answered, and
         // each one's own total.
@@ -260,11 +247,11 @@ export default {
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
       input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" }, machines } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { project, limit = 100 } = input;
         P.refresh();
         const rows = P.threadsOf(P.resolve(project));
-        if (!wantsMacs(ctx, input, caller)) return rows.slice(0, limit);
+        if (!(await wantsMacs(ctx, input, caller, meta))) return rows.slice(0, limit);
         // On the box, for the person: a pick the box has no session for may be a Mac session
         // picked from the Deck. The Macs are asked once, for those ids only, and what they have
         // comes back labelled and is never stored here. A pick no machine has stays missing.
@@ -278,125 +265,162 @@ export default {
       input: { type: "object", properties: { project: str, cwd: str, session: str } },
       run: async input => P.context(input),
     });
-    ctx.tool("projects.move", {
-      description: "Box only, the owner only: move the project homes from ~/Vyre/projects to /work/projects, leaving a link at each old folder and rewriting the rows and markers. dry: true (do this first) answers what would move, what would be skipped and why, and the rewrites, and changes nothing. A real move runs once, only while VYRE_PROJECTS_MOVE=1 or config projects.move is \"enabled\", and answers restart: true: vyred uses /work/projects after a restart.",
-      input: { type: "object", properties: { dry: { type: "boolean" } } },
-      callers: OWNER,
-      run: async ({ dry = false } = {}, meta = {}) => {
-        if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw refuse("an agent cannot move the projects folder; that is for the owner", "denied");
-        if (ctx.config.role !== "box") throw refuse("projects.move is for a box; a Mac keeps its projects where they are", "not_box");
-        const root = ctx.paths ? ctx.paths.root : vyreHome();
-        const from = oldProjectsDir(), to = boxProjectsDir();
-        const record = path.join(root, RECORD);
-        let done = null;
-        try { done = JSON.parse(fs.readFileSync(record, "utf8")); } catch {}
-        if (done) {
-          if (dry) return { dry: true, done: true, ...done, next: `already moved; the record is ${record}` };
-          throw refuse(`the projects were already moved (${record})`, "already_moved");
-        }
-        let work = false;
-        try { work = fs.statSync(workDir()).isDirectory(); } catch {}
-        if (!work) throw refuse(`this box has no work folder (${workDir()}), so there is nowhere to move the projects to`, "no_work_folder");
-        const on = process.env.VYRE_PROJECTS_MOVE === "1" || (ctx.config.projects && ctx.config.projects.move === "enabled");
-        if (!dry && !on) throw refuse("the move is off until box-deploy validates it on a copy of this box; run it with dry: true to see what it would do", "move_off");
-        const out = moveProjects({ db: ctx.store.db, from, to, root, dryRun: dry,
-          log: m => ctx.log(m), emit: (type, payload) => ctx.events.emit(type, payload) });
-        if (!out) return { dry, from, to, moved: [], skipped: [], rewrites: [], next: `nothing to move: ${from} is not a folder, or is ${to} itself` };
-        if (dry) return { dry: true, ...out };
-        P.refresh();
-        return { dry: false, ...out, restart: true, next: `Restart vyred: the projects folder is now ${to}` };
+    // The work module tells this computer about a Project record it made (and about one made on another computer): a local row and a home folder, nothing else. Only the work module may.
+    ctx.tool("projects.adopt", {
+      description: "This computer learns of a Project record: a local row and a home folder for it. Only the work module calls it.",
+      input: { type: "object", required: ["slug", "name"], properties: { slug: str, name: str } },
+      callers: ["module"],
+      run: async ({ slug, name }, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:work") throw refuse("projects.adopt is the work module's", "denied");
+        const p = P.adopt({ slug, name });
+        return { slug: p.slug, name: p.name, home: p.home };
       },
     });
 
-    // projects.access: deny by default. An empty agent grants every agent; a named agent's own
-    // row, when there is one, wins over the wildcard for that agent (team-lead's decision, Vyre
-    // Drive step 3). Granting needs the owner's presence (HUMAN_ONLY, core/presence/index.js):
-    // the same weight a vault grant to an agent carries; revoking is instant (PERSON_ONLY), so
-    // taking access away is never held up behind a Touch ID prompt.
-    const db = ctx.store.db;
-    // Agent names are case-insensitive here (team-lead's call, reviewer's LOW): a grant to "Kit"
-    // must reach agent "kit". Normalised on every write and every read against this table, so
-    // the row's own stored case is whatever the first write happened to use, but the lookup
-    // never cares. agents.list's own name is the source of truth for an agent's real casing;
-    // this table only ever compares, never displays, so lower-casing here loses nothing.
-    const normAgent = agent => String(agent || "").toLowerCase();
-    const accessRow = (project, agent) => {
-      const a = normAgent(agent);
-      const own = /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, a));
-      if (own) return own;
-      if (a) return /** @type {any} */ (db.prepare("SELECT * FROM projects_access WHERE project = ? AND agent = ?").get(project, ""));
-      return null;
+    // projects.access: which agents may reach a project. There is no table here: it is a KERNEL GRANT (action project.reach on the Project record, subject the agent), the one permission system
+    // (lib/project-reach.js). Giving and taking it away are a person's acts with the kernel's own proof; deny by default is the kernel's. An agent whose `projects` is "*" holds ONE grant on
+    // every project (`vyre://<space>/project/*`), so a project made later is reached too.
+    const K = ctx.kernel;
+    const normAgent = (/** @type {any} */ agent) => String(agent || "").toLowerCase();
+    // The kernel's grants name an agent by its stable id, never its name (a name given to a new agent after a delete inherits nothing): the agents module answers one for the other.
+    const uidOf = async (/** @type {string} */ name) => { const r = await ctx.call("agents.uid", { name }); return r && r.data ? String(r.data.uid) : null; };
+    /** @type {() => Promise<Map<string, string>>} uid to name for every agent now */
+    const namesByUid = async () => new Map((await agentsList()).map((/** @type {any} */ a) => [String(a.uid), String(a.name)]));
+    const WILD = () => `vyre://${K.space}/project/*`;
+    /** The Project record's address for a short name, made if the Space has none yet. */
+    const urnOfSlug = async (/** @type {string} */ slug) => {
+      const rec = await ctx.call("work.project.ensure", { slug, name: P.resolve(slug).name });
+      if (rec.error) throw refuse(`project ${slug} has no record to grant on: ${rec.error.message}`, rec.error.code === "not_found" ? "not_found" : "unavailable");
+      return String(rec.data.urn);
     };
-    const setAccess = (project, agent, status, by) => {
-      const slug = P.resolve(project).slug;
-      const a = normAgent(agent);
-      // ON CONFLICT keeps the existing row's id (never in the SET clause); the id supplied here
-      // is only ever used for a genuinely new row.
-      db.prepare(`INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)
-        ON CONFLICT (project, agent) DO UPDATE SET status = excluded.status, by = excluded.by, at = excluded.at`)
-        .run(crypto.randomUUID(), slug, a, status, by, Date.now());
-      return { project: slug, agent: a, status };
+    const agentsList = async () => {
+      const r = await ctx.call("agents.list", {});
+      if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`, "no_link");
+      return (Array.isArray(r.data) ? r.data : r.data?.agents || []).filter((/** @type {any} */ a) => a && a.name && a.kind !== "assistant");
     };
+    if (!K || typeof K.agentMay !== "function") ctx.log("projects.access: this build has no kernel grants to ask; agents reach no project");
+    const needKernel = () => { if (!K || !K.grants) throw refuse("project reach is a kernel grant, and there is no kernel here", "unavailable"); };
 
+    // The Project record's address for a short name: what a kernel grant names. For the agents module, which makes grants in the person's own create or update.
+    ctx.tool("projects.backup.sources", {
+      description: "What the Basic encrypted backup reads of this computer's projects: { items: [{ kind: \"file\", name, size, mtime, path } and the project rows as rows/projects.jsonl], notices }. Ignore rules applied (build output, dependency folders, caches, logs), files over 2 GB skipped with a notice. The memory module's own.",
+      input: { type: "object", properties: {} },
+      callers: ["module"],
+      run: async (_i, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:memory") throw refuse("projects.backup.sources is the memory module's", "denied");
+        return backupSources(P.valid());
+      },
+    });
+    ctx.tool("projects.record", {
+      description: "The Project record for a short name: { urn }. Only the agents module asks.",
+      input: { type: "object", required: ["project"], properties: { project: str } },
+      callers: ["module"],
+      run: async ({ project }, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:agents") throw refuse("projects.record is the agents module's", "denied");
+        return { urn: await urnOfSlug(P.resolve(project).slug) };
+      },
+    });
     ctx.tool("projects.access.grant", {
-      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent). agent left out or empty grants every agent. Needs the owner's presence, the same weight a vault grant to an agent carries: Drive and sync refuse an ungranted project's data outright, they do not merely leave it off a list. callers includes \"module\": agents.create/update and projects.create write this grant internally, as part of the person's own already-gated action (option (a), the lead's decision), never reachable this way by a model, since only the loader itself can set a \"module:<name>\" caller.",
+      description: "Let an agent reach a project's data (Drive, synced sessions, anything project-scoped asks projects.access.check before serving an agent): a kernel grant of project.reach on the project's record, a person's own act with the kernel's proof. agent left out or empty grants every agent that exists now.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: [...OWNER, "module"],
+      callers: OWNER,
       run: async ({ project, agent }, meta = {}) => {
-        if (String((meta && meta.caller) || "").startsWith("module:") && !moduleOK(meta)) {
-          throw refuse(`projects.access.grant is agents' and this module's own internal door, not ${meta.caller}'s`, "denied");
-        }
-        return setAccess(project, agent, "granted", String((meta && meta.caller) || "unknown"));
+        needKernel();
+        const slug = P.resolve(project).slug, urn = await urnOfSlug(slug);
+        const names = normAgent(agent) ? [normAgent(agent)] : (await agentsList()).map((/** @type {any} */ a) => normAgent(a.name));
+        for (const n of names) { const uid = await uidOf(n); if (!uid) throw refuse(`no agent ${n}`, "not_found"); await grantReach(K, meta, { urn, agent: uid }); }
+        return { project: slug, agent: normAgent(agent), status: "granted", agents: names };
       },
     });
     ctx.tool("projects.access.revoke", {
-      description: "Take an agent's (or, agent left out, every agent's) access to a project away. Instant, no presence needed: taking access away is never held up behind a prompt. callers includes \"module\": agents.update revokes internally when a project drops off an agent's own list, and only agents' or this module's own internal calls (module:agents, module:projects), never any other installed module.",
+      description: "Take an agent's (or, agent left out, every agent's) access to a project away: its kernel grant is revoked, which also takes away anything delegated from it. An agent that held ONE grant on every project keeps every OTHER project as explicit grants. Instant for the person.",
       input: { type: "object", required: ["project"], properties: { project: str, agent: str } },
-      callers: [...OWNER, "module"],
+      callers: OWNER,
       run: async ({ project, agent }, meta = {}) => {
-        if (String((meta && meta.caller) || "").startsWith("module:") && !moduleOK(meta)) {
-          throw refuse(`projects.access.revoke is agents' and this module's own internal door, not ${meta.caller}'s`, "denied");
+        needKernel();
+        const slug = P.resolve(project).slug, urn = await urnOfSlug(slug);
+        const { chain } = await asPerson(K, meta);
+        const uids = normAgent(agent) ? [await uidOf(normAgent(agent))].filter(Boolean) : [...new Set((await reachGrants(K, chain, {})).map((/** @type {any} */ g) => String(g.subject.actor.id)))];
+        let revoked = 0;
+        for (const n of /** @type {string[]} */ (uids)) {
+          // an agent with the every-project grant keeps all the others one by one: an allow-only grant cannot say "everything but this"
+          if ((await reachGrants(K, chain, { urn: WILD(), agent: n })).length) {
+            await revokeReach(K, meta, { urn: WILD(), agent: n });
+            for (const p of P.valid()) if (p.slug !== slug) await grantReach(K, meta, { urn: await urnOfSlug(p.slug), agent: n });
+            revoked++;
+          }
+          revoked += await revokeReach(K, meta, { urn, agent: n });
         }
-        return setAccess(project, agent, "revoked", String((meta && meta.caller) || "unknown"));
-      },
-    });
-    ctx.tool("projects.access.clear", {
-      description: "Delete every projects.access row for one agent outright, not merely revoke: for agents.delete's own case, where the agent no longer exists at all, so there is nothing left for a future re-add to distinguish from a person's own explicit revoke. Internal: agents' own door alone (module:agents), never any other module, a person or a model.",
-      input: { type: "object", required: ["agent"], properties: { agent: str } },
-      callers: ["module"],
-      run: async ({ agent }, meta = {}) => {
-        if (!moduleOK(meta)) throw refuse(`projects.access.clear is agents' own internal door, not ${meta && meta.caller}'s`, "denied");
-        const a = normAgent(agent);
-        const info = db.prepare("DELETE FROM projects_access WHERE agent = ?").run(a);
-        return { agent: a, cleared: info.changes };
+        return { project: slug, agent: normAgent(agent), status: "revoked", revoked };
       },
     });
     ctx.tool("projects.access.check", {
-      description: "Whether a named agent may reach a project's data: deny by default, an agent-specific grant wins over the wildcard grant (a grant or revoke that left agent out, covering everyone). Drive, sync and anything else that serves a project's files or sessions to an agent asks this first. Internal to first-party modules and the owner's own surfaces; a model never asks this on its own behalf to learn what exists: the row it wants is simply left out of a listing instead. agent is required (reviewer's LOW): an empty agent would otherwise read the wildcard row directly, conflating 'no agent specified' with 'the wildcard grant', two different things.",
+      description: "Whether a named agent may reach a project's data: deny by default, asked of the kernel (a grant on the project's record or on every project). Returns { granted }.",
       input: { type: "object", required: ["project", "agent"], properties: { project: str, agent: str } },
       callers: ["module", "cli", "local", "deck", "capsule"],
       run: async ({ project, agent }) => {
-        // reviewer's LOW, still open after `required`: that only rejects a missing key, and
-        // `{ agent: "" }` still passes it. accessRow's own first query then matches agent = ''
-        // directly, which IS the wildcard row's key, so an empty agent read it as if it were
-        // its own row rather than "no agent". Refused here, before accessRow ever runs.
         const a = normAgent(agent);
         if (!a) return { project, agent: "", granted: false };
         if (!isProjectId(project)) return { project, agent: a, granted: false };
-        const row = accessRow(project, a);
-        return row ? { project, agent: a, granted: row.status === "granted", status: row.status, by: row.by, at: row.at }
-          : { project, agent: a, granted: false };
+        if (!K || typeof K.agentMay !== "function") return { project, agent: a, granted: false };
+        let urn;
+        try { urn = await urnOfSlug(project); } catch { return { project, agent: a, granted: false }; }
+        const uid = await uidOf(a);
+        return { project, agent: a, granted: uid ? await mayReach(K, uid, urn) : false };
+      },
+    });
+    // What agents could reach before reach became a kernel grant: the old rows wait in projects_access_legacy until the person approves carrying them over. A grant needs the person's own proof, so
+    // neither the migration nor a start can make one. `granted` rows become grants (an agent by its stable id); an explicit revoke is never re-granted; a row with no agent was the project's default
+    // for any agent with no row of its own. Afterwards the holding table is emptied.
+    const legacyRows = () => { try { return /** @type {any[]} */ (ctx.store.db.prepare("SELECT project, agent, status FROM projects_access_legacy").all()); } catch { return []; } };
+    ctx.tool("projects.access.pending", {
+      description: "What agents could reach before reach became a kernel grant, still waiting for your approval to carry over: { rows, grants }. Read only.",
+      input: { type: "object", properties: {} },
+      callers: [...OWNER, "module"],
+      run: async () => {
+        const rows = legacyRows();
+        /** @type {Record<string, number>} */ const byProject = {};
+        for (const r of rows) if (r.status === "granted") byProject[String(r.project)] = (byProject[String(r.project)] || 0) + 1;
+        return { pending: rows.length, granted: Object.values(byProject).reduce((n, c) => n + c, 0), by_project: byProject, rows: rows.map(r => ({ project: r.project, agent: r.agent || "(every agent)", status: r.status })) };
+      },
+    });
+    ctx.tool("projects.access.restore", {
+      description: "Carry what your agents could reach before into kernel grants, in your own call: every granted row becomes a project.reach grant (an agent by its stable id), an explicit revoke stays revoked, and the old rows are then cleared. { restored, skipped }.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async (_i, meta = {}) => {
+        needKernel();
+        const rows = legacyRows();
+        const live = (await agentsList()).filter((/** @type {any} */ a) => a.kind !== "assistant");
+        const own = new Set(rows.filter(r => r.agent).map(r => `${r.project}\u0000${String(r.agent).toLowerCase()}`));
+        let restored = 0, skipped = 0;
+        /** @param {string} project @param {string} name */
+        const grant = async (project, name) => {
+          const uid = await uidOf(name.toLowerCase());
+          if (!uid) { skipped++; return; }
+          let urn; try { urn = await urnOfSlug(project); } catch { skipped++; return; }
+          await grantReach(K, meta, { urn, agent: uid }); restored++;
+        };
+        for (const r of rows) {
+          if (r.status !== "granted") { skipped++; continue; }
+          if (r.agent) await grant(String(r.project), String(r.agent));
+          else for (const a of live) { if (!own.has(`${r.project}\u0000${String(a.name).toLowerCase()}`)) await grant(String(r.project), String(a.name)); }
+        }
+        try { ctx.store.db.exec("DELETE FROM projects_access_legacy"); } catch { /* no table: nothing to clear */ }
+        return { restored, skipped };
       },
     });
     ctx.tool("projects.access.list", {
-      description: "Every grant and revoke on record, for a project or every project, newest first, for the owner to review who can reach what.",
+      description: "Every project reach grant on record, for a project or every project, for the owner to review who can reach what.",
       input: { type: "object", properties: { project: str } },
       callers: OWNER,
-      run: async ({ project }) => {
-        const rows = project
-          ? db.prepare("SELECT project, agent, status, by, at FROM projects_access WHERE project = ? ORDER BY at DESC").all(P.resolve(project).slug)
-          : db.prepare("SELECT project, agent, status, by, at FROM projects_access ORDER BY at DESC").all();
-        return { grants: rows };
+      run: async ({ project }, meta = {}) => {
+        needKernel();
+        const { chain } = await asPerson(K, meta);
+        const urn = project ? await urnOfSlug(P.resolve(project).slug) : undefined;
+        const grants = await reachGrants(K, chain, urn ? { urn } : {});
+        const names = await namesByUid();
+        return { grants: grants.map((/** @type {any} */ g) => ({ project: g.resource.prefix === WILD() ? "*" : g.resource.prefix, agent: names.get(String(g.subject.actor.id)) || g.subject.actor.id, status: g.status, by: g.issuer && g.issuer.id, at: g.created_at })) };
       },
     });
 
@@ -412,18 +436,24 @@ export default {
     // with every project as its candidate set.
     const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const reachOwner = c => REACH_OWNER.has(String(c)) || String(c || "").startsWith("module:");
-    const reachOwnSession = c => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
-    const reachAgentOf = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    // The session and the agent are what the daemon vouched (meta.thread and meta.agent, forwarded by the asking module as `thread` and `claim`), never the `:thread:<id>` or `:agent:<name>` text of a label (RC-1).
+    // SHIM (kernel off, or an asking module that does not forward meta yet): when neither `thread` nor `claim` is given, the label's own text is read as before.
+    const reachOwnSession = (c, thread, claim) => (thread !== undefined || claim !== undefined)
+      ? !claim && /^mcp(?:$|[\s:])/.test(String(c || "")) && (c === "mcp" || Boolean(thread))
+      : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
+    const reachAgentOf = (c, claim) => claim !== undefined ? (claim ? String(claim) : null) : /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
-      input: { type: "object", properties: { agent: str, caller: str, kind: { type: "string", enum: ["facts", "content"] } } },
+      input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },
       callers: ["module"],
-      run: async ({ agent, caller, kind = "content" }) => {
-        const said = reachAgentOf(caller);
+      run: async ({ agent, caller, kind = "content", person, thread, claim }) => {
+        const said = reachAgentOf(caller, claim);
         if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
         const who = said || agent || null;
         if (!who) {
-          if (reachOwner(caller) || reachOwnSession(caller) || ownerDevice(caller)) return { all: true, agent: null };
+          // The asking module passes `person` from the kernel's chain for the call (exactly one person hop): then that fact, never the label, decides the owner. Without it (no kernel) the labels do, as before.
+          if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied"); }
+          if (reachOwner(caller) || reachOwnSession(caller, thread, claim) || ownerDevice(caller)) return { all: true, agent: null };
           throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
         }
         const r = await ctx.call("agents.list", {});
@@ -447,94 +477,6 @@ export default {
       },
     });
 
-    // Seeds a granted row for every agent's own agents.projects entry that has none yet, so an
-    // agent already scoped to a project by agents.create/update keeps reading it once a caller
-    // (memory's guard) starts checking projects.access too. Reviewer's MEDIUM 1: the earlier
-    // version checked only the (project, agent) pair, so a wildcard revoke
-    // (projects.access.revoke { project }, agent left out, meaning every agent) was undone the
-    // next time this ran, because it inserted a fresh per-agent row anyway. Fixed the safer way
-    // team-lead called for: skip a project ENTIRELY once it has any row at all, agent or status
-    // irrelevant, so this only ever seeds a project nobody has touched through projects.access
-    // yet. A projects: "*" agent (not the assistant, whose "*" is a different rule entirely) is
-    // now seeded too, one row per project, the same as a named-projects agent, just for every
-    // project instead of a named few (reviewer's follow-up on d897210d: without this, a wildcard
-    // agent read nothing until someone granted it by hand, project by project).
-    // Set by stop(): nothing below touches the database once the module has been stopped.
-    let stopped = false;
-    const seedFromAgents = async () => {
-      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
-      const r = await ctx.call("agents.list", {});
-      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
-      if (r.error) return { error: r.error };
-      const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
-      let seeded = 0;
-      const projects = P.valid();
-      const touched = new Set(/** @type {any[]} */ (db.prepare("SELECT DISTINCT project FROM projects_access").all()).map(x => x.project));
-      for (const a of list) {
-        if (!a || !a.name || a.kind === "assistant") continue;
-        const targets = a.projects === "*" ? projects
-          : Array.isArray(a.projects) ? projects.filter(p => a.projects.some((/** @type {any} */ ref) => p.slug === String(ref) || p.name.toLowerCase() === String(ref).toLowerCase()))
-          : [];
-        for (const p of targets) {
-          if (touched.has(p.slug)) continue; // this project already has a grant or revoke on record; never override it
-          db.prepare("INSERT INTO projects_access (id, project, agent, status, by, at) VALUES (?,?,?,?,?,?)")
-            .run(crypto.randomUUID(), p.slug, normAgent(a.name), "granted", "projects.access.migrate", Date.now());
-          seeded++;
-        }
-      }
-      return { seeded };
-    };
-
-    ctx.tool("projects.access.migrate", {
-      description: "Bootstrap for projects.access (Vyre Drive step 3, one source of truth): seeds a granted row for every agent's own agents.projects entry, including a projects: \"*\" agent's every project, for any project projects.access has never recorded a grant or revoke on. Never touches a project once it has any row at all, so a person's own revoke (even a wildcard one that covers every agent) is never undone. The assistant is untouched: its reach is the assistant rule, not a per-project grant. Runs automatically once, on the first start after this version, and is also here as a manual OWNER tool in case agents was not reachable yet at that first start (see projects.access.check's fallback to agents.projects alone when this module cannot be asked).",
-      input: { type: "object", properties: {} },
-      callers: OWNER,
-      run: async () => {
-        const r = await seedFromAgents();
-        if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`, "no_link");
-        return { seeded: r.seeded };
-      },
-    });
-
-    // Auto-seed once (reviewer's MEDIUM 2, team-lead's call): a person must never have to run
-    // projects.access.migrate by hand for an upgrade not to look like every scoped agent lost
-    // its memory access. Retried a few times, spaced out, in case agents starts after projects
-    // in this boot (module.json declares no hard "requires" on agents: projects works fine
-    // without it, so this can't be a real dependency edge, just a startup-order one). Marked
-    // done in projects_access_seeded (its own migration step) ONLY once it has actually read a
-    // real list from agents.list (reviewer's seed-order LOW, still open on 2fb4258c): a
-    // no_such_tool answer used to be treated as final ("agents genuinely is not installed"),
-    // but that is only true when agents really is disabled, which this cannot tell apart from
-    // "agents hasn't started yet" by the error code alone. Retried the same as any other error
-    // now; six tries, 500ms apart, is not enough to rule out a permanent problem, only a
-    // boot-order race, so a real, lasting outage (or a genuinely agents-less install) leaves
-    // this unmarked and retries again next boot, cheap either way. Going forward this matters
-    // less: agents.create/update and projects.create write the grant as it happens (option (a)
-    // below), so this seed only ever backfills what existed before this version.
-    // The returned promise is here for tests to await determinism on, never used by real
-    // callers: nothing in production needs to wait on the auto-seed before start() returns.
-    // A test that awaits this promise (access.test.js's own started()) would otherwise pay the
-    // full 6-try, 2.5s retry cost on every no_such_tool too, now that no_such_tool is retried
-    // like any other error: sped up under node --test, same convention core/config/dialogs.js
-    // and core/recall/index.js use, never in production.
-    const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
-    const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      for (let i = 0; i < 6 && !stopped; i++) {
-        const r = await seedFromAgents();
-        if (stopped) return;
-        if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
-        await new Promise(res => setTimeout(res, RETRY_MS));
-      }
-      if (!stopped) ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
-    })();
-
-    return {
-      // Stops the auto-seed and waits (two seconds at most) for the step it is in, so nothing writes after the database closes.
-      async stop() {
-        stopped = true;
-        await within(autoSeed.catch(() => {}), 2000);
-      },
-      seeded: autoSeed,
-    };
+    return { async stop() {} };
   },
 };

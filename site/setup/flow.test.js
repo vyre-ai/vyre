@@ -1,6 +1,7 @@
 // @ts-check
 // The setup page's flow and screen against the real relay client and the real Node relay server. The box's
 // offer is the one thing faked (it needs a whole daemon; core/relay/setup.test.js covers that half).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -327,16 +328,15 @@ test("forged lines: an <img onerror> payload and a very long line are text, capp
   flow.stop();
 });
 
-/** A fake box for the later steps: Tailscale and provider sign-ins follow a script the test drives. */
+/** A fake box for the later steps: the network status and provider sign-ins follow a script the test drives. */
 function stepsBox(script = {}) {
   const box = fakeBox();
   const base = box.call;
-  const st = { ts: "needs-login", kind: "personal", loginUrl: "https://login.tailscale.com/a/abc123", claimPhase: "dns", flows: {}, ...script };
+  const st = { net: "relayed", claimPhase: "named", flows: {}, ...script };
   box.st = st;
   box.call = async (tool, input) => {
-    if (tool === "network.tailscale.status") { box.calls.push([tool, input]); return { state: st.ts, login: "alex@example.com", tailnet: "alex.example", tailnetKind: st.kind, ip: st.ts === "connected" ? "100.64.0.9" : null }; }
-    if (tool === "network.tailscale.login") { box.calls.push([tool, input]); return { loginUrl: st.loginUrl, state: "needs-login" }; }
-    if (tool === "names.claim" && st.claimPhase) { box.calls.push([tool, input]); return { phase: st.claimPhase, address: "https://harlow-legal-server.vyre.run", recoveryCode: st.ts === "connected" ? null : "abcd-efgh-jklm-npqr-stuv-wxyz-23" }; }
+    if (tool === "network.wink.status") { box.calls.push([tool, input]); return { identity: null, spaces: [{ id: "home", state: st.net, path: st.net === "connected" ? "direct" : "relay", peerList: [] }], relay: { ok: true } }; }
+    if (tool === "names.claim" && st.claimPhase) { box.calls.push([tool, input]); const first = !st.claimed; st.claimed = true; return { phase: st.claimPhase, address: null, recoveryCode: first ? "abcd-efgh-jklm-npqr-stuv-wxyz-23" : null }; }
     if (tool === "sessions.accounts.signin") {
       box.calls.push([tool, input]);
       if (input.provider) { const flow = `f-${input.provider}`; st.flows[flow] = { provider: input.provider, polls: 0 }; return input.provider === "claude" ? { flow, step: "url", url: "https://claude.ai/oauth/authorize?x=1", paste: true } : { flow, step: "code", url: "https://example.org/device", code: "WXYZ-1234" }; }
@@ -345,6 +345,11 @@ function stepsBox(script = {}) {
       if (f.failStatus) return { flow: input.flow, step: "failed", provider: f.provider, message: "the sign-in page was closed before it finished" };
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
+    }
+    if (tool === "sessions.accounts.key") {
+      box.calls.push([tool, input]);
+      if (input.key === "sk-refused-key-123456") throw new Error("the service refused that key: sk-refused-key-123456");
+      return { account: "acct1", provider: input.kind, checked: true };
     }
     if (tool === "names.status") { box.calls.push([tool, input]); if (!st.namesPhase) throw Object.assign(new Error("no such tool"), { status: 404 }); return { name: "harlow-legal-server", phase: st.namesPhase, why: st.namesWhy || null }; }
     if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000), route: "r".repeat(26) }; }
@@ -362,14 +367,25 @@ async function atNamed(t, box) {
   return flow;
 }
 
-test("steps: AI sign-in comes before Tailscale, needs one done login, and a pasted code finishes the ones that want it", async t => {
+/** Through the network step to the AI step. */
+async function toAi(flow, box) {
+  flow.continueToNetwork();
+  await until(() => flow.state.network.status);
+  flow.continueToAi();
+}
+
+test("steps: the network step comes before the AI sign-in, one done login is needed to go on, and a pasted code finishes the ones that want it", async t => {
   const box = stepsBox();
   const flow = await atNamed(t, box);
-  flow.continueToTailscale();
-  assert.equal(flow.state.stage, "named", "Tailscale is not reachable from the naming screen");
   flow.continueToAi();
+  assert.equal(flow.state.stage, "named", "the AI step is not reachable from the naming screen");
+  flow.continueToNetwork();
+  assert.equal(flow.state.stage, "network");
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "network", "the network has not been looked at yet");
+  await toAi(flow, box);
   assert.equal(flow.state.stage, "ai");
-  flow.continueToTailscale();
+  flow.continueToDevices();
   assert.equal(flow.state.stage, "ai", "no login is done yet");
 
   flow.startAi("codex");
@@ -390,8 +406,8 @@ test("steps: AI sign-in comes before Tailscale, needs one done login, and a past
   const again = flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url");
   await flow.submitAiCode(again.id, "good-code");
   await until(() => flow.state.ai.accounts.find(a => a.id === again.id).step === "done");
-  flow.continueToTailscale();
-  assert.equal(flow.state.stage, "tailscale");
+  flow.continueToDevices();
+  assert.equal(flow.state.stage, "devices");
   flow.stop();
 });
 
@@ -400,7 +416,7 @@ test("steps: a sign-in link that is not a plain https address is not shown", asy
   const orig = box.call;
   box.call = async (tool, input) => { const r = await orig(tool, input); return tool === "sessions.accounts.signin" && input.provider ? { ...r, url: "javascript:alert(1)" } : r; };
   const flow = await atNamed(t, box);
-  flow.continueToAi();
+  await toAi(flow, box);
   flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].error);
   assert.equal(flow.state.ai.accounts[0].url, null);
@@ -408,42 +424,42 @@ test("steps: a sign-in link that is not a plain https address is not shown", asy
   flow.stop();
 });
 
-test("steps: Tailscale shows a checked sign-in link, waits for the join, then publishes the address once and stops", async t => {
-  const box = stepsBox();
+test("steps: the network step reads how the server is reachable once, says it in fixed words, and never blocks the setup", async t => {
+  const box = stepsBox({ net: "relayed" });
   const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  await until(() => flow.state.tailscale.status);
-  assert.equal(flow.state.tailscale.status.state, "needs-login");
-  await flow.connectTailscale();
-  assert.equal(flow.state.tailscale.loginUrl, "https://login.tailscale.com/a/abc123");
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
-  const claims = box.calls.filter(c => c[0] === "names.claim").length;
-  await new Promise(r => setTimeout(r, 60));
-  assert.equal(box.calls.filter(c => c[0] === "names.claim").length, claims, "no more claims once it is serving");
-  assert.equal(flow.state.tailscale.loginUrl, null, "the link is dropped once connected");
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "named", "the AI step is not reachable from the naming screen");
+  flow.continueToNetwork();
+  assert.equal(flow.state.stage, "network");
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "network", "not before the page has looked at the network");
+  await until(() => flow.state.network.status);
+  assert.equal(flow.state.network.status.state, "relayed");
+  assert.equal(box.calls.filter(c => c[0] === "network.wink.status").length, 1, "one read, no polling");
+  assert.ok(flow.state.activity.includes("Your server is reachable through the relay."));
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "ai");
   flow.stop();
 
-  // Not Tailscale's page: refused.
-  const bad = stepsBox({ loginUrl: "https://evil.example/login" });
-  const f2 = await atNamed(t, bad);
-  f2.continueToAi(); f2.startAi("codex");
-  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
-  f2.continueToTailscale();
-  await f2.connectTailscale();
-  assert.equal(f2.state.tailscale.loginUrl, null);
-  assert.match(f2.state.tailscale.error, /not Tailscale's/);
+  // A server that does not answer the status still lets the person go on: it never blocks the setup.
+  const quiet = stepsBox();
+  const orig = quiet.call;
+  quiet.call = async (tool, input) => { if (tool === "network.wink.status") throw new Error("no such tool network.wink.status"); return orig(tool, input); };
+  const f2 = await atNamed(t, quiet);
+  f2.continueToNetwork();
+  await until(() => f2.state.network.error);
+  assert.match(f2.state.network.error, /no such tool/);
+  f2.continueToAi();
+  assert.equal(f2.state.stage, "ai");
   f2.stop();
 });
 
 test("steps: the screens render, links are real https anchors only where the box's link was checked, and the pasted-code field keeps its element", async t => {
-  const box = stepsBox({ ts: "connected", kind: "organization", claimPhase: "certificate" });
+  const box = stepsBox({ net: "relayed" });
   const doc = new FakeDoc(), root = doc.createElement("main");
   let flow;
   const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
-    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale: () => flow.connectTailscale(), startAi: p => flow.startAi(p), submitAiCode: (i, c) => flow.submitAiCode(i, c) };
+    continueToAi: () => flow.continueToAi(), continueToNetwork: () => flow.continueToNetwork(), readNetwork: () => flow.readNetwork(), startAi: p => flow.startAi(p), submitAiCode: (i, c) => flow.submitAiCode(i, c) };
   const w = await world(t);
   flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
     onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
@@ -451,7 +467,11 @@ test("steps: the screens render, links are real https anchors only where the box
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  await flow.claim(); flow.markSaved(); flow.continueToNetwork();
+  await until(() => flow.state.network.status);
+  assert.ok(root.textContent.includes("reachable through Vyre's relay"), "the network line, in the page's own words");
+  assert.ok(!new RegExp("tail" + "scale", "i").test(root.textContent), "no screen names another product");
+  flow.continueToAi();
   flow.startAi("claude");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "url");
   const anchors = () => root.all().filter(e => e.tag === "a");
@@ -466,67 +486,38 @@ test("steps: the screens render, links are real https anchors only where the box
   first.value = "good-code";
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Finish")).listeners.click();
   await until(() => flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  await until(() => flow.state.tailscale.address);
-  assert.ok(root.textContent.includes("This is a work network"), "the work-network warning");
-  assert.ok(root.textContent.includes("Publishing your address"));
   flow.stop();
 });
 
 async function atDevices(t, box, extra = {}) {
   const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
+  await toAi(flow, box);
+  flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
   flow.continueToDevices();
   return flow;
 }
 
-test("devices: one ticket, drawn but never written as text, and a pairing after it moves the page on", async t => {
+test("devices: the page makes no pairing ticket (one pairing path: the install terminal's); asking for a phone does nothing and the page moves on", async t => {
   const box = stepsBox();
   const flow = await atDevices(t, box);
   assert.equal(flow.state.stage, "devices");
-  assert.equal(flow.currentTicket(), null, "no ticket until the person asks");
-  await flow.addPhone();
-  assert.equal(flow.state.devices.phone, "showing");
-  assert.equal(flow.currentTicket(), "AAECAwQFBgc", "held only for drawing");
-  assert.ok(!JSON.stringify(flow.state).includes("AAECAwQFBgc"), "the ticket is not in the state the screen is built from");
-  // a phone pairs: an event after the moment the ticket was made
-  box.st.paired = [{ id: 7, type: "relay.paired", payload: { name: "Alex's iPhone", device: "d1" } }];
-  await until(() => flow.state.devices.phone === "paired");
-  assert.equal(flow.state.devices.paired, "Alex's iPhone");
-  assert.equal(flow.currentTicket(), null, "the ticket is dropped once it is spent");
-  await flow.addPhone();
-  assert.equal(box.calls.filter(c => c[0] === "relay.pair.ticket").length, 1, "only one ticket");
-  flow.stop();
-});
-
-test("devices: an earlier pairing does not count, and a ring that is not scanned in time says it expired", async t => {
-  const box = stepsBox({ ticketMs: 120, paired: [{ id: 3, type: "relay.paired", payload: { name: "old" } }] });
-  const flow = await atDevices(t, box);
-  await flow.addPhone();
-  await until(() => flow.state.devices.phone === "expired");
   assert.equal(flow.currentTicket(), null);
-  assert.equal(flow.state.devices.paired, null, "the earlier event was not taken for this pairing");
+  await flow.addPhone();
+  assert.equal(flow.state.devices.phone, "idle", "nothing was started");
+  assert.equal(box.calls.filter(c => c[0] === "relay.pair.ticket").length, 0, "the page never asks the box for a pairing ticket");
+  flow.continueToClaim();
+  assert.equal(flow.state.stage, "claim");
   flow.stop();
-
-  const failing = stepsBox({ ticketMade: true });
-  const f2 = await atDevices(t, failing);
-  await f2.addPhone();
-  assert.equal(f2.state.devices.phone, "failed");
-  assert.match(f2.state.devices.error, /already made its one pairing ticket/);
-  f2.stop();
 });
 
-test("devices: the screen draws the ring into its slot only while showing, and never prints the ticket", async t => {
+test("devices: the screen has no pairing button and draws no ring: the page makes no ticket", async t => {
   const box = stepsBox();
   const doc = new FakeDoc(), root = doc.createElement("main");
   const drawn = [];
   let flow;
   const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
-    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale() {}, startAi: p => flow.startAi(p), submitAiCode() {},
+    continueToAi: () => flow.continueToAi(), continueToNetwork: () => flow.continueToNetwork(), readNetwork() {}, startAi: p => flow.startAi(p), submitAiCode() {},
     continueToDevices: () => flow.continueToDevices(), addPhone: () => flow.addPhone(), drawRing: slot => drawn.push(slot.attrs["data-role"]), continueToClaim() {}, mintClaim() {}, drawQr() {} };
   const w = await world(t);
   flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
@@ -535,72 +526,35 @@ test("devices: the screen draws the ring into its slot only while showing, and n
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
+  await flow.claim(); flow.markSaved(); flow.continueToNetwork();
+  await until(() => flow.state.network.status);
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
+  assert.equal(flow.state.stage, "ai");
+  flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
   assert.equal(flow.state.stage, "devices");
   assert.deepEqual(drawn, []);
-  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Add my phone")).listeners.click();
-  await until(() => drawn.length === 1);
-  assert.deepEqual(drawn, ["ring"]);
-  assert.ok(!root.textContent.includes("AAECAwQFBgc"), "the ticket is not printed");
+  assert.ok(!root.all().some(e => e.tag === "button" && e.children.some(c => c.value === "Add my phone")), "there is no Add my phone button");
   await new Promise(r => setTimeout(r, 40));
-  assert.equal(drawn.length, 1, "drawn once, not on every poll");
+  assert.deepEqual(drawn, [], "no ring is drawn");
+  assert.ok(!root.textContent.includes("AAECAwQFBgc"), "no ticket is printed");
   flow.stop();
 });
 
 test("site: the phone's ring is plain SVG shapes: no script, style, link or handler for the page's CSP to refuse", async () => {
-  const { ticketRingSvg } = await import("../../deck/js/phone-code.js");
+  const { ticketRingSvg } = await import("../../web/js/phone-code.js");
   const svg = ticketRingSvg("AAECAwQFBgc", { size: 280 });
   assert.ok(svg.startsWith("<svg"));
   assert.ok(!/<script|<style|style=|href=|xlink|on\w+=/i.test(svg));
-});
-
-test("tailscale: with the box's event stream it reads status when told, not on a clock; a broken stream falls back to a capped poll that stops on an error", async t => {
-  const box = stepsBox();
-  let poke = () => {}, endStream = () => {};
-  let followed = 0;
-  box.follow = (type, onEvent, onEnd) => { followed++; assert.equal(type, "tailscale.changed"); poke = () => onEvent({ type }); endStream = err => onEnd(err); return () => {}; };
-  const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  await until(() => flow.state.tailscale.status && followed === 1);
-  const statusCalls = () => box.calls.filter(c => c[0] === "network.tailscale.status").length;
-  const first = statusCalls();
-  await new Promise(r => setTimeout(r, 120));
-  assert.equal(statusCalls(), first, "nothing reads status while the box is quiet");
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  poke();
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
-  assert.ok(statusCalls() > first, "an event was a reason to read");
-  flow.stop();
-
-  // The stream breaks: the capped poll takes over, and an error from the box ends the watching.
-  const b2 = stepsBox();
-  b2.follow = (type, onEvent, onEnd) => { setTimeout(() => onEnd(new Error("stream broke")), 10); return () => {}; };
-  const f2 = await atNamed(t, b2);
-  f2.continueToAi(); f2.startAi("codex");
-  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
-  f2.continueToTailscale();
-  await until(() => b2.calls.filter(c => c[0] === "network.tailscale.status").length >= 3);
-  const orig = b2.call;
-  b2.call = async (tool, input) => { if (tool === "network.tailscale.status") throw Object.assign(new Error("this setup session has ended"), { code: "setup_over", status: 401 }); return orig(tool, input); };
-  await until(() => f2.state.tailscale.error);
-  const n = b2.calls.length;
-  await new Promise(r => setTimeout(r, 80));
-  assert.equal(b2.calls.length, n, "no more calls after the error");
-  f2.stop();
 });
 
 test("ai: with a list of provider hosts, a sign-in link elsewhere is refused", async t => {
   const box = stepsBox();
   const flow = await foundFlow(t, box, { flow: { signinHosts: ["example.org", "claude.ai"] } });
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  await flow.claim(); flow.markSaved();
+  await toAi(flow, box);
   flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
   assert.equal(flow.state.ai.accounts[0].error, null);
@@ -692,12 +646,9 @@ test("claim: the setup ending before its hour means claimed and ends the page on
   await until(() => late.state.stage === "found");
   late.confirmWords();
   await until(() => late.state.naming.check);
-  await late.claim(); late.markSaved(); late.continueToAi(); late.startAi("codex");
-  await until(() => late.state.ai.accounts[0] && late.state.ai.accounts[0].step === "done");
-  late.continueToTailscale();
-  b3.st.ts = "connected"; b3.st.claimPhase = "serving";
-  await until(() => late.state.tailscale.address && late.state.tailscale.address.phase === "serving");
-  late.continueToDevices(); late.continueToClaim();
+  await late.claim(); late.markSaved(); late.continueToNetwork();
+  await until(() => late.state.network.status);
+  late.continueToAi(); late.skipAi(); late.continueToClaim();
   clock += 61 * 60_000;
   closed3(4401, "setup ended");
   assert.equal(late.state.stage, "stopped");
@@ -711,7 +662,7 @@ test("claim: the screen offers the link as a real anchor to the person's own add
   const qr = [];
   let flow;
   const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
-    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale() {}, startAi: p => flow.startAi(p), submitAiCode() {},
+    continueToAi: () => flow.continueToAi(), continueToNetwork: () => flow.continueToNetwork(), readNetwork() {}, startAi: p => flow.startAi(p), submitAiCode() {},
     continueToDevices: () => flow.continueToDevices(), addPhone() {}, drawRing() {}, continueToClaim: () => flow.continueToClaim(), mintClaim: () => flow.mintClaim(), drawQr: (slot, text) => qr.push(text) };
   const w = await world(t);
   flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box, signClaim,
@@ -720,12 +671,9 @@ test("claim: the screen offers the link as a real anchor to the person's own add
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
-  flow.continueToDevices();
+  await flow.claim(); flow.markSaved(); flow.continueToNetwork();
+  await until(() => flow.state.network.status);
+  flow.continueToAi(); flow.skipAi();
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Skip for now")).listeners.click();
   assert.equal(flow.state.stage, "claim");
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Get my link")).listeners.click();
@@ -828,99 +776,15 @@ test("domain: after the recovery code is saved, a domain of the person's own is 
 });
 
 test("steps: a sign-in that fails while the page polls shows the box's message (message, as core/sessions/signin.js answers it)", async t => {
-  const box = stepsBox({ ts: "connected" });
+  const box = stepsBox({ net: "connected" });
   const flow = await atNamed(t, box);
   try {
-    flow.continueToAi();
+    await toAi(flow, box);
     flow.startAi("codex");
     await until(() => box.st.flows["f-codex"]);
     box.st.flows["f-codex"].failStatus = true;
     const failed = await until(() => flow.state.ai.accounts.find(a => a.provider === "codex" && a.step === "failed"));
     assert.equal(failed.error, "the sign-in page was closed before it finished");
-  } finally { flow.stop(); }
-});
-
-test("steps: the address goes from certificate to serving on the certificate's own event (no tailscale.changed), and a certificate failure is shown", async t => {
-  const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
-  const flow = await atNamed(t, box);
-  try {
-    flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-    flow.continueToTailscale();
-    await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
-    // Another name's certificate is not this box's.
-    box.st.events = [{ id: 3, type: "certificate.issued", payload: { name: "someone-else.vyre.run" } }];
-    await new Promise(r => setTimeout(r, 1500));
-    assert.equal(flow.state.tailscale.address.phase, "certificate");
-    // The box's own certificate, issued: serving, and the watching ends.
-    box.st.events.push({ id: 4, type: "certificate.issued", payload: { name: "harlow-legal-server.vyre.run", expires: 1 } });
-    await until(() => flow.state.tailscale.address.phase === "serving", 8000);
-  } finally { flow.stop(); }
-
-  const bad = stepsBox({ ts: "connected", claimPhase: "certificate" });
-  const f2 = await atNamed(t, bad);
-  try {
-    f2.continueToAi(); f2.startAi("codex");
-    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
-    f2.continueToTailscale();
-    await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "certificate");
-    bad.st.events = [{ id: 1, type: "certificate.failed", payload: { name: "harlow-legal-server.vyre.run", why: "the certificate authority said no" } }];
-    await until(() => f2.state.tailscale.address.phase === "failed", 8000);
-    assert.equal(f2.state.tailscale.address.why, "the certificate authority said no");
-  } finally { f2.stop(); }
-});
-
-test("steps: names.status is the backstop: serving (or failed) on the box's own answer even when no event is ever seen; a box without that tool still works", async t => {
-  const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
-  const flow = await atNamed(t, box);
-  try {
-    flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-    flow.continueToTailscale();
-    await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
-    box.st.namesPhase = "certificate";
-    await new Promise(r => setTimeout(r, 1300));
-    assert.equal(flow.state.tailscale.address.phase, "certificate", "still going");
-    box.st.namesPhase = "serving";
-    await until(() => flow.state.tailscale.address.phase === "serving", 8000);
-  } finally { flow.stop(); }
-  const bad = stepsBox({ ts: "connected", claimPhase: "certificate", namesPhase: "failed", namesWhy: "the certificate authority is unreachable" });
-  const f2 = await atNamed(t, bad);
-  try {
-    f2.continueToAi(); f2.startAi("codex");
-    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
-    f2.continueToTailscale();
-    await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "failed", 8000);
-    assert.equal(f2.state.tailscale.address.why, "the certificate authority is unreachable");
-  } finally { f2.stop(); }
-});
-
-test("steps: a sign-in link that is not Tailscale's is shown as a refusal with the Connect button back, not left on Getting the link", async t => {
-  const box = stepsBox({ loginUrl: "https://evil.example/login" });
-  const doc = new FakeDoc(), root = doc.createElement("main");
-  let flow;
-  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
-    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale: () => flow.connectTailscale(), startAi: p => flow.startAi(p), submitAiCode: (i, c) => flow.submitAiCode(i, c) };
-  const w = await world(t);
-  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
-    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
-  try {
-    await flow.begin();
-    await until(() => flow.state.stage === "found");
-    flow.confirmWords();
-    await until(() => flow.state.naming.check);
-    await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-    flow.continueToTailscale();
-    await until(() => flow.state.tailscale.status);
-    const button = () => root.all().find(e => e.tag === "button" && e.children.some(c => /Connect my server|Getting the link/.test(String(c.value))));
-    await button().listeners.click();
-    assert.equal(flow.state.tailscale.busy, false, "the busy state is cleared");
-    assert.match(flow.state.tailscale.error, /not Tailscale's/);
-    assert.ok(!root.textContent.includes("Getting the link"), "not left waiting");
-    assert.ok(root.textContent.includes("that is not Tailscale's"), "the refusal is on the screen");
-    assert.ok(root.textContent.includes("Connect my server"), "and the person can try again");
-    assert.ok(!root.all().some(e => e.tag === "a" && /evil\\.example/.test(String(e.attrs.href))), "the link is never an anchor");
   } finally { flow.stop(); }
 });
 
@@ -951,7 +815,7 @@ test("machine: the start screen offers a Linux server or a Mac, the choice reach
   await flow.begin("mac");
   assert.equal(flow.state.machine, "mac");
   draw();
-  assert.match(root.textContent, /Run this on the Mac/);
+  assert.match(root.textContent, /Run the line on the Mac/);
   assert.match(root.textContent, /with FileVault on, the Mac waits for someone to unlock it at the screen, and Vyre is off until then/);
   assert.match(root.textContent, /anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password/);
   assert.match(root.textContent, /"Start up automatically after a power failure" is on in System Settings, under Energy, and it starts off on a Mac mini/);
@@ -960,7 +824,7 @@ test("machine: the start screen offers a Linux server or a Mac, the choice reach
   assert.equal(flow.state.machine, "mac", "Start again keeps the choice");
   await flow.begin("linux");
   draw();
-  assert.match(root.textContent, /Run this on your server/);
+  assert.match(root.textContent, /Run the line on your server/);
   assert.ok(!/FileVault/.test(root.textContent), "no Mac words on a Linux install");
   flow.stop();
 });
@@ -999,4 +863,108 @@ test("the setup page's own code makes no request to a private address: its only 
     assert.ok(!/XMLHttpRequest|sendBeacon|new EventSource/.test(text), `${f} opens a request of another kind`);
     assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
   }
+});
+
+test("timeline: ten steps in order, the current one from the flow's stage, optional ones tagged, skipped ones stay listed", async t => {
+  const { stepList, stepNumber, STEPS } = await import("./flow.js");
+  assert.deepEqual(STEPS.map(x => x.title), ["Install", "Check the words", "Choose your address", "Your network", "Sign in to your AI", "Add your phone", "Create your passkey", "You and your assistant", "Your computers", "Your history"]);
+  assert.deepEqual(STEPS.filter(x => x.optional).map(x => x.id), ["phone", "computers", "history"]);
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  assert.equal(stepNumber(flow.state), 3);
+  assert.deepEqual(stepList(flow.state).map(x => x.status).join(","), "done,done,current,todo,todo,todo,todo,todo,todo,todo");
+  await toAi(flow, box);
+  assert.equal(stepNumber(flow.state), 5);
+  flow.skipAi();
+  assert.equal(flow.state.stage, "devices", "no AI yet is allowed, and it goes on to the phone");
+  assert.deepEqual(flow.state.skipped, ["ai"]);
+  flow.continueToClaim();
+  const l = stepList(flow.state);
+  assert.equal(l[4].status, "skipped");
+  assert.equal(l[5].status, "skipped", "a phone not added is skipped too");
+  assert.equal(l[6].status, "current");
+  assert.equal(stepNumber(flow.state), 7);
+  flow.stop();
+});
+
+test("timeline: skipping the AI is refused once one is signed in, and a stopped page marks the step it stopped on", async t => {
+  const { stepList } = await import("./flow.js");
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  await toAi(flow, box);
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.skipAi();
+  assert.equal(flow.state.stage, "ai", "a signed-in AI is not skipped");
+  flow.stop();
+  const f2 = createFlow({ client: clientWith(async () => offer()), relay: "ws://127.0.0.1:1", supported: async () => false });
+  await f2.begin();
+  assert.equal(f2.state.stage, "stopped");
+});
+
+test("timeline: the screen draws the same ten steps as a rail and as a bar, with the current one marked and all text as text", async t => {
+  const box = stepsBox();
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(), continueToNetwork: () => flow.continueToNetwork() };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  assert.ok(root.textContent.includes("Step 2 of 10"));
+  assert.ok(root.textContent.includes("Check the four words"));
+  flow.confirmWords();
+  await until(() => flow.state.naming.check);
+  assert.ok(root.textContent.includes("Step 3 of 10"));
+  const rail = root.all().find(e => e.attrs && e.attrs.class === "tl-rail");
+  const items = rail.all().filter(e => e.tag === "li" && String(e.attrs.class).startsWith("tl-step"));
+  assert.equal(items.length, 10);
+  assert.equal(items.filter(e => e.attrs["aria-current"] === "step").length, 1);
+  assert.equal(doc.innerHtmlWrites, 0);
+  flow.stop();
+});
+
+test("activity: each step leaves one line in the page's own words, and a forged progress line never becomes one", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  assert.ok(flow.state.activity.includes("The four words matched."));
+  assert.ok(flow.state.activity.includes("Connected to your server."));
+  assert.ok(flow.state.activity.some(l => /^Claimed .+\.vyre\.run\.$/.test(l)));
+  await toAi(flow, box);
+  assert.ok(flow.state.activity.includes("Your server is reachable through the relay."));
+  flow.skipAi();
+  assert.ok(flow.state.activity.some(l => l.startsWith("Skipped the AI sign-in")));
+  assert.equal(new Set(flow.state.activity).size, flow.state.activity.length, "no line twice");
+  flow.stop();
+});
+
+test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  await toAi(flow, box);
+  flow.openAiKey("nope");
+  assert.equal(flow.state.ai.keyKind, null, "only the three kinds open");
+  flow.openAiKey("openai-compatible");
+  assert.equal(flow.state.ai.keyKind, "openai-compatible");
+  flow.openAiKey("openai-compatible");
+  assert.equal(flow.state.ai.keyKind, null, "the same kind again closes it");
+  flow.openAiKey("openai-compatible");
+  await flow.submitAiKey({ kind: "openai-compatible", key: "short" });
+  assert.equal(flow.state.ai.accounts.at(-1).step, "failed");
+  assert.ok(!box.calls.some(c => c[0] === "sessions.accounts.key"), "a key that cannot be one never leaves the page");
+  await flow.submitAiKey({ kind: "openai-compatible", key: "sk-refused-key-123456", base_url: "https://llm.example.org/v1" });
+  const failed = flow.state.ai.accounts.at(-1);
+  assert.equal(failed.step, "failed");
+  assert.ok(!JSON.stringify(flow.state).includes("sk-refused-key-123456"), "neither the state nor the error holds the key");
+  assert.equal(flow.state.ai.keyBusy, false);
+  await flow.submitAiKey({ kind: "openai-compatible", key: "sk-good-key-1234567890", base_url: "https://llm.example.org/v1", model: "m1" });
+  const call = box.calls.filter(c => c[0] === "sessions.accounts.key").at(-1);
+  assert.deepEqual(call[1], { kind: "openai-compatible", key: "sk-good-key-1234567890", base_url: "https://llm.example.org/v1", model: "m1" });
+  assert.equal(flow.state.ai.accounts.at(-1).step, "done");
+  assert.equal(flow.state.ai.keyKind, null, "the form closes on success");
+  assert.ok(!JSON.stringify(flow.state).includes("sk-good-key-1234567890"), "the saved key is not in the state");
+  flow.continueToDevices();
+  assert.equal(flow.state.stage, "devices", "a saved key counts as one AI to go on with");
+  flow.stop();
 });

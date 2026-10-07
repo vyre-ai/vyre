@@ -14,6 +14,9 @@ import { redact } from "../lib/shared.js";
 import { err } from "../lib/err.js";
 
 const OPENED = "tabs.opened";
+const PREFETCHED = "tabs.prefetched";
+const MAX_MANY = 6;
+const MAX_PREFETCH = 6;
 
 /** @param {string} u */
 const stripHash = u => { try { const x = new URL(u); x.hash = ""; return x.href.replace(/\/$/, ""); } catch { return u; } };
@@ -93,14 +96,21 @@ async function bring(ctx, tabId, focus) {
   if (t && t.windowId != null) await ctx.tabs.focusWindow(t.windowId);
 }
 
+/** Pages open together, so the remembered set is changed one at a time: two reads of it would each lose the other's tab. */
+let marking = Promise.resolve();
+/** @param {any} ctx @param {number} id */
+function remember(ctx, id) {
+  const next = marking.then(async () => { const set = await openedSet(ctx); set.add(id); await saveOpened(ctx, set); });
+  marking = next.catch(() => {});
+  return next;
+}
+
 /** @param {any} ctx @param {string} url @param {boolean} focus */
 async function open(ctx, url, focus, timeoutMs = 15_000) {
   const v = await ctx.floorUrl(url, "tabs.open");
   if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
   const tab = await ctx.tabs.create({ url, active: focus });
-  const set = await openedSet(ctx);
-  set.add(tab.id);
-  await saveOpened(ctx, set);
+  await remember(ctx, tab.id);
   // Resolve only when the tab has committed to the page and finished loading (or the time is up), so the next call sees the real page,
   // never a tab that is still loading or already sitting on Chrome's error page.
   const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, Math.min(60_000, Math.max(0, Number(timeoutMs) || 15_000))) : { tab, settled: true, waitedMs: 0 };
@@ -115,6 +125,49 @@ function landed(r, asked) {
   const url = String((r.tab && (r.tab.url || r.tab.pendingUrl)) || "");
   const failed = url.startsWith("chrome-error:");
   return { finalUrl: redact.url(url || asked), title: String((r.tab && r.tab.title) || "").slice(0, 120), loaded: r.settled && !failed, ...(failed ? { failed: "the page did not load: Chrome is showing its own error page (no network, a wrong address or a refused connection). The tab is open; check the address and try again." } : {}), ...(!r.settled && !failed ? { stillLoading: true } : {}), waitedMs: r.waitedMs };
+}
+
+
+/** Tabs opened ahead of need (in the background, in order). @param {any} ctx @returns {Promise<number[]>} */
+async function prefetchedList(ctx) { return ((await ctx.storage.get("session", PREFETCHED)) || []).filter(/** @param {any} n */ n => Number.isInteger(n)); }
+/** @param {any} ctx @param {number[]} l */
+const savePrefetched = (ctx, l) => ctx.storage.set("session", { [PREFETCHED]: l });
+
+/**
+ * Open several pages at once, each reused when a tab already shows that exact URL. The loads run together, so the wait is the slowest page, not
+ * the sum. Every URL goes through the same floor as tabs.open; one that fails does not stop the others.
+ * @param {any} ctx @param {any} args @param {boolean} prefetch
+ */
+async function many(ctx, args, prefetch) {
+  const urls = Array.isArray(args.urls) ? args.urls.filter((/** @type {any} */ u) => typeof u === "string" && u) : [];
+  if (!urls.length) throw err("bad_request", `${prefetch ? "tabs.prefetch" : "tabs.many"} needs urls: [...]`);
+  if (urls.length > MAX_MANY) throw err("bad_request", `at most ${MAX_MANY} urls at once`);
+  const focus = args.focus === true && !prefetch;
+  const have = await survey(ctx);
+  const t0 = Date.now();
+  const out = await Promise.all(urls.map(async (/** @type {string} */ url) => {
+    const hit = rank(have, { url }).find(h => h.tier === 0);
+    if (hit) return { url: redact.url(url), id: hit.s.tab.id, reused: true, loaded: true };
+    try {
+      const r = await open(ctx, url, focus, Number(args.timeoutMs) || undefined);
+      const l = landed(r, url);
+      return { url: redact.url(url), id: r.created.id, opened: true, loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}) };
+    } catch (e) { return { url: redact.url(url), error: String(/** @type {any} */ (e)?.message || e).slice(0, 200), code: /** @type {any} */ (e)?.code || "error" }; }
+  }));
+  let closed = [];
+  if (prefetch) {
+    // Pages fetched ahead stay in the background; past the cap the oldest unused ones are closed (only tabs Vyre opened).
+    const live = new Set((await ctx.tabs.query({})).map((/** @type {any} */ t) => t.id));
+    const list = (await prefetchedList(ctx)).filter(id => live.has(id));
+    for (const o of out) if (o.opened && typeof o.id === "number") list.push(o.id);
+    const keep = list.slice(-MAX_PREFETCH);
+    closed = list.slice(0, list.length - keep.length);
+    const set = await openedSet(ctx);
+    for (const id of closed) { try { await ctx.tabs.remove(id); } catch { /* gone */ } set.delete(id); try { await ctx.cdp.detach(id); } catch { /* not attached */ } }
+    await saveOpened(ctx, set);
+    await savePrefetched(ctx, keep);
+  }
+  return { tabs: out, ms: Date.now() - t0, ...(prefetch ? { prefetched: true, closedOldest: closed } : {}) };
 }
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
@@ -161,7 +214,10 @@ export default {
       const best = rank(await survey(ctx), m)[0];
       if (best) {
         await bring(ctx, best.s.tab.id, focus);
-        return { ...shape(best.s), reused: true, matched: best.how };
+        const ahead = await prefetchedList(ctx);
+        const was = ahead.includes(best.s.tab.id);
+        if (was) await savePrefetched(ctx, ahead.filter(id => id !== best.s.tab.id));
+        return { ...shape(best.s), reused: true, matched: best.how, ...(was ? { prefetched: true } : {}) };
       }
       if (typeof args.url !== "string" || args.openIfMissing === false) throw err("no_tab", "no open tab matches and none was opened");
       const r = await open(ctx, args.url, focus, Number(args.timeoutMs) || undefined);
@@ -176,13 +232,19 @@ export default {
       return { id: r.created.id, windowId: r.created.windowId, url: l.finalUrl, title: l.title, opened: true, loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}), waitedMs: l.waitedMs };
     },
 
+    // Open (or reuse) several pages together. tabs.prefetch is the same, for pages the person will want next: always in the background, capped, oldest closed first.
+    "tabs.many": (args, ctx) => many(ctx, args, false),
+    "tabs.prefetch": (args, ctx) => many(ctx, args, true),
+
     "tabs.activate": async (args, ctx) => {
+      if (typeof args.tabId !== "number" && typeof args.tab === "number") args = { ...args, tabId: args.tab };
       if (typeof args.tabId !== "number") throw err("bad_request", "tabs.activate needs a tabId");
       await bring(ctx, args.tabId, true);
       return { id: args.tabId, active: true };
     },
 
     "tabs.close": async (args, ctx) => {
+      if (typeof args.tabId !== "number" && typeof args.tab === "number") args = { ...args, tabId: args.tab };
       if (typeof args.tabId !== "number") throw err("bad_request", "tabs.close needs a tabId");
       const set = await openedSet(ctx);
       if (!set.has(args.tabId)) throw err("blocked", "Vyre did not open that tab, so it will not close it");

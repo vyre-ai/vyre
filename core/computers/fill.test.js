@@ -2,6 +2,7 @@
 // A Vault fill on its own: the real Pool, Shield and Keyboard on the fake driver, a recording
 // computerd (`tell`), and a clock and timer queue the test moves.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

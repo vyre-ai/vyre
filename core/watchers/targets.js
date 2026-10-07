@@ -27,6 +27,6 @@ export function createTarget(call, { read }) {
 export function presetTarget(call) {
   const input = (call && call.input) || {};
   const project = String(input.project || ""), kind = String(input.kind || "");
-  if (!project || !/^(mail|calendar|repo|slack|feed)$/.test(kind)) return { to: [] };
+  if (!project || !/^(mail|calendar|repo|slack|feed|pr|connector)$/.test(kind)) return { to: [] };
   return { to: [`watchers.preset:${project}/${kind}`] };
 }

@@ -1,0 +1,173 @@
+<!-- The source of the README's panel film (docs/images/readme/vyre-demo.gif). Each frame is window.render(t) in headless Chromium at 1920 by 1080, 30 frames a second; ffmpeg makes the MP4 and the GIF (12 fps, 860 wide), gifsicle --lossy=70 makes it small. -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+:root { --panel:rgba(26,25,23,.94); --rule:rgba(241,238,230,.09); --ink:#F1EEE6; --stone:#B3AEA4; --ash:#8C877D; --violet:#B8A4FF; --green:#9FC7A6; }
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:1920px; height:1080px; overflow:hidden; background:#070706; font-family:'Instrument Sans',-apple-system,sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
+#stage { position:absolute; inset:0; overflow:hidden; }
+#scene { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; will-change:transform; }
+/* a desktop: a soft wallpaper, a menu bar, and an app behind the panel */
+#wall { position:absolute; inset:0; background:
+  radial-gradient(900px 700px at 18% 28%, rgba(184,164,255,.30), transparent 60%),
+  radial-gradient(800px 640px at 82% 78%, rgba(243,162,94,.20), transparent 60%),
+  radial-gradient(1200px 900px at 60% 10%, rgba(120,150,190,.18), transparent 65%),
+  linear-gradient(160deg, #1b1a20 0%, #121114 50%, #0c0b0b 100%); }
+#grain { position:absolute; inset:0; opacity:.07; mix-blend-mode:overlay; }
+#menubar { position:absolute; left:0; right:0; top:0; height:34px; background:rgba(20,19,18,.45); backdrop-filter:blur(20px); display:flex; align-items:center; gap:22px; padding:0 22px; font-size:14px; color:rgba(241,238,230,.85); }
+#menubar .r { margin-left:auto; display:flex; gap:18px; color:rgba(241,238,230,.7); }
+#doc { position:absolute; left:340px; top:150px; width:1240px; height:780px; border-radius:14px; background:#1d1c1a; border:1px solid rgba(241,238,230,.08); box-shadow:0 40px 90px -30px rgba(0,0,0,.7); overflow:hidden; }
+#doc .tb { height:46px; background:#252321; display:flex; align-items:center; gap:8px; padding:0 18px; }
+#doc .tb i { width:12px; height:12px; border-radius:50%; display:inline-block; }
+#doc .pg { padding:60px 140px; color:#ece8df; }
+#doc .pg h1 { font-size:34px; font-weight:600; margin-bottom:18px; }
+#doc .pg p { font-size:18px; line-height:30px; color:#a9a398; margin-bottom:14px; }
+#dim { position:absolute; inset:0; background:rgba(5,5,4,.55); }
+/* the panel: 680 wide at 1x; drawn at 1.5x here so the camera can come close */
+#panel { position:absolute; left:450px; top:200px; width:1020px; border-radius:21px; background:var(--panel); backdrop-filter:blur(40px) saturate(1.4); -webkit-backdrop-filter:blur(40px) saturate(1.4);
+  border:1px solid rgba(241,238,230,.10); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 50px 110px -30px rgba(0,0,0,.75), 0 4px 14px rgba(0,0,0,.35); overflow:hidden; transform-origin:50% 0; }
+#bar { height:84px; display:flex; align-items:center; gap:18px; padding:0 30px; }
+#bar svg { width:33px; height:33px; flex:none; }
+#q { font-size:23px; line-height:33px; white-space:pre; }
+#q .ph { color:var(--ash); } #q .at { color:var(--violet); }
+.caret { display:inline-block; width:2px; height:26px; background:var(--ink); vertical-align:-5px; margin-left:2px; }
+.view { border-top:1px solid var(--rule); }
+.head { height:62px; display:flex; align-items:center; gap:12px; padding:0 30px; }
+.label { font-size:18px; line-height:24px; font-weight:600; }
+.title { font-size:19px; color:var(--stone); }
+.sub { font-size:18px; color:var(--ash); }
+.list { padding:6px 30px 22px; display:flex; flex-direction:column; gap:16px; }
+.msg { display:flex; flex-direction:column; gap:6px; }
+.who { display:flex; align-items:center; gap:9px; }
+.av { width:21px; height:21px; border-radius:50%; flex:none; }
+.av.me { background:linear-gradient(135deg,#7a736a,#4a4540); }
+.av.juno { background: radial-gradient(circle at 35% 30%, #fff 0, #D9CCFF 40%, #8E78E6 100%); box-shadow:0 0 12px rgba(184,164,255,.45); }
+.text { font-size:23px; line-height:33px; }
+.tool { display:flex; align-items:center; gap:9px; height:27px; font-size:18px; color:var(--stone); }
+.tool .ic { width:18px; text-align:center; color:var(--green); }
+.tool .st { margin-left:auto; color:var(--ash); }
+.spin { display:inline-block; width:14px; height:14px; border:2px solid var(--ash); border-top-color:transparent; border-radius:50%; }
+.wait { display:flex; align-items:center; gap:14px; height:62px; padding:0 30px; border-top:1px solid var(--rule); color:var(--violet); font-size:20px; }
+.wait .dot { width:10px; height:10px; border-radius:50%; background:var(--violet); box-shadow:0 0 16px rgba(184,164,255,.9); }
+.notice { padding:0 30px 22px; font-size:18px; color:var(--ash); }
+/* keycaps */
+#keys { position:absolute; left:50%; top:540px; transform:translate(-50%,-50%); display:flex; gap:16px; }
+.key { min-width:96px; height:96px; padding:0 26px; border-radius:22px; background:linear-gradient(180deg,#2a2826,#1a1917); border:1px solid rgba(255,255,255,.12); box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 18px 40px -12px rgba(0,0,0,.8); display:flex; align-items:center; justify-content:center; font-size:30px; color:var(--ink); font-weight:500; }
+/* the phone */
+#phone { position:absolute; left:1540px; top:230px; width:300px; height:600px; border-radius:58px; background:#0c0b0a; border:2px solid #2d2a27; box-shadow: inset 0 0 0 6px #050504, 0 60px 120px -30px rgba(0,0,0,.85); overflow:hidden; }
+#phone .island { position:absolute; left:50%; top:20px; width:110px; height:32px; margin-left:-55px; border-radius:18px; background:#000; }
+#phone .time { position:absolute; left:34px; top:24px; font-size:16px; font-weight:600; }
+#phone .card { position:absolute; left:16px; right:16px; top:150px; border-radius:26px; background:rgba(34,32,30,.96); border:1px solid rgba(241,238,230,.08); padding:22px; }
+#phone .app { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--stone); margin-bottom:12px; }
+#phone .app svg { width:24px; height:24px; border-radius:7px; }
+#phone .t { font-size:19px; line-height:26px; font-weight:600; }
+#phone .d { margin-top:8px; font-size:15px; line-height:22px; color:var(--stone); }
+#phone .b { margin-top:20px; height:52px; border-radius:16px; background:var(--ink); color:#141312; font-size:17px; font-weight:600; display:flex; align-items:center; justify-content:center; }
+#face { position:absolute; left:50%; top:230px; width:110px; height:110px; margin-left:-55px; }
+#check { position:absolute; left:50%; top:200px; width:110px; height:110px; margin-left:-55px; }
+/* captions and the end card, outside the camera */
+#cap { position:absolute; left:0; right:0; bottom:70px; text-align:center; font-size:38px; font-weight:500; letter-spacing:-.01em; color:var(--ink); }
+#cap span { display:inline-block; padding:0 4px; }
+#end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:30px; background:#0a0908; }
+#end .w { font-size:76px; font-weight:600; letter-spacing:-.02em; }
+#end .s { font-size:30px; color:var(--stone); }
+#end .u { font-size:24px; color:var(--violet); letter-spacing:.02em; }
+#vig { position:absolute; inset:0; pointer-events:none; background:radial-gradient(1400px 900px at 50% 50%, transparent 60%, rgba(0,0,0,.45) 100%); }
+</style></head><body>
+<div id="stage">
+  <div id="scene">
+    <div id="wall"></div><canvas id="grain" width="960" height="540" style="width:1920px;height:1080px"></canvas>
+    <div id="menubar"><b style="font-weight:600">Pages</b><span>File</span><span>Edit</span><span>Insert</span><span>Format</span><span class="r"><span>⌥</span><span>Tue 9:41</span></span></div>
+    <div id="doc"><div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="pg"><h1>Q3 board update</h1><p>Revenue grew 18 percent over the quarter, led by the two new retainers signed in August. Collections slowed in September: three invoices are now more than thirty days overdue.</p><p>Next quarter we plan to bring the bookkeeping and the client follow-ups into one place, so the team and its agents work from the same records.</p><p>Hiring: one operations lead, starting in November.</p></div></div>
+    <div id="dim"></div>
+    <div id="panel"></div>
+    <div id="phone"><div class="island"></div><div class="time">9:41</div><div id="ph"></div></div>
+  </div>
+  <div id="vig"></div>
+  <div id="keys"></div>
+  <div id="cap"></div>
+  <div id="end"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const MARK = '<svg viewBox="0 0 24 24" fill="none"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#B8A4FF"/></svg>';
+(() => { const c = $("#grain").getContext("2d"), d = c.createImageData(960, 540); let s = 7; for (let i = 0; i < d.data.length; i += 4) { s = (s * 16807) % 2147483647; const v = s % 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } c.putImageData(d, 0, 0); })();
+const clamp = v => Math.max(0, Math.min(1, v));
+const io = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;          // ease in-out cubic
+const out = t => 1 - Math.pow(1 - clamp(t), 3);
+const spring = t => { t = clamp(t); return 1 - Math.exp(-6.5 * t) * Math.cos(9 * t); };
+// the camera: keyframes of where it looks (a centre in scene px) and how close (scale); eased between
+const CAM = [
+  [0.0, 960, 540, 1.00], [1.6, 960, 540, 1.00], [2.6, 960, 300, 1.55], [5.6, 960, 300, 1.62],
+  [7.0, 960, 420, 1.38], [10.0, 960, 470, 1.32], [12.4, 960, 500, 1.30], [16.2, 960, 600, 1.26],
+  [17.6, 1000, 560, 1.00], [18.8, 1560, 520, 1.22], [22.2, 1580, 520, 1.26], [23.4, 1000, 540, 1.00], [26, 1000, 540, 1.00] ];
+function cam(t) {
+  let i = 0; while (i < CAM.length - 2 && t > CAM[i + 1][0]) i++;
+  const [t0, x0, y0, s0] = CAM[i], [t1, x1, y1, s1] = CAM[i + 1], k = io(clamp((t - t0) / (t1 - t0)));
+  return { x: x0 + (x1 - x0) * k, y: y0 + (y1 - y0) * k, s: s0 + (s1 - s0) * k };
+}
+// typing with a human rhythm: a short pause after a space, a little jitter
+function typedAt(s, t0, t, base = .052) { let tt = t0, n = 0; for (const ch of s) { tt += base + (ch === " " ? .05 : 0) + .018 * Math.sin(n * 7.3); if (tt > t) break; n++; } return s.slice(0, n); }
+const ASK = "get the overdue invoices chased this week";
+const R1 = "kit handles billing. I've asked it to chase them, and I'll let you know as soon as it's back.";
+const R2 = "kit is back. Three invoices are overdue: Northwind Supply, Oakline and Brightwell. It drafted a reminder for each, and they wait for your yes.";
+const stream = (s, t0, t, wps = 11) => { const w = s.split(" "), n = Math.max(0, Math.floor((t - t0) * wps)); return n >= w.length ? s : w.slice(0, n).join(" ") + " …"; };
+const tool = (sum, done) => `<div class="tool"><span class="ic">${done ? "✓" : '<span class="spin"></span>'}</span>${sum}<span class="st">${done ? "done" : "running"}</span></div>`;
+const msg = (who, cls, body, op = 1) => `<div class="msg" style="opacity:${op}"><div class="who"><span class="av ${cls}"></span><span class="label" style="color:${cls === "me" ? "var(--ash)" : "var(--ink)"}">${who}</span></div>${body}</div>`;
+const CAPS = [[0.2, 1.5, "Press <b>⌥ Space</b> in any app"], [2.0, 5.5, "Ask your assistant, or @ any agent"], [6.4, 10.2, "It hands the work to the right agent"], [10.4, 12.4, "Agents work on your server. You get on with your day."], [12.8, 16.8, "The update comes back to you"], [17.2, 20.8, "Anything that leaves waits for your yes"], [21.0, 23.2, "Approved once, for these three. Sent, and on the record."]];
+window.render = (t) => {
+  // camera
+  const c = cam(t); $("#scene").style.transform = `translate(${960 - c.x * c.s}px, ${540 - c.y * c.s}px) scale(${c.s})`;
+  // keycaps, then the panel springs open
+  const kIn = out((t - .25) / .3), kOut = clamp((t - 1.35) / .25);
+  $("#keys").innerHTML = t < 1.6 ? `<div class="key" style="transform:translateY(${t > .55 && t < .75 ? 4 : 0}px)">⌥</div><div class="key" style="min-width:280px;transform:translateY(${t > .65 && t < .85 ? 4 : 0}px)">space</div>` : "";
+  $("#keys").style.opacity = kIn * (1 - kOut); $("#keys").style.filter = `blur(${(1 - kIn) * 8 + kOut * 8}px)`;
+  const open = spring((t - 1.25) / .9), p = $("#panel");
+  p.style.opacity = clamp((t - 1.25) / .25); p.style.transform = `translateY(${(1 - open) * -18}px) scale(${.94 + .06 * open})`;
+  const dimv = clamp((t - 1.2) / .5); $("#dim").style.opacity = dimv; $("#doc").style.filter = `blur(${dimv * 14}px)`; $("#wall").style.filter = `blur(${dimv * 6}px)`;
+  let q, view = "";
+  if (t < 2.4) q = '<span class="ph">Ask, or @ an agent</span>';
+  else if (t < 5.9) { const s = typedAt("@juno " + ASK, 2.5, t); q = (s ? (s.length <= 5 ? `<span class="at">${s}</span>` : `<span class="at">@juno</span>${s.slice(5)}`) : '<span class="ph">Ask, or @ an agent</span>') + '<span class="caret" style="opacity:' + (Math.floor(t * 2.2) % 2 ? .25 : 1) + '"></span>'; }
+  else q = '<span class="ph">type to follow up</span>';
+  if (t >= 5.9) {
+    const busy = t < 9.6 || (t > 12.6 && t < 17.0);
+    const sent = clamp((t - 5.9) / .5);
+    let list = msg("You", "me", `<div class="text"><span style="color:var(--violet)">@juno</span> ${ASK}</div>`, .55 + .45 * clamp((t - 6.3) / .3));
+    if (t >= 6.6) {
+      const tools = (t >= 7.2 ? tool("Read the open invoices", t >= 8.0) : "") + (t >= 8.1 ? tool("Asked kit (billing)", t >= 8.9) : "");
+      list += msg("juno", "juno", tools + (t >= 9.0 ? `<div class="text">${stream(R1, 9.0, t)}</div>` : `<div class="text" style="color:var(--ash)">thinking …</div>`));
+    }
+    if (t >= 12.9) {
+      const tools = tool("kit found 3 overdue invoices", t >= 13.6) + (t >= 13.7 ? tool("kit drafted 3 reminders", t >= 14.6) : "");
+      list += msg("juno", "juno", tools + (t >= 14.7 ? `<div class="text">${stream(R2, 14.7, t)}</div>` : ""));
+    }
+    let tail = "";
+    if (t >= 10.6 && t < 12.9) tail = `<div class="notice">Waiting for kit. Close this anytime; the reply comes to you here and on your phone.</div>`;
+    if (t >= 16.9 && t < 21.4) tail = `<div class="wait"><span class="dot" style="opacity:${.6 + .4 * Math.sin(t * 5)}"></span>3 emails wait for your yes</div>`;
+    if (t >= 21.4) tail = `<div class="notice" style="color:var(--green)">✓ Sent 3 emails. Each is logged on its client.</div>`;
+    view = `<div class="view" style="opacity:${sent}"><div class="head"><span class="label">Direct</span><span class="title">juno</span><span style="flex:1"></span><span class="sub">${busy ? "working" : ""}</span></div><div class="list">${list}</div>${tail}</div>`;
+  }
+  p.innerHTML = `<div id="bar">${MARK}<div id="q">${q}</div></div>${view}`;
+  // the phone slides in, asks, Face ID traces, approved
+  const ph = $("#phone"), pin = out((t - 17.0) / .8);
+  ph.style.opacity = pin; ph.style.transform = `translateX(${(1 - pin) * 160}px) rotate(${(1 - pin) * 4}deg)`;
+  let inner = "";
+  if (t >= 17.4) {
+    const app = `<div class="app">${MARK.replace("<svg", '<svg style="background:#141312;padding:4px"')}<span>Vyre · now</span></div>`;
+    if (t < 19.6) inner = `<div class="card" style="opacity:${out((t - 17.4) / .4)};transform:translateY(${(1 - out((t - 17.4) / .4)) * 20}px)">${app}<div class="t">kit wants to send 3 emails</div><div class="d">Reminders to Northwind Supply, Oakline and Brightwell, from billing@yourfirm.com.</div><div class="b" style="transform:scale(${t > 19.2 && t < 19.45 ? .96 : 1})">Approve with Face ID</div></div>`;
+    else if (t < 20.9) { const a = clamp((t - 19.6) / 1.1); inner = `<svg id="face" viewBox="0 0 110 110"><rect x="6" y="6" width="98" height="98" rx="26" fill="none" stroke="rgba(184,164,255,.25)" stroke-width="5"/><rect x="6" y="6" width="98" height="98" rx="26" fill="none" stroke="#B8A4FF" stroke-width="5" stroke-dasharray="${360 * a} 400"/><circle cx="40" cy="44" r="4" fill="#B8A4FF"/><circle cx="70" cy="44" r="4" fill="#B8A4FF"/><path d="M40 72 Q55 82 70 72" fill="none" stroke="#B8A4FF" stroke-width="4" stroke-linecap="round"/></svg>`; }
+    else { const a = out((t - 20.9) / .5); inner = `<svg id="check" viewBox="0 0 110 110" style="transform:scale(${.8 + .2 * spring((t - 20.9) / .7)})"><circle cx="55" cy="55" r="48" fill="none" stroke="#9FC7A6" stroke-width="5" opacity="${a}"/><path d="M34 57 L49 71 L77 41" fill="none" stroke="#9FC7A6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${70 * a} 80"/></svg><div class="card" style="top:350px;opacity:${a}"><div class="t">Approved</div><div class="d">Your yes covers these three emails, once.</div></div>`; }
+  }
+  $("#ph").innerHTML = inner;
+  // captions: blur in, blur out
+  const cp = CAPS.find(([a, b]) => t >= a && t < b), capEl = $("#cap");
+  if (cp && t < 23.4) { const [a, b, s] = cp, v = Math.min(out((t - a) / .45), out((b - t) / .4)); capEl.innerHTML = `<span>${s}</span>`; capEl.style.opacity = v; capEl.style.filter = `blur(${(1 - v) * 10}px)`; capEl.style.transform = `translateY(${(1 - v) * 10}px)`; }
+  else { capEl.style.opacity = 0; }
+  // the end card
+  const e = out((t - 23.4) / .9), endEl = $("#end");
+  endEl.style.opacity = e; endEl.style.filter = `blur(${(1 - e) * 16}px)`;
+  endEl.innerHTML = t >= 23.3 ? `<img src="../vyre-mark.svg" width="${180 + 12 * e}"><div class="w">Vyre</div><div class="s">Your team and your AI agents, on a server you own.</div><div class="u">Open source · vyre.run</div>` : "";
+};
+window.render(0);
+</script></body></html>

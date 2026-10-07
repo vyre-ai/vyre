@@ -3,6 +3,7 @@
 // Engine docker.test.js uses (a real POST is captured, not a hand-built fixture), so the two
 // files agree on what a create body actually looks like without one of them drifting.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

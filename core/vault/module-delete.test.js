@@ -3,6 +3,7 @@
 // person-only tool of that module, is the proof). Origin is set by vyred at put, so the module can never delete a person's
 // item or another module's, and an added module never deletes anything. Boots a vyred in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -52,14 +53,21 @@ test("a first-party module deletes its own item without presence, and nothing el
   assert.equal((await as("vault.delete", { name: "persons-key" })).data.deleted, "persons-key");
 });
 
-test("an added module that lists vault.delete in needs.tools is refused it (not_declared), and the item stays", async t => {
+// With the kernel on, an ADDED module runs in the sandbox supervisor with `export const handlers` and no ctx at all (kernel/modules/child.js), so it has no way to call vault.delete: the refusal is structural.
+// Without the kernel it is the legacy in-process module and the registry's not_declared. Both assert that the item stays.
+const KERNEL_ON = process.env.VYRE_KERNEL !== "0"; // the kernel is on by default (a development build)
+const SANDBOXED = `export const handlers = { "bakery.put": async () => ({ ctx: typeof ctx }), "bakery.del": async () => ({ ctx: typeof ctx }) };`;
+test("an added module that lists vault.delete in needs.tools is refused it, and the item stays", { skip: KERNEL_ON && process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
-  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.put", reach: "anyone" }, { name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete", "vault.list"] } }, MODULE("bakery"));
+  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.put", reach: "anyone" }, { name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete", "vault.list"] } }, KERNEL_ON ? SANDBOXED : MODULE("bakery"));
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal((await d.registry.call("vault.put", { name: "persons-key", value: "p" }, "local")).error, undefined);
   const added = (await d.registry.call("bakery.del", { name: "persons-key" }, "local")).data;
-  assert.equal(added.ok, false); assert.equal(added.error, "not_declared", JSON.stringify(added));
+  if (KERNEL_ON) {
+    assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running", "the added module runs in the sandbox");
+    assert.equal(added.ctx, "undefined", `the sandbox gives an added module no ctx, so it has no vault tool to call: ${JSON.stringify(added)}`);
+  } else { assert.equal(added.ok, false); assert.equal(added.error, "not_declared", JSON.stringify(added)); }
   assert.ok((await d.registry.call("vault.list", {}, "local")).data.items.some(i => i.name === "persons-key"));
 });

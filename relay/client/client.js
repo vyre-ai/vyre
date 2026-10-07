@@ -136,7 +136,7 @@ const about = a => ({
  * result, after a "pair with this box?" screen, can run the handshake as its own, separate step
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
- * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
+ * @param {{ name?: string, enroll?: boolean, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, passkey?: { credential_id: string, public_key: string, alg?: number, rp_id: string }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
  *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number, onFingerprint?: (fingerprint: string) => void }} [o]
  */
 export async function pairOffer(offer, o = {}) {
@@ -145,9 +145,7 @@ export async function pairOffer(offer, o = {}) {
   // The box's screen shows this phone's fingerprint beside Confirm (pairing.requested). Hand the same one to the app before the
   // handshake, which waits for that Confirm, so this phone's own screen shows it too and the person compares two.
   if (typeof o.onFingerprint === "function") { try { o.onFingerprint(await keyFingerprint(keys.publicKey, d.crypto)); } catch {} }
-  // `tailnet: "join"` is a desktop asking its box for a tagged Tailscale key later (ADR 0046); a
-  // phone leaves it out and stays on the relay.
-  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };
+  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.passkey ? { passkey: o.passkey } : {}), ...(o.enroll ? { enroll: true } : {}) };
   let channel, reply;
   try { ({ channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout })); }
   catch (e) { throw /** @type {any} */ (e).code ? e : fail("pair_failed", /** @type {Error} */ (e).message); }
@@ -155,7 +153,9 @@ export async function pairOffer(offer, o = {}) {
   return {
     relay: offer.relay, route: offer.route, box: base64url(offer.box),
     name: promptSafe((reply && reply.box && reply.box.name) || offer.name, "a Vyre box"),
-    device: reply && reply.device, presence: (reply && reply.presence) || null,
+    // A gated ticket (the box's QR for a phone or a server) makes no device until its person confirms: the reply then names the id this device WILL have (`pending`), `pending: true` here,
+    // and the wink calls that finish the pairing run over a channel that can reach only the one tool they need. Once confirmed, an ordinary connect is a paired device.
+    device: reply && (reply.device || reply.pending), ...(reply && reply.pending ? { pending: true } : {}), presence: (reply && reply.presence) || null,
     // Only when asked (o.enroll) and the box has an address: the one-time grant to enroll this
     // device's own passkey there (core/relay), { grant, expires, rpId }; null otherwise.
     enroll: o.enroll ? enrollOf(reply && reply.enroll) : null,
@@ -167,6 +167,20 @@ function enrollOf(e) {
   if (!e || typeof e.grant !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(e.grant)) return null;
   if (typeof e.rpId !== "string" || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(e.rpId) || e.rpId.length > 253) return null;
   return { grant: e.grant, expires: Number(e.expires) || 0, rpId: e.rpId.toLowerCase() };
+}
+
+/**
+ * Whether a relay URL named inside a record is exactly the relay that served it: a ws or wss origin with the same scheme and host as
+ * the one asked, and nothing else in it.
+ * @param {string} named @param {string} asked
+ */
+export function sameRelay(named, asked) {
+  try {
+    const a = new URL(String(named)), b = new URL(String(asked).replace(/\/+$/, ""));
+    if (a.protocol !== "wss:" && a.protocol !== "ws:") return false;
+    if (a.username || a.password || a.search || a.hash || (a.pathname !== "/" && a.pathname !== "")) return false;
+    return a.protocol === b.protocol && a.host === b.host;
+  } catch { return false; }
 }
 
 /**
@@ -227,7 +241,7 @@ const promptSafe = (s, fallback, max = 64) => { const t = String(s || "").replac
  * the MAC key that authenticates it), nor read the record (sealed under the "enc" key, opened here).
  * @param {Uint8Array} ticket 8 random bytes, scanned from the Vyre code
  * @param {{ relay: string, fetch?: typeof fetch, crypto?: import("./noise.js").CryptoProvider }} o
- * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null }>}
+ * @returns {Promise<{ offer: { relay: string, route: string, box: Uint8Array, secret: string }, name: string, fingerprint: string, handle: string|null, identity: string|null, invite: object|null }>}
  */
 export async function resolveTicket(ticket, o) {
   if (!o || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw fail("bad_input", "resolveTicket needs the relay this ticket's box registered with");
@@ -259,6 +273,9 @@ export async function resolveTicket(ticket, o) {
     record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, sealed.subarray(0, 12), utf8(TICKET_SEAL_AD), sealed.subarray(12))));
   } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
   if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
+  // The record names the relay the phone will connect to after it is confirmed. It comes from the box, so it is held to the relay that
+  // actually answered: the same host and scheme, no path, credentials, query or fragment. A box cannot send a phone to another server.
+  if (!sameRelay(record.relay, o.relay)) throw fail("bad_record", "this pairing code names a different relay than the one that holds it; refusing to pair");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry
   // in the past is still a legitimate, unmodified record for a ticket that should have been gone.
   if (typeof record.exp !== "number" || record.exp < Date.now()) throw fail("ticket_gone", "this pairing code has expired or was already used");
@@ -275,6 +292,9 @@ export async function resolveTicket(ticket, o) {
   try { if (typeof record.address === "string") { const u = new URL(record.address); if (u.protocol === "https:" && u.origin === record.address) address = u.origin; } } catch {}
   let identity = null;
   try { const b = fromBase64url(String(record.identity || "")); if (b.length === 8) identity = base64url(b); } catch {}
+  // An invitation rides inside the sealed record (core/wink): plain JSON of at most 2 KB, never executed, shown on a card after a person looks at it.
+  let invite = null;
+  try { if (record.offer && typeof record.offer === "object" && JSON.stringify(record.offer).length <= 2048) invite = JSON.parse(JSON.stringify(record.offer)); } catch {}
   return {
     offer: { relay: record.relay, route: record.route, box, secret: base64url(secret) },
     name: promptSafe(record.name, "a Vyre box"),
@@ -282,6 +302,7 @@ export async function resolveTicket(ticket, o) {
     handle,
     address,
     identity,
+    invite,
   };
 }
 
@@ -295,8 +316,10 @@ export async function resolveTicket(ticket, o) {
  * @param {Parameters<typeof resolveTicket>[1] & Parameters<typeof pairOffer>[1]} o
  */
 export async function pairTicket(ticket, o) {
-  const { offer } = await resolveTicket(ticket, o);
-  return pairOffer(offer, o);
+  const { offer, address, handle } = await resolveTicket(ticket, o);
+  const paired = await pairOffer(offer, o);
+  // The box's own https origin and its vyre.run handle, from the sealed record the ticket held (each only when the box gave one): a client that opens the box's web page (the Windows app) pins them.
+  return { ...paired, ...(address ? { address } : {}), ...(handle ? { handle } : {}) };
 }
 
 /**
@@ -304,7 +327,8 @@ export async function pairTicket(ticket, o) {
  * @param {{ relay: string, route: string, box: string|Uint8Array, name?: string, about?: { kind?: "app"|"web", release?: string, manifest?: string },
  *   keyStore?: import("./webcrypto.js").KeyStore, crypto?: import("./noise.js").CryptoProvider, WebSocket?: any,
  *   visibility?: Visibility, pingMs?: number, backoff?: { min?: number, max?: number }, timeout?: number,
- *   rekeyEvery?: number, random?: () => number }} o
+ *   rekeyEvery?: number, random?: () => number, invitee?: boolean, homeMove?: boolean }} o
+ * `invitee: true` says in every hello that this channel is a person's who is not paired here (the box makes no device row for it and admits only the invitee peer stream).
  */
 export function connect(o) {
   return new Connection(o);
@@ -368,7 +392,7 @@ export class Connection {
     this.setState("connecting");
     try {
       const keys = await deviceKey(this.o);
-      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}) };
+      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}), ...(this.o.invitee === true ? { invitee: true } : {}), ...(this.o.homeMove === true ? { homeMove: true } : {}) };
       const { channel, reply, ws } = await openChannel({ ...this.o, keys, hello, onpong: () => { this.outstanding = false; this.missed = 0; } });
       this.dialing = false;
       if (this.closed) { channel.close(1000, "closed"); return; }
@@ -404,7 +428,7 @@ export class Connection {
    * The relay passed on 4401 "device removed". That is the RELAY's word, never the box's own answer: a
    * compromised relay can say it, so nothing here may wipe anything on it. The state is final for this
    * relay path (no retry can work if it is true), and the app must ask the box directly over a path the
-   * relay does not control (the tailnet address, or a fresh pairing check) before it acts on it.
+   * relay does not control (the direct address, or a fresh pairing check) before it acts on it.
    */
   removed() {
     if (this.closed) return;
@@ -428,6 +452,8 @@ export class Connection {
     const delay = this.backoff * (0.8 + 0.4 * this.random());
     this.backoff = Math.min(this.backoff * 2, this.max);
     this.retryTimer = globalThis.setTimeout(() => { this.retryTimer = null; this.dial(); }, delay);
+    // a pause between tries never keeps a Node process alive by itself (an open socket does); a browser timer has no unref
+    if (this.retryTimer && typeof this.retryTimer.unref === "function") this.retryTimer.unref();
   }
 
   /** Reconnect now if we are not connected (a wake, the network came back, the app came to the front). */

@@ -18,13 +18,15 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let menuActions = MenuActions()
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// The first run: with no vyred and no server, "Where should Vyre run?" (FirstRunWindow.swift); later launches open straight into the app.
+    lazy var firstRun = FirstRunController(model: model, home: home)
     /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
     let local: LocalAnswersProvider
     /// Commands modules declare for the Capsule (ViewCommandsProvider.swift).
     let viewCommands: ViewCommandsProvider
     var viewSub: VyredSubscription?
     var loosenedSub: VyredSubscription?
-    /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
+    /// The box's alarms and reminders ringing here, from /v1/wink/server-events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring
@@ -72,6 +74,13 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: p.panel.firstResponder, from: nil) }
         }
         NSApp.mainMenu = MainMenu.make(menuActions)
+        // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket and answers presence with Touch ID.
+        VyreAppWindow.shared.socket = vyredSocketPath(ProcessInfo.processInfo.environment)
+        VyreAppWindow.shared.presence = presence
+        VyreAppWindow.shared.identity = MacIdentity(store: KeychainSeedStore(home: home))
+        VyreAppWindow.shared.enclave = MacEnclave(store: KeychainEnclaveStore(home: home))
+        VyreAppWindow.shared.agreement = MacAgree(store: KeychainAgreeStore(home: home))
+        VyreAppWindow.shared.makeServer = { [weak self] in self?.firstRun.makeThisMacServer() }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"
@@ -95,11 +104,26 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         for n in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
             ws.addObserver(forName: n, object: nil, queue: .main) { [vyred] _ in vyred.dropPresenceSession() }
         }
+        // The Mac's time zone changed (travel, or a setting): tell vyred, so the Planner reads times in it.
+        NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.reportZone() }
+        }
+        // A Mac paired to a server tells it when it sleeps and wakes (link.sleep, link.wake), so the box knows at once. Not under the tests.
+        if ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" {
+            ws.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [vyred] _ in
+                Task { await vyred.box.willSleep(vyred) }
+            }
+            ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [vyred] _ in
+                Task { await vyred.box.didWake(vyred) }
+            }
+        }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [vyred] _ in
             vyred.dropPresenceSession()
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)
+            // The first look at vyred decides the first run; it never runs under the tests or the footprint checks (no windows there).
+            if !headless, ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" { self?.firstRun.vyredChanged(up: st == .open) }
             if st == .open {
                 self?.hotkeys.reportRetry()
                 Task { await self?.presence.pinSelf() }
@@ -167,6 +191,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
                                    open: { [unowned self] in self.menuBar?.close(); self.openCapsule() },
                                    turnOnControl: { [unowned self] in self.menuBar?.close(); self.turnOnDoubleControl() },
                                    start: { [unowned self] in self.menuBar?.close(); self.openCapsule(); self.model.startVyre() },
+                                   startWords: { [unowned self] in self.model.startWords },
                                    quit: { NSApp.terminate(nil) }))
         }
         bar.menu = { [unowned self] in self.plainMenu() }

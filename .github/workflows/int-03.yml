@@ -1,0 +1,40 @@
+# The integrator's run on the merged 0.3 tree: the boot check, then the whole unit suite WITHOUT --test-force-exit (a forced exit drops tests and still reports green).
+# It runs when a push to work/v0.3 changes .github/int-run.txt, so a team's own push never starts it.
+name: int-03
+on:
+  push:
+    branches: ["work/v0.3"]
+    paths: [".github/int-run.txt", ".github/workflows/int-03.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: int-03-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: { VYRE_NO_DIALOGS: "1" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: boot (the kernel is always on; dev file key)
+        run: VYRE_KERNEL_FILE_KEY=1 node scripts/boot-check.mjs
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    env: { VYRE_NO_DIALOGS: "1" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: unit suite, one process per file, no force exit
+        run: scripts/int-unit.sh 300 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: unit-results, path: "unit-results.txt\nunit-summary.txt\nunit-logs" }
+      - name: result
+        run: cat unit-summary.txt; grep -q "FAIL=0 HUNG=0" unit-summary.txt

@@ -70,6 +70,20 @@ const ED_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 // on it in the clear.
 export const TICKET_BYTES = 8;
 export const TICKET_TTL = 5 * 60_000;
+
+/**
+ * The typed Wink code's rendezvous at the relay (spec 6.5). A code lives 5 minutes. Per address, a
+ * typed-code session costs `sessionPerMin` and a miss on a rendezvous that is not live costs
+ * `missPerMin` more; any later step of a session costs `stepPerMin`. There is no global budget
+ * (GHSA-25xh-w9j7-7v28). `msg` is the most a PAKE message may be (base64url characters), `waitMs`
+ * how long the relay holds a typist's request for the box's answer.
+ */
+export const CODE = Object.freeze({ ttl: 10 * 60_000, sessionPerMin: 10, stepPerMin: 30, missPerMin: 30, msg: 200, waitMs: 10_000, pending: 64, allocPerMin: 20, graceMs: 90_000 });
+/** The rendezvous alphabet: Crockford base32 without U, two symbols (1024 values). */
+export const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+export const CODE_RV_RE = /^[0-9A-HJKMNP-TV-Z]{2}$/;
+/** What every refused typed-code request says, whatever the reason: unknown, closed, expired, wrong, refused. */
+export const CODE_REFUSED = Object.freeze({ error: "that code did not work" });
 const TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac", enc: "vyre-pair-enc" };
 /** @param {"loc"|"sec"|"mac"|"enc"} which @param {Buffer} ticket */
 export const ticketDerive = (which, ticket) => crypto.createHash("sha256").update(`${TAG[which]}\n`).update(ticket).digest();

@@ -3,6 +3,7 @@
 // the session's life, the allowlist gate, and end to end against a real vyred and the Node relay
 // with the setup page played by relay/client/setup.js. The six refusal checks of tailnet plan
 // 3.6b condition 6 are the ones named "refusal" below.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -81,14 +82,14 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
-  for (const name of ["network.tailscale.logout", "network.tailscale.authkey", "network.tailscale"]) assert.equal(setupToolAllowed(name), false, name);
-  for (const name of ["relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
+  for (const name of ["network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
+  for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.wink.statusx", "network.wink.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.pair.ticket", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
@@ -103,31 +104,24 @@ function res() {
 }
 const request = (method, url) => ({ method, url, headers: {}, resume() {} });
 
-test("setup gate: the ticket works once and only while no owner exists; events and paths are the list and nothing else", async () => {
+test("setup gate: the setup page mints no pairing ticket (one pairing path: the installer's code, three words); events and paths are the list and nothing else", async () => {
   const { code } = await newCode();
   const s = new SetupSession({ code });
   const seen = [];
-  let owner = false, fail = false, minted = 0;
-  const gate = setupGate({ session: () => s, ownerExists: () => owner,
-    mintTicket: async () => { minted++; if (fail) throw Object.assign(new Error("relay down"), { code: "no_relay" }); return { ticket: "t" }; },
+  let minted = 0;
+  const gate = setupGate({ session: () => s, ownerExists: () => false,
+    mintTicket: async () => { minted++; return { ticket: "t" }; },
     handlerFor: policy => (req, rs) => { seen.push({ url: req.url, tool: policy.tool, path: policy.path, eventType: policy.eventType }); rs.writeHead(200, {}); rs.end("{}"); } });
   const call = async (method, url) => { const rs = res(); await gate(request(method, url), rs, "device:x", {}); await new Promise(r => setImmediate(r)); return rs; };
 
-  fail = true;
-  let r = await call("POST", "/v1/tools/relay.pair.ticket");
-  assert.equal(r.status, 502);
-  assert.equal(r.body.error.code, "no_relay");
-  assert.equal(s.ticket, "none", "a failed mint does not spend the one ticket");
-  fail = false;
-  r = await call("POST", "/v1/tools/relay.pair.ticket");
-  assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { data: { ticket: "t" } });
   for (const spelled of ["/v1/tools/relay.pair.ticket", "/v1/tools/relay%2Epair.ticket", "/v1/tools/relay.pair%2eticket"]) {
-    r = await call("POST", spelled);
-    assert.equal(r.status, 403, `refusal: a second relay.pair.ticket, spelled ${spelled}`);
+    const r = await call("POST", spelled);
+    assert.equal(r.status, 403, `refusal: relay.pair.ticket, spelled ${spelled}`);
+    assert.match(r.body.error.message, /three words/);
   }
-  assert.equal(minted, 2, "one failed try and one success; nothing after");
-
+  assert.equal(minted, 0, "nothing was minted");
+  assert.equal(s.ticket, "none");
+  let r;
   // the router's policy is a second layer: only the allowlist by name, and a fixed set of paths
   await call("POST", "/v1/tools/names.check");
   const p = seen.at(-1);
@@ -137,10 +131,10 @@ test("setup gate: the ticket works once and only while no owner exists; events a
   assert.equal(p.path("GET", "/v1/tools"), true);
   for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
 
-  r = await call("GET", "/v1/events?type=tailscale.changed");
+  r = await call("GET", "/v1/events?type=relay.paired");
   assert.equal(r.status, 200);
-  assert.equal(seen.at(-1).eventType, "tailscale.changed");
-  for (const type of ["device.paired", "vault.opened", "", "tailscale.changed,device.paired"]) {
+  assert.equal(seen.at(-1).eventType, "relay.paired");
+  for (const type of ["device.paired", "vault.opened", "", "tailscale.changed", "relay.paired,device.paired"]) {
     r = await call("GET", `/v1/events?type=${encodeURIComponent(type)}`);
     assert.equal(r.status, 404, `event ${type || "(none)"}`);
   }
@@ -158,45 +152,6 @@ test("setup gate: the ticket works once and only while no owner exists; events a
   await gate2(request("POST", "/v1/tools/names.check"), over, "device:x", {});
   assert.equal(over.status, 401, "an ended session answers nothing");
   assert.equal(over.body.error.code, "setup_over");
-});
-
-test("setup gate: names.recover runs from the setup channel with the code alone, one at a time, five at most, and never once an owner exists", async () => {
-  const { code } = await newCode();
-  const s = new SetupSession({ code });
-  let owner = false, hold = null; const got = [];
-  const gate = setupGate({ session: () => s, ownerExists: () => owner, mintTicket: async () => ({}), handlerFor: () => () => {},
-    recoverCode: async input => { got.push(input); if (hold) await hold; if (input.code === "bad") throw Object.assign(new Error("wrong code"), { code: "denied" }); return { name: input.name, pendingUntil: 1 }; } });
-  const post = async body => {
-    const rs = res(); const handlers = {};
-    const rq = { method: "POST", url: "/v1/tools/names.recover", headers: {}, resume() {}, on: (e, f) => { handlers[e] = f; } };
-    await gate(rq, rs, "device:x", {});
-    if (handlers.data) handlers.data(JSON.stringify(body)); if (handlers.end) handlers.end();
-    await new Promise(r => setTimeout(r, 20)); return rs;
-  };
-  let r = await post({ name: "alex", code: "good" });
-  assert.equal(r.status, 200);
-  assert.deepEqual(got[0], { name: "alex", code: "good" });
-  r = await post({ name: "alex" });
-  assert.equal(r.status, 400);
-  r = await post({ name: "alex", code: "bad" });
-  assert.equal(r.status, 400);
-  assert.equal(r.body.error.code, "denied");
-  // concurrent: the second is refused while the first runs
-  let release; hold = new Promise(res2 => { release = res2; });
-  const first = post({ name: "alex", code: "slow" });
-  await new Promise(x => setTimeout(x, 5));
-  r = await post({ name: "alex", code: "slow2" });
-  assert.equal(r.status, 429);
-  release(); await first; await new Promise(x => setTimeout(x, 20)); hold = null;
-  r = await post({ name: "alex", code: "again" });
-  assert.equal(r.status, 200);
-  r = await post({ name: "alex", code: "fifth" });
-  assert.equal(r.status, 200);
-  r = await post({ name: "alex", code: "sixth" });
-  assert.equal(r.status, 429, "five attempts a session");
-  owner = true;
-  r = await post({ name: "alex", code: "good" });
-  assert.equal(r.status, 403);
 });
 
 // ---- end to end ----
@@ -324,23 +279,17 @@ test("setup refusal 2: a hello replayed from another Noise key is refused", asyn
   assert.equal(ok.reply.paired, true);
 });
 
-test("setup refusal 3: a second relay.pair.ticket from the setup key is refused, the first mints one a phone can use", async t => {
+test("setup refusal 3: the setup key can mint no relay.pair.ticket, so no device is paired at the relay by the setup page", async t => {
   const w = await world(t);
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
   const first = await a.call("relay.pair.ticket");
-  assert.equal(first.status, 200, JSON.stringify(first));
-  assert.ok(first.data.ticket);
-  const second = await a.call("relay.pair.ticket");
-  assert.equal(second.status, 403);
-  assert.match(second.error.message, /already made its one/);
-  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.ticket, true);
-  // the ticket is a real Wink ticket: a phone pairs with it and becomes the first trusted device
-  const paired = await pairTicket(fromBase64url(first.data.ticket), { relay: w.base, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
-  assert.ok(paired.device);
+  assert.equal(first.status, 403, JSON.stringify(first));
+  assert.match(first.error.message, /three words/);
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.ticket, false);
   const devices = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices;
-  assert.deepEqual(devices.map(x => x.name), ["Alex's iPhone"]);
+  assert.deepEqual(devices.map(x => x.name), []);
 });
 
 test("setup refusal 4: a second browser holding the code cannot pair or reach the setup channel", async t => {
@@ -431,7 +380,9 @@ test("setup: an owner on the box shuts the setup door, and a code does nothing o
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
-  const ticket = await a.call("relay.pair.ticket");
+  // an owner exists once a device is paired by another path (the owner's own ring ticket; the test helpers run the one-step ring)
+  const ticket = await w.d.registry.call("relay.pair.ticket", {}, "cli", { proof: { method: "passkey", id: "x" } });
+  assert.ok(ticket.data?.ticket, JSON.stringify(ticket.error));
   await pairTicket(fromBase64url(ticket.data.ticket), { relay: w.base, name: "phone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
   const status = (await a.call("relay.setup.status")).data;
   assert.equal(status.ownerExists, true);
@@ -498,6 +449,7 @@ test("route key: only a name-directory message for this box's own route is signe
   }
   const person = await w.d.registry.call("relay.route.id", {}, "cli");
   assert.ok(person.error, "modules only");
+  assert.equal((await w.d.registry.call("relay.route.id", {}, "module:vyred")).data.box, id.box, "the daemon's own door (the invitee door) reads this box's id");
   for (const tool of ["relay.route.id", "relay.route.sign", "relay.setup.begin", "relay.setup.end"]) {
     const r = await w.d.registry.call(tool, { message: good.toString("base64url"), code: "x", reason: "x" }, "module:sneaky");
     assert.ok(r.error, `${tool} is refused to a module that is not on its list`);
@@ -521,11 +473,10 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
   }
 });
 
-test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in link, and can still read the status", () => {
-  assert.equal(WEB_DENY.test("network.tailscale.login"), true);
+test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {
   assert.equal(WEB_DENY.test("relay.setup.claim"), true);
   assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
-  for (const ok of ["network.tailscale.status", "network.tailscale.peers", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+  for (const ok of ["network.wink.status", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
 // ---- the setup channel, one session, end to end ----
@@ -546,7 +497,7 @@ async function fakeDirectory(t) {
         const msg = authMessage({ route: String(h["x-vyre-route"]), ts: String(h["x-vyre-ts"]), nonce: String(h["x-vyre-nonce"]), method: String(req.method), target: url.pathname + url.search, bodyHash: crypto.createHash("sha256").update(body).digest("hex") });
         if (!crypto.verify(null, msg, pub, Buffer.from(String(h["x-vyre-sig"]), "base64url"))) throw new Error("bad signature");
       } catch { out.unsigned++; res.writeHead(401, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { code: "denied", message: "unsigned" } })); }
-      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, code: first ? "abcd-efgh-ijkl-mnop-qrst-uv" : null }); }
+      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, fresh: first }); }
       if (url.pathname === "/v1/names/mine") return send({ name: "alex", state: "live", pointed: false, ips: {}, pending: null, notices: [] });
       res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "not_found", message: url.pathname } }));
     });
@@ -563,14 +514,14 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
-test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in, Tailscale and a second call", async t => {
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in and a second call", async t => {
   const dirFake = await fakeDirectory(t);
   const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
   ] });
   // the registry's list: the tool the module owns and declared
   const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
-  assert.deepEqual([...listed].sort(), ["sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field, and the fixture's");
+  assert.deepEqual([...listed].sort(), ["sessions.accounts.key", "sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field (sign-in, and an API key instead), and the fixture's");
 
   const p = await page(w);
   await p.begin();
@@ -578,9 +529,9 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const claim = async () => (await a.call("names.claim", { name: "alex" }));
   const c1 = await claim();
   assert.equal(c1.status, 200, JSON.stringify(c1));
-  assert.equal(c1.data.recoveryCode, "abcd-efgh-ijkl-mnop-qrst-uv", "the first claim shows the one-time code");
+  assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
   await settle(200);
-  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "with no tailnet yet it waits at Found and named");
+  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
   // The real sessions tool: its askedOnly gate lets the setup device through as the person (device:<id>)
@@ -588,13 +539,8 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
   assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
   assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
-  const ts = await a.call("network.tailscale.status");
-  assert.ok(ts.data && ts.data.state, "Tailscale status answers on the setup channel");
-  const login = await a.call("network.tailscale.login");
-  assert.ok(login.data && "state" in login.data, "so does login");
   const c2 = await claim();
   assert.equal(c2.status, 200, JSON.stringify(c2));
-  assert.equal(c2.data.recoveryCode, null, "the code is shown once");
   assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
   assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");

@@ -2,6 +2,7 @@
 // A live draft goes to the connection that asked for it (Accept: application/x-ndjson) and nowhere
 // else: not the events bus, not a caller that didn't ask, not a module's ctx.call.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -28,7 +29,7 @@ test("draft stream: only a caller that asked gets draft lines, then the result; 
     ctx.tool("say.via", { input: { type: "object" }, run: async () => (await ctx.call("say.it", {})).data });
     return {};
   } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const live = /** @type {any} */ (await raw(root, "application/x-ndjson"));
   assert.match(live.type, /x-ndjson/, live.body);

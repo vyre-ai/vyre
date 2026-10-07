@@ -1,0 +1,557 @@
+{
+ "classes": "refused = the body refuses a plain session (probed with input); held = the person approves or proves presence; own = the session's own work, scoped by what vyred verified; hook = the harness's own hook; review = an owner has to decide",
+ "allowed": {
+  "agents.ask": {
+   "class": "refused",
+   "why": "refused in the body for an unidentified caller; a named agent asks within its own project"
+  },
+  "agents.update": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: changing agents is the person's"
+  },
+  "artifacts.archive": {
+   "class": "own",
+   "why": "its own artifacts (scopeOf)"
+  },
+  "artifacts.create": {
+   "class": "own",
+   "why": "makes an artifact for the person"
+  },
+  "artifacts.delete": {
+   "class": "own",
+   "why": "its own artifacts, restorable for 30 days"
+  },
+  "artifacts.media.copy": {
+   "class": "own",
+   "why": "into its own artifact"
+  },
+  "artifacts.move": {
+   "class": "own",
+   "why": "its own artifacts"
+  },
+  "artifacts.restore": {
+   "class": "own",
+   "why": "its own artifacts"
+  },
+  "artifacts.undelete": {
+   "class": "own",
+   "why": "its own artifacts"
+  },
+  "artifacts.unshare": {
+   "class": "own",
+   "why": "stopping a link is always allowed"
+  },
+  "artifacts.update": {
+   "class": "own",
+   "why": "its own artifacts"
+  },
+  "bridges.continue": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "bridges.copy": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "chrome.click": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "chrome.open": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "chrome.type": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.checkout": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.giveback": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.limits": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.pause": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.release": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.restart": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "computers.takeover": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "files.fetch": {
+   "class": "review",
+   "why": "brings a box file to the Mac: files owner to confirm a plain session may not name any path"
+  },
+  "gate.request": {
+   "class": "held",
+   "why": "the way a model asks for an outward act: it is held for the person"
+  },
+  "github.project.local-init": {
+   "class": "review",
+   "why": "makes a project folder a git repo: github owner to confirm"
+  },
+  "github.project.pr.merge": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: github.project.pr.merge runs for an agent only when your own words asked for it;"
+  },
+  "github.project.pr.open": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: github.project.pr.open runs for an agent only when your own words asked for it; "
+  },
+  "github.project.pr.review": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: github.project.pr.review runs for an agent only when your own words asked for it"
+  },
+  "github.session.push": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
+  },
+  "github.session.redo": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
+  },
+  "github.session.undo": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
+  },
+  "glass.files.mkdir": {
+   "class": "refused",
+   "why": "refused in the body: a model with no agent behind it has no computer of its own, so it may browse no files"
+  },
+  "glass.files.move": {
+   "class": "refused",
+   "why": "refused in the body: a model with no agent behind it has no computer of its own, so it may browse no files"
+  },
+  "glass.files.trash": {
+   "class": "refused",
+   "why": "refused in the body: a model with no agent behind it has no computer of its own, so it may browse no files"
+  },
+  "glass.files.upload": {
+   "class": "refused",
+   "why": "refused in the body: a model with no agent behind it has no computer of its own, so it may browse no files"
+  },
+  "goals.milestone-done": {
+   "class": "own",
+   "why": "scoped to its own session or project"
+  },
+  "goals.set": {
+   "class": "own",
+   "why": "scoped to its own session or project"
+  },
+  "google.calendar.create": {
+   "class": "held",
+   "why": "without attendees only the person's own calendar; with attendees held"
+  },
+  "google.calendar.update": {
+   "class": "held",
+   "why": "without attendee changes only the person's own calendar; with them held"
+  },
+  "google.mail.draft": {
+   "class": "own",
+   "why": "a draft goes nowhere; the person sends it"
+  },
+  "google.mail.send": {
+   "class": "held",
+   "why": "always held at the Gate until the person approves"
+  },
+  "hands-desktop.act": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "harness.brief": {
+   "class": "hook",
+   "why": "the harness's own hook"
+  },
+  "harness.end": {
+   "class": "own",
+   "why": "a terminal session ends its own hub row: the body checks the claim names that session (own(meta, session)); it only says thread.stopped"
+  },
+  "harness.enrich": {
+   "class": "hook",
+   "why": "the harness's own hook"
+  },
+  "harness.learn": {
+   "class": "hook",
+   "why": "the harness's own hook"
+  },
+  "harness.rules": {
+   "class": "hook",
+   "why": "the harness's own hook"
+  },
+  "harness.stop": {
+   "class": "hook",
+   "why": "the harness's own hook"
+  },
+  "learn.add": {
+   "class": "own",
+   "why": "a lesson from the person's words; the body decides"
+  },
+  "learn.edit": {
+   "class": "own",
+   "why": "tightening only"
+  },
+  "mail.send": {
+   "class": "held",
+   "why": "always held at the Gate until the person approves"
+  },
+  "mcp.call": {
+   "class": "held",
+   "why": "the hub holds an outward server tool at the Gate; the rest is the connected server's own"
+  },
+  "memory.correct": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.correct: this call carries no kernel chain, so personal memory is not rea"
+  },
+  "memory.curate": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.curate: this call carries no kernel chain, so personal memory is not read"
+  },
+  "memory.heard": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.heard: this call carries no kernel chain, so personal memory is not read"
+  },
+  "memory.identity.lock": {
+   "class": "own",
+   "why": "locks the person's identity memory again: it only takes access away, never gives any"
+  },
+  "memory.identity.unlock.begin": {
+   "class": "held",
+   "why": "only starts an unlock: the person's phone approves it (memory.identity.unlock.finish needs the device); the assistant asks the phone this way when the identity memory is locked"
+  },
+  "memory.mute": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.mute: this call carries no kernel chain, so personal memory is not read"
+  },
+  "memory.pin": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.pin: this call carries no kernel chain, so personal memory is not read"
+  },
+  "memory.remember": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.remember: this call carries no kernel chain, so personal memory is not re"
+  },
+  "memory.space.file": {
+   "class": "own",
+   "why": "files a fact into the Space's memory under the session's own chain, with its source and who filed it; the fact is read as quoted data and only its filer or a person with the right retires it"
+  },
+  "memory.space.retire": {
+   "class": "own",
+   "why": "takes out of use only a fact the caller filed (or one a person with the right retires); the fact stays in the log"
+  },
+  "memory.write": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.write: this call carries no kernel chain, so personal memory is not read"
+  },
+  "memory.write.forget": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.write.forget: this call carries no kernel chain, so personal memory is no"
+  },
+  "memory.write.restore": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: memory.write.restore: this call carries no kernel chain, so personal memory is n"
+  },
+  "onboard.setup": {
+   "class": "own",
+   "why": "the setup step list: a read that is declared a write"
+  },
+  "planner.add": {
+   "class": "own",
+   "why": "the person's reminders and todos, the model's own working list"
+  },
+  "planner.calendar.create": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent may only ask for an invite on a connected calendar (account and attende"
+  },
+  "planner.calendar.sync": {
+   "class": "own",
+   "why": "reads connected calendars into the planner's copy"
+  },
+  "planner.delete": {
+   "class": "own",
+   "why": "restorable for 30 days"
+  },
+  "planner.dismiss": {
+   "class": "own",
+   "why": "a firing"
+  },
+  "planner.done": {
+   "class": "own",
+   "why": "a firing"
+  },
+  "planner.snooze": {
+   "class": "own",
+   "why": "a firing"
+  },
+  "planner.update": {
+   "class": "own",
+   "why": "an item"
+  },
+  "pluginagent.ask": {
+   "class": "own",
+   "why": "files a request for the person to approve; changes nothing else"
+  },
+  "projects.history": {
+   "class": "own",
+   "why": "answers the one question about a project's version history"
+  },
+  "publish.approve": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.create": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.preview": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.publish": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.rollback": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.secret.grant": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "sessions.accounts.add": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: Adding an account runs only when the person asked for it; nothing in their own w"
+  },
+  "sessions.accounts.bind": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: Binding an account runs only when the person asked for it; nothing in their own "
+  },
+  "sessions.accounts.signin": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: Signing in an account runs only when the person asked for it; nothing in their o"
+  },
+  "settings.request": {
+   "class": "held",
+   "why": "held for the person's own words in the conversation"
+  },
+  "team.add": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.add runs for an agent only when your own words asked for it; tell the perso"
+  },
+  "team.ask": {
+   "class": "own",
+   "why": "work for a project's teammate, from inside that project"
+  },
+  "team.cancel": {
+   "class": "own",
+   "why": "a queued request"
+  },
+  "team.charter.draft": {
+   "class": "own",
+   "why": "a draft the person accepts"
+  },
+  "team.done": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.done and team.fail are a teammate's own tools"
+  },
+  "team.duties.create": {
+   "class": "own",
+   "why": "a proposal; starting it needs the person's words (team.duties.start)"
+  },
+  "team.duties.start": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.duties.start runs for an agent only when your own words asked for it; tell "
+  },
+  "team.duties.update": {
+   "class": "own",
+   "why": "scoped"
+  },
+  "team.fail": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.done and team.fail are a teammate's own tools"
+  },
+  "team.merge": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.done and team.fail are a teammate's own tools"
+  },
+  "team.notes": {
+   "class": "own",
+   "why": "a teammate's notes, scoped"
+  },
+  "team.retire": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.retire runs for an agent only when your own words asked for it; tell the pe"
+  },
+  "team.role.fill": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: team.role.fill runs for an agent only when your own words asked for it; tell the"
+  },
+  "threads.archive": {
+   "class": "own",
+   "why": "its own thread or ones it started (see the second test)"
+  },
+  "threads.bind": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: threads.bind is not available to mcp callers"
+  },
+  "threads.delete": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a session reaches its own thread and the threads it started, and reads its own p"
+  },
+  "threads.effort": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person's surface sets a session's effort"
+  },
+  "threads.fork": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.interrupt": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.model": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person's surface switches a session's model"
+  },
+  "threads.rename": {
+   "class": "own",
+   "why": "its own thread's title (and the threads it started): scoped by sessionMay like stop and archive"
+  },
+  "threads.rewind": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a session reaches its own thread and the threads it started, and reads its own p"
+  },
+  "threads.send": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.send-now": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person's surface can send queued words"
+  },
+  "threads.start": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an unnamed model session starts no sessions: it has no agent grants of its own t"
+  },
+  "threads.stop": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.switch": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.thinking": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person's surface switches thinking"
+  },
+  "threads.unarchive": {
+   "class": "own",
+   "why": "its own thread"
+  },
+  "threads.unwatch": {
+   "class": "own",
+   "why": "its own watch"
+  },
+  "threads.watch": {
+   "class": "own",
+   "why": "a thread it started or its own"
+  },
+  "undo.run": {
+   "class": "own",
+   "why": "undoes the caller's own recorded actions"
+  },
+  "vault.agent.grant": {
+   "class": "held",
+   "why": "presence floor: the person proves they are here"
+  },
+  "vault.clipboard.clear": {
+   "class": "own",
+   "why": "clearing is always allowed"
+  },
+  "vault.connections.revoke": {
+   "class": "own",
+   "why": "taking access away, of the caller's own surface"
+  },
+  "vault.generate": {
+   "class": "review",
+   "why": "stores a generated secret: vault owner to confirm"
+  },
+  "vault.grant": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "vault.import": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "vault.pass.accept": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "vault.pass.create": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "vault.person.add": {
+   "class": "held",
+   "why": "presence floor"
+  },
+  "vault.request": {
+   "class": "review",
+   "why": "an HTTP call with a vault credential: vault owner to confirm it needs a grant for this surface"
+  },
+  "vault.revoke": {
+   "class": "own",
+   "why": "taking access away is always allowed"
+  },
+  "vault.session.close": {
+   "class": "own",
+   "why": "locking is always allowed"
+  },
+  "vault.ssh.generate": {
+   "class": "review",
+   "why": "a plain session stores a new SSH key in the vault with no presence: vault owner to hold it or list why"
+  },
+  "watchers.create": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: watchers.create runs for an agent only when your own words asked for it; tell th"
+  },
+  "watchers.pause": {
+   "class": "own",
+   "why": "stopping a watcher; says who stopped it"
+  },
+  "watchers.preset": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: watchers.preset runs for an agent only when your own words asked for it; tell th"
+  },
+  "watchers.test": {
+   "class": "own",
+   "why": "a dry run that files nothing"
+  },
+  "work.call": {
+   "class": "own",
+   "why": "acts only for a person the call carries"
+  },
+  "work.know.answer": {
+   "class": "own",
+   "why": "reads the Space's records as the person the call carries"
+  }
+ }
+}

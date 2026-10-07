@@ -144,7 +144,7 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.session.open", {
     description: "Unlock the vault in the Deck, the Capsule or the extension for a while. Returns a session token for that surface only.",
     input: obj({ surface: { type: "string", enum: SURFACES }, ttl_s: { type: "integer" } }, ["surface"]),
-    callers: [...PEOPLE, "tailnet"],
+    callers: [...PEOPLE, "tailnet", "device"],
     presence: { summary: async ({ surface, ttl_s }) => `Unlock the vault in ${surface} for ${minutes(ttl_s)} minutes` },
     run: async ({ surface, ttl_s }, { caller }) => {
       const s = sessions.open(surface, ttl_s);
@@ -158,7 +158,8 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.session.close", {
     description: "Lock a surface's session now.",
     input: obj({ session: str }, ["session"]),
-    callers: null,
+    // Taking access away: a model session may close a session whose token it holds (surfaces.test.js pins it); the token is the guard.
+    callers: [...PEOPLE, "tailnet", "device", "module", "mcp"],
     run: async ({ session }, { caller }) => {
       const surface = sessions.surfaceOf(session);
       const out = sessions.close(session);
@@ -170,7 +171,7 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.session.status", {
     description: "Whether a session is unlocked, until when, and for which surface.",
     input: obj({ session: str }, ["session"]),
-    callers: [...PEOPLE, "tailnet"],
+    callers: [...PEOPLE, "tailnet", "device"],
     run: async ({ session }) => sessions.status(session),
   });
 
@@ -179,7 +180,7 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.reveal", {
     description: "Show one field of an item to the person, on their own device. Hide it again after concealAfter seconds.",
     input: obj({ name: str, field: str, session: str, version: { type: "integer" } }, ["name"]),
-    callers: [...PEOPLE, "tailnet"],
+    callers: [...PEOPLE, "tailnet", "device"],
     presence: { summary: async ({ name, field, version }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""}`, skip, session: sessionable },
     run: async ({ name, field, session, version }, { caller }) => {
       const surface = surfaceFor(session, caller);
@@ -202,8 +203,8 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.copy", {
     description: "Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.",
-    input: obj({ name: str, id: str, field: str, session: str, version: { type: "integer" } }),
-    callers: [...PEOPLE, "tailnet"],
+    input: obj({ name: str, id: str, field: str, session: str, version: { type: "integer" }, front: { type: "object" } }),
+    callers: [...PEOPLE, "tailnet", "device"],
     presence: { summary: async i => { const { name, field, version } = asItem(i); return `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""} to the clipboard`; }, skip: ({ input }) => skip({ input: asItem(input || {}) }), session: sessionable },
     run: async (input, { caller }) => {
       const { name, field, session, version } = named(input);
@@ -253,7 +254,8 @@ export function register({ ctx, vault }) {
   ctx.tool("vault.clipboard.clear", {
     description: "Clear the clipboard now, if it still holds what the vault copied.",
     input: obj({}),
-    callers: null,
+    // Harmless for any caller: it clears only what the vault copied (hash compared first), and reads and writes no secret.
+    callers: [...PEOPLE, "tailnet", "device", "module", "mcp"],
     run: async (_input, { caller }) => {
       await clipboard.clear("asked");
       vault.audit("clipboard-clear", null, caller, true, null);

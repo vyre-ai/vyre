@@ -8,6 +8,7 @@
 // verb whose tool is missing must say what is coming in one line and exit 1; one whose tool is
 // there must do its job. Which vyred this is comes from its own tool list, never a guess.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,6 +22,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { formatEvent, pendingQueue, sendArgs, queuedId, usageLine, watchBackoff, MODES,
   routeLine, imagesFrom, rewindTurns, turnFor, modelOf, IMAGES } from "./threads.js";
 import { modelScope, promptScope, previewInput } from "./sessions.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");

@@ -1,8 +1,9 @@
 // @ts-check
-// The box reads the paired Mac through the link (docs/work/federation.md, design 1 to 3): the Mac
+// The box reads the paired Mac through the link (team/archive/work-journals/federation.md, design 1 to 3): the Mac
 // holds link.serve open, the box's modules ask with link.macs.call, and only the read tools in
 // core/link/allow.js cross, checked at both ends. Nothing the Mac answers is stored on the box.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -54,7 +55,7 @@ test("link federation: the box reads the Mac's catalog and sessions, labelled wi
 
   // Nothing about the Mac is in the box's store: no recall rows, no copy of what was said.
   assert.equal(recallRows(s), 0);
-  const events = JSON.stringify(s.box.registry.deps.db.prepare("SELECT * FROM events").all());
+  const events = JSON.stringify(s.box.events.since(0, { limit: 1_000_000 }));
   assert.ok(!events.includes("intake form") && !events.includes("Harlow site rebuild"));
 });
 

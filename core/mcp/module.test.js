@@ -5,6 +5,7 @@
 // else; reads run, outward calls wait for the person; scope follows what vyred verified; servers
 // start lazily, stop when idle, and stop restarting when they keep crashing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -12,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present, writeModule } from "../../test/helpers.js";
+import { tempHome, present, writeModule, kernelCaller } from "../../test/helpers.js";
 import { startFakeMcpHttp } from "./testing/fake-mcp.js";
 
 const FAKE = path.join(import.meta.dirname, "testing", "fake-mcp.js");
@@ -161,8 +162,8 @@ test("mcp: scope by agent, by an agent's projects, and by a session's thread", a
   // cares about MCP scoping, not real project folders).
   assert.ok((await v.cli("projects.create", { name: "Harlow Legal", home: path.join(v.root, "harlow-legal") })).data);
   assert.ok((await v.cli("projects.create", { name: "Northwind", home: path.join(v.root, "northwind") })).data);
-  assert.ok((await v.cli("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
-  assert.ok((await v.cli("agents.create", { name: "kit", projects: ["northwind"] })).data);
+  assert.ok((await kernelCaller(v.d, v.root)("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
+  assert.ok((await kernelCaller(v.d, v.root)("agents.create", { name: "kit", projects: ["northwind"] })).data);
   const log = path.join(v.root, "x.log");
   await v.cli("mcp.add", stdio("tracker", log, {}, { scope: { projects: ["harlow-legal"] } }));
   await v.cli("mcp.add", stdio("ops", log, {}, { scope: { agents: ["juno"] }, tools: { allow: ["list_issues", "get_issue"] } }));
@@ -381,16 +382,23 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
     ctx.tool("bakery.issue", { input: { type: "object" }, run: async () => ctx.connections.call("chat", "create_issue", { title: "Rye" }) });
     return { async stop() {} };
   } };`);
-  const d = await start({ root, presence: present, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const log = path.join(root, "chat.log");
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
   assert.equal((await cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
-  const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
-  assert.equal(refused.error.code, "not_declared", JSON.stringify(refused));
-  assert.equal((await cli("bakery.try", {})).data.error.code, "not_declared", "mcp.call itself is not open to a home module");
+  // Trusted by path here (an added module is sandboxed with the kernel on and has no ctx.call), so the call is not refused as undeclared; what must hold is that on_behalf from a module changes nothing: the hold carries no thread, agent or surface.
+  // KO-2, with a REAL agent so the check can fail: a module trusted by path is first party here, and a first-party module's on_behalf DOES attribute the held item (the Switchboard relies on it): the item names juno.
+  // An added module that is NOT trusted gets no ctx in the sandbox and cannot reach mcp.call at all (core/vault/module-delete.test.js and reach.test.js pin that with the kernel on), so on_behalf is unreachable for it.
+  assert.ok(!(await cli("agents.create", { name: "juno", kind: "assistant" })).error, "the agent exists");
+  const forced = (await cli("bakery.try", { on_behalf: { surface: "capsule", agent: "juno" } })).data;
+  const heldId = forced && (forced.held || (forced.data && forced.data.held));
+  assert.ok(heldId, `the first-party module's outward call is held: ${JSON.stringify(forced)}`);
+  const forcedItem = (await cli("gate.get", { id: heldId })).data;
+  assert.equal(forcedItem.agent, "juno", "on_behalf from a first-party module attributes the hold to the named agent");
+  assert.ok(!forcedItem.thread);
   const plain = (await cli("bakery.issue", {})).data;
   assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
   const it = (await cli("gate.get", { id: plain.data.held })).data;

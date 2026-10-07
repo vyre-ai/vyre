@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { start } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { seams as linkSeams } from "../core/link/index.js";
 import { seams as fileSeams } from "../core/files/index.js";
 import { writeTranscripts } from "./fixtures/corpus.js";
@@ -46,7 +46,11 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
     if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
       let raw = "";
       for await (const c of req) raw += c;
-      const r = await box.registry.call(decodeURIComponent(url.pathname.slice(10)), raw ? JSON.parse(raw) : {}, `tailnet:${who.login}`, { peer: who });
+      // The listener's own proof of who is calling (what the daemon's route hands the registry): the owner's tailnet device, a paired app row so the device is enrolled.
+      const label = `tailnet:${who.login}`, node = "aaaaaaaaaaaaaaaa"; // a test peer's id ("nMAC") is shorter than a device id may be, so the row carries a well-formed one
+      if (box.kernel) box.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(node);
+      const f0 = box.kernel ? callerFacts(label, { caller: label, peer: who }, null, box.kernel, false, null) : null, facts = f0 ? { ...f0, device_key_id: node } : null;
+      const r = await box.registry.call(decodeURIComponent(url.pathname.slice(10)), raw ? JSON.parse(raw) : {}, label, { peer: who, ...(facts ? { kernelFacts: facts } : {}) });
       return json(r.error ? 400 : 200, r);
     }
     if (req.method === "GET" && url.pathname === "/v1/events/stream") {
@@ -67,10 +71,10 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
 /**
  * A box and a Mac, both running, with a work folder on each.
  * @param {any} t
- * `t` needs only `name` and `after(fn)`, so a script (deck/test/mac-world.js) can pass its own.
+ * `t` needs only `name` and `after(fn)`, so a script (web/test/mac-world.js) can pass its own.
  * @param {any} t
  * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean | any[], boxTranscripts?: any[], health?: any,
- *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any }} [opts]
+ *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any, kernel?: boolean }} [opts]
  *   hold: how long the box holds link.serve (short, so stopping is quick); allow: the box's list of
  *   tools it may ask the Mac for, to reach the Mac's own check; macTranscripts: the Mac indexes the
  *   fixture corpus (true), or these sessions in the corpus's shape, so it has sessions for the box
@@ -79,10 +83,10 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  *   link.health's tests; boxName, macHost: the box's config name and the Mac's hostname (the name
  *   the box knows it by); heartbeat: the Mac's check-in interval in ms; boxConfig: more of the
  *   box's config.json; router: the box's tailnet goes through vyred's real router; boxPresence:
- *   the box's presence verifier.
+ *   the box's presence verifier; kernel: start both with the kernel on (the planner keeps its records there).
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {}, kernel = undefined } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -112,17 +116,27 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     if (server) await new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); });
     if (box) await box.stop();
   });
-  box = await start({ presence: boxPresence, root: boxRoot, log: () => {} });
+  box = await start({ presence: boxPresence, root: boxRoot, log: () => {}, ...(kernel !== undefined ? { kernel } : {}) });
   server = await tailnet(box, net, 0, { router });
-  mac = await start({ presence: present, root: macRoot, log: () => {} });
+  mac = await start({ presence: present, root: macRoot, log: () => {}, ...(kernel !== undefined ? { kernel } : {}) });
   const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   net.address = address;
   for (const [n, d] of [["box", box], ["mac", mac]]) {
     const failed = d.registry.status().filter(m => ["link", "files"].includes(m.name) && m.state !== "running");
     assert.deepEqual(failed, [], `${n}: link and files are running`);
   }
-  const macCall = (tool, input = {}, caller = "cli", meta = {}) => mac.registry.call(tool, input, caller, meta);
-  const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, meta);
+  // With the kernel on, a call is the person's only by the facts the daemon's listener proves, never by its label (MH-1, LB-1): this stands in for the listener, for the person's own surfaces and for the
+  // owner's tailnet device, so these tests keep saying who is calling in one word.
+  const factsFor = (/** @type {any} */ d, /** @type {string} */ caller, /** @type {any} */ meta) => {
+    if (!d.kernel || (meta && meta.kernelFacts)) return meta;
+    if (["cli", "deck", "capsule"].includes(caller)) return { ...meta, kernelFacts: { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: caller === "capsule" } };
+    // The device is enrolled only if the box knows it as a paired app (spaces.devices.enrolled): a well-formed id (eight characters or more) gets that row here, as pairing would have made it.
+    if (caller.startsWith("tailnet:") && meta && meta.peer && /^[A-Za-z0-9_-]{8,64}$/.test(String(meta.peer.stableId || meta.peer.node || ""))) d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(String(meta.peer.stableId || meta.peer.node));
+    if (caller.startsWith("tailnet:") && meta && meta.peer) { const f = callerFacts(caller, { caller, peer: meta.peer }, null, d.kernel, false, null); return f ? { ...meta, kernelFacts: f } : meta; }
+    return meta;
+  };
+  const macCall = (tool, input = {}, caller = "cli", meta = {}) => mac.registry.call(tool, input, caller, factsFor(mac, caller, meta));
+  const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, factsFor(box, caller, meta));
   let code = null;
   const find = (await macCall("link.find")).data;
   assert.deepEqual(find.boxes.map(b => b.node), ["test-box"], "only the node that is the box is offered");

@@ -3,6 +3,7 @@
 // deck.css) hold the same values, so the docs' swatches, the theme.colors defaults and what the
 // Deck paints can never drift apart.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,8 +12,8 @@ import { fileURLToPath } from "node:url";
 import { THEME_COLORS, THEME_USE, ROLES_OF } from "../core/config/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DECK = fs.readFileSync(path.join(REPO, "deck/css/deck.css"), "utf8");
-const TOKENS = fs.readFileSync(path.join(REPO, "deck/css/tokens.css"), "utf8");
+const DECK = fs.readFileSync(path.join(REPO, "web/css/deck.css"), "utf8");
+const TOKENS = fs.readFileSync(path.join(REPO, "web/css/tokens.css"), "utf8");
 
 /** The literal colours a rule block sets: { name: value }, skipping var() and non-colours. */
 function block(selector, css = DECK) {

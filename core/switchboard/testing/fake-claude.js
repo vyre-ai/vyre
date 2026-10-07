@@ -21,6 +21,7 @@
 //                   a TodoWrite, then a markdown reply
 //   "limit"         on a setup token, fails as a subscription at its limit would
 //   "whoami"        says which credential it was given (never the value)
+//   "bloat <tokens>"  from now on this process's replies report that many more tokens in the window (a long session), so a rollover's threshold can be crossed
 //   "spend <usd>"   a turn that cost that much
 //   "nearlimit"     a rate-limit warning (85% of the five-hour limit), then a normal turn
 //   "lowlimit"      a rate-limit warning at 27% of the seven-day limit, then a normal turn
@@ -63,16 +64,19 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, connectors: argv.includes("--strict-mcp-config") ? [] : ["claude.ai Gmail", "claude.ai Google Drive", "claude.ai Claude Docs"], git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
 const out = o => process.stdout.write(JSON.stringify(o) + "\n");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
+/** Extra tokens every reply reports in its request's usage, set by "bloat <tokens>": this process's window as a long session would fill it. */
+let BLOAT = 0;
 /** @type {Map<string, (r: any) => void>} */
 const waiting = new Map();
-let MODEL = flag("--model") || "fake-model";
+// FAKE_CLAUDE_REPORT_MODEL: the model it says it runs whatever was asked for (an account default that differs from the alias a thread was started with, #41).
+let MODEL = process.env.FAKE_CLAUDE_REPORT_MODEL || flag("--model") || "fake-model";
 /** The slash commands it offers, as Claude Code lists them in init and in the initialize answer. */
 const COMMANDS = [{ name: "compact", description: "Clear the conversation but keep a summary", argumentHint: "<instructions>" },
   { name: "review", description: "Review a pull request", argumentHint: "" }];
@@ -111,7 +115,7 @@ function tx(type, message, extra = {}) {
 }
 /** Claude Code writes each content block of a reply as its own line, all under one message id. */
 const txAssistant = (id, block, stop = null) => tx("assistant", { id, type: "message", role: "assistant", model: MODEL, content: [block], stop_reason: stop, stop_sequence: null,
-  usage: { input_tokens: 12, cache_creation_input_tokens: 40, cache_read_input_tokens: 2400, output_tokens: Math.max(1, Math.ceil(JSON.stringify(block).length / 4)) } },
+  usage: { input_tokens: 12, cache_creation_input_tokens: 40, cache_read_input_tokens: 2400 + BLOAT, output_tokens: Math.max(1, Math.ceil(JSON.stringify(block).length / 4)) } },
   { requestId: `req_${id}` });
 
 out({ type: "system", subtype: "hook_response", hook_name: "SessionStart:startup", output: "whatever the user's own hooks print" });
@@ -138,12 +142,13 @@ async function say(text) {
   }
   txAssistant(id, { type: "text", text }, "end_turn");
   out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, session_id: session, parent_tool_use_id: null });
-  for (const piece of text.match(/.{1,6}/gs) || []) {
+  // Long text goes in bigger pieces, so a seed of tens of thousands of characters does not take seconds to echo.
+  for (const piece of text.match(new RegExp(`.{1,${Math.max(6, Math.ceil(text.length / 150))}}`, "gs")) || []) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
-    await sleep(2);
+    await sleep(Number(process.env.FAKE_CLAUDE_DELTA_MS) || 2); // FAKE_CLAUDE_DELTA_MS: a test that needs a reply still arriving for seconds slows the deltas
   }
   out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }],
-    usage: { input_tokens: 12, cache_read_input_tokens: 2400, cache_creation_input_tokens: 40, output_tokens: Math.ceil(text.length / 4) } }, session_id: session, parent_tool_use_id: null,
+    usage: { input_tokens: 12, cache_read_input_tokens: 2400 + BLOAT, cache_creation_input_tokens: 40, output_tokens: Math.ceil(text.length / 4) } }, session_id: session, parent_tool_use_id: null,
     ...(stamp ? { user_message_uuid: stamp } : {}) });
 }
 
@@ -298,6 +303,11 @@ async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();
   // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
   tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
+  if (/^bloat \d+/i.test(p)) {
+    BLOAT = Number(p.split(/\s+/)[1]) || 0;
+    await say(`the window now holds about ${BLOAT} tokens`);
+    return result(true, "bloated");
+  }
   if (/^write /i.test(p)) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
@@ -388,6 +398,7 @@ async function turn(prompt, uuid = null) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } });
     return result(false, "Claude usage limit reached.", 0);
   }
+  // A Vyre-started session is given its own socket (VYRE_SOCKET) and no VYRE_HOME, so a forgery goes where a real Bash in the session would: down that socket, and only without one to the home's.
   // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
   // "forge <caller> <tool>" sends the agent's own key with it, which the daemon refuses outright
   // (the key must name its own agent); "bareforge <caller> <tool>" sends neither a key nor a
@@ -406,7 +417,7 @@ async function turn(prompt, uuid = null) {
     const http = await import("node:http");
     const { paths } = await import("../../config/index.js");
     const r = await new Promise(resolve => {
-      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
+      const req = http.request({ socketPath: process.env.VYRE_SOCKET || paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
         headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(kind === "forge" ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } : {}) } }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
       });
@@ -455,6 +466,13 @@ async function turn(prompt, uuid = null) {
     return result(true, text);
   }
   // "media <json array>": a finished tool call that returned generated media (vyre_media, as the ACP drivers put it on a tool_result), then a reply.
+  // "tooluse <name>": a finished tool call with that name (a connector's, the web's, Vyre's own), then a reply.
+  const tooluse = /^tooluse (\S+)$/.exec(p);
+  if (tooluse) {
+    out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: tooluse[1], input: {} }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
+    await say("done"); return result(true, "done");
+  }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {
     out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });

@@ -10,7 +10,7 @@
 //
 // Three kinds of schedule: cron, "webhook" (vyred's /v1/watchers/<name>/hook, token-checked), and
 // "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
-// `where`. For hook.received (core/hooks, an internet webhook through Funnel) the runtime reads the
+// `where`. For hook.received (core/hooks, an internet webhook through the Wink public gate) the runtime reads the
 // delivery with hooks.delivery and hands it to the watcher, which stays in its sandbox and never
 // calls a tool itself.
 //
@@ -24,6 +24,7 @@ import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
 import { parseWhen } from "./when.js";
 import { buildPreset } from "./presets.js";
+import { wakeText, DEFAULT_PER_DAY } from "./wake.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
@@ -81,6 +82,8 @@ export const MIGRATIONS = [`
   CREATE INDEX watchers_runs_watcher ON watchers_runs(watcher, id);
 `, `
   CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
+`, `
+  CREATE TABLE watchers_wakes (watcher TEXT NOT NULL, day TEXT NOT NULL, posts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `];
 
 /**
@@ -201,20 +204,22 @@ export class Runtime {
     const { spec, hash } = this.spec(name);
     const r = this.row(name);
     const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule);
-    const duty = spec.owner != null;
+    const duty = spec.owner != null && spec.owner.kind === "teammate";
+    const wakes = spec.about && spec.about.session && spec.act ? spec.about.session : null;
     return {
       name, hash, project: spec.project, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
-      owner: spec.owner ? { kind: "teammate", teammate: spec.owner.teammate } : { kind: "project", project: spec.project },
+      owner: spec.owner ? { ...spec.owner } : { kind: "project", project: spec.project },
       lines: {
         when: spec.summary ? spec.summary.when : spec.when ? `Runs ${when} (${spec.when})` : `Runs ${when}`,
         ...(spec.summary && spec.summary.check ? { check: spec.summary.check } : {}),
         do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : "Files what it finds into the project, marked as from outside",
       },
       facts: {
-        reads: spec.net ? Object.keys(spec.net) : [],
-        readsText: spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
-        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential).map(([h, v]) => ({ host: h, item: v.vault || v.credential, how: v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
-        acts: duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
+        reads: spec.source ? ["github (your connected account, read only)"] : spec.net ? Object.keys(spec.net) : [],
+        readsText: spec.source ? "Reads the new comments other people leave on this session's pull requests, from GitHub through your connected account (read only)" : spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
+        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential || v.google).map(([h, v]) => ({ host: h, item: v.vault || v.credential || `google:${v.google}`, how: v.google ? "your connected Google account, read only" : v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
+        acts: wakes ? `Posts what it finds into session ${wakes} as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day; never as an instruction`
+          : duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
         cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
         schedule: when,
       },
@@ -279,7 +284,7 @@ export class Runtime {
     if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
     this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
       ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, f.spec ? f.spec.schedule : "event", f.hash, this.now());
-    return { ...this.card(p.name), grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` };
+    return { ...this.card(p.name), grant: `vyre vault grant ${o.google ? (typeof this.d.googleItem === "function" ? await this.d.googleItem(o.google).catch(() => null) : null) || "<the Google account's vault item>" : o.credential} watchers --watcher ${p.name}`, ...(o.google ? { note: `reads your connected Google account ${o.google}, read only, once the person grants its vault item to this watcher` } : {}) };
   }
 
   /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
@@ -301,6 +306,7 @@ export class Runtime {
     const bad = [];
     folder.checkOwner(d.owner, bad);
     if (bad.length) throw new Error(bad.join("; "));
+    if (d.owner.kind !== "teammate") throw new Error("a duty is owned by a teammate");
     if (typeof d.project !== "string" || !d.project.trim()) throw new Error("a duty needs project");
     const cur = d.current || {};
     const when = String(d.when === undefined ? cur.when : d.when);
@@ -321,7 +327,7 @@ export class Runtime {
     const f = folder.read(this.d.dir, name);
     if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
     this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
-    if (DUTY_NAME.test(name)) fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true });
+    if (DUTY_NAME.test(name)) { fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true }); if (this.d.defs) void this.d.defs.forget(name).catch(() => {}); }
     this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
     return { name, deleted: true };
   }
@@ -496,7 +502,7 @@ export class Runtime {
     }
     // Taught only with the project's folders. Without them a fact would belong everywhere,
     // and one client's items must never reach another project.
-    if (project) {
+    if (project && spec.memory !== false) {
       for (const item of fresh) {
         await this.d.teach("watcher.item", {
           subject: { name: typeof item.about === "string" && item.about.trim() ? item.about.trim().slice(0, 120) : name },
@@ -504,12 +510,13 @@ export class Runtime {
           at: item.at || undefined, key: `${name}/${item.id}`, project_cwds: project.folders,
         }).catch(() => false);
       }
-    } else if (fresh.length) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
+    } else if (fresh.length && spec.memory !== false) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
 
     const cursor = res.cursor ?? started;
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
     this.db.prepare(`UPDATE watchers_watchers SET since = ?, failures = 0, last_run = ?, last_ok = ?, last_error = NULL, next_at = ? WHERE name = ?`)
       .run(JSON.stringify(cursor), started, started, next, name);
+    if (fresh.length && spec.about && spec.about.session && spec.act) await this.wake(spec, fresh, res.logs);
     this.record(name, trigger, res, res.items.length, fresh.length);
     this.d.emit("watcher.fired", { name, items: fresh.length, seen: res.items.length, trigger }, { project: r.project });
   }
@@ -533,9 +540,45 @@ export class Runtime {
   }
 
   /** Run in a child and check the items; a bad item is the run's error. */
+  /**
+   * A watcher whose items come from a first-party tool Vyre calls itself (no watcher code, no child, nothing
+   * of its own to reach the network with): today github.session.review, the new comments from other people
+   * on the pull requests of a session's branch. The first run only learns where to start from. Each item
+   * is outside text and is filed and quoted as such; the cursor is the tool's own.
+   */
+  async execSource(spec, since) {
+    const t0 = Date.now(), base = { logs: /** @type {string[]} */ ([]), sandboxed: true, isolated: true, wall: "source" };
+    const r = await this.d.call(/** @type {{ tool: string }} */ (spec.source).tool, { project: spec.project, session: /** @type {{ session: string }} */ (spec.about).session, ...(since ? { since: String(since) } : {}) });
+    if (r.error) return { ...base, items: [], cursor: null, ms: Date.now() - t0, error: `${spec.source && spec.source.tool}: ${r.error.message || r.error.code}` };
+    const data = r.data || {};
+    const start = new Date(this.now()).toISOString().replace(/\.\d+Z$/, "Z");
+    if (since == null) return { ...base, logs: ["starting from now"], items: [], cursor: typeof data.cursor === "string" ? data.cursor : start, ms: Date.now() - t0, error: null };
+    const raw = (Array.isArray(data.items) ? data.items : []).map(i => ({ id: i.id, title: i.title, about: i.author, quote: i.quote, url: i.url, at: i.at }));
+    try {
+      const items = normalize(raw);
+      return { ...base, logs: [`${items.length} new`], items, cursor: typeof data.cursor === "string" ? data.cursor : String(since), ms: Date.now() - t0, error: null };
+    } catch (e) { return { ...base, items: [], cursor: null, ms: Date.now() - t0, error: /** @type {Error} */ (e).message }; }
+  }
+
   async exec(dir, spec, since, hook) {
+    if (spec.source) return this.execSource(spec, since);
     const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
+        if (rule && rule.google) {
+          // A connected Google account: the google module reads for it (Gmail and Calendar reads only), the token never leaves it.
+          const method = String((init && init.method) || "GET").toUpperCase();
+          if (method !== "GET") throw new Error(`${method} is not allowed from a watcher; only GET`);
+          if (typeof this.d.google !== "function") throw new Error("the google module is not running on this machine");
+          // no grant, no read: a person grants the account's vault item to this watcher, for a dry run as for a run
+          if (typeof this.d.googleGranted !== "function" || !(await this.d.googleGranted(rule.google, spec.name))) {
+            const item = typeof this.d.googleItem === "function" ? await this.d.googleItem(rule.google).catch(() => null) : null;
+            throw new Error(`the Google account ${rule.google} is not granted to this watcher; a person runs: vyre vault grant ${item || "<the account's vault item>"} watchers --watcher ${spec.name}`);
+          }
+          const query = {};
+          for (const [k, v] of url.searchParams) query[k] = k in query ? [].concat(query[k], v) : v;
+          const r = await this.d.google({ account: rule.google, method, path: url.pathname, ...(url.search ? { query } : {}) });
+          return { status: Number(r.status), url: url.href, headers: {}, body: JSON.stringify(r.body ?? {}), truncated: false };
+        }
         if (!rule || !rule.credential) return undefined;
         const method = String((init && init.method) || "GET").toUpperCase();
         if (method !== "GET" && method !== "HEAD") throw new Error(`${method} is not allowed from a watcher; only GET and HEAD`);
@@ -553,6 +596,33 @@ export class Runtime {
     if (res.error) return res;
     try { return { ...res, items: normalize(res.items) }; }
     catch (e) { return { ...res, items: [], error: /** @type {Error} */ (e).message }; }
+  }
+
+  /**
+   * Wake the session this watcher is about: ONE post per run with what is new, as quoted untrusted data
+   * (core/watchers/wake.js), after four checks every time: the watcher is owned by that session, the
+   * thread exists, it belongs to the watcher's project, and today's budget is not spent. A refusal skips
+   * the post and says why in the run's log; the items are filed either way, and nothing is retried.
+   * @param {folder.Spec} spec @param {any[]} fresh the items filed by this run @param {string[]} logs the run's log lines
+   */
+  async wake(spec, fresh, logs) {
+    const name = spec.name, thread = /** @type {{ session: string }} */ (spec.about).session;
+    const skip = why => { logs.push(`not woken: ${why}`); this.d.log(`${name}: not woken: ${why}`); };
+    if (!spec.owner || spec.owner.kind !== "session" || spec.owner.thread !== thread) return skip("the watcher is not owned by that session");
+    if (typeof this.d.thread !== "function" || typeof this.d.post !== "function") return skip("this machine cannot post to a session");
+    let info;
+    try { info = await this.d.thread(thread); } catch { info = null; }
+    if (!info) return skip(`no session ${thread}`);
+    if (info.project !== spec.project) return skip("the session belongs to another project");
+    const day = new Date(this.now()).toISOString().slice(0, 10), cap = spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY;
+    const used = Number(/** @type {any} */ (this.db.prepare("SELECT posts FROM watchers_wakes WHERE watcher = ? AND day = ?").get(name, day))?.posts || 0);
+    if (used >= cap) return skip(`already woke it ${used} times today (the most is ${cap})`);
+    const { text, shown } = wakeText(name, fresh);
+    try { await this.d.post(thread, text, `watcher:${name}`); }
+    catch (e) { return skip(`the post was refused: ${/** @type {Error} */ (e).message}`); }
+    this.db.prepare(`INSERT INTO watchers_wakes (watcher, day, posts) VALUES (?,?,1) ON CONFLICT(watcher, day) DO UPDATE SET posts = posts + 1`).run(name, day);
+    this.d.emit("watcher.woke", { name, thread, items: shown }, { project: spec.project });
+    logs.push(`woke session ${thread} with ${shown} item${shown === 1 ? "" : "s"}`);
   }
 
   /**

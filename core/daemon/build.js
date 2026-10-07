@@ -18,7 +18,7 @@ let memo = null;
 
 /** { version, commit, dirty, stamped }. commit and dirty are null when neither a stamp nor git
  * can say. `stamped` is explicit, never left undefined, in every branch - pwa's ?relay= dev-
- * build gate (deck/views/wink.js) reads it over system.info and needs a real false, not an
+ * build gate (the app's Wink screen) reads it over system.info and needs a real false, not an
  * absent field, to fail closed on an old or unusual box (reviewer's LOW, 2026-09-28).
  * @returns {Build} */
 export function build(repo = REPO) {
@@ -45,23 +45,23 @@ export function label(/** @type {Build} */ b) {
 }
 
 /** The id every surface compares: the commit (12 characters, "-dirty" when dirty), else "v" and
- * the version. deck/js/build-check.js computes the same from system.info. */
+ * the version. A client computes the same from system.info. */
 export function buildId(/** @type {Build} */ b = build()) {
   const id = b.commit ? b.commit.slice(0, 12) + (b.dirty ? "-dirty" : "") : "v" + b.version;
   return id.replace(/[^\w.-]/g, "");
 }
 
-/** deck/sw.js with BUILD set to this build's id. Also sets SHELL_SIGNED true when deck/release/SHA256SUMS.sig
+/** A service worker's source with BUILD set to this build's id. Also sets SHELL_SIGNED true when web/release/SHA256SUMS.sig
  * exists (put there by the release: vyre update, the phone.vyre.run deploy), so the worker checks a new
  * shell against the signed release (reviewer's N-H1). No such file (every dev checkout and testbox) leaves it false. @param {string} repo */
 export function swWithBuild(/** @type {string} */ src, b = build(), repo = REPO) {
   let out = src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(buildId(b))};`);
-  if (fs.existsSync(path.join(repo, "deck", "release", "SHA256SUMS.sig"))) out = out.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+  if (fs.existsSync(path.join(repo, "web", "release", "SHA256SUMS.sig"))) out = out.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
   return out;
 }
 
-/** deck/index.html with its vyre-build meta set to this build's id, so a page cached by an older
- * service worker knows it is older than the box it talks to (deck/js/build-check.js). */
+/** A web page (the app shell or a web/ page) with its vyre-build meta set to this build's id, so a page cached by an older
+ * service worker knows it is older than the box it talks to. */
 export function htmlWithBuild(/** @type {string} */ src, b = build()) {
   return src.replace('<meta name="vyre-build" content="dev">', `<meta name="vyre-build" content="${buildId(b)}">`);
 }

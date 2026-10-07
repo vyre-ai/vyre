@@ -312,6 +312,21 @@ export async function serve(o) {
       } catch (e) { sock.end(JSON.stringify({ error: `cannot empty account ${uid}'s home: ${/** @type {Error} */ (e).message}` }) + "\n"); }
       return;
     }
+    if (req.op === "share") {
+      // vyred seals an account's session from its transcript, which Claude writes 0600 in the account's own HOME. This makes THAT one file group-readable and writable (g+rw) so vyred, a member of the account's
+      // group, can read it and put it back to a sealed turn in place (runner.recover): never the folder, never a symlink, never world-readable, and only a .jsonl under the account's own <HOME>/.claude/projects.
+      const w = whoFor({ account: req.account });
+      if (!w.who || !acc) { sock.end(JSON.stringify({ error: w.why || "no accounts here" }) + "\n"); return; }
+      const home = /** @type {string} */ (w.who.home), file = typeof req.path === "string" && path.isAbsolute(req.path) ? path.resolve(req.path) : "";
+      if (!file || file !== req.path || !file.startsWith(path.join(home, ".claude", "projects") + path.sep) || !file.endsWith(".jsonl")) { sock.end(JSON.stringify({ error: "only a .jsonl under the account's own .claude/projects can be shared" }) + "\n"); return; }
+      try {
+        if (acc.share) acc.share(home, w.who, file);
+        else execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c",
+          'r=$(readlink -f -- "$1") && [ "$r" = "$1" ] && [ -f "$r" ] && [ ! -L "$1" ] && [ "$(stat -c %u -- "$r")" = "$2" ] && chmod g+rw -- "$r"', "sh", file, String(w.who.uid)], { stdio: "ignore" });
+        sock.end(JSON.stringify({ shared: true }) + "\n");
+      } catch (e) { sock.end(JSON.stringify({ error: `cannot share that transcript: ${/** @type {Error} */ (e).message}` }) + "\n"); }
+      return;
+    }
     sock.end(JSON.stringify({ error: "unknown op" }) + "\n");
   });
 

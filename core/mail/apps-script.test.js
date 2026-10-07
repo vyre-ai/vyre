@@ -2,6 +2,7 @@
 // Tests for the Apps Script mail adapter and for apps-script.gs itself. Only fakes on 127.0.0.1
 // and stub fetches; nothing here reaches Google or sends a real email.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

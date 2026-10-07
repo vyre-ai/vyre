@@ -1,0 +1,86 @@
+{
+ "core/cli/commands/agents.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "core/cli/commands/needs.test.js": {
+  "owner": "launch",
+  "seen": "lead integration 6 Oct 2026: a CLI over the socket is a person only with a measured outside ancestry (LB-1); under ssh on a test box it is not"
+ },
+ "core/cli/screen/screen-live.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "core/daemon/app.test.js": {
+  "owner": "app-wire",
+  "seen": "lead integration 6 Oct 2026: needs the app's web export built in the checkout (npm run export:web); the gate builds it, a bare test run does not"
+ },
+ "core/names/system.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "core/sessions/sessions.test.js": {
+  "owner": "sessions",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "core/switchboard/switchboard.test.js": {
+  "owner": "chat",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: 55 tests run 367 s, past the per-file limit, and 8 expect the pre-gate answers (denied, open_elsewhere) where the chat gate answers not_found, or a terminal session as a person. Split it in two and move the 8 onto the gate's answers (team/BACKLOG.md 0.3.0)."
+ },
+ "core/vyre-core/installer.test.js": {
+  "owner": "launch",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: strictProblems flags the temp root's parents as writable by others; on the test boxes the scratch folder sits under a shared /tmp. Passes on a runner with a private temp root."
+ },
+ "kernel/golden/golden.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "test/cc-plugin.test.js": {
+  "owner": "memory",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: the user's own session's memory.remember arrives with no kernel chain (denied) where the test expects a pending fact; the session token stamp in this harness is the open question."
+ },
+ "test/federation-answer.test.js": {
+  "owner": "cleanup",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: a Mac federated over the tailnet; the chat gate refuses its labelled calls. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0."
+ },
+ "test/federation-send.test.js": {
+  "owner": "tailnet",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "test/journey.test.js": {
+  "owner": "network",
+  "seen": "lead integration 6 Oct 2026: journey 5 is the Tailscale signed-out door, removed with Tailscale; the 0.3.0 cleanup drops it"
+ },
+ "test/link.test.js": {
+  "owner": "network",
+  "seen": "lead integration 6 Oct 2026: the link and tailnet listener were removed with Tailscale (network c67dcbfc6); the 0.3.0 cleanup (cleanup-tailnet 41283b712) rewrites these tests onto Wink"
+ },
+ "test/peer.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "test/person.test.js": {
+  "owner": "network",
+  "seen": "lead integration 6 Oct 2026: uses the removed tailnet names listener (svc.onRequest); rewritten in the 0.3.0 cleanup"
+ },
+ "test/relay.test.js": {
+  "owner": "network",
+  "seen": "lead integration 6 Oct 2026: two cases read the removed tailnet node and vyre-core paths; rewritten in the 0.3.0 cleanup"
+ },
+ "test/said-hear.test.js": {
+  "owner": "cleanup",
+  "seen": "lead integration 6 Oct 2026: team.add's said target is keyed by the Project record id since cleanup-team d45d3b8df, and this world has no Project records, so 'add a researcher teammate' records no intent here; check the spoken add on the walk"
+ },
+ "test/setup-cli-names.test.js": {
+  "owner": "network",
+  "seen": "lead integration 7 Oct 2026, fails on trunk too: names a real box through the live names directory and waits for the recovery code line; the directory answer differs on the test boxes. Checked again with the relay redeploy."
+ },
+ "test/stdin-hygiene.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
+ },
+ "test/within-hygiene.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
+ }
+}

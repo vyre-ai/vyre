@@ -1,5 +1,5 @@
 // @ts-check
-// events: the catalog of event types (ADR 0033). The folder is event-catalog because core/events
+// events: the catalog of event types (ADR 0033). The folder is event-catalog because kernel/bus (the bus over the kernel log)
 // is the kernel's event bus, which has no manifest; the module and its tools are named "events".
 //
 // Every type comes from a running module's watches.emits, so the list is what can actually
@@ -20,13 +20,11 @@ export const ALIASES = {};
  * ones, so the catalog doesn't mark them.
  *   file.created, file.moved, file.trashed, file.uploaded (glass), file.touched (harness) -> files.*
  *   computer.* (15 types, computers) -> computers.*
- *   projects.moved (projects) -> project.moved
  * thread.* stays as it is.
  */
 export const PLANNED = Object.freeze({
   "file.created": "files.created", "file.moved": "files.moved", "file.trashed": "files.trashed",
   "file.uploaded": "files.uploaded", "file.touched": "files.touched",
-  "projects.moved": "project.moved",
   ...Object.fromEntries(["checked-out", "created", "frozen", "handed-back", "idle-warning", "joined", "left", "paused",
     "released", "resumed", "shielded", "stopped", "taken-over", "thawed", "unshielded"].map(v => [`computer.${v}`, `computers.${v}`])),
 });

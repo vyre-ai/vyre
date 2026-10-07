@@ -19,6 +19,16 @@ struct LinkLine: Equatable {
     var dot: Dot
 
     static func from(_ x: [String: Any], now: Double = vyNowMs()) -> LinkLine? {
+        // wink.server.health: { state: connected | relayed | offline, path, latencyMs, since, why? }
+        if let state = VJ.str(x["state"]) {
+            let ms = VJ.num(x["latencyMs"]).map { " \(Int($0)) ms" } ?? ""
+            let since = VJ.num(x["since"]).map { Route.age($0, now: now) }.map { $0 == "now" ? "since just now" : "since \($0) ago" }
+            switch state {
+            case "connected": return LinkLine(path: "direct\(ms)", handshake: since, dot: .direct)
+            case "relayed": return LinkLine(path: "relayed\(ms)", handshake: since, dot: .relayed)
+            default: return LinkLine(path: "offline", handshake: VJ.nonEmpty(x["why"]) ?? since, dot: .unknown)
+            }
+        }
         guard let p = VJ.str(x["path"]), !p.isEmpty else { return nil }
         let ms = VJ.num(x["latencyMs"]).map { " \(Int($0)) ms" } ?? ""
         let relay = VJ.nonEmpty(x["relay"])
@@ -55,16 +65,17 @@ final class Health: ObservableObject {
         changed?()
     }
 
-    /// Ask link.health if a minute has passed since the last ask. Called on open only.
+    /// Ask wink.server.health (link.health on an older vyred) if a minute has passed since the last ask. Called on open only.
     func refresh() {
-        guard vyredUp, vyred.has("link.health"), vyNowMs() - askedAt > 60_000 else { return }
+        let tool = vyred.has(WinkServer.health) ? WinkServer.health : "link.health"
+        guard vyredUp, vyred.has(tool), vyNowMs() - askedAt > 60_000 else { return }
         askedAt = vyNowMs()
         Task { @MainActor [vyred] in
-            let r = await vyred.call("link.health", [:], presence: false)
+            let r = await vyred.call(tool, [:], presence: false)
             let d = (r.data as? [String: Any]) ?? [:]
             let line = LinkLine.from(d)
-            // "unknown" with a reason is no box at all: say the reason, draw no link line.
-            if line?.dot == .unknown, let why = VJ.nonEmpty(d["why"]) { self.link = nil; self.linkWhy = why } else { self.link = line; self.linkWhy = nil }
+            // "unknown" with a reason is no box at all: say the reason, draw no link line. (An offline paired server, wink.server.health's "offline", keeps its line.)
+            if line?.dot == .unknown, d["state"] == nil, let why = VJ.nonEmpty(d["why"]) { self.link = nil; self.linkWhy = why } else { self.link = line; self.linkWhy = nil }
             self.changed?()
         }
     }
@@ -77,7 +88,7 @@ final class Health: ObservableObject {
 
     var summary: String {
         if !vyredUp { return "Vyre is not running" }
-        if let l = link { return "Box \(l.path)" }
+        if let l = link { return "Server \(l.path)" }
         return "Vyre is running"
     }
 }
@@ -161,6 +172,8 @@ struct MenuBarPopover: View {
     let turnOnControl: () -> Void
     /// vyred is down: start it from here (the Capsule opens to show it going).
     var start: (() -> Void)? = nil
+    /// "Set up Vyre on this Mac" the first time, "Start Vyre" after (CapsuleModel.startWords).
+    var startWords: () -> String = { "Start Vyre" }
     let quit: () -> Void
 
     var body: some View {
@@ -181,17 +194,17 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 14).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 status(health.vyredUp ? "Vyre is running" : "Vyre is not running", ok: health.vyredUp,
-                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in Lumen")
+                       sub: health.vyredUp ? nil : "\(startWords()) below, or press Return in Lumen")
                 if let l = health.link {
-                    status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
+                    status("Server \(l.path)", ok: l.dot == .direct, sub: l.handshake)
                 } else if let why = health.linkWhy {
-                    status("No box", ok: true, sub: why, quiet: true)
+                    status("No server", ok: true, sub: why, quiet: true)
                 }
             }
             .padding(.horizontal, 14).padding(.bottom, 12)
             Rule()
             VStack(spacing: 2) {
-                if !health.vyredUp, let start { PopoverButton(title: "Start Vyre", hint: nil, action: start) }
+                if !health.vyredUp, let start { PopoverButton(title: startWords(), hint: nil, action: start) }
                 PopoverButton(title: "Open Lumen", hint: hotkeys, action: open)
                 if canTurnOnControl { PopoverButton(title: "Turn on Control twice…", hint: nil, action: turnOnControl) }
             }

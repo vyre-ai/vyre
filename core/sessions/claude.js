@@ -16,6 +16,7 @@
 // so the daemon's peer check and threads.pids see it as they see the runner's child.
 
 import { spawnSession, killGroup } from "./spawn.js";
+import { vyreMcpConfig } from "../../lib/mcp-config.js";
 
 /** The permission modes Claude Code knows. "bypassPermissions" is here because a person may choose it (threads.mode, person only); no other bypass-shaped name is. */
 const CLAUDE_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"]);
@@ -38,7 +39,7 @@ function inbox() {
 
 /**
  * The SDK's options for a launch. The same launch the CLI runner turns into flags (argsFor).
- * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, native?: string|null, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           system?: { mode: "append"|"replace", text: string }|null, append?: string|null, budgetUsd?: number|null,
  *           tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
  */
@@ -52,12 +53,16 @@ export function optionsFor(o) {
     cwd: o.cwd,
     env: o.env,
     includePartialMessages: true,
-    ...(o.forkFrom ? { resume: o.forkFrom, forkSession: true, sessionId: o.id } : o.resume ? { resume: o.id } : { sessionId: o.id }),
+    // native: the session id this thread's Claude runs under now, when a rollover gave it a fresh one (a session id names one transcript); else the thread's own id.
+    ...(o.forkFrom ? { resume: o.forkFrom, forkSession: true, sessionId: o.id } : o.resume ? { resume: o.native || o.id } : { sessionId: o.native || o.id }),
     ...(o.resumeAt && (o.resume || o.forkFrom) ? { resumeSessionAt: o.resumeAt } : {}),
     systemPrompt: system,
     settingSources: o.settings === false ? [] : ["user", "project", "local"],
     ...(plugins.length ? { plugins } : {}),
-    ...(o.tools === "none" ? { tools: [], strictMcpConfig: true } : {}),
+    ...(o.tools === "none" ? { tools: [] } : {}),
+    // Only Vyre's own MCP server (lib/mcp-config.js): the account's claude.ai connectors and every other server are not loaded.
+    strictMcpConfig: true,
+    mcpServers: /** @type {any} */ (Object.fromEntries(Object.entries(vyreMcpConfig(o.plugin).mcpServers).map(([k, v]) => [k, { type: "stdio", command: v.command, args: v.args }]))),
     ...(o.model ? { model: o.model } : {}),
     ...(o.effort ? { effort: /** @type {any} */ (o.effort) } : {}),
     ...(o.mode ? { permissionMode: o.mode } : {}),
@@ -108,7 +113,7 @@ export function run(sdk, o) {
     stderr: (/** @type {string} */ c) => { err = (err + c).slice(-2000); },
     // Own the spawn: the pid is Vyre's to know, and a stop takes the whole tree.
     spawnClaudeCodeProcess: (/** @type {any} */ sp) => {
-      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
+      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn });
       child = c;
       c.on("exit", (cd, s) => { code = cd; sig = s; died = true; done(); });
       c.on("error", e => { err = e.message; died = true; done(); });

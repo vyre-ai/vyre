@@ -2,6 +2,8 @@
 // The approve swipe's answers (answers.ts): held for the Undo window, then through the outbox;
 // Undo only while unsent; a refusal brings the row back with its reason. Time and delivery are
 // fakes, so every step is exact.
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,7 @@ const load = () => import("./answers.ts");
 
 /** A need, as needs-model.ts makes it. @param {string} id */
 const need = id => /** @type {any} */ ({ id, source: "ask", ref: id.slice(4), kind: "permission", title: "Run a command", detail: "npm test",
-  mono: true, agent: "kit", project: "Harlow Legal", thread: "t1", at: 1, presence: { required: false, covered: false, since: null } });
+  mono: true, agent: "kit", project: "Juniper Studio", thread: "t1", at: 1, presence: { required: false, covered: false, since: null } });
 
 /** Fake timers and a delivery that resolves when the test says. */
 function world() {

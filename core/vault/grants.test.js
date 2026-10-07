@@ -5,6 +5,7 @@
 // the policy says. Also the warning on a new pass, the whois meta, and vault.grants.status
 // against a fake tailscale binary. Every vault lives under the checkout's scratch dir.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -14,7 +15,6 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import * as relay from "./relay.js";
-import { whoisMeta } from "./index.js";
 import { recorded } from "./testing.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { tempHome } from "../../test/helpers.js";
@@ -67,19 +67,6 @@ test("grantCovers: exact names and trailing-* prefixes in the matching mode or a
   assert.ok(!relay.grantCovers(who([{ items: ["northwind-*"] }, { mode: "any" }, { items: "northwind-api", mode: "any" }, { items: [""], mode: "any" }, null, "x"]), "northwind-api", "relayed"));
   assert.ok(!relay.grantCovers(null, "northwind-api", "relayed"));
   assert.ok(!relay.grantCovers({ caps: { "vyre.run/cap/guest": [{ items: ["*"], mode: "any" }] } }, "northwind-api", "relayed"), "another capability grants nothing here");
-});
-
-test("whois meta: login and peer come from whois alone; a tagged node has no login; no answer, no peer", () => {
-  const forged = { remoteAddress: "100.64.0.9", login: "alex@example.com" };
-  const m = whoisMeta(forged, { login: DANA, node: "dana-mac.tail0000.ts.net", stableId: "nDANA", tagged: false, tags: [], caps: { [CAP]: [{ items: ["northwind-*"], mode: "relayed" }] } });
-  assert.equal(m.login, DANA);
-  assert.deepEqual(m.peer, { login: DANA, node: "dana-mac.tail0000.ts.net", stableId: "nDANA", tags: [], caps: { [CAP]: [{ items: ["northwind-*"], mode: "relayed" }] } });
-  const tagged = whoisMeta(forged, { login: null, node: "box.tail0000.ts.net", stableId: "nBOX", tagged: true, tags: ["tag:vyre"], caps: {} });
-  assert.equal(tagged.login, null);
-  assert.deepEqual(tagged.peer.tags, ["tag:vyre"]);
-  const none = whoisMeta(forged, null);
-  assert.equal(none.login, null);
-  assert.ok(!("peer" in none));
 });
 
 test("grants off: relaying is unchanged, with no caps at all", async t => {
@@ -153,54 +140,6 @@ test("a new pass with grants required warns when the policy does not cover it ye
   await x.ask(first.pass.id, "northwind-api", peer([{ items: ["northwind-*"], mode: "relayed" }]));
   assert.equal((await x.pass(["northwind-api"])).warning, undefined);
   assert.match(String((await x.pass(["northwind-api", "harlow-portal"])).warning), /for harlow-portal yet;/);
-});
-
-/** A fake tailscale: Dana's shared-in node is online, and whois of it carries `caps`. */
-function fakeTailscale(t, caps) {
-  const home = tempHome(t);
-  const bin = path.join(home, "tailscale");
-  const status = { BackendState: "Running", Self: { ID: "nBOX", HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5"], UserID: 1 },
-    User: { 1: { LoginName: "alex@example.com" }, 7: { LoginName: DANA } },
-    Peer: { k1: { ID: "nDANA", HostName: "dana-mac", DNSName: "dana-mac.tail0000.ts.net.", TailscaleIPs: ["100.64.0.9"], Online: true, UserID: 7 } } };
-  const whoisOut = { Node: { StableID: "nDANA", Name: "dana-mac.tail0000.ts.net." }, UserProfile: { LoginName: DANA }, CapMap: caps };
-  fs.writeFileSync(bin, `#!/usr/bin/env node
-const a = process.argv.slice(2);
-if (a[0] === "status") process.stdout.write(${JSON.stringify(JSON.stringify(status))});
-else if (a[0] === "whois" && a.at(-1) === "100.64.0.9") process.stdout.write(${JSON.stringify(JSON.stringify(whoisOut))});
-else process.exit(1);
-`, { mode: 0o755 });
-  const prev = process.env.VYRE_TAILSCALE_BIN;
-  process.env.VYRE_TAILSCALE_BIN = bin;
-  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
-}
-
-test("vault.grants.status: the mode, and per holder whether their caps cover their passes, by whois now", async t => {
-  fakeTailscale(t, { [CAP]: [{ items: ["northwind-*"], mode: "relayed" }] });
-  const { run } = await recorded(t, { relay: { host: "127.0.0.1", port: 0, identity: "whois", grants: "require" } });
-  const h = mk(t, "dana-box", { login: DANA });
-  const card = (await h.v.card()).card;
-  for (const name of ["northwind-api", "harlow-portal"]) await run("vault.put", { name, kind: "api-key", value: fake("v"), hosts: ["https://api.example.com"] });
-
-  // Dana is online now, so the warning comes from whois: covered for northwind-api, not harlow-portal.
-  const covered = await run("vault.pass.create", { holder: "Dana", card, items: ["northwind-api"] });
-  assert.equal(covered.warning, undefined);
-  const gap = await run("vault.pass.create", { holder: "Dana", items: ["harlow-portal"] });
-  assert.match(gap.warning, /does not grant dana@northwind.example vyre.run\/cap\/vault for harlow-portal yet/);
-
-  const s = await run("vault.grants.status", {});
-  assert.equal(s.mode, "require");
-  assert.equal(s.people.length, 1);
-  const dana = s.people[0];
-  assert.equal(dana.login, DANA);
-  assert.equal(dana.seen, "whois");
-  assert.deepEqual(dana.grants, [{ items: ["northwind-*"], mode: "relayed" }]);
-  assert.equal(dana.covered, false);
-  assert.deepEqual(dana.passes.map(p => [p.items, p.covered, p.missing]), [[["northwind-api"], true, undefined], [["harlow-portal"], false, ["harlow-portal"]]]);
-
-  // Revoked passes drop out; an agent caller is not the owner.
-  await run("vault.pass.revoke", { id: gap.pass.id });
-  assert.equal((await run("vault.grants.status", {})).people[0].covered, true);
-  await assert.rejects(run("vault.grants.status", {}, "mcp agent:kit"), /for the owner, not an agent/);
 });
 
 test("vault.grants.status with grants off and no one online: the mode, and nothing known about caps", async t => {

@@ -1,7 +1,7 @@
 // capsule-suite: plannerSuite
 // Planner banners (ADR 0025): one per firing, replaced by a later ring, dropped by an ack from
 // anywhere; "Missed" when it fell due offline; Done and Snooze call the planner through vyred, or
-// through link.call when this vyred does not carry it. No Notification Center: hooks.
+// through wink.server.call when this vyred does not carry it. No Notification Center: hooks.
 
 import Foundation
 
@@ -26,15 +26,15 @@ let plannerSuite = Suite("planner") { t in
                  "show f1", "show f1", "show f2", "drop f1"])
     }
 
-    t.test("Done and Snooze reach the planner, through link.call when vyred does not carry it") {
+    t.test("Done and Snooze reach the planner, through wink.server.call when vyred does not carry it") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
-        v.tool("link.call") { i in ["result": ["ok": true], "tool": VJ.s(i["tool"])] }
+        v.tool("wink.server.call") { i in ["result": ["ok": true], "tool": VJ.s(i["tool"])] }
         let r: [String]? = t.wait {
             let p = await MainActor.run { PlannerBanners(vyred: VyredClient(socket: v.socket)) }
             _ = await p.vyred.refreshTools()
             let a = await p.act("done", firing: "f1")
             let b = await p.act("snooze", firing: "f2")
-            return [a ?? "ok", b ?? "ok"] + v.callsOf("link.call").map { "\(VJ.s($0["tool"])) \(VJ.s(($0["input"] as? [String: Any])?["firing"]))" }
+            return [a ?? "ok", b ?? "ok"] + v.callsOf("wink.server.call").map { "\(VJ.s($0["tool"])) \(VJ.s(($0["input"] as? [String: Any])?["firing"]))" }
         }
         t.eq(r, ["ok", "ok", "planner.done f1", "planner.snooze f2"])
     }
