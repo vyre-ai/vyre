@@ -7,6 +7,8 @@
 // person-only, so the person can always take it back).
 // Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
 
+import { SETUP_REASONS } from "../relay/setup.js";
+
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
   ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
@@ -458,20 +460,12 @@ export const WEB_REACH = new Map([
 ]);
 
 /**
- * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES) lets through, plus the tools a
+ * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES; the reasons are SETUP_REASONS there) lets through, plus the tools a
  * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
  * @type {ReadonlyMap<string, string>}
  */
 export const SETUP_REACH = new Map([
-  ["relay.setup.status", "the page reads its own setup session"],
-  ["relay.setup.claim-token", "the page claims the box with its code"],
-  ["names.check", "checks that a name is free"],
-  ["names.claim", "claims the box's name"],
-  ["names.status", "reads the name's state"],
-  ["names.domain.check", "checks the person's own domain"],
-  ["link.health", "reads whether the box is reachable"],
-  ["system.info", "reads what machine this is"],
-  ["onboard.machine", "reads the machine's setup state"],
+  ...SETUP_REASONS,
   ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
   ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
 ]);

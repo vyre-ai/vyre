@@ -26,6 +26,24 @@ export const SETUP_TOOLS = Object.freeze(new Set([
 ]));
 /** The network tool the channel may call, by exact name: a later tool is not exposed by being added. */
 export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);
+/**
+ * Why each of those may be called, by exact name: the fixed tools and the family's one tool. The registry's own check of a setup caller (core/modules/agent-reach.js SETUP_REACH) is
+ * built from this map and asks setupToolAllowed below, so the relay's gate and the registry's gates read one list: a tool added above and left out here is refused by a test, not by a
+ * person's setup page ("no tool network.wink.status", IR-11).
+ * @type {ReadonlyMap<string, string>}
+ */
+export const SETUP_REASONS = new Map([
+  ["relay.setup.status", "the page reads its own setup session"],
+  ["relay.setup.claim-token", "the page claims the box with its code"],
+  ["names.check", "checks that a name is free"],
+  ["names.claim", "claims the box's name"],
+  ["names.status", "reads the name's state"],
+  ["names.domain.check", "checks the person's own domain"],
+  ["link.health", "reads whether the box is reachable"],
+  ["system.info", "reads what machine this is"],
+  ["onboard.machine", "reads the machine's setup state"],
+  ["network.wink.status", "reads whether the box's network is up (the one network tool, by exact name)"],
+]);
 /** The events the setup page may follow, one type per stream. */
 export const SETUP_EVENTS = Object.freeze(new Set(["relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
 

@@ -11,6 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { sandboxDoor } from "./sandbox-ctx.js";
+import { setupToolAllowed } from "../relay/setup.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
@@ -549,7 +550,7 @@ export const classReach = (caller, tool, setupExtra) => {
   if (c.split(/[\s:]/)[0] === "invitee") return false;
   const k = callerKind(c);
   if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
-  if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || (setupExtra !== undefined && setupExtra().includes(tool)));
+  if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || setupToolAllowed(tool, setupExtra === undefined ? [] : setupExtra()));
   return null;
 };
 
