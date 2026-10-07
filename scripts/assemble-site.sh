@@ -72,8 +72,11 @@ else
 fi
 git show "$tag:$(pick vendor/qrcode.js)" >"$out/setup/deck/vendor/qrcode.js"
 git cat-file -e "$tag:lib/providers/signin-hosts.json" 2>/dev/null && git show "$tag:lib/providers/signin-hosts.json" >"$out/setup/signin-hosts.json" || true
+# The setup page asks for these three names. A tag from before 0.2.9 has them in the app's fonts; from 0.2.9 the fonts are one file per family under
+# web/fonts (every weight in one file), served under the same names.
 for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2; do
-  git show "$tag:apps/app/assets/fonts/$f" >"$out/setup/fonts/$(basename "$f")"
+  if git cat-file -e "$tag:apps/app/assets/fonts/$f" 2>/dev/null; then src="apps/app/assets/fonts/$f"; else src="web/fonts/${f%%/*}-latin.woff2"; fi
+  git show "$tag:$src" >"$out/setup/fonts/$(basename "$f")"
 done
 
 say "checks"
