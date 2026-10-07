@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(installer): IR-2 with a setup code (a browser install) the terminal shows the four check words only: no pairing QR, long code or typed code, which was a second pairing path beside the page's.
 - fix(installer): IR-3 the installer starts vyre with `vyre up --quiet`, so a fresh install no longer reads "vyred is already running" or "not paired yet, run vyre call wink.server.code"; the installer says what comes next itself.
 - fix(installer): IR-1 the check words are read through sudo when the account cannot reach the box itself, and the terminal names the command that shows them when they cannot be read.
 - fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.

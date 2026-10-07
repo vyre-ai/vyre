@@ -467,7 +467,16 @@ test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with
 
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
 
-test("install-box.sh v2: IR-3 the installer starts vyre quietly: no pairing or status lines of its own, and the pairing is still the installer's", t => {
+test("install-box.sh v2: IR-2 with a setup code the terminal shows the check words only, no pairing QR, long code or typed code", t => {
+  const b = box(t, { docker: PAIRING_BOX });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  for (const gone of [/WINKLONGCODE/, /Long code/, /ABCD-EFGH/, /type this code/i, /Pair this server from your Vyre app/]) assert.doesNotMatch(r.stdout, gone);
+  assert.ok(!b.calls().includes("wink.server.code"), "the pairing was not even asked for");
+});
+
+test("install-box.sh v2: IR-2 without a setup code the terminal still pairs, and IR-3 the start is quiet either way", t => {
   const b = box(t, { docker: PAIRING_BOX });
   const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);

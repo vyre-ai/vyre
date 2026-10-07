@@ -1166,7 +1166,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is up"; pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is up"; [ -n "$CODE" ] || pair_server; fi
     show_words
   fi
   finish
