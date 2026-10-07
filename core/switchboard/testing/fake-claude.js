@@ -29,6 +29,7 @@
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   anything else   echoes the prompt back in a few deltas
+// FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every turn is answered from the recorded model instead (core/sessions/testing/golden.js).
 // FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind.
 // FAKE_CLAUDE_RESPONSES, when set, gets each answer to a can_use_tool request, as received.
 // FAKE_CLAUDE_TRANSCRIPTS, when set, is a projects folder: every turn is also written the way
@@ -303,6 +304,8 @@ async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();
   // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
   tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
+  // FAKE_GOLDEN_FILE: the recorded model of the switch eval (core/sessions/testing/golden.js), which answers from what this session was sent.
+  if (process.env.FAKE_GOLDEN_FILE) { const r = (await import("../../sessions/testing/golden.js")).reply(session, p); await say(r); return result(true, r); }
   if (/^bloat \d+/i.test(p)) {
     BLOAT = Number(p.split(/\s+/)[1]) || 0;
     await say(`the window now holds about ${BLOAT} tokens`);

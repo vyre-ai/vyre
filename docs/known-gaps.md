@@ -16,12 +16,6 @@ Screen Share. Watch and take over your agents' computers and Chrome, on every de
 
 ## Known gaps in 0.2.9
 
-### Switching a chat back to a model it had before
-
-A chat that moves from one model to another and back resumes the first model's own session, which did not hear the turns in between. A model new to the chat gets the recent turns. Fixed in 0.3.0, where every switch carries the chat's decisions, plan and work state.
-
-What to do today: after switching back, tell the model what changed while it was away.
-
 ### My Cloud on another server keeps your chats in Personal
 
 Moving your Personal Space to My Cloud carries your memory, records and files. When My Cloud runs on a different server from Personal, your chats stay in the frozen Personal Space, readable there. Carrying them across comes in 0.3.0.

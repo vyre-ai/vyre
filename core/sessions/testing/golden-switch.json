@@ -1,0 +1,23 @@
+{
+  "note": "The golden conversation of the switch eval: Claude, then Codex, then Claude. Each fact is said once in a turn; each question can be answered only from the turn named in `from`.",
+  "turns": [
+    { "on": "claude", "say": "We are building the Northwind Bakery site." },
+    { "on": "claude", "say": "The launch date is March 14, and that is fixed." },
+    { "on": "claude", "say": "We host on Railway, in the Oregon region." },
+    { "on": "codex", "say": "The monthly budget is 4,200 dollars, no more." },
+    { "on": "codex", "say": "The designer is Priya Raman, and she signs off on every page." },
+    { "on": "codex", "say": "Do not use the blue palette anywhere." }
+  ],
+  "questions": [
+    { "from": "claude", "after": "claude to codex", "ask": "Which bakery is the site for?", "needle": "Northwind Bakery", "answer": "Northwind Bakery" },
+    { "from": "claude", "after": "claude to codex", "ask": "When is the launch?", "needle": "March 14", "answer": "March 14" },
+    { "from": "claude", "after": "claude to codex", "ask": "Where do we host it?", "needle": "Railway, in the Oregon", "answer": "Railway, Oregon" },
+    { "from": "claude", "after": "claude to codex", "ask": "Is the launch date fixed or open?", "needle": "and that is fixed", "answer": "Fixed" },
+    { "from": "claude", "after": "claude to codex", "ask": "Which region is the host in?", "needle": "Oregon region", "answer": "Oregon" },
+    { "from": "codex", "after": "codex to claude", "ask": "What is the monthly budget?", "needle": "4,200 dollars", "answer": "4,200 dollars" },
+    { "from": "codex", "after": "codex to claude", "ask": "Who is the designer?", "needle": "Priya Raman", "answer": "Priya Raman" },
+    { "from": "codex", "after": "codex to claude", "ask": "Which palette is banned?", "needle": "blue palette", "answer": "The blue one" },
+    { "from": "claude", "after": "codex to claude", "ask": "Which bakery was it again?", "needle": "Northwind Bakery", "answer": "Northwind Bakery" },
+    { "from": "codex", "after": "codex to claude", "ask": "Who signs off on the pages?", "needle": "she signs off on every page", "answer": "Priya Raman" }
+  ]
+}
