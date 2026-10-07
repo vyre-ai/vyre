@@ -180,15 +180,18 @@ export default {
     const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
-      const [version, names, recall, wink] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status")]);
+      const [version, names, recall, wink, accounts] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status"), tryCall("sessions.accounts.list", { provider: "claude" })]);
       const n = names.__error ? null : names;
 
       const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: heldAddress() ? (ob().person || null) : ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
+      // Claude can be signed in two ways: the Claude step's own token (ob().claude), or an account the sign-in tool made (the setup page's "Sign in to your AI", `vyre sessions`). Both count: a doctor that read only
+      // the first said "not signed in" right after the page had signed Claude in (IR-17).
+      const acct = (Array.isArray(accounts) ? accounts : []).find((/** @type {any} */ a) => a && a.provider === "claude" && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
-        signedIn: Boolean(auth), via: auth === "api-key" ? "api-key" : auth ? "setup-token" : null };
-      if (claude.auth) claude.state = "done";
+        signedIn: Boolean(auth) || Boolean(acct), via: auth === "api-key" ? "api-key" : auth ? "setup-token" : acct ? (acct.kind === "api-key" ? "api-key" : "account") : null };
+      if (claude.auth || acct) claude.state = "done";
       else if (!version) Object.assign(claude, { state: "blocked", why: "Claude Code is not installed on this machine" });
 
       // The pair step: this server is paired to the person (a server) or the person is signed in here (a computer), and the link to the space is up. Read from the built-in network.
