@@ -73,11 +73,16 @@ export function patchRelease({ repo, commits, base, push = false }) {
   return { branch, dir, version, notes };
 }
 
+/** @param {string[]} args @returns {{ commits: string[], base: string|undefined }} the commits (everything but the flags and the value of --base) */
+export function parseArgs(args) {
+  const bi = args.indexOf("--base");
+  // Without --base bi is -1 and `i !== bi + 1` would skip the first argument: the value to skip only exists when the flag does.
+  return { base: bi >= 0 ? args[bi + 1] : undefined, commits: args.filter((a, i) => !a.startsWith("--") && !(bi >= 0 && i === bi + 1)) };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const args = process.argv.slice(2);
-  const bi = args.indexOf("--base");
-  const base = bi >= 0 ? args[bi + 1] : undefined;
-  const commits = args.filter((a, i) => !a.startsWith("--") && i !== bi + 1);
+  const { commits, base } = parseArgs(args);
   try {
     const r = patchRelease({ repo: process.cwd(), commits, base, push: args.includes("--push") });
     console.log(`patch-release: ${r.branch} is ready in ${r.dir}`);

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCRATCH } from "./scratch.mjs";
-import { newestStable, nextPatch, notesFrom, patchRelease } from "../scripts/patch-release.mjs";
+import { newestStable, nextPatch, notesFrom, parseArgs, patchRelease } from "../scripts/patch-release.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const g = (/** @type {string} */ cwd, /** @type {string[]} */ ...a) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, encoding: "utf8" }).trim();
@@ -18,6 +18,13 @@ test("patch-release: the newest stable tag, and the next patch", () => {
   assert.equal(newestStable(["v0.2.2-rc.1"]), null);
   assert.equal(nextPatch("v0.2.9"), "0.2.10");
   assert.throws(() => nextPatch("v0.2.1-rc.1"));
+});
+
+test("patch-release: REL-1 without --base every commit argument is kept, the first one too", () => {
+  assert.deepEqual(parseArgs(["aaa111", "bbb222"]), { base: undefined, commits: ["aaa111", "bbb222"] });
+  assert.deepEqual(parseArgs(["aaa111", "--push"]), { base: undefined, commits: ["aaa111"] });
+  assert.deepEqual(parseArgs(["--base", "v0.2.9", "aaa111", "bbb222", "--push"]), { base: "v0.2.9", commits: ["aaa111", "bbb222"] });
+  assert.deepEqual(parseArgs(["aaa111", "--base", "v0.2.9"]), { base: "v0.2.9", commits: ["aaa111"] });
 });
 
 test("patch-release: notes take the commit subjects, plain, with the issue number", () => {

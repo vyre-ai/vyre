@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(release): REL-1 scripts/patch-release.mjs keeps the first commit argument when --base is not given (the filter skipped index 0 whenever the flag was absent).
 - fix(box): IR-8 a root run of the vyre wrapper writes its run files through its own temp names, so two at once (the update path unit and `sudo vyre name status`) no longer print "mv: cannot stat .../compose.env.new".
 - fix(installer): IR-7 Docker's own install output goes to a log file; the screen shows one progress line, and the log's path only if Docker does not install.
 - fix(installer): IR-4 the installer and the box wrapper name no internal part to a person (Twenty, kernel, vyred): "room for 2 spaces (each needs about 3.1 GB)" replaces "room for 2 space(s) on Twenty"; a test keeps the printed lines free of them.
