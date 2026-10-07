@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(names): IR-9 in the name directory a released name stays its owner's: the route that released it, an identity that listed that route, or whoever holds the reclaim code the release now returns can claim it back; nobody else, and names.check says `ok` (never "someone else has that name") to them. Worker only; the box and the setup page pass the code in a later change.
 - fix(kernel): the event log's `iterate` asks the disk for the rows its caller's limit needs, not a whole batch of 500: a consumer far behind the window read 500 rows to deliver one event.
 - fix(flows,watchers): IR-18 on a Space with its own records store the Flow types and the watcher definitions are defined: def-flow's `name` is now Twenty's title column (a text field called name is the title), and the watcher definition's `name` is no longer unique, so neither type is refused ("collides with a name Twenty uses"); the Flows timer starts only after the Flow types exist and runs are recovered, so a tick no longer reads "no type flow-state" every minute. A test plans every type Vyre defines.
 - fix(doctor): IR-17 `vyre doctor` no longer says Claude is not signed in right after the setup page signed it in: onboard.status counted only the Claude step's own token, and now also a signed-in Claude account made by the sign-in tool.

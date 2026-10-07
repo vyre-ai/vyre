@@ -280,6 +280,41 @@ test("signatures: unsigned, forged, wrong key for the route, stale, replayed and
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.has("n/alex"), false);
 });
 
+test("IR-9 a released name stays its owner's: the same route, or whoever holds the reclaim code, claims it back; nobody else, and the owner is never told someone else has it", async t => {
+  const w = world(t), old = boxOf(w), stranger = boxOf(w), reinstall = boxOf(w);
+  data(await old.post("/v1/names/claim", { name: "harlow" }));
+  data(await old.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" }));
+  const r = data(await old.post("/v1/names/release", { name: "harlow" }));
+  assert.equal(r.tombstone, true);
+  assert.match(r.reclaim, /^[a-z2-7]{24}$/, "the owner is given a code to claim it back from a new server");
+  // check: the owner's route and the code's holder see it free; a stranger sees it taken
+  assert.equal(data(await old.get("/v1/names/check?name=harlow")).status, "ok");
+  assert.equal(data(await old.get("/v1/names/check?name=harlow")).reclaim, true);
+  assert.equal(data(await reinstall.get(`/v1/names/check?name=harlow&reclaim=${r.reclaim}`)).status, "ok");
+  assert.deepEqual([data(await stranger.get("/v1/names/check?name=harlow")).status, data(await reinstall.get("/v1/names/check?name=harlow")).status, data(await stranger.get("/v1/names/check?name=harlow&reclaim=wrongwrongwrongwrongwron")).status], ["taken", "taken", "taken"]);
+  // claim: a stranger and a wrong code are refused with the same words as ever
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow" })), "taken");
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim.replace(/.$/, c => (c === "a" ? "b" : "a")) })), "taken");
+  assert.equal(code(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: "x" })), "taken");
+  // the new server, with the code, takes it; the old route's tombstone state is replaced, and it is the new server's to point
+  const back = data(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim }));
+  assert.deepEqual([back.name, back.mine], ["harlow", true]);
+  assert.equal(data(await reinstall.get("/v1/names/check?name=harlow")).status, "mine");
+  data(await reinstall.post("/v1/names/point", { name: "harlow", ip: "100.101.1.3" }));
+  assert.equal(code(await old.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
+  // the code is not a way to take a name that is held
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim })), "taken");
+});
+
+test("IR-9 the releasing route claims its own released name back without a code (the same server reinstalled over its keys)", async t => {
+  const w = world(t), a = boxOf(w);
+  data(await a.post("/v1/names/claim", { name: "alex" }));
+  data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
+  data(await a.post("/v1/names/release", { name: "alex" }));
+  assert.equal(data(await a.post("/v1/names/claim", { name: "alex" })).mine, true);
+  assert.equal(data(await a.get("/v1/names/mine")).name, "alex");
+});
+
 test("release: a never-pointed name is free again; a pointed name becomes a tombstone forever", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
   data(await a.post("/v1/names/claim", { name: "alex" }));
@@ -287,7 +322,8 @@ test("release: a never-pointed name is free again; a pointed name becomes a tomb
   assert.equal(data(await b.post("/v1/names/claim", { name: "alex" })).mine, true, "free to anyone");
   data(await b.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
   data(await b.post("/v1/names/acme", { name: "alex", token: TOKEN }));
-  assert.deepEqual(data(await b.post("/v1/names/release", { name: "alex" })), { name: "alex", tombstone: true });
+  const gone = data(await b.post("/v1/names/release", { name: "alex" }));
+  assert.deepEqual([gone.name, gone.tombstone], ["alex", true]);
   assert.equal(w.dns.records.length, 0, "its records are gone");
   // never anyone else's, and its owner's route is free to hold another name
   assert.equal(code(await a.post("/v1/names/claim", { name: "alex" })), "taken");
