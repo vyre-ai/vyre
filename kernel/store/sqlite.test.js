@@ -64,6 +64,33 @@ test("sqlite log: events, their salts and cursors survive a restart; erase survi
   assert.equal(verifyEvents(SPACE, reread.read({})).ok, false);
 });
 
+test("sqlite log: a consumer that ran before a restart goes on from its durable cursor and is not handed the log again", async () => {
+  const { createSqliteEventLog } = await import("./sqlite-log.js");
+  const { createChainBuilder } = await import("../core/chain.js");
+  const SPACE = "spc_aaaaaaaaaaaa";
+  const ch = createChainBuilder({ space: SPACE, owner: "per_owner", owner_uid: 501, key: Buffer.alloc(32, 1) }).fromFacts({ kind: "module", module: "x", first_party: true });
+  const f = file();
+  const add = (log, i) => log.append(ch, { type: "note.added", sv: 1, subject: `vyre://${SPACE}/note/${i}`, data: { i } });
+  let log = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
+  const first = [];
+  log.subscribe("search", {}, e => { first.push(e.seq); });
+  for (let i = 0; i < 3; i++) add(log, i);
+  await log.pump();
+  assert.deepEqual(first, [1, 2, 3]);
+  log = createSqliteEventLog({ db: new DatabaseSync(f), space: SPACE });
+  const again = [];
+  log.subscribe("search", {}, e => { again.push(e.seq); });
+  add(log, 4);
+  await log.pump();
+  assert.deepEqual(again, [4], "only what came after the restart");
+  assert.equal(log.cursor("search"), 4);
+  // a consumer the log has not met yet still starts at the beginning
+  const fresh = [];
+  log.subscribe("new", {}, e => { fresh.push(e.seq); });
+  await log.pump();
+  assert.deepEqual(fresh, [1, 2, 3, 4]);
+});
+
 test("sqlite store scrub: a field sealed in place leaves no plain value in the change log, the file's free pages, the write-ahead log or the search index; other fields and other types are untouched", async () => {
   const f = file();
   const PLAIN = "PLAINSECRET-4471-ssn";
