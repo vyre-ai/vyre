@@ -18,7 +18,10 @@ runs:
         key: twenty-golden-${{ steps.key.outputs.k }}
     - if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: node stores/twenty/live/build-golden.mjs stores/twenty/golden
+      # the build loads the kernel, which imports the repo's own packages (@noble/*): install them when the job has not
+      run: |
+        [ -d node_modules/@noble ] || npm ci --ignore-scripts --no-audit --no-fund
+        node stores/twenty/live/build-golden.mjs stores/twenty/golden
     - shell: bash
       run: |
         ls -l stores/twenty/golden

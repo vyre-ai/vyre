@@ -27,7 +27,7 @@ function cert({ subject, issuer, pub, signKey, ca, ext, from = "260101000000Z", 
   const exts = [];
   if (ca !== undefined) exts.push(tlv(0x30, oid("2.5.29.19"), tlv(1, Buffer.from([255])), tlv(4, ca ? tlv(0x30, tlv(1, Buffer.from([255]))) : tlv(0x30))));
   if (ext) exts.push(tlv(0x30, oid("1.3.6.1.4.1.11129.2.1.17"), tlv(4, ext)));
-  const tbs = tlv(0x30, tlv(0xa0, tlv(2, Buffer.from([2]))), tlv(2, crypto.randomBytes(8).map(x => x & 0x7f)), ECDSA256, name(issuer), tlv(0x30, utc(from), utc(to)), name(subject), pub, tlv(0xa3, tlv(0x30, ...exts)));
+  const tbs = tlv(0x30, tlv(0xa0, tlv(2, Buffer.from([2]))), tlv(2, crypto.randomBytes(8).map((x, i) => (i === 0 ? (x & 0x7f) | 0x01 : x))), ECDSA256, name(issuer), tlv(0x30, utc(from), utc(to)), name(subject), pub, tlv(0xa3, tlv(0x30, ...exts)));
   const sig = crypto.sign("sha256", tbs, signKey);
   return tlv(0x30, tbs, ECDSA256, tlv(3, Buffer.concat([Buffer.from([0]), sig])));
 }
