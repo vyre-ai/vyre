@@ -491,6 +491,11 @@ function noDocker(t, { fail = false } = {}) {
   const bin = path.join(b.base, "bin");
   const installed = `#!/bin/sh\ncase "$1 $2" in "compose version") echo 2.29.1 ;; esac\nexit 0\n`;
   fs.rmSync(path.join(bin, "docker"));
+  // The machine's own tools without its docker: a PATH folder of links to everything in /usr/bin and /bin but the Docker programs.
+  const tools = path.join(b.base, "tools");
+  fs.mkdirSync(tools);
+  for (const d of ["/usr/bin", "/bin"]) for (const n of fs.readdirSync(d)) if (!/^(docker|podman)/.test(n) && !fs.existsSync(path.join(tools, n))) { try { fs.symlinkSync(path.join(d, n), path.join(tools, n)); } catch {} }
+  b.env.PATH = `${bin}:${tools}`;
   const script = `echo NOISE_FROM_DOCKER_SCRIPT\necho "rootless note" >&2\n` + (fail ? "exit 1\n" : `printf '%s' '${installed.replace(/'/g, "'\\''")}' > "${path.join(bin, "docker")}"\nchmod 755 "${path.join(bin, "docker")}"\n`);
   fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\ncat <<'EOS'\n${script}EOS\n`, { mode: 0o755 });
   return b;
