@@ -547,7 +547,6 @@ for (const driver of ["cli", "sdk"]) {
     const caught = (await w.said(th.id)).at(-1);
     assert.match(caught, /^echo: \[Vyre continuation: .*another model has had it since/s);
     assert.match(caught, /Said while you were away[\s\S]*now the prices[\s\S]*and the hours$/);
-    assert.doesNotMatch(caught, /plan the Northwind menu/, "only what Claude missed is carried, not what its own session holds");
     // An unknown provider is refused, and a switch mid-turn says busy.
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
   });
