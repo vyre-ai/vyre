@@ -23,6 +23,7 @@ import path from "node:path";
 import * as certsReal from "../../../lib/acme/certs.js";
 import * as acmeReal from "../../../lib/acme/acme.js";
 import { createGate as realGate, certPin } from "./gate.js";
+import { waitTxt } from "../../../lib/acme/dnswait.js";
 
 const DAY = 86_400_000;
 
@@ -47,7 +48,7 @@ const DAY = 86_400_000;
  */
 export function createPublicGate(o) {
   const log = o.log || (() => {});
-  const D = { createGate: realGate, certs: certsReal, acme: acmeReal, ...(o.deps || {}) };
+  const D = { createGate: realGate, certs: certsReal, acme: acmeReal, waitDns: waitTxt, ...(o.deps || {}) };
   const domain = o.domain || "vyre.run";
   const now = o.now || Date.now;
   const renewDays = o.renewDays ?? 30;

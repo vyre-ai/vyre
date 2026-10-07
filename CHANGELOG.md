@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 ## 0.2.10 (8 Oct 2026)
+- fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
 - fix(wink): the public gate's ACME challenge reaches the name directory as the challenge value; 0.2.9 sent the name instead, so no box got a certificate or a published <name>.vyre.run address (nameDirectory, with a test).
 
 ## 0.2.9 (7 Oct 2026)

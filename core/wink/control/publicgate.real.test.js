@@ -44,7 +44,9 @@ test("real: a certificate by DNS-01 from Pebble, a TLS gate in front of an upstr
     async publish() {},
   };
   const roots = await (await fetch("https://127.0.0.1:15000/roots/0")).text();
-  const mk = (/** @type {any} */ extra = {}) => createPublicGate({ name: () => "alex", dir, directory, upstream: { port: upPort }, listen: { host: "127.0.0.1", port: 0 }, acme: "https://127.0.0.1:14000/dir", log: m => console.log(m), ...extra });
+  const mk = (/** @type {any} */ extra = {}) => createPublicGate({ name: () => "alex", dir, directory, upstream: { port: upPort }, listen: { host: "127.0.0.1", port: 0 }, acme: "https://127.0.0.1:14000/dir", log: m => console.log(m),
+    // Pebble asks its own challenge server, not public DNS, so the public-resolver wait (lib/acme/dnswait.js) is skipped here
+    deps: { waitDns: async () => true }, ...extra });
 
   const g = mk();
   const s = await g.start();
