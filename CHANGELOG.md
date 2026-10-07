@@ -3,6 +3,9 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(release): vyre.tgz carries its three @noble packages (bundleDependencies), so a Mac server, which unpacks the tarball with no npm step, starts vyred instead of failing on a missing @noble/hashes; build-site.sh refuses a tarball without them.
+- fix(mac-server): the vyred wrapper writes its output to logs/vyred.out, since the system LaunchDaemon sets no output path and a crash left no trace.
+- test: the runner removes each test process's temp folders on exit; the macOS watch-restart test gives the resumed thread's first send 75 s.
 
 ## 0.2.9 (7 Oct 2026)
 - fix(store): a Space store still starting past 20 s leaves the Space a waiting store and finishes in the background, so a first install no longer deadlocks on the root helper.

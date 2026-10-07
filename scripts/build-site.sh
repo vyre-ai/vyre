@@ -137,9 +137,15 @@ if [ -f "$src/lib/build-kind.js" ] && [ "${VYRE_TEST_DEV_KIND:-}" != 1 ]; then
   # Fails the build when the file does not say release afterwards (DP-1); the same two lines kernel/devbuild.js reads (lib/build-kind-text.js).
   node "$src/scripts/stamp-build-kind.mjs" "$src/lib/build-kind.js" || exit 1
 fi
+# The package carries its own dependencies (package.json bundleDependencies): an install that unpacks vyre.tgz and runs it, as the Mac server does, has no npm step.
+# npm pack takes them from node_modules, so they are installed first (no install scripts: nothing a package runs may touch what is signed).
+[ -f "$src/node_modules/@noble/hashes/package.json" ] || (cd "$src" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null) || { echo "build-site: could not install the bundled dependencies" >&2; exit 1; }
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"
+for d in $(node -e 'for (const d of require(process.argv[1]).bundleDependencies || []) console.log(d)' "$src/package.json"); do
+  tar -tzf "$out/vyre.tgz" | grep -qx "package/node_modules/$d/package.json" || { echo "build-site: vyre.tgz does not carry $d; vyred would not start from it" >&2; exit 1; }
+done
 # Developer scripts that start a daemon with a presence double (scripts/boot-check.mjs, scripts/proof-box.mjs) must never ride in a release: a shell user on the server could run them.
 if tar -tzf "$out/vyre.tgz" | grep -Eq '^package/scripts/(boot-check|proof-box)\.mjs$'; then echo "build-site: the package carries a developer script that starts a daemon with a presence double (scripts/boot-check.mjs or scripts/proof-box.mjs); it must not ship" >&2; exit 1; fi
 

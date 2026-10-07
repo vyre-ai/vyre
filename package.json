@@ -37,6 +37,11 @@
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0"
   },
+  "bundleDependencies": [
+    "@noble/ciphers",
+    "@noble/curves",
+    "@noble/hashes"
+  ],
   "files": [
     "bin",
     "build.json",
