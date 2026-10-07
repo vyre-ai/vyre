@@ -485,6 +485,36 @@ test("install-box.sh v2: IR-2 without a setup code the terminal still pairs, and
   assert.doesNotMatch(r.stdout, /already running|not paired yet/);
 });
 
+/** A server with no Docker: the get.docker.com script (a curl stub) prints a flood, and either installs a Docker stub or fails. */
+function noDocker(t, { fail = false } = {}) {
+  const b = box(t);
+  const bin = path.join(b.base, "bin");
+  const installed = `#!/bin/sh\ncase "$1 $2" in "compose version") echo 2.29.1 ;; esac\nexit 0\n`;
+  fs.rmSync(path.join(bin, "docker"));
+  const script = `echo NOISE_FROM_DOCKER_SCRIPT\necho "rootless note" >&2\n` + (fail ? "exit 1\n" : `printf '%s' '${installed.replace(/'/g, "'\\''")}' > "${path.join(bin, "docker")}"\nchmod 755 "${path.join(bin, "docker")}"\n`);
+  fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\ncat <<'EOS'\n${script}EOS\n`, { mode: 0o755 });
+  return b;
+}
+
+test("install-box.sh v2: IR-7 Docker's own install output goes to a log, and the screen shows one progress line", t => {
+  const b = noDocker(t);
+  const r = run({ ...b.env, TMPDIR: b.base }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Installing Docker\. This takes a minute or two\./);
+  assert.doesNotMatch(r.stdout + r.stderr, /NOISE_FROM_DOCKER_SCRIPT|rootless note|vyre-docker-install/);
+  assert.deepEqual(fs.readdirSync(b.base).filter(n => n.startsWith("vyre-docker-install")), [], "the log of a good install is not left behind");
+});
+
+test("install-box.sh v2: IR-7 when Docker's install fails the screen names the log, which holds the output", t => {
+  const b = noDocker(t, { fail: true });
+  const r = run({ ...b.env, TMPDIR: b.base }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.doesNotMatch(r.stdout + r.stderr, /NOISE_FROM_DOCKER_SCRIPT|rootless note/);
+  const log = (r.stderr.match(/output is in (\S+);/) || [])[1];
+  assert.ok(log, r.stderr);
+  assert.match(fs.readFileSync(log, "utf8"), /NOISE_FROM_DOCKER_SCRIPT/);
+});
+
 test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });

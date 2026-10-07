@@ -138,19 +138,6 @@ step() {
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
 done_step() { say "  $SIGNAL$OK$RESET $1"; mbx_send "done: $1"; }
 
-# WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
-# pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
-# never invented data, never a name or anything a person typed.
-WAITS="this part is Docker's own installer, not ours
-nothing is stuck: this step is quiet for a moment
-the next lines on screen are curl's, not ours"
-
-wait_line() {
-  n=$(printf '%s\n' "$WAITS" | wc -l)
-  i=$(( ($$ % n) + 1 ))
-  printf '%s\n' "$WAITS" | sed -n "${i}p"
-}
-
 # rule: a short line across, before the finish.
 rule() {
   if [ "$COLOR" = 1 ]; then
@@ -253,12 +240,14 @@ need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
   if ! command -v docker >/dev/null 2>&1; then
     if ask "Docker is not installed. Install it now with: $cmd ?"; then
-      # The one real silent gap in this installer: Docker's own script takes a minute or two
-      # before it says anything. One quiet line so it doesn't look stuck; --dry-run never gets
-      # here for real, so it stays out of that output.
-      [ "$DRY" = 1 ] || say "  $ASH$(wait_line)...$RESET"
-      priv sh -c "$cmd"
-      [ "$DRY" = 1 ] && return 0
+      if [ "$DRY" = 1 ]; then priv sh -c "$cmd"; return 0; fi
+      # Docker's own script is long and loud (rootless notes, API warnings). Its output goes to a log; the screen gets one line, and the log's path only if it fails.
+      dlog=$(mktemp "${TMPDIR:-/tmp}/vyre-docker-install.XXXXXX")
+      say "  ${ASH}Installing Docker. This takes a minute or two.$RESET"
+      if ! priv sh -c "$cmd" >"$dlog" 2>&1; then
+        die "Docker did not install. Its own output is in $dlog; after fixing that, run this installer again."
+      fi
+      rm -f "$dlog"
     else
       say "Vyre runs in Docker. Install it with:"
       say "  $cmd"
