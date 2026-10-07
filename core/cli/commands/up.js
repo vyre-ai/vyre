@@ -272,7 +272,12 @@ async function run(args, deps) {
     await (deps.sleep || ((/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms))))(2000);
     st = await callTool("wink.server.status");
   }
-  if (st.error) return fail("pairing_unavailable", "pairing is not available on this server: " + st.error.message);
+  // The server is up; pairing is a step after it. A pairing module that is not there says why and leaves the start a success, so an installer that runs `vyre up` goes on to its own checks.
+  if (st.error) {
+    if (json) return done({ paired: false, ready: true, pairing_unavailable: String(st.error.message || st.error.code) });
+    say(beacon("  pairing is not available on this server yet: ") + String(st.error.message || st.error.code) + ". Vyre is up; run vyre up again once it is, or see vyre logs.");
+    return 0;
+  }
   const s = st.data || {};
   if (s.owned) {
     if (json) return done({ paired: true, space: s.space || null, ready: true });
