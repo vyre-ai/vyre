@@ -21,7 +21,7 @@ const CODE = "A".repeat(20) + "b-_" + "Z".repeat(20);
 const DIGEST = "ghcr.io/vyre-ai/vyre@sha256:" + "a".repeat(64);
 const COMPUTER = "ghcr.io/vyre-ai/vyre-computer@sha256:" + "b".repeat(64);
 
-/** @param {import("node:test").TestContext} t @param {{docker?: string}} [opts] */
+/** @param {import("node:test").TestContext} t @param {{docker?: string, sudo?: string}} [opts] */
 function box(t, opts = {}) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-v2-"));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
@@ -32,7 +32,7 @@ function box(t, opts = {}) {
     uname: "echo Linux",
     id: 'case "$1" in -u) echo 1000 ;; -un|-gn) echo alex ;; *) exit 1 ;; esac',
     docker: `echo "docker $*" >>"${log}"\n` + (opts.docker ?? 'case "$1 $2" in "compose version") echo 2.29.1 ;; esac; exit 0'),
-    sudo: `echo "sudo $*" >>"${log}"\nexec "$@"`,
+    sudo: `echo "sudo $*" >>"${log}"\n` + (opts.sudo ?? 'exec "$@"'),
   };
   for (const [name, body] of Object.entries(stubs)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   const env = {
@@ -434,6 +434,32 @@ test("install-box.sh v2: the check words come from the box, show on the terminal
   assert.match(r.stdout, /They should match the four on your screen\./);
   assert.ok(r.stdout.indexOf("Check words") < r.stdout.indexOf("Done. Back to your browser."), "words, then the plain last line");
   assert.ok(!b.calls().includes("lantern"), "the words are not sent anywhere");
+});
+
+// A server whose account may not talk to the box itself: Docker answers `info` and the box answers the check words only to a root caller (the sudo stub says so).
+const ROOT_ONLY = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) [ -n "$FAKE_ROOT" ] && echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0`;
+const AS_ROOT = 'FAKE_ROOT=1 exec "$@"';
+
+test("install-box.sh v2: IR-1 an account that cannot reach Docker still gets the check words, through the same sudo path vyre up took", t => {
+  const b = box(t, { sudo: AS_ROOT, docker: `case "$1" in info) [ -n "$FAKE_ROOT" ] || exit 1 ;; esac\n${ROOT_ONLY}` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+});
+
+test("install-box.sh v2: IR-1 words only a root caller can read are tried through sudo, not given up on", t => {
+  const b = box(t, { sudo: AS_ROOT, docker: ROOT_ONLY });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+});
+
+test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with the command that shows them", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_WORDS_TRIES: "3" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /The check words did not show here\. Read them on this server with: sudo vyre call relay\.setup\.status/);
+  assert.ok(r.stdout.indexOf("check words did not show") < r.stdout.indexOf("Done. Back to your browser."));
 });
 
 test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {

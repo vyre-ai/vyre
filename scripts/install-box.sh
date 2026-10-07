@@ -701,16 +701,23 @@ mbx_send() {
 
 # show_words: the four check words the box computed for this code, on the terminal only. The page shows
 # the same four from its own side; they match only if this box is the one the page is talking to, so they
-# never go through the relay mailbox. Best effort: a box that is slow to answer just leaves them out.
+# never go through the relay mailbox. The call goes the way `vyre up` went (through sudo when this account cannot reach Docker); when
+# that gives nothing, sudo is tried once more, since the box answers a root caller the account itself may not be. Words that still
+# cannot be read are said so, with the one command that shows them: the page asks for them either way.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
   n=0
-  while [ "$n" -lt 20 ]; do
+  while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
     out=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
     words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    if [ -z "$words" ] && [ -z "$DOCKER_SUDO" ] && [ -n "$SUDO" ] && [ "$n" -ge 2 ]; then
+      out=$(sudo -n env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
+      words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    fi
     if [ -n "$words" ]; then say "  Check words: $BOLD$words$RESET"; say "  They should match the four on your screen."; return 0; fi
     n=$((n + 1)); sleep 1
   done
+  say "  The check words did not show here. Read them on this server with: ${BOLD}${SUDO:+sudo }vyre call relay.setup.status${RESET}"
 }
 
 # intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
