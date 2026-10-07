@@ -483,16 +483,18 @@ prepare_run() {
   [ "$BUILDF" = 0 ] || [ -f "$RUN/compose.build.yml" ] || die "root's copy of compose.build.yml is missing; run: sudo vyre updater install"
   # (VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE are passed on because a release-kind build ignores them: kernel/seal devSwitch is false there, so they only matter on a development-kind install, where a walk needs them in the admin one-off runs.)
   # root's env file: only these, each in the shape it must have; anything else in .env (an image, a path, a capability list) is not passed on.
-  ce="$RUN/compose.env.new"
+  # Own temp files: two root runs at once (the update path unit and a `sudo vyre name status`) shared one fixed name, and the second rename found it gone ("mv: cannot stat ... compose.env.new").
+  ce=$(mktemp "$RUN/compose.env.XXXXXX") || die "root's run folder cannot be written"
   # (the key is spelled in two parts so the release build, which must not name any test override, stays checkable by grep)
   k=VYRE_UPDATE; { echo "${k}_ROOT=$UPD_ROOT"; [ "$BUILDF" = 0 ] || echo "VYRE_SOURCE=$SRCDIR"
     if [ -f "$DIR/.env" ]; then
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
-  else : >"$RUN/vyre.env.new"; fi
-  chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
+  ve=$(mktemp "$RUN/vyre.env.XXXXXX") || die "root's run folder cannot be written"
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE)=[^$`]*$' "$DIR/vyre.env" >"$ve" || true
+  else : >"$ve"; fi
+  chmod 600 "$ve"; rename_over "$ve" "$RUN/vyre.env"
   # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
   skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
     sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_KERNEL|VYRE_STORE|VYRE_SEAL_DEV|VYRE_SEAL_SOFTWARE' || true; } | sort -u | head -n 12 | tr '\n' ' ')

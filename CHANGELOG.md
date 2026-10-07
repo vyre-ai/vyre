@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(box): IR-8 a root run of the vyre wrapper writes its run files through its own temp names, so two at once (the update path unit and `sudo vyre name status`) no longer print "mv: cannot stat .../compose.env.new".
 - fix(installer): IR-7 Docker's own install output goes to a log file; the screen shows one progress line, and the log's path only if Docker does not install.
 - fix(installer): IR-4 the installer and the box wrapper name no internal part to a person (Twenty, kernel, vyred): "room for 2 spaces (each needs about 3.1 GB)" replaces "room for 2 space(s) on Twenty"; a test keeps the printed lines free of them.
 - fix(installer): IR-2 with a setup code (a browser install) the terminal shows the four check words only: no pairing QR, long code or typed code, which was a second pairing path beside the page's.
