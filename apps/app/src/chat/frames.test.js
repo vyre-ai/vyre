@@ -346,3 +346,31 @@ test("a join with no name whose id is a person's or a model slot's id makes no l
   f.apply(gf("participant-joined", { who: "model:claude/default#694682" }));
   assert.equal(f.rows.filter((r) => r.kind === "notice").length, 0);
 });
+
+test("optimistic send: the words show at once, dimmed, and the box's own row replaces them; a failed send takes them back", () => {
+  cur = 0;
+  const f = createFolder();
+  const key = f.addOptimistic("Chase the invoices");
+  assert.deepEqual(f.rows.map((r) => r.key), [key]);
+  assert.equal(f.item(key)?.pending, true);
+  assert.equal(f.item(key)?.text, "Chase the invoices");
+  // the echo (the same words, with spaces around them) takes the placeholder's place: one row, not two
+  const echo = f.apply(fr("user-message", { message: "u1", text: "  Chase the invoices ", state: "picked-up" }));
+  assert.equal(echo.layout, true);
+  assert.deepEqual(f.rows.map((r) => r.key), ["u:u1"]);
+  assert.equal(f.item(key), null, "the placeholder is gone");
+  assert.equal(f.item("u:u1")?.pending, undefined);
+  // two in flight settle in the order sent, by their words
+  const a = f.addOptimistic("one"), b = f.addOptimistic("two");
+  f.apply(fr("user-message", { message: "u3", text: "two", state: "picked-up" }));
+  assert.deepEqual(f.rows.map((r) => r.key), ["u:u1", a, "u:u3"]);
+  assert.equal(f.dropOptimistic(a), true, "a refused send takes its words back");
+  assert.equal(f.dropOptimistic(a), false);
+  assert.deepEqual(f.rows.map((r) => r.key), ["u:u1", "u:u3"]);
+  // a queued echo (the assistant is busy) also settles it: the queue line shows it from here
+  const c = f.addOptimistic("later");
+  f.apply(fr("user-message", { message: "u4", text: "later", state: "queued" }));
+  assert.equal(f.item(c), null);
+  assert.equal(f.queue().length, 1);
+  void b;
+});

@@ -8,7 +8,8 @@ import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
-import { BlockView, type BlockCtx } from "./Blocks";
+import { BlockView, copy, type BlockCtx } from "./Blocks";
+import { codeBlocks, copyForms } from "./polish.js";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience, authorLabel } from "./group.js";
@@ -119,6 +120,29 @@ function MessageActions({ uuid, text, ctx }: { uuid: string; text: string; ctx: 
   );
 }
 
+
+/** Copy, Copy as Markdown, and one Copy code for each fenced block of a finished answer (12.1). */
+function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
+  const [said, setSaid] = useState("");
+  const h = ctx.wide ? 28 : 44;
+  const forms = copyForms(text);
+  const blocks = codeBlocks(text);
+  const go = (label: string, body: string) => { void copy(body, ctx); setSaid(label); setTimeout(() => setSaid(""), 1500); };
+  const btn = (label: string, body: string, name = label) => (
+    <Pressable key={label} accessibilityRole="button" accessibilityLabel={name} onPress={() => go(label, body)} style={{ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 4 }}>
+      <Icon name="copy" tone="label" />
+      <Text size="caption" tone="label">{said === label ? "Copied" : label}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={S.s4}>
+      {btn("Copy", forms.plain, "Copy this answer")}
+      {btn("Copy as Markdown", forms.markdown)}
+      {blocks.map((b, i) => btn(blocks.length > 1 ? `Copy code ${i + 1}` : "Copy code", b.code))}
+    </View>
+  );
+}
+
 function StreamText({ store, k, text, done }: { store: ChatStore; k: string; text: string; done: boolean }) {
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
@@ -191,8 +215,10 @@ function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
 function whoOf(store: ChatStore, k: string): { name: string; family: "person" | "assistant" | "model"; sub: string | null } {
   if (store.group.author(k.slice(2))?.author) return store.group.label(k);
   // The sample names (alex, juno) belong to the sample world only: a real chat says You and the chat's own assistant.
-  if (!allowsMock()) return k.startsWith("u:") ? { name: "You", family: "person", sub: null } : { name: store.group.assistantName(), family: "assistant", sub: null };
-  return k.startsWith("u:") ? { name: PERSON, family: "person", sub: null } : { name: ASSISTANT, family: "assistant", sub: null };
+  // "o:" is a message the person just sent, shown before the box has echoed it
+  const own = k.startsWith("u:") || k.startsWith("o:");
+  if (!allowsMock()) return own ? { name: "You", family: "person", sub: null } : { name: store.group.assistantName(), family: "assistant", sub: null };
+  return own ? { name: PERSON, family: "person", sub: null } : { name: ASSISTANT, family: "assistant", sub: null };
 }
 
 function dressOf(store: ChatStore, k: string, text: string, ctx: BlockCtx): Dress {
@@ -253,8 +279,9 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
-          <Text size="read" selectable>{it.text}</Text>
-          {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
+          <Text size="read" selectable style={it.pending ? { opacity: 0.55 } : undefined}>{it.text}</Text>
+          {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
+          {mine && !it.pending ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
           <HighlightAction from={w.name} text={it.text} ctx={ctx} />
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>
@@ -272,6 +299,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} />
+          {it.done ? <AnswerActions text={it.text} ctx={ctx} /> : null}
           {it.done ? <HighlightAction from={w.name} text={it.text} ctx={ctx} /> : null}
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
         </Message>

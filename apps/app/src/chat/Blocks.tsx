@@ -80,7 +80,7 @@ export type BlockCtx = {
   live?: boolean;
 };
 
-const copy = async (text: string, ctx: BlockCtx) => {
+export const copy = async (text: string, ctx: BlockCtx) => {
   if (ctx.onCopy) return ctx.onCopy(text);
   try { await Clipboard.setStringAsync(text); } catch {}
 };
