@@ -291,6 +291,13 @@ async function standinIdentity(t) {
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
+  /** An identity claimed as a Windows PC does (the app's claimIdentity, a key a page script can reach: its entry is `held: "web"`), in the same directory. @param {string} name */
+  const anotherHeld = async name => {
+    const { claimIdentity } = await import("../apps/app/src/identity/claim.js");
+    const dir2 = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+    const made = await claimIdentity({ name, code: (await dir2.reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, held: true, forceSoftware: true });
+    return { id: made.id, eid: made.eid, key: made.key };
+  };
   /** Another identity in the same directory (a second person), made by the app libraries as a box-less device makes it. @param {string} name */
   const another = async name => {
     const st = fileIdentityStore(path.join(tempHome(t), "spaces"));
@@ -299,7 +306,7 @@ async function standinIdentity(t) {
     await ops2.create({ name, password: "four plain words here", deviceLabel: `${name}'s phone`, code: (await dir2.reserve(name)).code });
     return { id: /** @type {string} */ (st.status().id), eid: /** @type {string} */ (st.status().eid), store: st };
   };
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir, another,
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir, another, anotherHeld,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -1465,4 +1472,18 @@ test("a Windows PC joins a team on a release server with its Windows Hello passk
   assert.equal(joined.joined, true);
   assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.id)).role, "member");
   assert.ok(auth.seen.gets >= 1, "the Hello prompt (the authenticator's get) was asked for the yes");
+});
+
+
+test("EXPLORE a held-web identity at the invitee door", { timeout: 180_000 }, async t => {
+  const { openInvite } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, linkFor, sealSigner, hosted } = await teamRig(t, { release: true });
+  const win = await ident.anotherHeld("winpc");
+  const sg = sealSigner(win.id, undefined, "secure_enclave");
+  const chain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: win.id, vouched: true });
+  const deps = { who: { id: win.id, name: "winpc", eid: win.eid, sign: async m => new Uint8Array(await win.key.sign(m)) }, fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS, signPresence: async r => sg.proof(chain, r.op, r.fields), presenceKey: async () => sg.enrolment, store: { get: async () => undefined, put: async () => {} } };
+  const inv = await linkFor(win.id);
+  const r = await openInvite(deps, inv.link).then(x => { x.close(); return "OPENED"; }, e => `${e.code}: ${e.message}`);
+  console.error("EXPLORE-HELD", r);
 });
