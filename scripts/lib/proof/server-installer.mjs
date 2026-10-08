@@ -21,33 +21,6 @@ export async function startInstallerServer(o) {
   const cfg = JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } });
   const seeded = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e C='${cfg}' busybox sh -c 'mkdir -p /home/vyre/.vyre && printf "%s\\n" "$C" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'`);
   if (seeded.status !== 0) throw new Error(`could not seed the box's home: ${seeded.stderr}`);
-  // The box takes only a loopback ws relay, and its vyred shares the tailscale container's network namespace: a forwarder inside that namespace makes 127.0.0.1:PORT there reach the runner's relay
-  // (the way scripts/matrix/j1.sh does it). It waits for the container, so it can start before the install. Not needed for a wss relay.
-  if (o.relayForServer.startsWith("ws://127.0.0.1") && o.relayPort && o.hostIp) {
-    const fwd = path.join(o.dir, "fwd.py");
-    fs.writeFileSync(fwd, `import socket, sys, threading
-lh, lp, th, tp = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
-def pipe(a, b):
-    try:
-        while True:
-            d = a.recv(65536)
-            if not d: break
-            b.sendall(d)
-    except Exception: pass
-    finally:
-        for x in (a, b):
-            try: x.close()
-            except Exception: pass
-s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind((lh, lp)); s.listen(64)
-while True:
-    c, _ = s.accept()
-    try: u = socket.create_connection((th, tp), timeout=10)
-    except Exception: c.close(); continue
-    threading.Thread(target=pipe, args=(c, u), daemon=True).start()
-    threading.Thread(target=pipe, args=(u, c), daemon=True).start()
-`);
-    spawn("sh", ["-c", `i=0; while [ $i -lt 1500 ]; do PID=$(docker inspect -f '{{.State.Pid}}' vyre-tailscale-1 2>/dev/null || true); if [ -n "$PID" ] && [ "$PID" != 0 ]; then exec sudo nsenter -t "$PID" -n python3 ${fwd} 127.0.0.1 ${o.relayPort} ${o.hostIp} ${o.relayPort}; fi; i=$((i+1)); sleep 0.5; done`], { stdio: "ignore", detached: true }).unref();
-  }
   const logFile = path.join(o.dir, "install.log");
   const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir };
   // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
@@ -72,7 +45,6 @@ while True:
     async operator(tool, input = {}) { const r = exec(tool, input); let j = null; try { j = JSON.parse(r.stdout); } catch { /* plain text */ } if (r.status !== 0) throw new Error(`${tool}: ${(r.stderr || r.stdout).slice(0, 200)}`); return j && j.data !== undefined ? j.data : j; },
     async stop() {
       const l = sh(`docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do echo "== $f"; tail -n 300 "$f"; done' 2>&1; docker logs --tail 100 vyre-vyre-1 2>&1`); try { fs.writeFileSync(path.join(o.dir, "vyred.log"), String(l.stdout || "")); } catch { /* a courtesy */ }
-      sh("sudo pkill -f fwd.py || true");
       sh(`cd ${dir} && docker compose -p vyre down -v --remove-orphans >/dev/null 2>&1`);
     },
   };

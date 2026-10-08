@@ -40,9 +40,9 @@ export async function startStandins(o) {
   const dir = spawn(process.execPath, [path.join(repo, "scripts/standin-directory.mjs"), "--port", String(port), "--host", host, "--zone", "vyre.test", "--claims-per-ip", "1000"], { stdio: ["ignore", logFd, logFd] });
   await waitPort(port, host === "0.0.0.0" ? "127.0.0.1" : host);
   return {
-    relay: o.liveRelay || `ws://127.0.0.1:${relayPort}`, names: `http://127.0.0.1:${port}`,
-    // a server in a container takes only a loopback ws relay, so it is given the same ws://127.0.0.1 address and the installer walk forwards it (server-installer.mjs)
-    relayForServer: o.liveRelay || `ws://127.0.0.1:${relayPort}`, relayPort, hostIp: pub, namesForServer: `http://${pub}:${port}`,
+    relay: o.liveRelay || (o.publicHost ? `ws://${pub}:${relayPort}` : `ws://127.0.0.1:${relayPort}`), names: `http://127.0.0.1:${port}`,
+    // the app and a server in a container name the relay by the same address (the setup offer pins the relay it was made for), the runner's own
+    relayForServer: o.liveRelay || (o.publicHost ? `ws://${pub}:${relayPort}` : `ws://127.0.0.1:${relayPort}`), relayPort, hostIp: pub, namesForServer: `http://${pub}:${port}`,
     async stop() { try { dir.kill("SIGTERM"); } catch { /* gone */ } try { if (relay) await relay.close(); } catch { /* closed */ } },
   };
 }

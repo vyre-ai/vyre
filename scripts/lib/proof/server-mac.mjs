@@ -18,7 +18,8 @@ export async function startMacServer(o) {
   fs.writeFileSync(script, fs.readFileSync(path.join(o.repo, "scripts/install-mac-server.sh"), "utf8").replace(/^RELEASE_KEY=.*/m, `RELEASE_KEY=${key}`));
   const vhome = path.join(process.env.HOME || "/tmp", ".vyre-proof"), sdir = path.join(process.env.HOME || "/tmp", ".vyre-server");
   fs.mkdirSync(vhome, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(path.join(vhome, "config.json"), JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } }));
+  // role box: the Mac installer writes no role, so vyred comes up as role "local" (a Home: no wink.server.code, no Cloud types). Seeded here so the walk can go on; reported as a finding.
+  fs.writeFileSync(path.join(vhome, "config.json"), JSON.stringify({ role: "box", relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } }));
   // The test release carries a signed module list made with a throwaway key (mac-release.mjs), so its modules are first party and run with no development switch; a packaged daemon ignores the path rule.
   const env = { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", VYRE_BOX_URL: `file://${work}/site/`, VYRE_HOME: vhome, VYRE_SERVER_DIR: sdir, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_NO_DIALOGS: "1", VYRE_STORE: o.store === "plain" ? "sqlite" : "auto" };
   const child = spawn("sh", [script, "--yes"], { env, stdio: ["ignore", "pipe", "pipe"] });
