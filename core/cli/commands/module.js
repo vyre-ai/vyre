@@ -62,7 +62,7 @@ const GIT_URL = /^(https:\/\/|git@|file:\/\/)/;
  * @typedef {{ home?: string, repo?: string, git?: string, node?: string, io?: IO, supervisor?: string,
  *   restart?: (home: string) => Promise<Restarted>,
  *   modules?: (home: string) => Promise<{ data?: any, error?: any }>,
- *   proposeKit?: (home: string, kit: any) => Promise<any> }} Deps
+ *   proposeKit?: (home: string, kit: any, module?: string) => Promise<any> }} Deps
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -707,12 +707,12 @@ async function install(args, flags, o, deps) {
 /** Propose each Kit file a module ships (does.kits) through vyred, as the person at this terminal: the answer says where the card is waiting. @param {any} deps @param {string} home @param {string} dest @param {any} manifest */
 async function proposeKits(deps, home, dest, manifest) {
   const files = Array.isArray(manifest && manifest.does && manifest.does.kits) ? manifest.does.kits : [];
-  const askKit = deps.proposeKit || ((/** @type {string} */ h, /** @type {any} */ kit) => request("POST", "/v1/tools/flows.kit.propose", { kit }, { root: h, caller: "cli" }));
+  const askKit = deps.proposeKit || ((/** @type {string} */ h, /** @type {any} */ kit, /** @type {string} */ module) => request("POST", "/v1/tools/flows.kit.propose", { kit, module }, { root: h, caller: "cli" }));
   /** @type {{ file: string, ok: boolean, said: string }[]} */ const out = [];
   for (const file of files) {
     try {
       const kit = JSON.parse(fs.readFileSync(path.join(dest, file), "utf8"));
-      const r = await askKit(home, kit);
+      const r = await askKit(home, kit, manifest.name);
       const d = r && (r.data || r);
       out.push(r && r.error ? { file, ok: false, said: String(r.error.message || r.error.code) } : { file, ok: true, said: d && d.ok === false ? `not proposed: ${(d.errors || []).map((/** @type {any} */ e) => e.message).join("; ")}` : "its card is waiting for your yes" });
     } catch (e) { out.push({ file, ok: false, said: String(/** @type {any} */ (e).message || e).slice(0, 160) }); }
