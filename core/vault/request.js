@@ -34,6 +34,7 @@ import https from "node:https";
 import { forwardFile, sendFile } from "./forward-file.js";
 import { registerService } from "./service.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
+import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
@@ -208,6 +209,32 @@ export class ApiRequests {
   }
 
   // ---- building the plan: everything a decision needs, from the request alone ----
+
+  /**
+   * An operation of a Connection as the request it stands for. A declared name builds from its path and shapes (the input is checked, an input it does not declare is refused); `request` is the
+   * generic one: any method and path on the credential's host. Nothing is allowed here that the request below would not allow: this only writes the request down.
+   * @param {any} input @param {string} name
+   */
+  async fromOperation(input, name) {
+    const { config } = await this.vault.apiCredential(name);
+    const host = config.hosts.length === 1 && !config.hosts[0].startsWith("*.") ? config.hosts[0] : null;
+    if (!config.operations || !host) throw bad(`${name} is not a Connection: it has no operations to run`, "not_found");
+    const op = String(input.operation);
+    const given = isObj(input.input) ? input.input : {};
+    /** @type {any} */ let built;
+    if (op === "request") {
+      const path = String(given.path || "");
+      if (!/^\/[^\s?#]*$/.test(path)) throw bad("the generic request names a path from the root, with the query in `query`");
+      built = { method: String(given.method || "GET").toUpperCase(), path, query: given.query, headers: given.headers, body: given.body };
+    } else {
+      if (!Object.hasOwn(config.operations, op)) throw bad(`${name} has no operation ${printable(op, 40)}; it has ${Object.keys(config.operations).slice(0, 12).join(", ") || "none declared"}, and request`, "not_found");
+      try { built = buildRequest({ id: name, ops: config.operations }, op, given); }
+      catch (e) { throw bad(/** @type {Error} */ (e).message, "bad_input"); }
+    }
+    const { operation: _o, input: _i, ...rest } = input;
+    return { ...rest, method: built.method, url: `https://${host}${built.path}`, ...(built.query !== undefined ? { query: built.query } : {}), ...(built.headers !== undefined ? { headers: built.headers } : {}),
+      ...(built.body !== undefined ? { body: built.body } : {}) };
+  }
 
   /**
    * Check and classify a request. Throws with a reason a person can act on; touches no network
@@ -537,6 +564,9 @@ export class ApiRequests {
   async request(input, meta) {
     const caller = String(meta.caller);
     const name = String(input.credential || "");
+    // A Connection's operation: { credential, operation, input } is built into the same method, url, query, headers and body a caller could have written, and then judged by everything below as such.
+    if (input.operation !== undefined) input = await this.fromOperation(input, name);
+    else if (typeof input.url !== "string" || typeof input.method !== "string") throw bad("a request names its method and url, or an operation of a Connection");
     const mod = caller.startsWith("module:") ? caller.slice(7) : null;
     // Only a module vouches for a watcher; a model's claim in its input is not heard.
     const watcher = mod && isStr(input.watcher) && input.watcher ? input.watcher : "";
@@ -748,7 +778,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
     "One HTTP call to a vendor API with an api-credential from the vault, which adds the key and never shows it. A read runs at once. A send, payment or deletion runs at once only if you asked for exactly it; otherwise it is held at the Gate with a card Vyre builds from the request's parsed fields. The response has every value the credential touched removed.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
-      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str }, ["credential", "method", "url"]),
+      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",

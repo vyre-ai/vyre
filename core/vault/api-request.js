@@ -127,8 +127,23 @@ export function normalize(i) {
   const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
   const service = i.service === undefined ? undefined : normalizeService(i.service);
   const headers = i.headers === undefined ? undefined : normalizeFixedHeaders(i.headers);
+  const operations = i.operations === undefined ? undefined : normalizeOperations(i.operations);
   if (service) for (const r of service.allow) if (r.host && !hosts.includes(r.host)) throw bad(`a service rule names ${r.host}, which is not one of the credential's hosts`);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}) };
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}), ...(operations ? { operations } : {}) };
+}
+
+/**
+ * The operations a Connection declared (records/connectors/connection.js), kept with the credential so `vault.request { credential, operation, input }` can build the call: name, method, path and the
+ * shapes of what it takes. Written with the credential by a person, so this only checks the outline; the shapes are checked against each call's input when it is built.
+ * @param {any} ops @returns {Record<string, any>}
+ */
+export function normalizeOperations(ops) {
+  if (!isObj(ops) || Object.keys(ops).length > 200) throw bad("operations is an object of at most 200 named operations");
+  for (const [name, op] of Object.entries(ops)) {
+    if (!/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){0,3}$/.test(name) || !isObj(op) || !METHODS.includes(String(op.method)) || op.method === "*" || typeof op.path !== "string" || !op.path.startsWith("/") || typeof op.kind !== "string") throw bad(`operation ${name.slice(0, 40)} is { method, path, kind, input? }`);
+    if (op.input !== undefined && !isObj(op.input)) throw bad(`operation ${name}: input is an object of shapes`);
+  }
+  return JSON.parse(JSON.stringify(ops));
 }
 
 /**
