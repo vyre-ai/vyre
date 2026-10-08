@@ -1488,8 +1488,8 @@ test("a person whose device entry is a passkey joins a team through the invitee 
   const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
   const { WORDS } = await import("../relay/client/words.js");
   const { ident, made, hosted, ownerChain, linkFor, sealSigner } = await teamRig(t, { release: true });
-  const mk = (who, sign, sg, chain, store) => ({
-    who: { id: who.id, name: "winpc", eid: who.eid, sign },
+  const mk = (who, name, sign, sg, chain, store) => ({
+    who: { id: who.id, name, eid: who.eid, sign },
     fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS, store,
     signPresence: async r => (sg.proof ? sg.proof(chain, r.op, r.fields) : sg.signer.signPresence(r)), presenceKey: async () => sg.enrolment,
   });
@@ -1498,14 +1498,13 @@ test("a person whose device entry is a passkey joins a team through the invitee 
   const hsg = sealSigner(held.id, undefined, "secure_enclave");
   const hchain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: held.id, vouched: true });
   const hinv = await linkFor(held.id);
-  await assert.rejects(() => openInvite(mk(held, async m => new Uint8Array(await held.key.sign(m)), hsg, hchain, { get: async () => undefined, put: async () => {} }), hinv.link), e => e.code === "not_for_you");
+  await assert.rejects(() => openInvite(mk(held, "heldpc", async m => new Uint8Array(await held.key.sign(m)), hsg, hchain, { get: async () => undefined, put: async () => {} }), hinv.link), e => e.code === "not_for_you");
   // a passkey is: the identity's own device is the Hello passkey, and the hello is its assertion
   const auth = authenticator({ rp: "app.vyre.run" });
   const pk = await ident.anotherPasskey("passpc", auth);
-  { const r = await (await ident.fetch("http://127.0.0.1:1/v1/ids/resolve?name=passpc", { headers: {} })).json(); console.error("EXPLORE-PK", JSON.stringify(r.data.ops.map(o => o.entry || o.target || o.type)).slice(0, 700)); }
   const pw = await windowsPasskey({ origin: "https://app.vyre.run", store: { get: async () => undefined, put: async () => {} }, webauthn: authenticator({ rp: "app.vyre.run" }) });
   const rows = new Map();
-  const deps = mk(pk, async m => pk.key.sign(m), pw, null, { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } });
+  const deps = mk(pk, "passpc", async m => pk.key.sign(m), pw, null, { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } });
   const inv = await linkFor(pk.id);
   const open = await openInvite(deps, inv.link);
   t.after(() => open.close());
