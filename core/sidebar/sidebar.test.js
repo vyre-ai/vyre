@@ -95,56 +95,16 @@ test("sidebar: the team's default is sidebar.team: the person sets it, and a per
   assert.deepEqual((await c("sidebar.get", {}, "mcp")).data.can_set_default, false, "an assistant is told it may not set the default itself");
 });
 
-test("sidebar: an assistant's change to the team's default is held for a yes, not refused and not made", async t => {
-  const { c } = await world(t);
-  const r = await c("sidebar.team", { op: "add", what: "Documents" }, "mcp");
-  assert.ok(r.error || (r.data && (r.data.held || r.data.needs_approval || r.data.pending)), `held: ${JSON.stringify(r)}`);
-  assert.doesNotMatch(String(r.error?.message || ""), /not available|Only an owner/, "it is asked for, not flatly refused");
-  assert.equal((await c("sidebar.get", {})).data.default, null, "nothing changed");
-});
-
-test("sidebar: only the Space's owner or admin role sets the default; a member at their own surface is refused", async t => {
+test("sidebar: a proven assistant's change to the team's default is held for a yes: it is not made and not flatly refused", async t => {
   const { d } = await world(t);
-  const role = { current: /** @type {string | null} */ (null) };
-  const orig = d.registry.call.bind(d.registry);
-  d.registry.call = /** @type {any} */ ((tool, input, caller, meta) => (tool === "spaces.membership" ? { data: role.current ? { role: role.current } : null } : orig(tool, input, caller, meta)));
-  const as = (/** @type {string} */ caller, /** @type {string} */ tool, input = {}) => orig(tool, input, caller, {});
-  const SP = "spc_aaaaaaaaaaaa";
-  for (const r of ["member", "manager", "temp", null]) {
-    role.current = r;
-    const out = await as(`space:per_member1@${SP}`, "sidebar.team", { op: "add", what: "Memory", space: SP });
-    assert.match(String(out.error?.message), /Only an owner or an admin/, `role ${r}`);
-  }
-  assert.equal((await as(`space:per_member1@${SP}`, "sidebar.get", { space: SP })).data.can_set_default, false);
-  for (const r of ["owner", "admin"]) {
-    role.current = r;
-    assert.equal((await as(`space:per_admin1@${SP}`, "sidebar.get", { space: SP })).data.can_set_default, true, r);
-  }
-  role.current = "admin";
-  const done = await as(`space:per_admin1@${SP}`, "sidebar.team", { op: "hide", what: "Vault", space: SP });
-  assert.equal(done.error, undefined, JSON.stringify(done.error));
-  assert.equal((await as(`space:per_other@${SP}`, "sidebar.get", { space: SP })).data.default.find((/** @type {any} */ e) => e.id === "vault").hidden, true, "everyone in the Space starts from it");
-  role.current = "admin";
-  const wrongSpace = await as(`space:per_admin1@${SP}`, "sidebar.team", { op: "hide", what: "Vault", space: "spc_bbbbbbbbbbbb" });
-  assert.match(String(wrongSpace.error?.message), /Only an owner or an admin/, "an admin of one Space does not set another's");
-});
-
-test("sidebar: each member has their own list on the server, the same wherever they open it", async t => {
-  const { d } = await world(t);
-  const orig = d.registry.call.bind(d.registry);
-  const as = (/** @type {string} */ caller, /** @type {string} */ tool, input = {}) => orig(tool, input, caller, {});
-  const SP = "spc_aaaaaaaaaaaa";
-  assert.equal((await as(`space:per_ana@${SP}`, "sidebar.edit", { op: "hide", what: "Vault", space: SP })).error, undefined);
-  assert.equal((await as(`space:per_ben@${SP}`, "sidebar.edit", { op: "hide", what: "Flows", space: SP })).error, undefined);
-  const ana = (await as(`space:per_ana@${SP}`, "sidebar.get", { space: SP })).data, ben = (await as(`space:per_ben@${SP}`, "sidebar.get", { space: SP })).data;
-  const hidden = (/** @type {any} */ g) => g.entries.filter((/** @type {any} */ e) => e.hidden).map((/** @type {any} */ e) => e.id);
-  assert.deepEqual(hidden(ana), ["vault"]);
-  assert.deepEqual(hidden(ben), ["flows"]);
-  assert.deepEqual(hidden((await as("cli", "sidebar.get", { space: SP })).data), [], "the box's own person has a list of their own too");
-  // opening again from another device of the same member gives the same list
-  assert.deepEqual(hidden((await as(`space:per_ana@${SP}`, "sidebar.get", { space: SP })).data), ["vault"]);
-  assert.equal((await as(`space:per_ana@${SP}`, "sidebar.edit", { op: "set", entries: [{ kind: "place", id: "now" }], space: SP })).error, undefined);
-  assert.deepEqual((await as(`space:per_ben@${SP}`, "sidebar.get", { space: SP })).data.mine.length > 1, true, "Ben's list is untouched");
+  const r = await d.registry.call("sidebar.team", { op: "add", what: "Documents" }, "mcp:agent:kit", { thread: "thr_abcdefgh" });
+  assert.ok(r.error, JSON.stringify(r));
+  assert.notEqual(r.error.code, "denied", `held, not refused: ${JSON.stringify(r.error)}`);
+  assert.doesNotMatch(String(r.error.message), /not available|Only an owner/);
+  assert.equal((await d.registry.call("sidebar.get", {}, "cli", {})).data.default, null, "nothing changed");
+  // the same assistant arranges the person's own list at once
+  const own = await d.registry.call("sidebar.edit", { op: "hide", what: "Memory" }, "mcp:agent:kit", { thread: "thr_abcdefgh" });
+  assert.equal(own.error, undefined, JSON.stringify(own.error));
 });
 
 test("sidebar: set replaces a whole list (the app's drag and drop), cleaned, for me and for the team", async t => {

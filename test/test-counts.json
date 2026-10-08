@@ -909,5 +909,6 @@
  "test/workflows-yaml.test.js": 2,
  "stores/twenty/deferred-store.test.js": 2,
  "lib/sidebar/model.test.js": 8,
- "core/sidebar/sidebar.test.js": 10
+ "core/sidebar/sidebar.test.js": 8,
+ "core/sidebar/service.test.js": 4
 }
