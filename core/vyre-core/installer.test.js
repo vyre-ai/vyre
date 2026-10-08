@@ -376,10 +376,11 @@ test("a failed extract leaves the old version current (crash between extract and
 
 test("signCapsule is a no-op hook for now", () => { assert.equal(signCapsule("/nowhere"), undefined); });
 
-test("the produced tree passes strictProblems (ownership modelled from the recorded chowns)", (t) => {
+test("the produced tree passes strictProblems (ownership modelled from the recorded chowns), under the group-writable umask a login shell often has", (t) => {
   const f = fixture(t);
   const r = fakeRun();
-  install(f.opts(f.rel), { run: r.run, root: f.root, key: f.kp.key });
+  const was = process.umask(0o002);
+  try { install(f.opts(f.rel), { run: r.run, root: f.root, key: f.kp.key }); } finally { process.umask(was); }
   // The test OS has no _vyre, so ownership comes from the chown commands we recorded; modes are the real ones on disk.
   const owners = [];
   for (const c of r.calls) if (c.cmd.endsWith("chown") && !c.args.includes("-h")) {

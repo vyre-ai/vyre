@@ -148,7 +148,10 @@ const chown = (run, owner, p, recursive = false) => run("/usr/sbin/chown", [...(
 
 /** @param {string} p @param {number} mode */
 function mkdirMode(p, mode) {
-  fs.mkdirSync(p, { recursive: true });
+  // A folder the install has to make on the way (Library, Application Support) is root's and 0755 whatever the caller's umask is: under a group-writable umask they would be group-writable,
+  // and strict mode refuses a path anyone else could swap a folder in. The folder itself then gets exactly its own mode.
+  const first = fs.mkdirSync(p, { recursive: true, mode: 0o755 });
+  if (first) for (let d = p; ; d = path.dirname(d)) { fs.chmodSync(d, 0o755); if (d === first) break; }
   fs.chmodSync(p, mode);
 }
 
