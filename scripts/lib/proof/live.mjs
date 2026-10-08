@@ -56,7 +56,7 @@ export const asWalker = (host, cmd, o = {}) => ssh(host, cmd, { ...o, user: "wal
 
 /** Take everything off the server: Vyre, its containers and volumes, its folders. Safe on a server that has nothing. @param {string} host */
 export async function wipeServer(host) {
-  await asWalker(host, "command -v vyre >/dev/null 2>&1 && vyre uninstall --delete-data --yes || true", { pty: true, timeoutMs: 10 * 60_000 });
+  await asWalker(host, "command -v vyre >/dev/null 2>&1 && sudo vyre uninstall --delete-data --yes || true", { pty: true, timeoutMs: 10 * 60_000 });
   return ssh(host, "command -v docker >/dev/null 2>&1 && (docker ps -aq | xargs -r docker rm -f; docker system prune -af --volumes) >/dev/null 2>&1; rm -rf /srv/vyre /home/walker/.vyre /usr/local/bin/vyre; echo wiped", { timeoutMs: 15 * 60_000 });
 }
 
@@ -138,7 +138,7 @@ export async function walkLive(w) {
     await run.step(S("the installer finishes on the server once the app has adopted it"), async () => {
       const r = await installed.finish();
       assert.equal(r.code, 0, `the installer exited ${r.code}: ${r.tail}`);
-      const v = await asWalker(host, "vyre --version 2>&1 || vyre version 2>&1");
+      const v = await asWalker(host, "sudo vyre --version 2>&1 || sudo vyre version 2>&1");
       const ver = (v.out.match(/\b\d+\.\d+\.\d+\S*/) || [""])[0];
       assert.ok(!ver || /^0\.2\.12/.test(ver), `the server runs ${ver}, not the published 0.2.12`);
       return `exit 0${ver ? `, ${ver}` : ""}`;
@@ -197,7 +197,7 @@ export async function walkLive(w) {
     }, { needs: [R("create a team space on the server (named in the app, signed with the identity)")] });
 
     await run.step("server: uninstall (keep nothing)", async () => {
-      const r = await asWalker(host, "vyre uninstall --delete-data --yes", { pty: true, timeoutMs: 15 * 60_000 });
+      const r = await asWalker(host, "sudo vyre uninstall --delete-data --yes", { pty: true, timeoutMs: 15 * 60_000 });
       assert.equal(r.code, 0, r.out.slice(-300));
       const still = await ssh(host, "docker ps -q | wc -l");
       assert.match(still.out.trim(), /^0$/, `containers still running: ${still.out.trim()}`);
