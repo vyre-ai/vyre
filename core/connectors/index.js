@@ -17,6 +17,8 @@ import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/ca
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
+import { madeConnections } from "./made.js";
+import { importSpec } from "../../records/connectors/import-spec.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };
@@ -207,6 +209,117 @@ export default {
       },
     });
 
+    // Connections a person made from any app's API (records/connectors/connection.js, made.js): a row, a derived vault credential and a check. Making, changing, rebuilding and deleting one are
+    // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
+    const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x) });
+    const person = (/** @type {any} */ meta, /** @type {string} */ what) => {
+      const who = String(meta && meta.caller || "");
+      if (!PEOPLE.includes(who)) throw fail(`only you ${what}, from your own screen`, "denied");
+      return who;
+    };
+    const formShape = obj({ why: str, label: str, id: str, base_url: str, app: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
+      headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]), operations: { type: "array" } }, ["label", "send", "credential", "check"]);
+    const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    ctx.tool("connectors.connection.create", {
+      effect: "write",
+      description: "Connect any app that has an API, from a key already in the Vault: { label, base_url (one https host), send: { how: bearer | header | basic | query, name? (the header or query parameter) }, credential: { item, field? }, headers? (fixed, such as an API version), vars? (fixed values a {name} in headers or the check path takes), check: { path } }. Makes the Connection and its vault credential; run connectors.connection.check next.",
+      input: formShape,
+      callers: PEOPLE,
+      run: (input, meta) => made.save(input, { as: person(meta, "connect an app"), origin: "form" }),
+    });
+    ctx.tool("connectors.connection.update", {
+      effect: "write",
+      description: "Change a Connection (same fields as connectors.connection.create). Changing what it reaches is the person's act; the vault credential is rebuilt from the record.",
+      input: formShape,
+      callers: PEOPLE,
+      run: (input, meta) => made.save(input, { as: person(meta, "change a connection"), origin: "form", replace: true }),
+    });
+    ctx.tool("connectors.connection.check", {
+      effect: "read",
+      callers: READERS,
+      description: "Run a Connection's check request and say in plain words whether it works: { id } -> { light: green | red, words } (\"the key was refused (401)\", \"that id was not found (404)\", \"no answer from the host (timeout)\" ...).",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.check(String(id)),
+    });
+    ctx.tool("connectors.connection.list", {
+      effect: "read",
+      callers: READERS,
+      description: "The Connections a person made: id, label, host, how it signs in, light and when it was last checked, and its operations. Never the key.",
+      input: obj({}),
+      run: () => made.list(),
+    });
+    ctx.tool("connectors.connection.get", {
+      effect: "read",
+      callers: READERS,
+      description: "One Connection with its declaration (no key): { id }.",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.get(String(id)),
+    });
+    ctx.tool("connectors.connection.propose", {
+      effect: "write",
+      callers: ["cli", "local", "deck", "capsule", "module", "mcp", "harness"],
+      description: "Propose a Connection for the person to approve, with the same fields as connectors.connection.create. This is how an assistant connects an app after reading its documentation: it names the Vault item that holds the key (it never sees the key), the host, how the key is sent and the operations. Nothing is made or called until the person approves it on their own screen. Operations get the kind their method gives (GET reads, POST PUT PATCH change, DELETE deletes); only the person can relabel one.",
+      input: formShape,
+      run: (input, meta) => made.propose(input, String(meta && meta.caller || "unknown"), input && input.why),
+    });
+    ctx.tool("connectors.connection.proposals", {
+      effect: "read", callers: PEOPLE,
+      description: "The Connections an assistant proposed that the person has not yet approved or declined: { proposals: [{ proposal, by, form, card }] }, the card being the plain words the person is asked.",
+      input: obj({}),
+      run: () => ({ proposals: made.proposals() }),
+    });
+    ctx.tool("connectors.connection.approve", {
+      effect: "write", callers: PEOPLE,
+      description: "The person says yes to a proposal: { proposal }. Makes the Connection exactly as proposed (the same as connectors.connection.create from the form).",
+      input: obj({ proposal: str }, ["proposal"]),
+      run: ({ proposal }, meta) => made.approve(String(proposal), person(meta, "approve a connection")),
+    });
+    ctx.tool("connectors.connection.decline", {
+      effect: "write", callers: PEOPLE,
+      description: "The person says no to a proposal: { proposal }. It is dropped.",
+      input: obj({ proposal: str }, ["proposal"]),
+      run: ({ proposal }, meta) => { person(meta, "decline a connection"); return made.decline(String(proposal)); },
+    });
+    ctx.tool("connectors.connection.import", {
+      effect: "read",
+      callers: READERS,
+      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file (JSON or YAML), or { url } is its public https address; JSON or YAML, which only the person may ask for (vyred fetches it, at most 5 MB, nothing of theirs sent). Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
+      input: obj({ text: str, url: str }),
+      run: async ({ text, url }, meta) => {
+        let body = text;
+        if (url !== undefined) {
+          // by address: the person's act, never an agent's say alone (an address in a model's hands is a request for vyred to go and read something)
+          person(meta, "import a description from an address");
+          const r = /** @type {any} */ (await ctx.call("vault.fetch.public", { url: String(url) }));
+          if (r.error) throw fail(`could not read that address: ${r.error.message}`, r.error.code === "denied" ? "failed" : r.error.code || "failed");
+          body = r.data.body;
+        }
+        if (body === undefined) throw fail("give the description as text, or its address as url", "bad_input");
+        try { return await importSpec(String(body)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
+      },
+    });
+    ctx.tool("connectors.connection.export", {
+      effect: "read",
+      callers: READERS,
+      description: "A Connection as a template to hand to another team: { id } -> the record without its id, key reference, fixed values (kept as {{name}} placeholders), light and dates. The key is never in it.",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.exportTemplate(String(id)),
+    });
+    ctx.tool("connectors.connection.rebuild", {
+      effect: "write",
+      description: "Write a Connection's vault credential again from its record (after it shows out of step): { id }.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: ({ id }, meta) => made.rebuild(String(id), person(meta, "rebuild a connection")),
+    });
+    ctx.tool("connectors.connection.delete", {
+      effect: "write",
+      description: "Delete a Connection and its vault credential (the key's own Vault item stays): { id }.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: ({ id }, meta) => made.remove(String(id), person(meta, "delete a connection")),
+    });
+
     ctx.tool("connectors.disconnect", {
       effect: "write",
       description: "Disconnect an app: its server leaves the hub. The vault item stays; the vault removes items.",
@@ -277,6 +390,13 @@ export default {
       },
     });
 
-    return { async stop() { conn.stop(); } };
+    // An inbound webhook of a Connection: the person opens /hooks/conn-<id> with hooks.open (its signature scheme and signing secret are theirs to set, with presence); a delivery that verifies is
+    // announced by the hooks module as hook.received, and this tells the Connection's own listeners: { id, delivery, bytes }. The body is read with hooks.delivery, as for any route.
+    const offHook = ctx.events.on("hook.received", (/** @type {any} */ ev) => {
+      const p = ev && ev.payload, m = p && /^conn-([a-z][a-z0-9-]{0,39})$/.exec(String(p.route || ""));
+      if (m && made.row(m[1])) ctx.events.emit("connectors.connection-received", { id: m[1], delivery: String(p.id || ""), bytes: Number(p.bytes) || 0 });
+    });
+
+    return { async stop() { offHook?.(); conn.stop(); } };
   },
 };

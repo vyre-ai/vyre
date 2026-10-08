@@ -56,7 +56,7 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
       if (!callerOk(String(caller))) throw bad("only the kernel's lease module reads the connector list", "denied");
       const connectors = {};
       for (const name of await vault.apiCredentialNames()) {
-        try { const { config } = await vault.apiCredential(name); if (config.service) connectors[name] = { ...config.service }; } catch { /* not readable: not a connector */ }
+        try { const { config } = await vault.apiCredential(name); if (config.service) connectors[name] = { ...config.service, ...(config.operations ? { operations: config.operations } : {}) }; } catch { /* not readable: not a connector */ }
       }
       return { connectors };
     });

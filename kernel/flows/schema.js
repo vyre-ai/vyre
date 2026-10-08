@@ -71,7 +71,7 @@ const STEP_KEYS = {
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
   call: ["action", "resource", "input"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await", "skills"], classify: ["input", "labels"], extract: ["input", "fields"],
-  service: ["connector", "method", "path", "query", "headers", "body", "drive"],
+  service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
 
@@ -163,6 +163,13 @@ function checkSteps(steps, path, out, ids, depth, budget) {
         break;
       case "service":
         // The Flow names a connector (a vault credential and its route), never a web address or a credential: the home's vault holds the host and the key.
+        // A step may instead name a Connection and one of its operations ({ connection, operation, input }); compileFlow writes it out as the step below before anything else reads it (connection-step.js).
+        if (s.connection !== undefined && s.connector === undefined) {
+          need("connection", v => typeof v === "string" && /^[a-z][a-z0-9-]{0,39}$/.test(v), "name the Connection (lowercase letters, digits and -)");
+          need("operation", v => typeof v === "string" && /^(request|[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){0,3})$/.test(v), "name the operation, or `request`");
+          if (s.input !== undefined && !isObj(s.input)) out.push({ path: `${p}.input`, message: "input is an object" });
+          break;
+        }
         need("connector", v => typeof v === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(v), "name the connector (lowercase letters, digits, - and _)");
         need("method", v => ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(v), "method is GET, HEAD, POST, PUT, PATCH or DELETE");
         need("path", v => typeof v === "string" && /^\/[^\s?#]*$/.test(v) && !v.split("/").includes(".."), "the path starts with / and is written out (the query goes in `query`)");

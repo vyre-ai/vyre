@@ -230,3 +230,73 @@ test("errors keep their code", { skip: !strip }, async () => {
   const { connectionsSource } = await import("./source.ts");
   await assert.rejects(connectionsSource(box({ error: { "mcp.servers": { code: "no_such_tool", message: "gone" } } }).call).servers(), (e) => /** @type {any} */ (e).code === "no_such_tool");
 });
+
+test("any app: the form's problems are said in words, the GoHighLevel form becomes the create input, and the key is only ever named", { skip: !strip }, async () => {
+  const { emptyForm, formProblem, toCreate } = await import("./any-app.ts");
+  const ghl = () => ({ ...emptyForm(), label: "GoHighLevel Sales", baseUrl: "https://services.leadconnectorhq.com/", how: /** @type {const} */ ("bearer"), item: "ghl-sales-pat",
+    headers: [{ name: "Version", value: "2021-07-28" }, { name: "", value: "" }], vars: [{ name: "locationId", value: "abc123" }], checkPath: "/locations/{locationId}" });
+  assert.equal(formProblem(ghl()), null);
+  assert.deepEqual(toCreate(ghl()), { label: "GoHighLevel Sales", base_url: "https://services.leadconnectorhq.com", send: { how: "bearer" }, credential: { item: "ghl-sales-pat" },
+    headers: { Version: "2021-07-28" }, vars: { locationId: "abc123" }, check: { path: "/locations/{locationId}" } });
+  const bad = (/** @type {any} */ o, /** @type {RegExp} */ re) => assert.match(String(formProblem({ ...ghl(), ...o })), re);
+  bad({ label: " " }, /Give the connection a name/);
+  bad({ baseUrl: "http://x.example.com" }, /API address with no path/);
+  bad({ baseUrl: "https://x.example.com/api" }, /no path/);
+  bad({ how: "header", name: "" }, /Name the header/);
+  bad({ how: "query", name: "" }, /Name the query parameter/);
+  bad({ item: "" }, /Pick the Vault item/);
+  bad({ checkPath: "locations" }, /one request that proves the key works/);
+  bad({ checkPath: "/locations/{other}" }, /uses \{other\}/);
+  bad({ vars: [{ name: "locationId", value: "" }] }, /fixed value needs a name and a value|Each fixed value/);
+  bad({ headers: [{ name: "Authorization", value: "Bearer x" }] }, /key is added for you/);
+  bad({ headers: [{ name: "Version", value: "" }] }, /fixed header needs/);
+  assert.deepEqual(toCreate({ ...ghl(), how: "query", name: "api_key" }).send, { how: "query", name: "api_key" });
+});
+
+test("any app: the list is picked from the box's answer, and a new connection is created and then checked once", { skip: !strip }, async () => {
+  const { pickMade, lightWords } = await import("./any-app.ts");
+  const { connectionsSource } = await import("./source.ts");
+  const list = { connections: [
+    { id: "ghl", label: "GoHighLevel Sales", host: "services.leadconnectorhq.com", light: "green", reason: "connected", checked_at: 5, operations: [{ name: "contacts.get", label: "Get", kind: "read" }, { name: "contacts.search", kind: "read", relabeled: true }] },
+    { id: "x", label: "Odd", light: "weird" }, { nope: true }] };
+  const picked = pickMade(list);
+  assert.deepEqual(picked.map((c) => [c.id, c.light]), [["ghl", "green"], ["x", "unknown"]]);
+  assert.deepEqual(picked[0].operations.map((o) => [o.name, o.relabeled]), [["contacts.get", false], ["contacts.search", true]]);
+  assert.equal(lightWords(picked[0]), "Working");
+  assert.equal(lightWords({ light: "red", reason: "the key was refused (401)" }), "the key was refused (401)");
+  assert.equal(lightWords({ light: "out_of_step", reason: "" }), "Needs saving again");
+  assert.equal(lightWords(picked[1]), "Not checked yet");
+  const b = box({ data: { "connectors.connection.list": list, "connectors.connection.create": { id: "ghl", credential: "conn-ghl" }, "connectors.connection.check": { id: "ghl", light: "red", words: "the key was refused (401)" } } });
+  const s = connectionsSource(b.call);
+  assert.equal((await s.madeList()).length, 2);
+  const { emptyForm } = await import("./any-app.ts");
+  const r = await s.madeCreate({ ...emptyForm(), label: "GoHighLevel Sales", baseUrl: "https://services.leadconnectorhq.com", item: "ghl-sales-pat", checkPath: "/me" });
+  assert.deepEqual(r, { id: "ghl", light: "red", words: "the key was refused (401)" });
+  assert.deepEqual(b.seen.slice(-2).map((x) => x.tool), ["connectors.connection.create", "connectors.connection.check"]);
+  assert.deepEqual(b.seen.at(-1)?.input, { id: "ghl" });
+});
+
+test("any app: an assistant's proposal is shown as the card the person is asked, and yes or no are one call each", { skip: !strip }, async () => {
+  const { pickProposals } = await import("./any-app.ts");
+  const { connectionsSource } = await import("./source.ts");
+  const raw = { proposals: [{ proposal: "prop_1", by: "mcp", why: "from their docs", form: { label: "x" }, card: { title: "Connect Acme?", lines: ["It can reach api.acme.example and nothing else."] } }, { proposal: "bad" }, { nope: 1 }] };
+  assert.deepEqual(pickProposals(raw), [{ id: "prop_1", by: "mcp", why: "from their docs", title: "Connect Acme?", lines: ["It can reach api.acme.example and nothing else."] }]);
+  const b = box({ data: { "connectors.connection.proposals": raw } });
+  const s = connectionsSource(b.call);
+  assert.equal((await s.madeProposals()).length, 1);
+  await s.madeApprove("prop_1"); await s.madeDecline("prop_2");
+  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["connectors.connection.approve", { proposal: "prop_1" }], ["connectors.connection.decline", { proposal: "prop_2" }]]);
+});
+
+test("one list of what is connected: apps and MCP servers together, each with a plain word, sorted, each opening its own tab", { skip: !strip }, async () => {
+  const { unifyConnected, pickMade } = await import("./any-app.ts");
+  const made = pickMade({ connections: [{ id: "ghl", label: "GoHighLevel Sales", host: "services.leadconnectorhq.com", light: "green", reason: "connected" }, { id: "x", label: "Acme", host: "api.acme.example", light: "red", reason: "the key was refused (401)" }] });
+  const servers = [{ name: "tracker", state: "running", error: "", tools: 4, url: "https://tracker.example.com/mcp", command: "" }, { name: "docs", state: "failed", error: "it would not start", tools: null, url: "", command: "npx" }];
+  const all = unifyConnected(made, servers);
+  assert.deepEqual(all.map((c) => [c.label, c.kind, c.status]), [["Acme", "api", "bad"], ["docs", "mcp", "bad"], ["GoHighLevel Sales", "api", "ok"], ["tracker", "mcp", "ok"]]);
+  assert.equal(all.find((c) => c.label === "tracker")?.words, "Running, 4 tools");
+  assert.equal(all.find((c) => c.label === "tracker")?.where, "tracker.example.com");
+  assert.equal(all.find((c) => c.label === "docs")?.words, "it would not start");
+  assert.equal(all.find((c) => c.label === "Acme")?.words, "the key was refused (401)");
+  assert.deepEqual(unifyConnected([], []), []);
+});

@@ -31,9 +31,11 @@
 
 import crypto from "node:crypto";
 import https from "node:https";
+import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
 import { registerService } from "./service.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
+import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
@@ -130,7 +132,12 @@ export function httpsTransport({ url, address, method, headers, body, timeoutMs 
   return new Promise((resolve, reject) => {
     const h = { ...headers };
     if (body !== undefined) h["content-length"] = String(Buffer.byteLength(body));
-    const req = https.request(pinnedOptions(url, address, { method, headers: h, timeout: timeoutMs }), res => {
+    // The one plain-http target there is: an app module's API on this machine (appTarget), never a name, only 127.0.0.1. Everything else is https to a checked, pinned address.
+    if (url.protocol === "http:" && address !== "127.0.0.1") return reject(new Error("plain http is only for an app on this machine"));
+    const opts = url.protocol === "http:"
+      ? { protocol: "http:", hostname: "127.0.0.1", port: Number(url.port), path: url.pathname + url.search, method, headers: { ...h, host: url.host }, agent: false, timeout: timeoutMs }
+      : pinnedOptions(url, address, { method, headers: h, timeout: timeoutMs });
+    const req = (url.protocol === "http:" ? http : https).request(opts, res => {
       /** @type {Buffer[]} */ const chunks = [];
       let n = 0, truncated = false, done = false;
       const finish = () => {
@@ -210,6 +217,77 @@ export class ApiRequests {
   // ---- building the plan: everything a decision needs, from the request alone ----
 
   /**
+   * An app module's API on this machine, for a Connection with `app`. The address a caller gives is the sentinel one (<app>.app.invalid), checked like any other address for its shape; the real
+   * origin is the app's own to say, and only while it runs (`appmods.origin`), and is taken only if it is exactly http://127.0.0.1:<port> with a port from 1024: nothing else is ever reached, and a
+   * name an app module gives that is anything but that is refused here.
+   * @param {any} config @param {string} rawUrl @returns {Promise<{ url: URL, addresses: string[], display: URL }>}
+   */
+  async appTarget(config, rawUrl) {
+    const sentinel = `${config.app}.app.invalid`;
+    const shaped = await checkTarget(rawUrl, [sentinel], { lookup: async () => [{ address: "203.0.113.1", family: 4 }] });
+    if (!this.deps.call) throw bad("the apps are not running, so an app's connection has nowhere to go", "unavailable");
+    const r = await this.deps.call("appmods.origin", { name: config.app });
+    const origin = r && r.data && typeof r.data.origin === "string" ? r.data.origin : "";
+    if (!origin) throw bad("the app is not running", "unavailable");
+    const m = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(origin);
+    if (!m || Number(m[1]) < 1024 || Number(m[1]) > 65535) throw bad("the app named an address this machine will not send a key to", "denied");
+    return { url: new URL(shaped.url.pathname + shaped.url.search, origin), addresses: ["127.0.0.1"], display: shaped.url };
+  }
+
+  /**
+   * A public document by its https address, for a person who pointed at it (an API description to import): a plain GET with no credential and no cookie, the address resolved and checked against
+   * private, loopback, link-local and metadata ranges at every hop, the connection pinned to the address that was checked, at most 3 redirects (each checked the same way), a size cap, and a timeout.
+   * It sends nothing of the person's. The caller decides who may ask (the connectors module, for a person's own import).
+   * @param {string} rawUrl @param {number} [maxBytes]
+   */
+  async fetchPublic(rawUrl, maxBytes = 5_000_000) {
+    let url = String(rawUrl || "");
+    for (let hops = 0; ; hops++) {
+      let host;
+      try { host = new URL(url).hostname; } catch { throw bad("that is not an address"); }
+      const t = await checkTarget(url, [host], { lookup: this.deps.lookup });
+      const r = await this.transport({ url: t.url, address: t.addresses[0], method: "GET", headers: { accept: "application/json, application/yaml, text/yaml, text/plain, */*;q=0.1", "user-agent": "vyre-import" }, timeoutMs: 20_000, maxBytes });
+      if (r.status >= 300 && r.status < 400 && r.headers.location) {
+        if (hops >= 3) throw bad("that address redirected more than three times", "redirect");
+        let next;
+        try { next = new URL(r.headers.location, t.url); } catch { throw bad("the redirect was not an address", "redirect"); }
+        if (next.protocol !== "https:") throw bad("the redirect left https", "redirect");
+        url = next.toString();
+        continue;
+      }
+      if (r.truncated) throw bad(`that file is larger than ${Math.round(maxBytes / 1_000_000)} MB`, "too_large");
+      if (!(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
+      return { status: r.status, body: Buffer.from(r.body).toString("utf8"), type: String(r.headers["content-type"] || "") };
+    }
+  }
+
+  /**
+   * An operation of a Connection as the request it stands for. A declared name builds from its path and shapes (the input is checked, an input it does not declare is refused); `request` is the
+   * generic one: any method and path on the credential's host. Nothing is allowed here that the request below would not allow: this only writes the request down.
+   * @param {any} input @param {string} name
+   */
+  async fromOperation(input, name) {
+    const { config } = await this.vault.apiCredential(name);
+    const host = config.hosts.length === 1 && !config.hosts[0].startsWith("*.") ? config.hosts[0] : null;
+    if (!config.operations || !host) throw bad(`${name} is not a Connection: it has no operations to run`, "not_found");
+    const op = String(input.operation);
+    const given = isObj(input.input) ? input.input : {};
+    /** @type {any} */ let built;
+    if (op === "request") {
+      const path = String(given.path || "");
+      if (!/^\/[^\s?#]*$/.test(path)) throw bad("the generic request names a path from the root, with the query in `query`");
+      built = { method: String(given.method || "GET").toUpperCase(), path, query: given.query, headers: given.headers, body: given.body };
+    } else {
+      if (!Object.hasOwn(config.operations, op)) throw bad(`${name} has no operation ${printable(op, 40)}; it has ${Object.keys(config.operations).slice(0, 12).join(", ") || "none declared"}, and request`, "not_found");
+      try { built = buildRequest({ id: name, ops: config.operations }, op, given); }
+      catch (e) { throw bad(/** @type {Error} */ (e).message, "bad_input"); }
+    }
+    const { operation: _o, input: _i, ...rest } = input;
+    return { ...rest, method: built.method, url: `https://${host}${built.path}`, ...(built.query !== undefined ? { query: built.query } : {}), ...(built.headers !== undefined ? { headers: built.headers } : {}),
+      ...(built.body !== undefined ? { body: built.body } : {}) };
+  }
+
+  /**
    * Check and classify a request. Throws with a reason a person can act on; touches no network
    * except the DNS lookup checkTarget does.
    * @param {any} input @param {string} name the credential
@@ -220,7 +298,7 @@ export class ApiRequests {
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
     const rawUrl = buildUrl(input.url, input.query);
-    const target = await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
+    const target = config.app ? await this.appTarget(config, rawUrl) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
     const url = target.url;
     checkQuery(url);
     let body;
@@ -240,7 +318,8 @@ export class ApiRequests {
     const preset = presetFor(method, pathAndQuery);
     const parsed = cls.kind === "read" ? { recipients: [] } : parseFields(preset, { body, contentType: headers["content-type"] });
     const actingAs = config.auth.type === "service-account" ? config.auth.subject : row.name;
-    const href = url.toString();
+    // an app's address is its port of the day: what is approved and shown is the stable name (<app>.app.invalid), not the port
+    const href = target.display ? target.display.toString() : url.toString();
     const hash = approvalHash({ credential: row.name, method, url: href, headers, body });
     return { name: row.name, ver: Number(row.ver || 0), config, secret, method, url, href, headers, body, kind: cls.kind, classified: cls, parsed, actingAs, hash,
       to: parsed.recipients.length ? parsed.recipients : [url.hostname],
@@ -260,6 +339,7 @@ export class ApiRequests {
     if (!r) throw bad(`${plan.name} names the vault item ${a.item}, which is not there`, "config");
     if (r.kind === "api-credential") throw bad(`${plan.name} names another api-credential, which never hands out a value`, "config");
     const f = await this.vault.fields(r);
+    if (a.type === "basic" && !a.field && isStr(f.username) && isStr(f.password) && f.username && f.password) return `${f.username}:${f.password}`;
     const want = a.field || defaultField(r.kind, Object.keys(f));
     if (!want || !isStr(f[want]) || !f[want]) throw bad(`${plan.name}: ${a.item} has no ${want || "field named"}`, "config");
     return f[want];
@@ -268,7 +348,7 @@ export class ApiRequests {
   /**
    * The authentication headers for a plan and every value it touched, for scrubbing. Fetched
    * per call; only a minted access token is kept, in memory, until shortly before it expires.
-   * @returns {Promise<{ headers: Record<string, string>, known: string[] }>}
+   * @returns {Promise<{ headers: Record<string, string>, query?: Record<string, string>, known: string[] }>}
    */
   async authFor(plan) {
     const a = plan.config.auth;
@@ -284,6 +364,19 @@ export class ApiRequests {
       const token = await this.mint(plan, secret, known);
       known.push(token);
       return { headers: { authorization: `Bearer ${token}` }, known };
+    }
+    if (a.type === "basic") {
+      if (/[\r\n]/.test(secret)) throw bad(`${plan.name}'s secret has a line break, which a header cannot carry`, "config");
+      const value = `Basic ${Buffer.from(secret, "utf8").toString("base64")}`;
+      // the pair, its encoding, and the password alone (an API that echoes the password back must not get it past the scrub)
+      const at = secret.indexOf(":");
+      known.push(value, Buffer.from(secret, "utf8").toString("base64"), ...(at >= 0 && secret.length - at > 1 ? [secret.slice(at + 1)] : []));
+      return { headers: { authorization: value }, known };
+    }
+    if (a.type === "api-key" && a.in === "query") {
+      if (/[\r\n]/.test(secret)) throw bad(`${plan.name}'s secret has a line break, which a query cannot carry`, "config");
+      known.push(encodeURIComponent(secret));
+      return { headers: {}, query: { [a.param]: secret }, known };
     }
     const header = String(a.header || (a.type === "api-key" ? "x-api-key" : "authorization")).toLowerCase();
     const format = a.format || (a.type === "bearer" ? "Bearer {value}" : "{value}");
@@ -423,16 +516,19 @@ export class ApiRequests {
     try {
       const auth = await this.authFor(plan);
       known = auth.known;
-      const headers = { accept: "application/json", ...plan.headers, ...(plan.body !== undefined && !plan.headers["content-type"] ? { "content-type": looksJson(plan.body) ? "application/json" : "application/x-www-form-urlencoded" } : {}), ...auth.headers };
+      const headers = { accept: "application/json", ...plan.headers, ...(plan.body !== undefined && !plan.headers["content-type"] ? { "content-type": looksJson(plan.body) ? "application/json" : "application/x-www-form-urlencoded" } : {}), ...(plan.config.headers || {}), ...auth.headers };
+      // a query api-key is added here, at every hop, so the approval hash and the audit line never carry it
+      const withKey = (/** @type {URL} */ u) => { if (!auth.query) return u; const c = new URL(u.toString()); for (const [k, v] of Object.entries(auth.query)) c.searchParams.set(k, v); return c; };
       let url = plan.url, method = plan.method, hops = 0, tooMany = 0;
       /** @type {Reply} */ let reply;
       for (;;) {
-        const t = await checkTarget(url.toString(), plan.config.hosts, { lookup: this.deps.lookup });
+        const t = plan.config.app ? { url: withKey(url), addresses: ["127.0.0.1"] } : await checkTarget(withKey(url).toString(), plan.config.hosts, { lookup: this.deps.lookup });
         await this.throttle(plan);
         reply = await this.transport({ url: t.url, address: t.addresses[0], method, headers, ...(plan.body !== undefined && method === plan.method ? { body: plan.body } : {}),
           timeoutMs: TIMEOUT_MS, maxBytes: MAX_RESPONSE });
         // "Too many requests" means the provider did not act on it, so waiting out its Retry-After and trying again is safe for any method; the cooldown is shared by every caller.
         if (reply.status === 429 && tooMany < MAX_429_RETRIES && this.coolDown(plan.name, reply) > 0) { tooMany++; continue; }
+        if (plan.config.app && reply.status >= 300 && reply.status < 400) throw bad("an app on this machine answered a redirect, which is not followed", "redirect");
         if (reply.status >= 300 && reply.status < 400 && reply.headers.location) {
           if (method !== "GET" && method !== "HEAD") throw bad("the API answered a redirect to a write, which is refused; call the address it names directly", "redirect");
           let next;
@@ -521,6 +617,9 @@ export class ApiRequests {
   async request(input, meta) {
     const caller = String(meta.caller);
     const name = String(input.credential || "");
+    // A Connection's operation: { credential, operation, input } is built into the same method, url, query, headers and body a caller could have written, and then judged by everything below as such.
+    if (input.operation !== undefined) input = await this.fromOperation(input, name);
+    else if (typeof input.url !== "string" || typeof input.method !== "string") throw bad("a request names its method and url, or an operation of a Connection");
     const mod = caller.startsWith("module:") ? caller.slice(7) : null;
     // Only a module vouches for a watcher; a model's claim in its input is not heard.
     const watcher = mod && isStr(input.watcher) && input.watcher ? input.watcher : "";
@@ -732,8 +831,15 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
     "One HTTP call to a vendor API with an api-credential from the vault, which adds the key and never shows it. A read runs at once. A send, payment or deletion runs at once only if you asked for exactly it; otherwise it is held at the Gate with a card Vyre builds from the request's parsed fields. The response has every value the credential touched removed.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
-      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str }, ["credential", "method", "url"]),
+      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
+
+  internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
+    obj({ url: str, max_bytes: { type: "integer" } }, ["url"]),
+    async ({ url, max_bytes }, { caller }) => {
+      if (caller !== "module:connectors") throw bad("only the connectors module fetches a description for a person's import", "denied");
+      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)));
+    });
 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",
     obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id"]),

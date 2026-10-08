@@ -1369,3 +1369,14 @@ export default { async start(ctx) {
   assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { ok: true });
   assert.equal(reg.modules.get("other").state, "failed", "a module that failed for its own reason is not started again");
 });
+
+test("modules: appmods relays an installing person to the app's own Connection and to nothing else; connectors keeps its own two", async () => {
+  const { checkRelayTool } = await import("./index.js");
+  for (const tool of ["connectors.connection.create", "connectors.connection.delete"]) assert.doesNotThrow(() => checkRelayTool("appmods", tool, {}, "deck"));
+  for (const tool of ["vault.put", "vault.delete", "vault.release", "connectors.connection.approve", "connectors.connection.update", "gate.approve", "flows.approve"]) assert.throws(() => checkRelayTool("appmods", tool, {}, "deck"), /appmods may not call/, tool);
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.put", { kind: "api-credential" }, "deck"));
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.delete", { name: "conn-docuseal" }, "deck"));
+  assert.throws(() => checkRelayTool("connectors", "vault.delete", { name: "github-token" }, "deck"), /connectors may not call/);
+  assert.throws(() => checkRelayTool("connectors", "vault.put", { kind: "secret" }, "deck"), /connectors may not call/);
+  assert.doesNotThrow(() => checkRelayTool("mentions", "anything", {}, "deck"), "other modules are checked where they always were");
+});

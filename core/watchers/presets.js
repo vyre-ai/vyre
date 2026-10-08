@@ -293,7 +293,7 @@ export function prPreset(o) {
 export const PRESET_KINDS = ["mail", "calendar", "repo", "slack", "feed", "pr", "connector"];
 
 /** @param {any} o */
-export function buildPreset(o) {
+export function buildPreset(o, resolved = {}) {
   if (o.kind === "mail") {
     if (typeof o.credential !== "string" || !o.credential) throw new Error("a mail preset needs credential: the name of the Google api-credential in the vault");
     return mailPreset({ project: String(o.project || ""), credential: o.credential, connection: o.connection, instruction: o.instruction, dailyUsd: o.dailyUsd });
@@ -308,8 +308,9 @@ export function buildPreset(o) {
     return slackPreset({ ...o, project: String(o.project || "") });
   }
   if (o.kind === "connector") {
-    const decl = declared(String(o.connector || ""));
-    if (!decl) throw new Error(`a connector preset names a connector this build declares (connector: ${Object.keys(DECLARATIONS).join(", ")})`);
+    // A Connection the person made (its declaration, given by the caller of this function from the connectors module, never from the preset's own input) or one this build ships
+    const decl = resolved.declaration || declared(String(o.connector || ""));
+    if (!decl) throw new Error(`a connector preset names a Connection (connection) or a connector this build declares (connector: ${Object.keys(DECLARATIONS).join(", ")})`);
     return connectorPreset({ project: String(o.project || ""), connector: decl, poll: String(o.poll || ""), credential: o.credential === undefined ? undefined : String(o.credential), ...(o.google ? { google: String(o.google) } : {}), vars: o.vars, when: o.when, label: o.label, lookback_days: o.lookback_days });
   }
   if (o.kind === "pr") return prPreset({ ...o, project: String(o.project || "") });

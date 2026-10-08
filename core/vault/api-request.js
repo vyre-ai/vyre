@@ -20,6 +20,7 @@
 // so nothing here and nothing downstream does a second, unchecked lookup.
 
 import crypto from "node:crypto";
+import { checkFixedHeaders } from "../../records/connectors/format.js";
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
@@ -47,7 +48,7 @@ const optionalRef = a => (a.item === undefined && a.field === undefined ? {} : c
  *   { type: "bearer"|"api-key", item: string, field?: string, header?: string, format?: string }}
  */
 function normalizeAuth(a) {
-  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer" or "api-key"');
+  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key", "basic"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer", "api-key" or "basic"');
   if (a.type === "service-account") {
     const ref = optionalRef(a);
     if (typeof a.subject !== "string" || !a.subject) throw bad("a service-account credential needs auth.subject (the address it acts as), fixed here, never in a request");
@@ -65,6 +66,14 @@ function normalizeAuth(a) {
   }
   const ref = optionalRef(a);
   const out = { type: a.type, ...ref };
+  // basic: the secret is "user:password" and vyred makes the header. api-key `in: "query"`: the key goes in the named query parameter, not a header.
+  if (a.in !== undefined) {
+    if (a.type !== "api-key" || a.in !== "query") throw bad('auth.in is "query", for an api-key');
+    if (typeof a.param !== "string" || !/^[A-Za-z0-9_.-]{1,64}$/.test(a.param)) throw bad("a query api-key names its parameter (auth.param)");
+    if (a.header !== undefined || a.format !== undefined) throw bad("a query api-key has no header or format");
+    return { ...out, in: "query", param: a.param };
+  }
+  if (a.type === "basic" && (a.header !== undefined || a.format !== undefined)) throw bad("basic auth has no header or format of its own");
   if (a.header !== undefined) { if (typeof a.header !== "string" || !a.header) throw bad("auth.header must be a header name"); out.header = a.header.toLowerCase(); }
   if (a.format !== undefined) { if (typeof a.format !== "string" || !a.format.includes("{value}")) throw bad("auth.format needs {value}"); out.format = a.format; }
   return out;
@@ -110,15 +119,49 @@ function normalizeEndpoint(e) {
 export function normalize(i) {
   if (!isObj(i)) throw bad("an api-credential needs auth, hosts and, optionally, endpoints");
   const auth = normalizeAuth(i.auth);
-  if (!Array.isArray(i.hosts) || !i.hosts.length) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
-  const hosts = i.hosts.map(normalizeHost);
+  // A Connection to an app on this machine (`app`: the module's name) has the one sentinel host nothing on the internet answers; the vault swaps in the app's local origin (request.js appTarget).
+  /** @type {string | undefined} */ let app;
+  if (i.app !== undefined) {
+    if (typeof i.app !== "string" || !/^[a-z][a-z0-9-]{1,40}$/.test(i.app)) throw bad("app is a module name: lowercase letters, digits and -");
+    if (!["bearer", "api-key", "basic"].includes(auth.type)) throw bad("an app's connection signs in with a key: bearer, api-key or basic");
+    app = i.app;
+  }
+  if (!app && (!Array.isArray(i.hosts) || !i.hosts.length)) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
+  const hosts = app ? [`${app}.app.invalid`] : i.hosts.map(normalizeHost);
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
   const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
   const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
   const service = i.service === undefined ? undefined : normalizeService(i.service);
+  const headers = i.headers === undefined ? undefined : normalizeFixedHeaders(i.headers);
+  const operations = i.operations === undefined ? undefined : normalizeOperations(i.operations);
   if (service) for (const r of service.allow) if (r.host && !hosts.includes(r.host)) throw bad(`a service rule names ${r.host}, which is not one of the credential's hosts`);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}) };
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}), ...(operations ? { operations } : {}), ...(app ? { app } : {}) };
+}
+
+/**
+ * The operations a Connection declared (records/connectors/connection.js), kept with the credential so `vault.request { credential, operation, input }` can build the call: name, method, path and the
+ * shapes of what it takes. Written with the credential by a person, so this only checks the outline; the shapes are checked against each call's input when it is built.
+ * @param {any} ops @returns {Record<string, any>}
+ */
+export function normalizeOperations(ops) {
+  if (!isObj(ops) || Object.keys(ops).length > 200) throw bad("operations is an object of at most 200 named operations");
+  for (const [name, op] of Object.entries(ops)) {
+    if (!/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){0,3}$/.test(name) || !isObj(op) || !METHODS.includes(String(op.method)) || op.method === "*" || typeof op.path !== "string" || !op.path.startsWith("/") || typeof op.kind !== "string") throw bad(`operation ${name.slice(0, 40)} is { method, path, kind, input? }`);
+    if (op.input !== undefined && !isObj(op.input)) throw bad(`operation ${name}: input is an object of shapes`);
+  }
+  return JSON.parse(JSON.stringify(ops));
+}
+
+/**
+ * Headers a connection sets on every request (an API version, a sub-account id), written with the credential by a person and added by vyred. A name that authenticates or frames the request
+ * is never one of these, and a value is one line.
+ * @param {any} h @returns {Record<string, string>}
+ */
+export function normalizeFixedHeaders(h) {
+  const problems = checkFixedHeaders(h);
+  if (problems.length) throw bad(problems.join("; "));
+  return Object.fromEntries(Object.entries(h).map(([k, v]) => [k.toLowerCase(), v]));
 }
 
 /**
