@@ -167,7 +167,7 @@ export default {
         // The person already said yes to this send on their phone: the registry redeemed a card bound to the very call a first-party module (mail) is filing this send for. The Gate does not take the
         // mark's word: it asks the approvals queue whether that card was redeemed for this tool, this input and this asker, within its life, and not yet used, and the queue uses it up as it answers.
         // Anything else (no mark, a module that is not Vyre's own, another kind, a card already used, a made-up one) is held as ever.
-        if (covered && firstParty === true && String(caller || "").startsWith("module:") && input.kind === "send") {
+        if (covered && firstParty === true && caller === `module:${String(covered.tool).split(".")[0]}` && input.kind === "send") {
           const r = await ctx.call("approvals.cover", covered).catch(() => null);
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }

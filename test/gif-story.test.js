@@ -54,8 +54,10 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
   // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
-  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
+  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request", "reminder.send"] } },
+    `export default { async start(ctx) { ctx.tool("billing.relay", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.send", i); return r.data || r; } }); ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
+  writeModule(mods, "reminder", { version: "0.1.0", does: { tools: [{ name: "reminder.send", reach: "anyone", outward: true, effect: "write", summary: "send a reminder" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("reminder.send", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "reminder" }); return r.data || r; } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
@@ -235,4 +237,14 @@ test("a card for one email does not release another, and it cannot release twice
   const twice = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
   assert.equal(twice.error && twice.error.code, "approval_refused", JSON.stringify(twice));
   assert.equal(w.sent.length, 1);
+});
+
+test("a card for one module's tool does not release a send another first-party module files in the same turn", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const input = { to: "ap@northwind.example" };
+  const card = await approved(w, "billing.relay", input);
+  const r = await w.d.registry.call("billing.relay", input, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(await gateHeld(w), 1, "the reminder module's send is held: the card was for billing's tool");
+  assert.deepEqual(w.sent, []);
 });
