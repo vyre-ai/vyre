@@ -30,7 +30,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
 import { json, emit, EXIT, viewing } from "../kit.js";
 import { execFileSync, spawnSync } from "node:child_process";
-import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../lib/online.js";
+import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../../lib/online.js";
 
 /** The whole run's budget, and one check's. */
 export const BUDGET_MS = 2000;
