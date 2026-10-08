@@ -84,7 +84,7 @@ test("sidebar: the team's default is set by the person at their own surface, nev
   const asMe = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team", group: "more" });
   assert.equal(asMe.error, undefined, JSON.stringify(asMe.error));
   let g = (await c("sidebar.get", { space: "spc_aaaaaaaaaaaa" })).data;
-  assert.equal(g.default, null, "a default for the all-Spaces key reaches a Space with none of its own");
+  assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "a default for the all-Spaces key reaches a Space with none of its own");
   g = (await c("sidebar.get", {})).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"));
   // an assistant may arrange the person's own list
