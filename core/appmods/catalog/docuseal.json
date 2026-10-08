@@ -10,6 +10,7 @@
   "app": {
     "image": "docuseal/docuseal:3.3.1@sha256:e171808ce8dabb08491a49a6d8c477670a65ddce5e3de4764904b63a4487940f",
     "port": 3000,
+    "hookPort": 43001,
     "volumes": [{ "name": "data", "path": "/data/docuseal" }],
     "env": { "APP_URL": "{origin}", "FORCE_SSL": "false" },
     "secrets": [{ "env": "SECRET_KEY_BASE", "generate": "hex32" }],

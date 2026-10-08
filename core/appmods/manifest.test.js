@@ -82,3 +82,10 @@ test("every event a catalog app maps is one the appmods module declares it may e
   const emits = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).watches.emits;
   for (const m of loadCatalog().values()) for (const e of m.events || []) assert.ok(emits.includes(e.event), `${m.name}: ${e.event} is not in appmods watches.emits`);
 });
+
+test("the hook port a server with a host helper gives the app is a whole number from 43000 to 43999, or absent", () => {
+  assert.deepEqual(checkAppModule({ ...docuseal(), app: { ...docuseal().app, hookPort: 43500 } }), []);
+  const { hookPort, ...rest } = docuseal().app;
+  assert.deepEqual(checkAppModule({ ...docuseal(), app: rest }), [], "an app can have none (it then runs only where vyred reaches Docker itself)");
+  for (const v of [42999, 44000, "43001", 43001.5, 0, -1, null]) assert.ok(bad({ ...docuseal(), app: { ...docuseal().app, hookPort: v } }, "app.hookPort"), String(v));
+});

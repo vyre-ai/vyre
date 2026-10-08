@@ -15,7 +15,7 @@ import { seam, handleWebhook, pick, connectionForm } from "./index.js";
 
 const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.json", import.meta.url), "utf8"));
 
-async function world(t) {
+async function world(t, opt = {}) {
   const PDF = Buffer.from("%PDF-1.4 signed bytes");
   // A small app that behaves like the real one where it matters: a sign-in form with an anti-forgery token, a session cookie, an origin check on writes, root-absolute links and redirects.
   const seen = { sign: [], reqs: [] };
@@ -52,7 +52,15 @@ async function world(t) {
     exec: async (p, argv, o) => { boot = { argv, env: o.env, files: o.files.map(f => f.name) }; log.push(["exec", argv]); return { code: 0, stdout: "api_token=tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ\nlogin_password=pw_1234567890abcdef\n", stderr: "" }; },
     status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
   };
-  seam.driver = driver;
+  // The host-helper driver's shape: root made the keys and ran the setup; the daemon is handed the outputs once and never runs a command in the app.
+  const helperDriver = {
+    kind: "helper",
+    hookPortFor: m => m.app.hookPort,
+    up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, hookHost: "127.0.0.1", outputs: opt.handoff === false ? null : { hook_token: "h".repeat(64), api_token: "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", login_password: "pw_1234567890abcdef" } }; },
+    exec: async () => { throw new Error("the daemon must not run a command in the app"); },
+    status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
+  };
+  seam.driver = opt.helper ? helperDriver : driver;
   t.after(() => { seam.driver = null; });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
@@ -244,4 +252,27 @@ test("without the Connections module's app form the install still works and says
   const row = w.d.registry.deps.db.prepare("SELECT note, connection_id FROM appmods_apps WHERE name = 'docuseal'").get();
   assert.match(row.note, /^no Connection yet/);
   assert.equal(row.connection_id, null);
+});
+
+test("install through the host helper: the hook port is the catalog's, root's hand-over is kept in the Vault, no key is made here and no command is run in the app", async t => {
+  const w = await world(t, { helper: true });
+  const r = await w.cli("appmods.install", { name: "docuseal" });
+  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: null }, JSON.stringify(r));
+  assert.deepEqual([w.log[0][0], w.log[0][2], w.log[0][3], w.log[0][4]], ["up", "docuseal", 43001, []], "the catalog's hook port, and no secret handed to the host (root made them)");
+  assert.equal(w.log.filter(l => l[0] === "exec").length, 0);
+  const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-")).sort();
+  assert.deepEqual(items, ["app-docuseal-api-token", "app-docuseal-hook", "app-docuseal-login-password"], "the hand-over is in the Vault, and no SECRET_KEY_BASE was made here");
+  assert.equal((await w.cli("appmods.list")).data.apps[0].state, "running");
+  const all = JSON.stringify([r, w.lines, (await w.cli("appmods.list")).data]);
+  assert.ok(!/tok_ABCDEF|pw_1234567890|h{64}/.test(all), "no key in a result or a log line");
+  // a later start asks again and needs nothing from the Vault
+  assert.equal((await w.cli("appmods.stop", { name: "docuseal" })).data.state, "stopped");
+  assert.equal((await w.cli("appmods.start", { name: "docuseal" })).data.state, "running");
+});
+
+test("install through the host helper: no hand-over from the host is a failed install that says so", async t => {
+  const w = await world(t, { helper: true, handoff: false });
+  const r = await w.cli("appmods.install", { name: "docuseal" });
+  assert.match(r.error.message, /gave no hand-over/);
+  assert.equal((await w.cli("appmods.list")).data.apps[0].state, "failed");
 });

@@ -1254,7 +1254,8 @@ sp_pid() {
   case "$p" in ""|*[!0-9]*|0) return 1 ;; esac
   printf '%s\n' "$p"
 }
-sp_net_subnets() { hdock network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "vyre-$1-twenty_store" 2>/dev/null | tr -d '\r'; }
+sp_net_subnets() { sp_net_subnets_of "vyre-$1-twenty_store"; }
+sp_net_subnets_of() { hdock network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$1" 2>/dev/null | tr -d '\r'; }
 sp_subnet_ok() { printf '%s\n' "$1" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|[0-9a-f:]+/[0-9]{1,3}'; }
 sp_ipt() { case "$1" in *:*) echo ip6tables ;; *) echo iptables ;; esac; }
 # sp_fw_each FAMILY PID ARGS: one iptables call inside the vyre container's own network namespace, where the agents' sockets are local.
@@ -1267,61 +1268,67 @@ sp_fw_each() {
 # on real iptables). Two positive ranges never match an ownerless packet.
 sp_ranges() { printf '0-%s\n%s-4294967294\n' $((DAEMON_UID - 1)) $((DAEMON_UID + 1)); }
 # sp_fw_apply NAME: every subnet of the Space's store network gets the two rules (reviewer-3's shape): -C first, then inserted at position 1, then verified with -C.
-sp_fw_apply() {
-  n=$1
+# It is sp_fw_apply_net with the Space's own network and comment; an app module's network and comment (vyre-app:<module>) go through the same function.
+sp_fw_apply() { sp_fw_apply_net "$1" "vyre-$1-twenty_store" "vyre:$1" "$1"; }
+# sp_fw_apply_net NAME NET TAG KEY: NAME is the word in the messages; the rules carry the comment TAG; KEY is the name the subnet is listed under in status/subnets.
+sp_fw_apply_net() {
+  n=$1; net=$2; tag=$3; key=$4
   pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
-  subs=$(sp_net_subnets "$n")
+  subs=$(sp_net_subnets_of "$net")
   [ -n "$subs" ] || { MSG="the Space's network does not exist"; return 1; }
   for s in $subs; do
     sp_subnet_ok "$s" || { MSG="a subnet of the Space's network is not one the helper accepts"; return 1; }
     fam=$(sp_ipt "$s")
     for rg in $(sp_ranges); do
-      if ! sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1; then
-        sp_fw_each "$fam" "$pid" -I OUTPUT 1 -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+      if ! sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "$tag" -j REJECT >/dev/null 2>&1; then
+        sp_fw_each "$fam" "$pid" -I OUTPUT 1 -d "$s" -m owner --uid-owner "$rg" -m comment --comment "$tag" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
       fi
-      sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
+      sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "$tag" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
     done
-    sp_sub_set "$n" "$s" || { MSG="the list of firewalled subnets could not be written"; return 1; }
+    sp_sub_set "$key" "$s" || { MSG="the list of firewalled subnets could not be written"; return 1; }
   done
 }
 # sp_probe NAME: the rule is proved, not assumed. In the vyre container's namespace a connect to the store's address as an agent uid must be REFUSED at once
 # (exit 1: not a timeout, which a dead store or a dropped packet also gives), and as the daemon's uid must go through (the control), for each address family the store has.
-sp_probe() {
-  n=$1
+# It is sp_probe_to with the Space's own project, service, network and port; an app module's go through the same function.
+sp_probe() { sp_probe_to "$1" "vyre-$1-twenty" server "vyre-$1-twenty_store" 3000 "the Space's server"; }
+# sp_probe_to NAME PROJECT SERVICE NET PORT WHO: WHO is the words the messages use for the container being proved.
+sp_probe_to() {
+  n=$1; project=$2; service=$3; net=$4; port=$5; who=$6
   pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
-  sid=$(hdock ps -q --filter "label=com.docker.compose.project=vyre-$n-twenty" --filter "label=com.docker.compose.service=server" 2>/dev/null | head -n 1 || true)
-  [ -n "$sid" ] || { MSG="the Space's server is not running, so the firewall could not be proved"; return 1; }
-  net="vyre-$n-twenty_store"
+  sid=$(hdock ps -q --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=$service" 2>/dev/null | head -n 1 || true)
+  [ -n "$sid" ] || { MSG="$who is not running, so the firewall could not be proved"; return 1; }
   ip4=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$net\"}}{{.IPAddress}}{{end}}" "$sid" 2>/dev/null || true)
   ip6=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$net\"}}{{.GlobalIPv6Address}}{{end}}" "$sid" 2>/dev/null || true)
   # Docker prints "invalid IP" (or nothing) for a family the network does not have: keep only values that are addresses.
   printf '%s\n' "$ip4" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}' || ip4=""
   printf '%s\n' "$ip6" | grep -Eqx '[0-9a-f]*:[0-9a-f:]*' || ip6=""
-  [ -n "$ip4$ip6" ] || { MSG="the Space's server has no address on its network"; return 1; }
+  [ -n "$ip4$ip6" ] || { MSG="$who has no address on its network"; return 1; }
   for ip in $ip4 $ip6; do
     printf '%s\n' "$ip" | grep -Eqx '[0-9a-f:.]+' || { MSG="an address the helper does not accept"; return 1; }
-    if ! timeout 8 nsenter -t "$pid" -n setpriv --reuid="$DAEMON_UID" --regid="$DAEMON_UID" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1; then
+    if ! timeout 8 nsenter -t "$pid" -n setpriv --reuid="$DAEMON_UID" --regid="$DAEMON_UID" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/$port" >/dev/null 2>&1; then
       MSG="the control connect (the daemon's uid) did not reach the store, so the firewall could not be proved"; return 1
     fi
     # Every uid but the daemon's is refused: root (0), an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach Twenty's first-user signup (RH-6).
     for ou in 0 2000 $((DAEMON_UID + 1)); do
       prc=0
-      timeout 8 nsenter -t "$pid" -n setpriv --reuid="$ou" --regid="$ou" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1 || prc=$?
+      timeout 8 nsenter -t "$pid" -n setpriv --reuid="$ou" --regid="$ou" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/$port" >/dev/null 2>&1 || prc=$?
       [ "$prc" = 1 ] || { MSG="uid $ou can reach the store (or the answer was not a refusal)"; return 1; }
     done
   done
 }
 # sp_attach NAME: the vyre container joins the Space's network (with the alias the store calls it by), then the rule goes in. Both live in that container's
 # namespace and are lost when it is recreated, so this runs at every `up` and after every update.
-sp_attach() {
-  n=$1; net="vyre-$n-twenty_store"
+sp_attach() { sp_attach_net "$1" "vyre-$1-twenty_store" "vyre-$1" && sp_fw_apply "$1"; }
+# sp_attach_net NAME NET ALIAS: the join only (the caller puts the rules in): the vyre container joins NET with the alias ALIAS.
+sp_attach_net() {
+  n=$1; net=$2; alias=$3
   # The container must mount the helper's state folder (where the entry reads the marker): a recreate without it would start with no wall to wait for (SH-5).
   hdock inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx '/run/vyre-spaces-state' || { MSG="the vyre container does not mount the helper state folder, so run: vyre up"; return 1; }
   hdock network inspect "$net" >/dev/null 2>&1 || { MSG="the Space's network does not exist"; return 1; }
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
-    hdock network connect --alias "vyre-$n" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
+    hdock network connect --alias "$alias" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
   fi
-  sp_fw_apply "$n"
 }
 # sp_fw_del NAME: only while no container of the project runs; removes exactly the rules carrying vyre:<name>, found by listing the chain, in the namespace of the pid current now.
 # iptables prints the comment quoted (--comment "vyre:n") on some versions and bare on others: both are read, the quotes are stripped before -D, and success is reported
@@ -1471,6 +1478,8 @@ space_helper_record() {
   done
   rename_over "$SP_PRIV/images.new" "$SP_PRIV/images"
   rm -f "$t"
+  # The app modules' catalog is recorded from the same image at the same moments; it never makes this function fail (see sp_app_record).
+  sp_app_record
 }
 # sp_swap: a Linux server under 6 GB of memory with no swap gets ENCRYPTED swap (the tiny profile's containers may spill into it), or none. Swap writes memory to disk, and a server holds lent keys and
 # session leases in memory, so the swap is a dm-crypt plain mapping keyed from /dev/urandom at every boot: no key is kept anywhere, and nothing in it survives a reboot. With no cryptsetup or no
@@ -1574,6 +1583,372 @@ sp_fw_add() {
   if sp_running "$1"; then sp_probe "$1" || return 1; fi
   MSG="the firewall is in place"
 }
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# App modules (spec 0.3.0 part 8, team/0.3/DESIGN-appmods-helper.md): a third-party app (DocuSeal first) started from a pinned image, walled off the way a Space's store is. The daemon asks
+# `app-up|app-stop|app-down <module>` and nothing else: the image, the limits, the port, the volumes and the setup step all come from the catalog line root recorded out of the vyre image
+# (`private/app-modules`, written by sp_app_record at install and at every update). Root's copies live in private/apps/<module>/ (secrets.env, compose.yml, fw, bootstrapped).
+#   network   vyre-app-<module>_net, internal; the vyre container joins it with the alias vyre-daemon; the app is `vyre-app-<module>` on it
+#   OUTPUT    in the vyre container's namespace: only the daemon's uid reaches the app (sp_fw_apply_net, comment vyre-app:<module>, subnet listed as `app:<module>`)
+#   INPUT     in the same namespace, on the app network's interface: tcp to the hook port from the app's subnet and the answers to what the daemon asked, and DROP for everything else (sp_in_apply)
+# The app's keys are made here, by root, and never sent to the daemon; the setup step's outputs reach the daemon once, in a 0400 file it owns (status/app-<module>-secrets).
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+SP_APPS=$SP_PRIV/apps
+APP_ALIAS=vyre-daemon
+# sp_fld PATTERN VALUE: the whole value matches the pattern (one line, nothing around it).
+sp_fld() { printf '%s\n' "$2" | grep -Eqx -- "$1"; }
+# sp_int_in VALUE LOW HIGH: a plain decimal whole number in the range (no sign, no leading zero, at most five digits).
+sp_int_in() {
+  case "$1" in ""|*[!0-9]*|0[0-9]*) return 1 ;; esac
+  [ "${#1}" -le 5 ] && [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]
+}
+sp_app_name_ok() { sp_name_ok "$1" && [ "${#1}" -ge 2 ]; }
+# sp_app_line MODULE: the recorded catalog line of that module, or nothing.
+sp_app_line() {
+  sp_app_name_ok "$1" || return 1
+  [ -f "$SP_PRIV/app-modules" ] && [ ! -L "$SP_PRIV/app-modules" ] || return 1
+  awk -v n="$1" '$1 == n { print; exit }' "$SP_PRIV/app-modules"
+}
+# sp_app_line_ok LINE: `name image port memoryMb cpus pids hookPort script exec outputs healthPath healthOk startS`, every field from its own anchored pattern. `-` is an empty field.
+sp_app_line_ok() {
+  set -f; set -- $1; set +f
+  [ $# = 13 ] || return 1
+  sp_fld '[a-z][a-z0-9-]{1,30}' "$1" || return 1
+  [ "${#2}" -le 200 ] && sp_fld '[a-z0-9][a-z0-9./_-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*)?@sha256:[0-9a-f]{64}' "$2" || return 1
+  sp_int_in "$3" 1 65535 && sp_int_in "$4" 64 8192 && sp_int_in "$6" 32 4096 && sp_int_in "$7" 43000 43999 && sp_int_in "${13}" 1 600 || return 1
+  sp_fld '[0-9](\.[0-9]{1,2})?' "$5" && awk -v c="$5" 'BEGIN { exit !(c + 0 >= 0.1 && c + 0 <= 8) }' || return 1
+  case "$8|$9|${10}" in
+    "-|-|-") ;;
+    *) sp_fld '[a-z0-9][a-z0-9._-]{0,60}' "$8" && sp_fld '[A-Za-z0-9._/][A-Za-z0-9._/-]*(\+[A-Za-z0-9._/][A-Za-z0-9._/-]*){0,7}' "$9" && sp_fld '[a-z][a-z0-9_]*(\+[a-z][a-z0-9_]*){0,5}' "${10}" || return 1 ;;
+  esac
+  sp_fld '/[A-Za-z0-9_./-]{0,80}' "${11}" && sp_fld '[0-9]{3}(\+[0-9]{3}){0,5}' "${12}"
+}
+# sp_app_load MODULE: the recorded line's fields in A_*, or failure when the module is not recorded.
+sp_app_load() {
+  l=$(sp_app_line "$1") || return 1
+  [ -n "$l" ] || return 1
+  # shellcheck disable=SC2034 # the A_* variables are read by the callers
+  read -r A_NAME A_IMAGE A_PORT A_MEM A_CPUS A_PIDS A_HOOK A_SCRIPT A_EXEC A_OUTS A_HPATH A_HOK A_HSTART <<APPL
+$l
+APPL
+  [ "$A_NAME" = "$1" ]
+}
+# sp_run_hostplan OUT ARGS: the plan printer (core/appmods/host-plan.js), inside the image root recorded by id: unprivileged, read-only, no network, no mounts, stdout only, capped at 64 KB.
+sp_run_hostplan() {
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
+  out_=$1; shift
+  # shellcheck disable=SC2016 # the script is node's, not the shell's
+  { timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
+      --entrypoint node "$img" -e 'import("/opt/vyre/core/appmods/host-plan.js").then(m=>process.stdout.write(process.argv[1]==="list"?m.listLines().join("\n")+"\n":m.composeFile(process.argv[2])))' "$@" 2>/dev/null || true; } | head -c 65537 >"$out_"
+}
+# sp_listen_ports: the TCP ports the vyre container listens on, one per line, read in its own network namespace (nothing when it is not running).
+sp_listen_ports() {
+  pid=$(sp_pid) || return 0
+  timeout 20 nsenter -t "$pid" -n cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk '$4 == "0A" { n = split($2, a, ":"); print a[n] }' | while IFS= read -r hx; do
+    case "$hx" in ""|*[!0-9A-Fa-f]*) continue ;; esac
+    printf '%d\n' "0x$hx"
+  done | sort -un
+}
+# sp_app_record: the catalog out of the recorded vyre image, checked field by field, written to private/app-modules. Names must be unique, hook ports must be unique and must not be a port the vyre
+# container listens on now, and every app image is pulled (it is pinned by digest, so what is pulled is what the line names). A catalog that fails any of that records NO app: a failure here never
+# stops the Space helper's install or an update (Twenty does not wait on an app), and `app-up` says the app is not recorded.
+sp_app_record() {
+  t=$(mktemp "$SP_PRIV/applist.XXXXXX") || return 0
+  new=$SP_PRIV/app-modules.new; : >"$new"
+  why=""
+  if sp_run_hostplan "$t" list; then
+    if [ "$(wc -c <"$t")" -gt 65536 ]; then why="the app list is too long"; else
+      used=$(sp_listen_ports)
+      while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        sp_app_line_ok "$l" || { why="a catalog line was refused: $(printf '%s' "$l" | cut -c1-30)"; break; }
+        set -f; set -- $l; set +f
+        nm=$1; im=$2; hk=$7
+        if awk -v n="$nm" '$1 == n { f = 1 } END { exit !f }' "$new"; then why="the app name $nm is listed twice"; break; fi
+        if awk -v h="$hk" '$7 == h { f = 1 } END { exit !f }' "$new"; then why="the hook port $hk is used by two apps"; break; fi
+        if printf '%s\n' "$used" | grep -qx "$hk"; then why="the hook port $hk is a port the vyre container already uses"; break; fi
+        if ! timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$im" >/dev/null 2>&1; then why="the image of $nm could not be pulled"; break; fi
+        printf '%s\n' "$l" >>"$new"
+      done <"$t"
+    fi
+  fi
+  rm -f "$t"
+  if [ -n "$why" ]; then
+    : >"$new"; echo "vyre: no app modules were recorded: $why" >&2; sp_log "app record: $why"
+  fi
+  chmod 600 "$new" && rename_over "$new" "$SP_PRIV/app-modules"
+  return 0
+}
+# sp_app_image_ok: the vyre container still runs the image root recorded. An update that root has not recorded yet (space-helper install) means the catalog line may not be the one the container carries.
+sp_app_image_ok() {
+  cur=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
+  [ -n "$cur" ] && [ "$cur" = "$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)" ] || { MSG="the vyre image is not the one the helper recorded; run: sudo vyre space-helper install"; return 1; }
+}
+# sp_app_lint FILE MODULE: a closed check of the generated compose against the recorded line (A_*): one service called app, only the keys the generator uses, the recorded image and limits, no
+# capability, no port, no host path, named volumes the file declares, one internal network, environment values from a short alphabet or the app's own secret by name.
+sp_app_lint() {
+  awk -v mod="$2" -v image="$A_IMAGE" -v mem="$A_MEM" -v cpus="$A_CPUS" -v pids="$A_PIDS" '
+  function bad(m) { print "lint: " m; ok = 0 }
+  BEGIN { ok = 1 }
+  /^#/ || /^$/ { next }
+  /^[a-z]/ { k = $1; sub(/:.*/, "", k); if (k != "name" && k != "services" && k != "networks" && k != "volumes") bad("top-level key " k)
+    if (k == "name" && $0 != "name: vyre-app-" mod) bad("the project name"); top = k; key = ""; next }
+  top == "services" && /^  [a-z]/ { if ($0 != "  app:") bad("service " $0); next }
+  top == "services" && /^    [a-z_]+:/ { k = $1; sub(/:.*/, "", k); key = k; if (seen[k]++) bad("a repeated key " k)
+    if (k == "image") { if ($0 != "    image: " image) bad("an image root did not record") }
+    else if (k == "container_name") { if ($0 != "    container_name: vyre-app-" mod) bad("the container name") }
+    else if (k == "restart") { if ($0 != "    restart: \"no\"") bad("a restart policy") }
+    else if (k == "mem_limit" || k == "memswap_limit") { if ($0 != "    " k ": " mem "m") bad(k) }
+    else if (k == "cpus") { if ($0 != "    cpus: " cpus) bad("cpus") }
+    else if (k == "pids_limit") { if ($0 != "    pids_limit: " pids) bad("pids_limit") }
+    else if (k == "init") { if ($0 != "    init: true") bad("init") }
+    else if (k == "cap_drop" || k == "security_opt" || k == "networks" || k == "volumes" || k == "environment") { if ($0 != "    " k ":") bad(k " with a value on its line") }
+    else bad("service key " k)
+    next }
+  top == "services" && /^      / {
+    if (key == "cap_drop") { if ($0 != "      - ALL") bad("cap_drop") }
+    else if (key == "security_opt") { if ($0 != "      - no-new-privileges:true") bad("security_opt") }
+    else if (key == "networks") { if ($0 != "      - net") bad("the service networks") }
+    else if (key == "volumes") {
+      line = $0; sub(/^      - /, "", line)
+      if (line == $0 || line !~ /^[a-z][a-z0-9-]*:\/[A-Za-z0-9_.\/-]*$/) { bad("a volume entry"); next }
+      v = line; sub(/:.*/, "", v); p = line; sub(/^[^:]*:/, "", p)
+      if (p ~ /\.\./ || p == "/" || p ~ /^\/(etc|proc|sys|dev|run|var\/run)(\/|$)/) bad("a volume path")
+      used[v] = 1 }
+    else if (key == "environment") {
+      line = $0; sub(/^      /, "", line)
+      if (line !~ /^[A-Z][A-Z0-9_]*: /) { bad("an environment entry"); next }
+      e = line; sub(/:.*/, "", e); val = line; sub(/^[^:]*: /, "", val)
+      if (val ~ /^"[A-Za-z0-9_.\/:@+= -]*"$/) next
+      if (val == "${" e "}") next
+      bad("the environment value of " e) }
+    else bad("a line under " key)
+    next }
+  top == "networks" { if ($0 != "  net:" && $0 != "    internal: true") bad("the networks block"); next }
+  top == "volumes" {
+    if ($0 ~ /^  [a-z][a-z0-9-]*:$/) { v = $0; sub(/^  /, "", v); sub(/:$/, "", v); decl[v] = 1; last = v; next }
+    if (last != "" && $0 == "    name: vyre-app-" mod "_" last) next
+    bad("the volumes block"); next }
+  { bad("a line outside every block") }
+  END { for (v in used) if (!(v in decl)) bad("a volume that is not declared"); exit ok ? 0 : 1 }' "$1"
+}
+# sp_app_gen MODULE: root's copy of the compose file, regenerated from the image at every `up`, linted against the recorded line, never taken from the daemon.
+sp_app_gen() {
+  m=$1; d=$SP_APPS/$m
+  t=$(mktemp "$d/compose.XXXXXX") || return 1
+  if ! sp_run_hostplan "$t" compose "$m"; then rm -f "$t"; MSG="the compose file could not be regenerated"; return 1; fi
+  sz=$(wc -c <"$t")
+  if [ "$sz" -lt 100 ] || [ "$sz" -gt 65536 ] || ! head -n 1 "$t" | grep -q '^# Generated by Vyre'; then rm -f "$t"; MSG="the compose file could not be regenerated"; return 1; fi
+  if ! l=$(sp_app_lint "$t" "$m"); then rm -f "$t"; MSG="the regenerated compose file was refused: $(printf '%s' "$l" | head -n 1)"; return 1; fi
+  chmod 600 "$t"; rename_over "$t" "$d/compose.yml"
+}
+# sp_secrets_app MODULE: the keys the compose file names as `KEY: ${KEY}` are made once by root (64 hex characters each), kept 0600 in root's folder; the daemon never reads them.
+sp_secrets_app() {
+  m=$1; d=$SP_APPS/$m; f=$d/secrets.env
+  keys=$(sed -n 's/^      \([A-Z][A-Z0-9_]*\): \${\1}$/\1/p' "$d/compose.yml")
+  t=$(mktemp "$f.XXXXXX") || return 1
+  if [ -f "$f" ] && [ ! -L "$f" ]; then cat "$f" >"$t" || { rm -f "$t"; return 1; }; fi
+  for k in $keys; do grep -q "^$k=" "$t" || printf '%s=%s\n' "$k" "$(sp_rnd)" >>"$t"; done
+  chmod 600 "$t" && rename_over "$t" "$f" || { rm -f "$t"; return 1; }
+}
+# sp_app_dc MODULE ARGS: compose for one app, only on root's own copy, the project name fixed from the validated name.
+sp_app_dc() {
+  m=$1; shift
+  sp_app_name_ok "$m" || return 1
+  d=$SP_APPS/$m
+  timeout 1200 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-app-$m" \
+    --env-file "$d/secrets.env" -f "$d/compose.yml" "$@"
+}
+sp_app_running() { [ -n "$(hdock ps -q --filter "label=com.docker.compose.project=vyre-app-$1" 2>/dev/null || true)" ]; }
+# sp_app_try NET IP PORT: one throwaway container on the app's network (the vyre image, unprivileged, no capabilities) connects to IP:PORT and says `open`, `refused` or `timeout`. It stands where the
+# app stands: same network, same subnet, the same interface of the vyre container receives its packets.
+sp_app_try() {
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
+  # shellcheck disable=SC2016 # the script is node's, not the shell's
+  timeout 40 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network "$1" --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 32 --memory 128m \
+    --entrypoint node "$img" -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});const t=setTimeout(()=>{process.stdout.write("timeout");process.exit()},3000);s.on("connect",()=>{process.stdout.write("open");process.exit()});s.on("error",()=>{process.stdout.write("refused");process.exit()})' "$2" "$3" 2>/dev/null | head -c 16 || true
+}
+# sp_app_wait MODULE: the app answers its health path with one of the catalog's codes before its start time (and a minute) is over.
+sp_app_wait() {
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
+  # shellcheck disable=SC2016 # the script is node's, not the shell's
+  r=$(timeout $((A_HSTART + 60)) env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network "vyre-app-${1}_net" --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 32 --memory 128m \
+    --entrypoint node "$img" -e 'const u=process.argv[1],ok=process.argv[2].split("+"),end=Date.now()+Number(process.argv[3])*1000;(async()=>{while(Date.now()<end){try{const r=await fetch(u,{redirect:"manual",signal:AbortSignal.timeout(3000)});if(ok.includes(String(r.status))){process.stdout.write("ok");return}}catch{}await new Promise(r=>setTimeout(r,2000))}process.stdout.write("timeout")})()' \
+    "http://vyre-app-$1:$A_PORT$A_HPATH" "$A_HOK" "$A_HSTART" 2>/dev/null | head -c 16 || true)
+  [ "$r" = ok ]
+}
+# sp_in_rule FAM PID IF SUBNET HOOK TAG: the three INPUT rules for one subnet, in the vyre container's namespace, in this order: the answers to what the daemon asked (ESTABLISHED,RELATED, accepted), tcp to
+# the hook port from the app's subnet (accepted), and everything else that arrives on the app network's interface (dropped). Each is checked with -C, put in at position 1 and checked again.
+# The drop goes in first, and when it is missing the other two are removed first, so a half-made set can never leave an accept below a drop that is not there.
+sp_in_rule() {
+  fam=$1; pid=$2; ifn=$3; sn=$4; hk=$5; tg=$6
+  if ! sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -m comment --comment "$tg" -j DROP >/dev/null 2>&1; then
+    sp_fw_each "$fam" "$pid" -D INPUT -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || true
+    sp_fw_each "$fam" "$pid" -D INPUT -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || true
+    sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -m comment --comment "$tg" -j DROP >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+  fi
+  sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
+    || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+  sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
+    || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+  for w in "-i $ifn -m comment --comment $tg -j DROP" "-i $ifn -s $sn -p tcp --dport $hk -m comment --comment $tg -j ACCEPT" "-i $ifn -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment $tg -j ACCEPT"; do
+    set -f
+    # shellcheck disable=SC2086 # the words of a rule this function just built from checked values
+    sp_fw_each "$fam" "$pid" -C INPUT $w >/dev/null 2>&1 || { set +f; MSG="the firewall rule is not there after it was added"; return 1; }
+    set +f
+  done
+}
+# sp_in_apply MODULE: the inbound rules for every subnet of the app's network, on the interface the vyre container has on it (found by its address there). The list of what was put in goes to private/apps/<module>/fw,
+# so `app-down` removes exactly those.
+sp_in_apply() {
+  m=$1; hk=$2; tg="vyre-app:$1"; netw="vyre-app-${1}_net"
+  pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  vip=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$netw\"}}{{.IPAddress}}{{end}}" "$CTR_NAME" 2>/dev/null || true)
+  sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$vip" || { MSG="the vyre container has no address on the app's network"; return 1; }
+  ifn=$(timeout 20 nsenter -t "$pid" -n ip -o -4 addr show 2>/dev/null | awk -v ip="$vip" '{ split($4, a, "/"); if (a[1] == ip) { print $2; exit } }')
+  sp_fld '[a-z][a-z0-9]{0,14}' "$ifn" || { MSG="the app network's interface in the vyre container could not be found"; return 1; }
+  subs=$(sp_net_subnets_of "$netw")
+  [ -n "$subs" ] || { MSG="the app's network does not exist"; return 1; }
+  : >"$SP_APPS/$m/fw.new"
+  for sn in $subs; do
+    sp_subnet_ok "$sn" || { MSG="a subnet of the app's network is not one the helper accepts"; return 1; }
+    fam=$(sp_ipt "$sn")
+    sp_in_rule "$fam" "$pid" "$ifn" "$sn" "$hk" "$tg" || return 1
+    printf '%s %s %s %s\n' "$fam" "$sn" "$ifn" "$hk" >>"$SP_APPS/$m/fw.new"
+  done
+  rename_over "$SP_APPS/$m/fw.new" "$SP_APPS/$m/fw"
+}
+# sp_in_probe MODULE HOOK: the inbound rules are proved, not assumed. From the app's network, a connect to the vyre container's address there on any port but the hook port must TIME OUT (dropped; a
+# listener that is not there would answer at once, so a refusal is as much a failure as a connection), on each port the vyre container listens on and on a few well known ones; the hook port must NOT
+# time out (open, or refused when the daemon has no listener yet).
+sp_in_probe() {
+  m=$1; hk=$2; netw="vyre-app-${1}_net"
+  vip=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$netw\"}}{{.IPAddress}}{{end}}" "$CTR_NAME" 2>/dev/null || true)
+  sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$vip" || { MSG="the vyre container has no address on the app's network"; return 1; }
+  ports=$( { sp_listen_ports; printf '1\n22\n80\n443\n'; } | grep -vx "$hk" | sort -un | head -n 12)
+  for p in $ports; do
+    sp_int_in "$p" 1 65535 || continue
+    r=$(sp_app_try "$netw" "$vip" "$p") || r=""
+    [ "$r" = timeout ] || { MSG="the app's network can reach port $p of the vyre container, answer ${r:-none}"; return 1; }
+  done
+  r=$(sp_app_try "$netw" "$vip" "$hk") || r=""
+  case "$r" in open|refused) ;; *) MSG="the hook port of the vyre container is not reachable from the app's network"; return 1 ;; esac
+}
+# sp_app_handoff MODULE TEXT: status/app-<module>-secrets, a file only the daemon's uid can read (0400), written whole and renamed; the daemon reads it once and the helper sweeps it after ten minutes.
+sp_app_handoff() {
+  t=$(mktemp "$SP_STATE/.app-$1.XXXXXX") || return 1
+  printf '%s' "$2" >"$t" && chmod 400 "$t" && chown "$DAEMON_UID:$DAEMON_UID" "$t" 2>/dev/null; rename_over "$t" "$SP_STATE/app-$1-secrets" || { rm -f "$t"; return 1; }
+}
+# sp_app_bootstrap MODULE: the one-time setup, on the first `up` only. The script is read out of the recorded image (a file name root checked), copied into the app, and run with the command the
+# catalog line names; its environment travels in a root-only file (docker exec --env-file), never on a command line. What it prints is read for the names the line lists, each value from a short alphabet.
+sp_app_bootstrap() {
+  m=$1; d=$SP_APPS/$m
+  [ ! -f "$d/bootstrapped" ] || return 0
+  if [ "$A_SCRIPT" = - ]; then : >"$d/bootstrapped"; return 0; fi
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || { MSG="the setup script could not be read"; return 1; }
+  sc=$(mktemp "$d/script.XXXXXX") || { MSG="the setup script could not be read"; return 1; }
+  if ! { timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 32 --memory 64m \
+      --entrypoint cat "$img" "/opt/vyre/core/appmods/catalog/$A_SCRIPT" 2>/dev/null | head -c 262145 >"$sc"; } || [ ! -s "$sc" ] || [ "$(wc -c <"$sc")" -gt 262144 ]; then
+    rm -f "$sc"; MSG="the setup script could not be read"; return 1
+  fi
+  chmod 644 "$sc"
+  hdock cp "$sc" "vyre-app-$m:/tmp/$A_SCRIPT" >/dev/null 2>&1; cprc=$?
+  rm -f "$sc"
+  [ "$cprc" = 0 ] || { MSG="the setup script could not be copied into the app"; return 1; }
+  hook=$(sp_rnd)
+  vip=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"vyre-app-${m}_net\"}}{{.IPAddress}}{{end}}" "$CTR_NAME" 2>/dev/null || true)
+  sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$vip" || { MSG="the vyre container has no address on the app's network"; return 1; }
+  ev=$d/setup.env
+  ( umask 077; printf 'APP_URL=http://vyre-app-%s:%s\nVYRE_LOGIN_EMAIL=vyre+%s@vyre.invalid\nVYRE_HOOK_URL=http://%s:%s/hook\nVYRE_HOOK_TOKEN=%s\n' "$m" "$A_PORT" "$m" "$vip" "$A_HOOK" "$hook" >"$ev" ) || { MSG="the setup environment could not be written"; return 1; }
+  of=$d/setup.out
+  set -f
+  # shellcheck disable=SC2086 # the words of the catalog line's command, each checked against a short alphabet; split on + only
+  oldifs=$IFS; IFS=+; set -- $A_EXEC; IFS=$oldifs
+  set +f
+  brc=0
+  timeout 600 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker exec --env-file "$ev" -w /app "vyre-app-$m" "$@" "/tmp/$A_SCRIPT" 2>/dev/null | head -c 16384 >"$of" || brc=1
+  rm -f "$ev"
+  hdock exec "vyre-app-$m" rm -f "/tmp/$A_SCRIPT" >/dev/null 2>&1 || true
+  if [ "$brc" != 0 ] || [ ! -s "$of" ]; then rm -f "$of"; MSG="setting the app up failed"; return 1; fi
+  body="hook_token=$hook
+"
+  oldifs=$IFS; IFS=+
+  for o in $A_OUTS; do
+    IFS=$oldifs
+    ov=$(grep -E -m 1 -- "^$o=[A-Za-z0-9_.@+=/:-]{1,300}\$" "$of" | head -n 1 || true)
+    [ -n "$ov" ] || { rm -f "$of"; MSG="setting the app up gave no $o"; return 1; }
+    body="$body$ov
+"
+    IFS=+
+  done
+  IFS=$oldifs
+  rm -f "$of"
+  sp_app_handoff "$m" "$body" || { MSG="the setup result could not be handed over"; return 1; }
+  : >"$d/bootstrapped"
+}
+sp_app_up() {
+  m=$1
+  sp_app_load "$m" || { MSG="that app is not recorded on this server"; return 1; }
+  sp_app_image_ok || return 1
+  [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
+  mkdir -p "$SP_APPS/$m" && chmod 700 "$SP_APPS/$m" || { MSG="could not make the app's folder"; return 1; }
+  sp_app_gen "$m" || return 1
+  sp_secrets_app "$m" || { MSG="could not make the app's secrets"; return 1; }
+  sp_app_dc "$m" create >/dev/null 2>&1 || { MSG="the app's container could not be created"; return 1; }
+  # Joined and walled BEFORE the app starts, so it never runs unwalled; proved after, and stopped again if the proof fails.
+  sp_attach_net "$m" "vyre-app-${m}_net" "$APP_ALIAS" || return 1
+  sp_fw_apply_net "$m" "vyre-app-${m}_net" "vyre-app:$m" "app:$m" || return 1
+  sp_in_apply "$m" "$A_HOOK" || return 1
+  sp_app_dc "$m" up -d >/dev/null 2>&1 || { MSG="the app did not start"; return 1; }
+  if ! sp_app_wait "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; MSG="the app did not become healthy"; return 1; fi
+  if ! { sp_probe_to "$m" "vyre-app-$m" app "vyre-app-${m}_net" "$A_PORT" "the app" && sp_in_probe "$m" "$A_HOOK"; }; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; return 1; fi
+  if ! sp_app_bootstrap "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; return 1; fi
+  MSG="the app is up and walled off"
+}
+sp_app_stop() {
+  [ -f "$SP_APPS/$1/compose.yml" ] || { MSG="that app was never started"; return 1; }
+  sp_app_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }
+  MSG=stopped
+}
+# sp_app_fw_del MODULE: removes exactly the rules that carry vyre-app:<module>, in both chains, found by listing the chain; each line is matched against the strict shape root puts in, quotes stripped
+# before -D. iptables prints the states as RELATED,ESTABLISHED and puts -s before -i (checked on a real iptables 1.8.10 in a network namespace); both orders of the states are read. Success is reported only after a second listing shows no line that names the app (a form this function does not know is a failure, never a silent success).
+sp_app_fw_del() {
+  m=$1; tg="vyre-app:$m"
+  pid=$(sp_pid) || { sp_sub_del "app:$m"; return 0; }
+  for fam in iptables ip6tables; do
+    for ch in OUTPUT INPUT; do
+      lines=$(timeout 20 nsenter -t "$pid" -n "$fam" -w -S "$ch" 2>/dev/null | grep -E -- "--comment \"?$tg([^a-z0-9-]|\$)" || true)
+      [ -n "$lines" ] || continue
+      printf '%s\n' "$lines" | while IFS= read -r l; do
+        if [ "$ch" = OUTPUT ]; then pat="-A OUTPUT -d [0-9a-f:./]+ -m owner --uid-owner [0-9]+-[0-9]+ -m comment --comment \"?$tg\"? -j REJECT( --reject-with [a-z0-9-]+)?"
+        else pat="-A INPUT (-s [0-9a-f:./]+ )?-i [a-z0-9]+ (-p tcp -m tcp --dport [0-9]+ |-m conntrack --ctstate (ESTABLISHED,RELATED|RELATED,ESTABLISHED) )?-m comment --comment \"?$tg\"? -j (ACCEPT|DROP)"; fi
+        printf '%s\n' "$l" | grep -Eqx -- "$pat" || continue
+        rest=$(printf '%s' "${l#-A $ch }" | tr -d '"')
+        set -f
+        # shellcheck disable=SC2086 # the words of a line that matched the strict pattern above, quotes removed
+        timeout 20 nsenter -t "$pid" -n "$fam" -w -D "$ch" $rest >/dev/null 2>&1 || true
+        set +f
+      done
+      if timeout 20 nsenter -t "$pid" -n "$fam" -w -S "$ch" 2>/dev/null | grep -qE -- "--comment \"?$tg([^a-z0-9-]|\$)"; then MSG="a firewall rule for this app is still there (removed none, or one in a form the helper does not know)"; return 1; fi
+    done
+  done
+  sp_sub_del "app:$m"
+  rm -f "$SP_APPS/$m/fw"
+}
+sp_app_down() {
+  m=$1
+  [ -f "$SP_APPS/$m/compose.yml" ] || { MSG="that app was never started"; return 1; }
+  # The rules first: they name an interface of the vyre container, and a name that is free again may belong to another network by the time the app is gone.
+  sp_app_fw_del "$m" || return 1
+  hdock network disconnect -f "vyre-app-${m}_net" "$CTR_NAME" >/dev/null 2>&1 || true
+  sp_app_dc "$m" down >/dev/null 2>&1 || { MSG="down failed"; return 1; }
+  # The keys and the data stay; the setup runs again on the next install (the daemon's Vault no longer has what it made).
+  rm -f "$SP_APPS/$m/bootstrapped"
+  MSG="removed; the data is kept"
+}
 # sp_name_ok NAME: the one test for a Space name, used before a name is turned into any path or any command: lowercase letters, digits and dashes, a letter first, at most 31
 # characters, and one line (grep -x on a variable that holds a newline would accept a matching line anywhere in it, so the length and the absence of a newline are checked first).
 sp_name_ok() {
@@ -1614,7 +1989,7 @@ STAT
     printf '%s\n' "$n_" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' && return 0
     MSG="not a request the helper knows"; return 1
   fi
-  case "$v_" in up|stop|down|firewall-add|firewall-del) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
+  case "$v_" in up|stop|down|firewall-add|firewall-del|app-up|app-stop|app-down) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
   # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
   [ "$LINE" = "$v_ $n_" ] && sp_name_ok "$n_" || { MSG="not a request the helper knows"; return 1; }
 }
@@ -1692,18 +2067,26 @@ sp_do() {
   case "$id" in *[!0-9a-f]*|"") return 0 ;; esac
   [ "${#id}" = 32 ] || return 0
   if [ "$v" = publish-fill ]; then sp_publish_fill_do "$id" "$n"; return 0; fi
-  case "$v" in up|stop|down|firewall-add|firewall-del) ;; *) sp_status "$id" failed "not a request the helper knows"; return 0 ;; esac
+  case "$v" in up|stop|down|firewall-add|firewall-del|app-up|app-stop|app-down) ;; *) sp_status "$id" failed "not a request the helper knows"; return 0 ;; esac
   sp_name_ok "$n" || { sp_status "$id" failed "not a request the helper knows"; sp_log "refused $v: a name that is not one"; return 0; }
-  case "$n" in *-twenty*) sp_status "$id" failed "that name is not allowed"; sp_log "refused $v: a name with -twenty"; return 0 ;; esac
-  if [ "$v" != up ] && ! sp_known "$n"; then sp_status "$id" failed "no such Space"; sp_log "refused $v: unknown Space"; return 0; fi
-  if [ "$v" = up ]; then
+  # An app verb names a module in root's recorded catalog and nothing else; its lock is lock-app.<module> (a dot is not in a Space's name, so the two can never be the same lock).
+  lkn=$n
+  case "$v" in
+    app-*)
+      if ! { sp_app_name_ok "$n" && [ -n "$(sp_app_line "$n")" ]; }; then sp_status "$id" failed "no such app"; sp_log "refused $v: not a recorded app"; return 0; fi
+      lkn=app.$n ;;
+    *)
+      case "$n" in *-twenty*) sp_status "$id" failed "that name is not allowed"; sp_log "refused $v: a name with -twenty"; return 0 ;; esac
+      if [ "$v" != up ] && ! sp_known "$n"; then sp_status "$id" failed "no such Space"; sp_log "refused $v: unknown Space"; return 0; fi ;;
+  esac
+  if [ "$v" = up ] || [ "$v" = app-up ]; then
     mn=$(($(date +%s) / 60)); r=$SP_PRIV/rate-up; last=$(cat "$r" 2>/dev/null || true); cnt=0
     case "$last" in "$mn "*) cnt=${last#* } ;; esac
     case "$cnt" in ""|*[!0-9]*) cnt=0 ;; esac
     if [ "$cnt" -ge "$SPACES_UP_PER_MIN" ]; then sp_status "$id" busy "too many up requests this minute"; sp_log "busy: up rate"; return 0; fi
     printf '%s %s\n' "$mn" $((cnt + 1)) >"$r"
   fi
-  lk=$SP_PRIV/lock-$n
+  lk=$SP_PRIV/lock-$lkn
   # A dead lock is taken by renaming it away first: of two runs that find the same dead lock only the one whose rename succeeds goes on, and neither can delete
   # the fresh lock the other has made since (a plain rm -rf by both could).
   sp_reap_lock() { _d="$1.dead.$$"; if mv "$1" "$_d" 2>/dev/null; then rm -rf "${_d:?}" 2>/dev/null || true; return 0; fi; return 1; }
@@ -1714,7 +2097,7 @@ sp_do() {
   printf '%s\n' "$$" >"$lk/pid" 2>/dev/null || true
   sp_status "$id" running "$v"
   rc=0
-  case "$v" in up) sp_up "$n" || rc=1 ;; stop) sp_stop "$n" || rc=1 ;; down) sp_down "$n" || rc=1 ;; firewall-add) sp_fw_add "$n" || rc=1 ;; firewall-del) sp_fw_del "$n" || rc=1 ;; esac
+  case "$v" in up) sp_up "$n" || rc=1 ;; stop) sp_stop "$n" || rc=1 ;; down) sp_down "$n" || rc=1 ;; firewall-add) sp_fw_add "$n" || rc=1 ;; firewall-del) sp_fw_del "$n" || rc=1 ;; app-up) sp_app_up "$n" || rc=1 ;; app-stop) sp_app_stop "$n" || rc=1 ;; app-down) sp_app_down "$n" || rc=1 ;; esac
   rm -rf "${lk:?}" 2>/dev/null || true
   if [ "$rc" = 0 ]; then sp_status "$id" ok "${MSG:-done}"; sp_log "ok $v"; else sp_status "$id" failed "${MSG:-failed}"; sp_log "failed $v: ${MSG:-}"; fi
 }
@@ -1723,7 +2106,7 @@ space_helper_run() {
   umask 077; LC_ALL=C; export LC_ALL
   if ! sp_dirs_ok; then echo "vyre: $SPACES_ROOT (or a folder above it) is not as the Space helper needs it; nothing was done" >&2; exit 0; fi
   set_root_run
-  find "$SP_STATE" -maxdepth 1 -name 'admin-*' -type f -mmin +10 -delete 2>/dev/null || true
+  find "$SP_STATE" -maxdepth 1 \( -name 'admin-*' -o -name 'app-*-secrets' \) -type f -mmin +10 -delete 2>/dev/null || true
   mkdir -p "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null; chmod 700 "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null || true
   # A request claimed by a run that did not finish is answered "interrupted", never replayed.
   for c in "$SP_PRIV"/claim/req-*; do
@@ -1749,7 +2132,7 @@ space_helper_run() {
       v=${LINE%% *}; nm=${LINE#* }
       # The queue is a list of words: publish-fill's three tokens travel joined by + (no token holds one) and are split again, and checked again, where it runs.
       [ "$v" != publish-fill ] || nm=$(printf '%s' "$nm" | tr ' ' '+')
-      case "$v" in stop|down|firewall-del) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
+      case "$v" in stop|down|firewall-del|app-stop|app-down) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
     else
       sp_status "$h" failed "refused: $MSG"; sp_log "refused: $MSG"; rm -rf -- "${SP_PRIV:?}/claim/$b"
     fi
@@ -1803,6 +2186,21 @@ space_helper_reattach() {
       sp_log "stopped after update: ${MSG:-}"
     fi
   done
+  # App modules: the same, for every app whose container still runs. An app that cannot be walled again is stopped.
+  for ad in "$SP_APPS"/*/; do
+    [ -f "${ad}compose.yml" ] || continue
+    m=$(basename "$ad")
+    sp_app_name_ok "$m" || continue
+    sp_app_running "$m" || continue
+    sp_locked "app.$m" && continue
+    MSG=""
+    if ! { sp_app_load "$m" && sp_attach_net "$m" "vyre-app-${m}_net" "$APP_ALIAS" && sp_fw_apply_net "$m" "vyre-app-${m}_net" "vyre-app:$m" "app:$m" && sp_in_apply "$m" "$A_HOOK" \
+        && sp_probe_to "$m" "vyre-app-$m" app "vyre-app-${m}_net" "$A_PORT" "the app" && sp_in_probe "$m" "$A_HOOK"; }; then
+      sp_app_dc "$m" stop >/dev/null 2>&1 || true
+      echo "vyre: the app $m was stopped: ${MSG:-its firewall could not be proved} (ask for app-up again once the server is healthy)" >&2
+      sp_log "stopped app after update: ${MSG:-}"
+    fi
+  done
   sp_wall_ready || echo "vyre: the helper could not write the firewall marker; the vyre container will not start its daemon until it can" >&2
 }
 # sp_reset_stale: what an earlier install left in the helper's own state must not break a new one. Run at every `space-helper install` (a fresh install and every update).
@@ -1810,7 +2208,9 @@ space_helper_reattach() {
 # (a reader polls its own id for minutes) are cleared. Nothing of a Space is touched: its record, its data and a project that runs stay as they are, and a running Space
 # is adopted by the reattach pass (`space-helper watch`/`reattach`), never stopped here. Nothing is refused silently: what was cleared is one line in the helper's log.
 sp_reset_stale() {
-  if command -v pgrep >/dev/null 2>&1 && pgrep -f 'space-helper-run' >/dev/null 2>&1; then return 0; fi
+  # The run is looked for by the wrapper it was started through (the unit's ExecStart is "<wrapper> space-helper-run"), so another copy of the helper on the same machine (a test, a second install
+  # folder) is not mistaken for this one.
+  if command -v pgrep >/dev/null 2>&1 && pgrep -f -- "$WRAPPER space-helper-run" >/dev/null 2>&1; then return 0; fi
   cleared=0
   [ ! -e "$SP_PRIV/rate-up" ] || { rm -f "$SP_PRIV/rate-up" 2>/dev/null || true; cleared=$((cleared + 1)); }
   for l in "$SP_PRIV"/lock-*; do [ -d "$l" ] || continue; rm -rf "${l:?}" 2>/dev/null || true; cleared=$((cleared + 1)); done
@@ -1852,6 +2252,11 @@ space_helper() {
         n=$(basename "$sd"); sp_known "$n" || continue
         sp_dc "$n" down --remove-orphans >/dev/null 2>&1 || say "the Space $n's containers could not be removed: sudo docker compose -p vyre-$n-twenty down"
         sp_fw_del "$n" >/dev/null 2>&1 || true
+      done
+      for ad in "$SP_APPS"/*/; do
+        m=$(basename "$ad"); [ -f "${ad}compose.yml" ] || continue; sp_app_name_ok "$m" || continue
+        sp_app_dc "$m" down --remove-orphans >/dev/null 2>&1 || say "the app $m's containers could not be removed: sudo docker compose -p vyre-app-$m down"
+        sp_app_fw_del "$m" >/dev/null 2>&1 || true
       done
       rm -f "$SP_STATE/ready"
       systemctl disable --now "$un.path" >/dev/null 2>&1 || true

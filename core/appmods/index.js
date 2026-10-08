@@ -11,6 +11,7 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
+import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
@@ -108,7 +109,9 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const catalog = loadCatalog(m => ctx.log.warn(m));
-    const driver = seam.driver || createDockerDirect({ home: ctx.paths.root, log: m => ctx.log.warn(m) });
+    // A server whose vyred has no Docker (the box) has its host helper start the app; anywhere else vyred reaches Docker itself.
+    const driver = seam.driver || (hostHelperHere() ? createHelperDriver({ log: m => ctx.log.warn(m) }) : createDockerDirect({ home: ctx.paths.root, log: m => ctx.log.warn(m) }));
+    const byHelper = driver.kind === "helper";
     const space = () => String((ctx.kernel && ctx.kernel.space) || "home");
     /** @type {Map<string, http.Server>} */ const listeners = new Map();
     const row = (/** @type {string} */ name) => db.prepare("SELECT * FROM appmods_apps WHERE name = ?").get(name);
@@ -208,18 +211,29 @@ export default {
         const m = known(i.name);
         if (row(m.name)) throw refuse(`${m.name} is already installed`, "exists");
         const sp = space();
+        // With the host helper, root makes the app's keys and the webhook key and hands the setup's outputs over once; the daemon keeps them in the Vault below.
         const secrets = /** @type {Record<string, string>} */ ({});
-        for (const s of m.app.secrets || []) { secrets[s.env] = gen(s.generate); await put(m.name, s.env.toLowerCase(), secrets[s.env], s.env); }
+        const hookPort = byHelper ? driver.hookPortFor(m) : await freePort("127.0.0.1");
         const hookToken = gen("hex32");
-        await put(m.name, "hook", hookToken, "the key the app's webhooks carry");
-        const hookPort = await freePort("127.0.0.1");
+        if (!byHelper) {
+          for (const s of m.app.secrets || []) { secrets[s.env] = gen(s.generate); await put(m.name, s.env.toLowerCase(), secrets[s.env], s.env); }
+          await put(m.name, "hook", hookToken, "the key the app's webhooks carry");
+        }
         db.prepare("INSERT INTO appmods_apps (name, space, version, state, origin, hook_port, login_email, installed, note) VALUES (?,?,?,?,?,?,?,?,?)").run(m.name, sp, m.version, "installing", null, hookPort, `vyre+${m.name}@vyre.invalid`, Date.now(), "");
         try {
           const up = await driver.up({ space: sp, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets, hookPort });
           db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, m.name);
           await healthy(m, up.origin);
           listen(m, up.hookHost, hookPort);
-          if (m.app.bootstrap) {
+          if (byHelper) {
+            const got = up.outputs || {};
+            if (m.app.bootstrap && !got.hook_token) throw refuse(`setting ${m.name} up gave no hand-over`, "bootstrap");
+            if (got.hook_token) await put(m.name, "hook", got.hook_token, "the key the app's webhooks carry");
+            for (const o of (m.app.bootstrap || {}).outputs || []) {
+              if (!got[o.name]) throw refuse(`setting ${m.name} up gave no ${o.name}`, "bootstrap");
+              await put(m.name, o.name.replace(/_/g, "-"), got[o.name], o.name);
+            }
+          } else if (m.app.bootstrap) {
             const out = await driver.exec({ space: sp, manifest: m }, [...m.app.bootstrap.exec, "{file}"], {
               env: { APP_URL: originFor(m.name, baseHost()), VYRE_LOGIN_EMAIL: `vyre+${m.name}@vyre.invalid`, VYRE_HOOK_URL: `http://${up.hookHost}:${hookPort}/hook`, VYRE_HOOK_TOKEN: hookToken },
               files: [{ name: m.app.bootstrap.script, text: bootstrapScript(m) }],
@@ -255,7 +269,7 @@ export default {
     ctx.tool("appmods.start", { description: "Start an installed app again.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
       const m = known(r.name);
-      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: await secretsOf(m), hookPort: r.hook_port });
+      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: byHelper ? {} : await secretsOf(m), hookPort: r.hook_port });
       db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
       listen(m, up.hookHost, r.hook_port);
       ctx.events.emit("appmods.started", { name: m.name });
@@ -352,7 +366,7 @@ export default {
 
     // Apps that were running when this daemon stopped come back with it.
     for (const r of db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all()) {
-      secretsOf(known(r.name)).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: originFor(r.name, baseHost()) }, secrets, hookPort: r.hook_port }))
+      (byHelper ? Promise.resolve({}) : secretsOf(known(r.name))).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: originFor(r.name, baseHost()) }, secrets, hookPort: r.hook_port }))
         .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
