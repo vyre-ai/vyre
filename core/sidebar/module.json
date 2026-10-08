@@ -25,8 +25,8 @@
     },
     {
       "key": "sidebar.mine", "group": "appearance", "label": "Sidebar, my arrangement",
-      "help": "Your own order, groups and hidden entries, laid over the Space's default. The same on every device.",
-      "type": "list", "levels": ["account"], "apply": "live", "advanced": true,
+      "help": "Your own order, groups and hidden entries, as { entries: [...] }, laid over the Space's default. The same on every device.",
+      "type": "object", "levels": ["account"], "apply": "live", "advanced": true,
       "store": { "tool": { "get": { "tool": "sidebar.stored", "input": { "key": "mine" }, "read": "value" }, "set": { "tool": "sidebar.stored", "input": { "key": "mine", "value": "$value" } } } }
     }
   ]

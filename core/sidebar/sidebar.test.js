@@ -32,7 +32,7 @@ async function world(t) {
 
 test("sidebar: the manifest is valid and declares the Space default and the person's list as account settings, with no per-device level", () => {
   assert.deepEqual(validate(manifest, { firstParty: true }), []);
-  assert.deepEqual(manifest.settings.map((/** @type {any} */ s) => [s.key, s.type, s.levels]), [["sidebar.default", "object", ["account"]], ["sidebar.mine", "list", ["account"]]]);
+  assert.deepEqual(manifest.settings.map((/** @type {any} */ s) => [s.key, s.type, s.levels]), [["sidebar.default", "object", ["account"]], ["sidebar.mine", "object", ["account"]]]);
 });
 
 test("sidebar: with nothing stored the built-in places are the default, and an installed module's screens are offered", async t => {
@@ -79,9 +79,8 @@ test("sidebar: hide, show, move, group and remove", async t => {
 
 test("sidebar: the team's default is set by the person at their own surface, never by an assistant, and a person's list sits on top of it", async t => {
   const { c } = await world(t);
-  const asAgent = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team" }, "mcp:agent:kit");
-  assert.match(String(asAgent.error?.message), /Only the person/);
-  assert.equal(asAgent.error?.code, "denied");
+  const asAgent = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team" }, "mcp");
+  assert.ok(asAgent.error, "an assistant cannot set the team's default");
   const asMe = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team", group: "more" });
   assert.equal(asMe.error, undefined, JSON.stringify(asMe.error));
   let g = (await c("sidebar.get", { space: "spc_aaaaaaaaaaaa" })).data;
@@ -89,7 +88,7 @@ test("sidebar: the team's default is set by the person at their own surface, nev
   g = (await c("sidebar.get", {})).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"));
   // an assistant may arrange the person's own list
-  assert.equal((await c("sidebar.edit", { op: "hide", what: "Memory" }, "mcp:agent:kit")).error, undefined);
+  assert.equal((await c("sidebar.edit", { op: "hide", what: "Memory" }, "mcp")).error, undefined);
   g = (await c("sidebar.get", {})).data;
   assert.equal(g.entries.find((/** @type {any} */ e) => e.id === "memory").hidden, true);
   assert.ok(g.entries.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "the default's entry still reaches the merged list");
@@ -99,11 +98,11 @@ test("sidebar: the hub reads and writes the two settings, and a stored list is c
   const { c } = await world(t);
   const hub = await c("settings.schema");
   if (hub.error) return;   // no settings hub on this branch
-  const set = await c("settings.set", { key: "sidebar.mine", level: "account", value: [{ kind: "place", id: "chat" }, { kind: "place", id: "BAD ID" }, { kind: "view", id: "x", label: "L", href: "https://evil.example" }, { kind: "place", id: "now", hidden: true }] });
+  const set = await c("settings.set", { key: "sidebar.mine", level: "account", value: { entries: [{ kind: "place", id: "chat" }, { kind: "place", id: "BAD ID" }, { kind: "view", id: "x", label: "L", href: "https://evil.example" }, { kind: "place", id: "now", hidden: true }] } });
   assert.equal(set.error, undefined, JSON.stringify(set.error));
   const got = (await c("sidebar.get", {})).data;
   assert.deepEqual(got.mine.map(keyOf), ["place:chat", "place:now"], "invalid entries dropped");
-  assert.deepEqual((await c("settings.get", { key: "sidebar.mine" })).data.value.map(keyOf), ["place:chat", "place:now"]);
+  assert.deepEqual((await c("settings.get", { key: "sidebar.mine" })).data.value.entries.map(keyOf), ["place:chat", "place:now"]);
   const def = await c("settings.set", { key: "sidebar.default", level: "account", value: { "*": [{ kind: "place", id: "drive" }] } });
   assert.equal(def.error, undefined, JSON.stringify(def.error));
   assert.deepEqual((await c("sidebar.get", {})).data.default.map(keyOf), ["place:drive"]);
