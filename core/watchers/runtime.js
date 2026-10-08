@@ -272,8 +272,8 @@ export class Runtime {
    * as the exact command, since a module's use of an api-credential is the person's to allow.
    * @param {{ kind: string, project: string, credential?: string, [k: string]: any }} o
    */
-  async createPreset(o) {
-    const p = buildPreset(o);
+  async createPreset(o, resolved = {}) {
+    const p = buildPreset(o, resolved);
     if (!(await this.project(o.project))) throw new Error(`no project "${o.project}"; vyre projects lists them`);
     const dir = path.join(this.d.dir, p.name);
     if (this.row(p.name)?.enabled || fs.existsSync(dir)) throw new Error(`${p.name} already exists; watchers.card shows it`);

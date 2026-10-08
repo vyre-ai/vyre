@@ -20,10 +20,45 @@ function fill(text, vars, encode = false) {
   });
 }
 
+/** The kind a method has when nobody said otherwise: GET and HEAD read, POST PUT PATCH change, DELETE delete. @param {string} method */
+export const kindOfMethod = method => (method === "GET" || method === "HEAD" ? "read" : method === "DELETE" ? "delete" : "change");
+
+/**
+ * The operations of a form (an array of { name, method, path, kind?, label?, relabeled?, input?, output?, poll? }) as a declaration's ops and polls. A kind left out is the method's. A `poll` makes
+ * the operation a watcher source: { items?, id, at?, title?, args?, every_minutes? } (a list in the answer, the item's own id and time and title, extra query for the list call).
+ * @param {any} operations @returns {{ ops: Record<string, any>, poll: Record<string, any> }}
+ */
+export function opsFromForm(operations) {
+  /** @type {Record<string, any>} */ const ops = {}, poll = {};
+  if (operations === undefined) return { ops, poll };
+  if (!Array.isArray(operations) || operations.length > 200) throw fail("operations: a list of at most 200");
+  for (const o of operations) {
+    if (!isObj(o) || typeof o.name !== "string") throw fail("an operation has a name");
+    const method = String(o.method || "").toUpperCase();
+    ops[o.name] = { method, path: o.path, kind: o.kind === undefined ? kindOfMethod(method) : o.kind, ...(o.label ? { label: String(o.label) } : {}), ...(o.relabeled === true ? { relabeled: true } : {}),
+      ...(o.input ? { input: o.input } : {}), ...(o.output ? { output: o.output } : {}) };
+    if (o.poll !== undefined) {
+      const p = o.poll;
+      if (!isObj(p) || typeof p.id !== "string") throw fail(`operation ${o.name}: poll is { id (the item's own id), items?, at?, title?, args?, every_minutes? }`);
+      poll[o.name] = { op: o.name, id: p.id, ...(p.items ? { items: String(p.items) } : {}), ...(p.args ? { args: p.args } : {}), ...(p.every_minutes ? { every_minutes: p.every_minutes } : {}),
+        label: String(o.label || o.name), map: { ...(p.title ? { title: String(p.title) } : {}), ...(p.at ? { at: String(p.at) } : {}) } };
+    }
+  }
+  return { ops, poll };
+}
+
+/** The declared operations of a declaration as the list the record shows (the check request is the record's own, not listed). @param {import("./format.js").Declaration} d */
+export function operationsOf(d) {
+  return Object.entries(d.ops).filter(([n]) => n !== "check").map(([name, op]) => ({ name, method: op.method, path: op.path, kind: op.kind, ...(op.label ? { label: op.label } : {}),
+    ...(op.relabeled ? { relabeled: true } : {}), ...(op.input ? { input: op.input } : {}), ...(op.output ? { output: op.output } : {}),
+    ...(d.poll && d.poll[name] ? { poll: { id: d.poll[name].id, ...(d.poll[name].items ? { items: d.poll[name].items } : {}), ...(d.poll[name].map?.title ? { title: d.poll[name].map.title } : {}),
+      ...(d.poll[name].map?.at ? { at: d.poll[name].map.at } : {}), ...(d.poll[name].args ? { args: d.poll[name].args } : {}), ...(d.poll[name].every_minutes ? { every_minutes: d.poll[name].every_minutes } : {}) } } : {}) }));
+}
+
 /**
  * The quick form as a declaration. The one check request becomes a read op named `check`; the generic request (any method and path on the pinned host) needs no op at all.
  * @param {{ label: string, id?: string, base_url: string, send: { how: string, name?: string }, credential: { item: string, field?: string }, headers?: Record<string, string>,
- *   vars?: Record<string, string>, check: { path: string } }} form
+ *   vars?: Record<string, string>, check: { path: string }, operations?: any[] }} form
  * @returns {{ id: string, declaration: import("./format.js").Declaration, credential: { item: string, field?: string }, check: { method: "GET", path: string } }}
  */
 export function fromForm(form) {
@@ -43,10 +78,13 @@ export function fromForm(form) {
   if (!isObj(chk) || typeof chk.path !== "string" || !chk.path.startsWith("/")) throw fail("check.path: the path of one request that proves the key works, such as /locations/{locationId}");
   if (/[?#]/.test(chk.path)) throw fail("check.path: the path only; the check is a plain GET");
   const path = fill(chk.path, vars, true);
+  const { ops, poll } = opsFromForm(form.operations);
+  if (Object.hasOwn(ops, "check")) throw fail("operations: `check` is the connection's own check request");
   const declaration = defineConnector({
     id, label, version: 1, base_url: String(form.base_url || "").replace(/\/+$/, ""), auth,
     ...(Object.keys(headers).length ? { headers } : {}),
-    ops: { check: { method: "GET", path, kind: "read", label: "Check the connection" } },
+    ops: { check: { method: "GET", path, kind: "read", label: "Check the connection" }, ...ops },
+    ...(Object.keys(poll).length ? { poll } : {}),
   });
   return { id, declaration, credential: { item: cred.item, ...(cred.field ? { field: String(cred.field) } : {}) }, check: { method: "GET", path } };
 }
