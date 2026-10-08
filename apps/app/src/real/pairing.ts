@@ -125,7 +125,7 @@ async function staleSavedPairing(): Promise<boolean> {
 
 /**
  * What pairing a server needs from this device's own name: who will own it (with the head and length of the chain the server checks the proof against), the signature that proves this device speaks for
- * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (MacServer, relay/client/join.js `server`) both take it.
+ * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (relay/client/join.js `server`) both take it.
  */
 export async function serverPairInputs() {
   const { loadIdentity } = await import("../identity/store");
