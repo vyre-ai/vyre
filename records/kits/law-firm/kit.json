@@ -77,16 +77,60 @@
       ],
       "stages": [
         {
-          "name": "New"
+          "name": "New",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Call the lead back",
+              "doer": "role:paralegal",
+              "output": {
+                "kind": "note"
+              },
+              "due_offset_ms": 86400000
+            }
+          ]
         },
         {
-          "name": "Contacted"
+          "name": "Contacted",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Book the consultation",
+              "doer": "role:paralegal",
+              "output": {
+                "kind": "note"
+              },
+              "due_offset_ms": 172800000
+            }
+          ]
         },
         {
-          "name": "Meeting booked"
+          "name": "Meeting booked",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Prepare for the consultation",
+              "doer": "role:paralegal",
+              "output": {
+                "kind": "note"
+              },
+              "due_offset_ms": 259200000
+            }
+          ]
         },
         {
-          "name": "Qualified"
+          "name": "Qualified",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Send the engagement letter",
+              "doer": "role:attorney",
+              "output": {
+                "kind": "decision"
+              },
+              "due_offset_ms": 172800000
+            }
+          ]
         },
         {
           "name": "Converted"
@@ -249,7 +293,18 @@
       ],
       "stages": [
         {
-          "name": "Onboarding"
+          "name": "Onboarding",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Welcome the client and collect documents",
+              "doer": "role:paralegal",
+              "output": {
+                "kind": "note"
+              },
+              "due_offset_ms": 259200000
+            }
+          ]
         },
         {
           "name": "Active"
@@ -399,13 +454,35 @@
       ],
       "stages": [
         {
-          "name": "New"
+          "name": "New",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Scope the work and assign it",
+              "doer": "role:attorney",
+              "output": {
+                "kind": "note"
+              },
+              "due_offset_ms": 172800000
+            }
+          ]
         },
         {
           "name": "Active"
         },
         {
-          "name": "Review"
+          "name": "Review",
+          "owner": "role:attorney",
+          "tasks": [
+            {
+              "title": "Review the work",
+              "doer": "role:attorney",
+              "output": {
+                "kind": "decision"
+              },
+              "due_offset_ms": 604800000
+            }
+          ]
         },
         {
           "name": "Done"
@@ -417,20 +494,75 @@
           "when": "practice_area == \"Personal Injury\"",
           "stages": [
             {
-              "name": "Intake"
+              "name": "Intake",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Collect intake and the signed retainer",
+                  "doer": "role:paralegal",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 259200000
+                }
+              ]
             },
             {
-              "name": "Treating"
+              "name": "Treating",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Check in on treatment and collect records",
+                  "doer": "role:paralegal",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 1209600000
+                }
+              ]
             },
             {
-              "name": "Demand"
+              "name": "Demand",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Draft the demand letter",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "file"
+                  },
+                  "due_offset_ms": 1209600000
+                }
+              ]
             },
             {
               "name": "Negotiation",
-              "enter_if": "not empty(accident_date)"
+              "owner": "role:attorney",
+              "enter_if": "not empty(accident_date)",
+              "tasks": [
+                {
+                  "title": "Negotiate with the adjuster",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 2419200000
+                }
+              ]
             },
             {
-              "name": "Settled"
+              "name": "Settled",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Disburse the settlement funds",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 1209600000
+                }
+              ]
             },
             {
               "name": "Closed"
@@ -442,20 +574,76 @@
           "when": "practice_area == \"Estate Planning\"",
           "stages": [
             {
-              "name": "Intake"
+              "name": "Intake",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Collect family and asset details",
+                  "doer": "role:paralegal",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 259200000
+                }
+              ]
             },
             {
-              "name": "Drafting"
+              "name": "Drafting",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Draft the documents",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "file"
+                  },
+                  "due_offset_ms": 604800000
+                }
+              ]
             },
             {
-              "name": "Review"
+              "name": "Review",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Client review call",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 1209600000
+                }
+              ]
             },
             {
               "name": "Signing",
-              "enter_if": "not empty(trust_name)"
+              "owner": "role:attorney",
+              "enter_if": "not empty(trust_name)",
+              "tasks": [
+                {
+                  "title": "Signing ceremony",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "decision"
+                  },
+                  "due_offset_ms": 1814400000
+                }
+              ]
             },
             {
-              "name": "Funding"
+              "name": "Funding",
+              "owner": "role:attorney",
+              "tasks": [
+                {
+                  "title": "Fund the trust and retitle assets",
+                  "doer": "role:attorney",
+                  "output": {
+                    "kind": "note"
+                  },
+                  "due_offset_ms": 3024000000,
+                  "required": false
+                }
+              ]
             },
             {
               "name": "Closed"
@@ -466,7 +654,87 @@
     }
   ],
   "templates": [],
-  "roles": [],
+  "roles": [
+    {
+      "name": "attorney",
+      "kind": "role",
+      "label": "Attorney",
+      "description": "Reviews and approves work, owns the stages and answers for late tasks.",
+      "grants": [
+        {
+          "read": "lead"
+        },
+        {
+          "write": "lead"
+        },
+        {
+          "read": "appointment"
+        },
+        {
+          "write": "appointment"
+        },
+        {
+          "read": "client"
+        },
+        {
+          "write": "client"
+        },
+        {
+          "read": "project"
+        },
+        {
+          "write": "project"
+        },
+        {
+          "create": "project"
+        },
+        {
+          "read": "contact"
+        },
+        {
+          "write": "contact"
+        }
+      ]
+    },
+    {
+      "name": "paralegal",
+      "kind": "role",
+      "label": "Paralegal",
+      "description": "Does the intake and the file work that moves a lead or a project to its next stage.",
+      "grants": [
+        {
+          "read": "lead"
+        },
+        {
+          "write": "lead"
+        },
+        {
+          "read": "appointment"
+        },
+        {
+          "write": "appointment"
+        },
+        {
+          "read": "client"
+        },
+        {
+          "write": "client"
+        },
+        {
+          "read": "project"
+        },
+        {
+          "write": "project"
+        },
+        {
+          "read": "contact"
+        },
+        {
+          "write": "contact"
+        }
+      ]
+    }
+  ],
   "flows": [],
   "views": [
     {

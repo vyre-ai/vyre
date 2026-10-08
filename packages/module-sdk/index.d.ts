@@ -150,6 +150,27 @@ export interface Manifest {
     /** @planned The tool that answers suggest.query for this module, inside a 25 ms deadline. */
     suggest?: ToolName;
   };
+  /** What the module adds to Flows. A step is one of its own tools a Flow's call step may run; a trigger is an event it emits or a watcher it hosts, offered by name. */
+  flow?: {
+    steps?: {
+      /** One of its own tools (object form, reach anyone). */
+      name: ToolName;
+      label: string;
+      inputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+      outputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+      /** The step leaves Vyre; the tool must be marked outward too. */
+      outward?: boolean;
+    }[];
+    triggers?: {
+      name: string;
+      label: string;
+      /** An event in watches.emits: the trigger is an `event` trigger on it. */
+      event?: EventType;
+      /** A watcher it hosts: the trigger is a `watcher` trigger on it. */
+      watcher?: string;
+      inputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+    }[];
+  };
   watches?: {
     emits?: EventType[];
     /** @planned Event patterns it subscribes to. */

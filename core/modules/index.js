@@ -23,7 +23,7 @@ import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
-import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
+import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/module-sdk/manifest.js";
 import { isPerson, deviceIdOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { createHash } from "node:crypto";
@@ -263,10 +263,6 @@ export function validate(m, { firstParty = false } = {}) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
     if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
-    if (typeof e === "object" && e.flow !== undefined) {
-      if (!e.flow || typeof e.flow !== "object" || !["read", "write", "outward.send"].includes(e.flow.risk)) out.push(`tool "${t}": flow.risk must be read, write or outward.send`);
-      else if (e.reach !== undefined && e.reach !== "anyone") out.push(`tool "${t}": a tool that can be a Flow step must be reach anyone`);
-    }
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -830,7 +826,6 @@ export class Registry {
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
         rec.state = "running"; delete rec.error;
-        await this.registerFlowActions(m);
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
         return;
       }
@@ -838,7 +833,6 @@ export class Registry {
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
       rec.state = "running"; delete rec.error;
-      await this.registerFlowActions(m);
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
@@ -861,13 +855,6 @@ export class Registry {
       const dep = String(/** @type {any} */ (r).error || "").match(/^requires "([^"]+)", which is not running$/);
       if (dep && up.has(dep[1])) await this.startOne({ manifest: r.manifest, dir: r.dir });
     }
-  }
-
-  /** The tools a module marked `flow` become actions of the Space (and the owner and admins may run them from a Flow): the kernel registers them (deps.registerFlowActions). @param {any} m */
-  async registerFlowActions(m) {
-    const defs = toolEntries(m).filter(e => e.flow && typeof e.flow === "object").map(e => ({ action: e.name, risk: e.flow.risk, label: e.flow.label || e.summary || e.name, gloss: e.summary || "" }));
-    if (!defs.length || typeof this.deps.registerFlowActions !== "function") return;
-    try { await this.deps.registerFlowActions(m.name, defs); for (const d of defs) (this.flowActionTools ||= new Set()).add(d.action); } catch (e) { this.deps.log(`warn: module ${m.name}: its Flow actions were not registered: ${/** @type {Error} */ (e).message}`); }
   }
 
   /**
@@ -1383,25 +1370,30 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, flowAction: (e && e.flowAction) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
 
-  /** The tools a Flow's call step may run, with their risk: `[{ name, risk: "read" | "outward", summary }]`. Declared by the module (`flowAction`), never by a Flow. */
+  /** The tools a Flow's call step may run, with their risk and typed fields: `[{ name, risk: "read" | "outward", summary, inputs, outputs }]`. Declared by the module (`flow.steps` in its manifest), never by a Flow. */
   flowTools() {
-    return [...this.tools.entries()].filter(([, d]) => d.flowAction && !d.internal).map(([name, d]) => ({ name, risk: d.flowAction.risk, summary: d.description || "" }));
+    return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {} }));
+  }
+
+  /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
+  flowTriggers() {
+    return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
   }
 
   /**
-   * Run a flowAction tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
+   * Run a flow.steps tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
    * only for a read tool or after it spent the Flow's one approval for exactly this act (the kernel's task approval, bound to the input): the tool's own outward hold is the same yes, never a second.
    * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string }} o
    */
   async callFlow(tool, input, o) {
     const def = this.tools.get(tool);
-    if (!def || !def.flowAction) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
-    if (def.flowAction.risk === "outward" && !def.outward) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
+    if (!def || !def.flowStep) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
+    if (def.flowStep.risk === "outward" && !def.outward && !def.flowStep.forced) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
     if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
     return this.call(tool, input, "module:flows", { origin: "deck", token: o.token });
   }

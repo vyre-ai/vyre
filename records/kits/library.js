@@ -7,6 +7,9 @@ import { toKernelKit } from "../kit-adapter.js";
 
 const ROOT = new URL("./", import.meta.url);
 
+/** Kits that restate the base Kit's types and so need it installed first (`vyre kit deploy` proposes the base Kit before them). */
+const REQUIRES = Object.freeze(/** @type {Record<string, string[]>} */ ({ "law-firm": ["base"] }));
+
 /** @returns {string[]} the folder names that hold a kit.json, sorted */
 function ids() {
   return fs.readdirSync(ROOT, { withFileTypes: true }).filter((d) => d.isDirectory() && fs.existsSync(new URL(`${d.name}/kit.json`, ROOT))).map((d) => d.name).sort();
@@ -25,9 +28,9 @@ function adds(k) {
   return { types: (k.types || []).map((/** @type {any} */ t) => t.name), templates: n(k.templates), roles: n(k.roles), flows: n(k.flows), views: n(k.views), sealed_fields: sealed };
 }
 
-/** The Kits on offer. @returns {{ id: string, name: string, version: number, description: string, adds: ReturnType<typeof adds> }[]} */
+/** The Kits on offer. @returns {{ id: string, name: string, version: number, description: string, requires: string[], adds: ReturnType<typeof adds> }[]} */
 export function kitLibrary() {
-  return ids().map((id) => { const k = stored(id); return { id, name: k.label || id, version: k.version, description: k.description || "", adds: adds(k) }; });
+  return ids().map((id) => { const k = stored(id); return { id, name: k.label || id, version: k.version, description: k.description || "", requires: REQUIRES[id] || [], adds: adds(k) }; });
 }
 
 /** One Kit in the kernel's form (what `kits.card` and `kits.propose` take). @param {string} id */

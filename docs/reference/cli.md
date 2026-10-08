@@ -74,6 +74,7 @@ In the order `vyre help` lists them.
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
+| [`vyre kit`](#vyre-kit) | the Kits Vyre ships, and putting one on this Space |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
@@ -734,6 +735,19 @@ Change a cap:
   vyre spend raise <provider> +<usd>  add to it
   vyre spend raise <provider> off     no cap
 At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.
+
+### vyre kit
+
+The Kits Vyre ships, and putting one on this Space.
+
+```
+vyre kit [deploy <kit>] [--json]
+```
+
+List them:
+  vyre kit                  the Kits on offer, with what each adds and whether it is installed
+Put one on this Space:
+  vyre kit deploy <kit>     propose the Kit, and the Kit it needs first, in one step. Each waits for your yes in Now; nothing installs until you say it (vyre needs).
 
 ### vyre statusline
 
