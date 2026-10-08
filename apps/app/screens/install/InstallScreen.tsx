@@ -7,20 +7,21 @@ import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmente
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { MyCloudCard } from "../settings/MyCloudCard";
-import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AddServerCard } from "../settings/AddServerCard";
+import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, slug, startStep } from "./flow.js";
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { isWindowsShell, shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { afterQuestion, codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { codeLooksRight, codeRoute, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress, writeSkipped } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
-import { MOCK, said } from "../../src/real/box";
+import { MOCK, said, tool } from "../../src/real/box";
 import { ConnectClaude } from "../settings/ConnectClaude";
 import { hadIdentity, recoverIdentity } from "../../src/identity/restore";
 import { addDeviceToName, addSay } from "../../src/identity/add-device";
@@ -28,7 +29,8 @@ import { payloadOf } from "../devices/real.js";
 import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, makeServerSpace, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { acceptInvite, checkName, claimSetup, createIdentity, reservedName, createSpace, kitChoices, makeServerSpace, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { serversOf } from "../settings/my-cloud.js";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -96,7 +98,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [spaceName, setSpaceName] = useState(DATA.defaultSpaceName);
   const [addr, setAddr] = useState<string | null>(null);
   const [look, setLook] = useState("amber");
-  const [where, setWhere] = useState<"server" | "vps" | "here">("server");
+  const [where, setWhere] = useState<"server" | "here">("server");
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
   const [wrong, setWrong] = useState("");
@@ -104,6 +106,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
+  const [reserveCode, setReserveCode] = useState("");
+  const [reservedAddress, setReservedAddress] = useState("");
   const [recName, setRecName] = useState("");
   const [recCode, setRecCode] = useState("");
   const [recPass, setRecPass] = useState("");
@@ -137,9 +141,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const spaceSlug = addr ?? slug(spaceName);
   const spaceSt = MOCK ? nameStatus(spaceSlug, [name]) : nameStatusReal(spaceSlug, taken[slug(spaceSlug)] ?? null, [name]);
   const sn = spaceName.trim() || DATA.defaultSpaceName;
-  const vps = where === "vps";
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
-  const back = !first && step === startStep(start) ? null : backOf(step, { vps, have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow });
+  const back = !first && step === startStep(start) ? null : backOf(step, { have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow });
   // The empty states open Add your phone and Connect: when they end the person is back on Now, not on Spaces.
   const startAdd = (payload: string) => {
     setWrong(""); setAddWords(""); setStep("adding");
@@ -151,16 +154,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
   const boxless = isBoxlessMac(shell());
-  const ownServer = useRef(false);
-  const afterName = () => (invite ? "invite" : ownServer.current ? "mycloud" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
+  const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
-  const make = (w: "server" | "vps" | "here") => {
+  const make = (w: "server" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
     // A Mac's first run adds the phone that approves, once Vyre has a home to pair it to.
     setStep(macFlow ? "addphone" : AFTER_HOME);
   };
   // The real box makes the space first (spaces.create), then setup carries on. A failure stays on the step with the box's words.
-  const makeReal = async (w: "server" | "vps" | "here") => {
+  const makeReal = async (w: "server" | "here") => {
     setBusy(true); setWrong("");
     try {
       // On a server this device is paired to, the device makes the space itself and the directory claim follows (claimServerSpace); a browser says "Make this space in Vyre on your phone".
@@ -177,8 +179,14 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       make(w);
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
-  const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
+  const doMake = (w: "server" | "here") => (MOCK ? make(w) : void makeReal(w));
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
+  useEffect(() => {
+    if (MOCK || !codeLooksRight(reserveCode)) { setReservedAddress(""); return; }
+    let live = true;
+    void reservedName(reserveCode.trim().toUpperCase()).then((n) => { if (live) setReservedAddress(n ? `${n}.vyre.run` : ""); });
+    return () => { live = false; };
+  }, [reserveCode]);
   useEffect(() => { if (step !== "join" && step !== "invite") clearJoin(); }, [step]);
   const advance = (from: string) => {
     if (from === "kit" && !MOCK && spaceId && pickKit) {
@@ -216,7 +224,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           // A phone that once held a name and lost its key (after a restart) opens where it can bring the name back, saying so.
           const lost = !claimBlocked() && (await hadIdentity().catch(() => false));
           if (lost) setLostKey(true);
-          setStep((s) => (["scan", "scanwords", "mcwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
+          setStep((s) => (["scan", "scanwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
         }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
         const kept = unpackProgress(await readProgress());
@@ -272,40 +280,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   if (step === "welcome") {
     body = (
       <Page title={WELCOME.title} sub={WELCOME.line}>
-        <Button kind="primary" label={WELCOME.start} onPress={() => setStep("question")} />
+        <Button kind="primary" label={WELCOME.start} onPress={() => setStep("name")} />
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
       </Page>
     );
-  } else if (step === "question") {
-    // Setup's one question. Joining a team is a name and a typed code; my own server sets up My Cloud.
-    body = (
-      <Page title={QUESTION.title}>
-        <Card flush>
-          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => { ownServer.current = false; setStep(afterQuestion("join", false)); }} />
-          <Divider />
-          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => { void readIdentity().catch(() => null).then((w) => { ownServer.current = !w; setStep(afterQuestion("own", Boolean(w))); }); }} />
-        </Card>
-      </Page>
-    );
   } else if (step === "mycloud") {
-    // Set up My Cloud: a phone shares the setup link (no install line on a phone); a computer or browser shows the line. Then the server's code is typed here.
+    // Upgrade to My Cloud (Settings has the same card): what a server unlocks, the two choices, the install line, the words, then the move.
     body = (
-      <Page title={MY_CLOUD.title} sub={MY_CLOUD.line}>
-        {isPhone(dk) ? (
-          <>
-            <Text tone="muted">{MY_CLOUD.linePhone}</Text>
-            <Button kind="primary" label={MY_CLOUD.send} onPress={() => { Share.share({ message: MY_CLOUD.share }).catch(() => {}); }} />
-          </>
-        ) : (
-          <>
-            {isWindowsShell() ? <Banner tone="warn">{MY_CLOUD.windows}</Banner> : null}
-            <Text tone="muted">{MY_CLOUD.lineComputer}</Text>
-            <CopyLine text={installLine(shell()?.version)} />
-          </>
-        )}
-        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        {MOCK ? null : <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("mcwords"); }} />}
-        {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep(first ? "spaces" : "done"); }} />}
+      <Page title="My Cloud" sub="Add a server and move what you have onto it.">
+        <MyCloudCard />
       </Page>
     );
   } else if (step === "browser" || (step === "name" && !MOCK && claimBlocked())) {
@@ -325,13 +308,16 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       </Page>
     );
   } else if (step === "name") {
+    // A person's first name is reserved on the web (vyre.run/setup) and finished here with the key this device makes: paste the code the page gave.
+    const held = MOCK ? "alex.vyre.run" : reservedAddress;
     body = (
-      <Page title="Choose your Vyre name" sub={MOCK ? "It is how people find you. You can add your own domain later." : `It is how people find you. Vyre makes a key for it on this ${device}, and the key stays here.`}>
+      <Page title="Paste your reservation code" sub={MOCK ? "You reserved your name at vyre.run/setup. Vyre makes a key for it on this device, and the key stays here." : `You reserved your name at vyre.run/setup. Vyre makes a key for it on this ${device}, and the key stays here.`}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <NameField label="Your Vyre name" value={name} onChange={setName} onRetry={retryName(name)} real={MOCK ? undefined : (me as ReturnType<typeof nameStatusReal>)} />
-        <Button kind="primary" label={busy ? "Creating your name" : "Create my name"} disabled={me.state !== "ok" || busy}
-          onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(me.slug, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
-        {me.state === "taken" ? <Text size="caption" tone="muted">{"If this name is yours, scan from another device that has it. The key on this " + device + " cannot be rebuilt from the name."}</Text> : null}
+        <Field label="Reservation code" value={reserveCode} onChangeText={(v: string) => { setReserveCode(v); setWrong(""); }} placeholder="VYRE-XXXX-XXXX-XXXX-XXXX" help="It lasts 24 hours and works once." />
+        {held ? <Text tone="muted">{held} is waiting for you.</Text> : null}
+        <Button kind="primary" label={busy ? "Creating your name" : "Create my name"} disabled={!codeLooksRight(reserveCode) || busy}
+          onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(reserveCode, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
+        <Button kind="ghost" label="Reserve a name" onPress={() => { Linking.openURL("https://vyre.run/setup").catch(() => {}); }} />
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
       </Page>
     );
@@ -396,19 +382,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <PairServer session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={(say) => { setSession(null); setWrong(say ?? pairSayHere(COPY.rejected)); setStep(scanStep); }} />
       </Page>
     ) : null;
-  } else if (step === "mcwords") {
-    // The server's QR or long code was read on the My Cloud page: its three words show here and the yes is said at the server.
-    body = session ? (
-      <Page title="Pair your server" sub="Say yes on the server only if it shows the same three words.">
-        <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); noId.current = false; setStep(first ? "spaces" : "done"); }} onRejected={(say) => { setSession(null); setWrong(pairSayHere(say ? serverSay(say) : SERVER_FAILED.rejected)); setStep("mycloud"); }} />
-      </Page>
-    ) : null;
   } else if (step === "recovery") {
     body = (
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
         {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
-        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterName(); ownServer.current = false; setStep(next); }} />
+        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterName(); setStep(next); }} />
       </Page>
     );
   } else if (step === "spaces") {
@@ -460,14 +439,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       </Page>
     );
   } else if (step === "where") {
-    const go = (w: "server" | "vps" | "here") => () => { setWhere(w); setStep(WHERE_STEP[w]); };
+    // A new space always has a server (there is no team Home). If one is paired the space goes on it; if not, the same add-a-server piece runs first.
     body = (
       <Page title="Where will it live?" sub="Every space runs on one machine that stays on.">
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Card flush>
-          <Choice icon="server" title={dk === "mac" ? MAC_WHERE.serverTitle : "On a server you have"} sub={dk === "mac" ? MAC_WHERE.serverLine : "One command, about two minutes."} onPress={go("server")} />
-          <Divider />
-          {MOCK ? <><Choice icon="cable" title="On a new server" sub="We set one up for you, about $12 a month." onPress={go("vps")} /><Divider /></> : null}
-          <Choice icon="laptop" title={dk === "mac" ? MAC_WHERE.hereTitle : "On this computer"} sub={dk === "mac" ? MAC_WHERE.hereLine : "Only while it stays on."} onPress={go("here")} />
+          <Choice icon="server" title={dk === "mac" ? MAC_WHERE.serverTitle : "On a server"} sub={dk === "mac" ? MAC_WHERE.serverLine : "A machine that stays on. The server is added in two minutes."} onPress={() => { setWhere("server"); if (MOCK) return setStep("cmd"); setBusy(true); setWrong(""); void tool("spaces.servers").then((r) => { if (serversOf(r).length) doMake("server"); else setStep("cmd"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
         </Card>
       </Page>
     );
@@ -495,44 +472,11 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       </Page>
     ) : <RealAdd kind="phone" first={{ title: ADD_PHONE.title, sub: ADD_PHONE.line, skipLabel: ADD_PHONE.skip, onSkip: done }} onBack={done} onDone={done} />;
   } else if (step === "cmd") {
+    // The one add-a-server piece (screens/settings/AddServerCard.tsx), then the space is made on the server it paired.
     body = (
-      <Page title="Run this on your server" sub="Open its terminal and paste the line.">
-        <CopyLine text={installLine(shell()?.version)} />
-        <Button kind="primary" label="I ran it" onPress={() => setStep("srv1")} />
-      </Page>
-    );
-  } else if (step === "vps") {
-    body = (
-      <Page title="A new server">
-        <Card><Row lead={<IconTile name="cable" />} title="DigitalOcean" sub="2 GB, 2 CPUs, 60 GB disk, Frankfurt" end={<Text strong>$12 a month</Text>} /></Card>
-        <Text size="caption" tone="label">Billed by DigitalOcean to your account. You can move the space to another server later.</Text>
-        <Button kind="primary" icon="faceid" label="Create the server"
-          onPress={() => setFace({ title: "Create a server", body: "Face ID approves creating it on your DigitalOcean account.", label: "Create with Face ID", onApprove: () => { setStep("vpsbusy"); setTimeout(() => setStep("srv1"), 1400); } })} />
-      </Page>
-    );
-  } else if (step === "vpsbusy") {
-    body = <Page title="Creating your server"><Terminal lines={["Creating northwind on DigitalOcean", "Installing Vyre"]} cursor="" /></Page>;
-  } else if (step === "srv1" || step === "srv2") {
-    const two = step === "srv2" && session;
-    const to = pairToOptions(name, `${spaceSt.slug}.vyre.run`).find(([id]) => id === pairTo)?.[1] ?? "";
-    body = (
-      <Page title="Pair your server" sub={two ? (session.kind === "watch" ? "Say yes on the server only if it shows the same three words as below." : "The server shows who is asking and the same three words. Confirm only if they match.") : "The server printed a QR code and a long code. Scan the QR, or paste the long code."}>
+      <Page title="Add your server" sub="Then your space is made on it.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        {MOCK ? <View className="gap-s2">
-          <Text size="caption" strong tone="label">Your server</Text>
-          <Terminal lines={serverLines(vps, sn, two ? "words" : "code", { to, who: "Your phone", words: two ? wordsLine(session.words()) : "" })} />
-        </View> : <Text tone="muted">{two ? "Your server prints three words. Confirm only if they match the ones below." : "Your server printed a QR code and a long code. Scan it or paste it here."}</Text>}
-        <View className="gap-s2">
-          <Text size="caption" strong tone="label">Your phone</Text>
-          {two ? (
-            <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(pairSayHere(say ? serverSay(say) : SERVER_FAILED.rejected)); setStep("srv1"); }} />
-          ) : (
-            <Card className="gap-s3">
-              {MOCK ? <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View> : <Text strong>{`Pair this server to ${name ? `${name}.vyre.run` : "your name"}?`}</Text>}
-              <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("srv2"); }} sample={MOCK ? SERVER_LONG_CODE : undefined} />
-            </Card>
-          )}
-        </View>
+        <AddServerCard onDone={() => doMake("server")} />
       </Page>
     );
   } else if (step === "here") {

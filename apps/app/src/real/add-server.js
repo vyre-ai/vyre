@@ -1,4 +1,5 @@
 // @ts-check
+import { installLine } from "../../screens/install/first-run.js";
 // add-server: the ONE way a server joins a person's Vyre (spec 0.3.0 part 10). It serves an upgrade from Home to Cloud, a second server, a replacement server and a team space's first server alike.
 //
 //   1. The app makes a one-time setup code (relay/client/setup.js: a key only this app holds, and a secret) and shows the install line that carries it, with the Records choice.
@@ -11,7 +12,6 @@
 // outside thing (the relay client, the channel, the pairing) comes in as a port, so Node tests it against fakes and against a real server over a real relay.
 
 export const SETUP_TTL_MS = 3_600_000;
-export const INSTALL_URL = "https://vyre.run/i";
 
 /** The two choices, the same for every space: Records recommended and first, preselected. `store` is VYRE_STORE on the install line. */
 export const CHOICES = Object.freeze([
@@ -30,9 +30,6 @@ export const GAINS = Object.freeze([
 
 /** @param {string} id */
 export const choiceOf = id => CHOICES.find(c => c.id === id) || CHOICES[0];
-
-/** The line to paste on the server. The variables go on sh, the reader of the script. @param {string} code @param {string} store @param {string} [url] */
-export const installLine = (code, store, url = INSTALL_URL) => `curl -fsSL ${url} | VYRE_CODE=${code} VYRE_STORE=${store === "sqlite" ? "sqlite" : "auto"} sh`;
 
 /**
  * What to say once the server's memory is known (system.info over the setup channel): nothing when it suits the choice, plain words when it does not. Records can be turned on later in Settings
@@ -67,7 +64,7 @@ export const MESSAGES = Object.freeze({
 
 /**
  * @param {{ client: SetupClient, relay: string, identity: () => Promise<{ id: string }>, connect: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<{ call: (tool: string, input?: object) => Promise<any>, close: () => void }>,
- *   pair: (qr: string) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, installUrl?: string, onChange?: (s: AddServerState) => void }} o
+ *   pair: (qr: string) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
  */
 export function createAddServer(o) {
   const now = o.now || Date.now;
@@ -94,7 +91,7 @@ export function createAddServer(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return stop("key"); }
     if (mine !== run) return;
-    set({ stage: "install", choice: c.id, code, installLine: installLine(code, c.store, o.installUrl), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
+    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
     void followMailbox(mine, key, secret);
     void waitForBox(mine, key, secret);
     void (async () => {

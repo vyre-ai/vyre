@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { CHOICES, DEFAULT_CHOICE, GAINS, MESSAGES, choiceOf, createAddServer, installLine, memoryNote } from "./add-server.js";
+import { CHOICES, DEFAULT_CHOICE, GAINS, MESSAGES, choiceOf, createAddServer, memoryNote } from "./add-server.js";
+import { installLine } from "../../screens/install/first-run.js";
 
 const until = async (/** @type {() => any} */ fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await new Promise(r => setTimeout(r, 5)); } throw new Error("timed out"); };
 const CODE = "A".repeat(43);
@@ -33,9 +34,11 @@ test("the two choices: Records first and the default, then the small server; the
   assert.equal(DEFAULT_CHOICE, "records");
   assert.match(CHOICES[0].note, /8 GB.*4 GB/);
   assert.match(CHOICES[1].note, /2 GB/);
-  assert.equal(installLine(CODE, "auto"), `curl -fsSL https://vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`);
-  assert.equal(installLine(CODE, "sqlite"), `curl -fsSL https://vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=sqlite sh`);
-  assert.equal(installLine(CODE, "anything-else"), `curl -fsSL https://vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "only the two values ever reach the line");
+  assert.equal(installLine("0.3.0", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code: CODE, store: "sqlite" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=sqlite sh`);
+  assert.equal(installLine("0.3.0", { code: CODE, store: "anything-else" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "only the two values ever reach the line");
+  assert.equal(installLine("0.3.0-rc.1", { code: CODE, store: "auto" }), `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/ VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a release candidate's own script");
+  assert.equal(installLine("1.0.0; rm -rf /", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a version that is not one is ignored");
   assert.equal(choiceOf("nope").id, "records");
   assert.equal(GAINS.length, 4);
   assert.match(GAINS.join(" "), /sleeps.*phone.*Watchers.*Teammates/);
@@ -55,7 +58,7 @@ test("add-server: the line is shown first, the offer is found without copying an
   const a = make(f);
   await a.begin("plain");
   assert.equal(a.state.stage, "install");
-  assert.equal(a.state.installLine, installLine(CODE, "sqlite"));
+  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "sqlite" }));
   await until(() => a.state.stage === "found");
   assert.deepEqual(a.state.box && a.state.box.words, ["lantern", "quiet", "river", "oak"]);
   assert.equal(a.state.box && a.state.box.name, "harlow-server");

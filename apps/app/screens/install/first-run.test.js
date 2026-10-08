@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { afterQuestion, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -25,7 +25,7 @@ test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
   assert.equal(WELCOME.start, "Get started");
   assert.equal(WELCOME.have, "I already have Vyre");
-  assert.equal(backOf("name", { welcome: true }), "question", "Get started goes to setup's one question first");
+  assert.equal(backOf("name", { welcome: true }), "welcome", "Get started goes to the reservation code");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
   assert.equal(backOf("welcome"), null);
@@ -181,14 +181,12 @@ test("a phone's long code adds this device to the name (a browser too); a server
   assert.equal(codeRoute(null), "pair-server");
 });
 
-test("a fresh device that picks I have my own server reaches the name screen before it pairs anything; a device with a name goes straight to My Cloud", async () => {
-  assert.equal(afterQuestion("own", false), "name", "no name, no identity to pair with: the name comes first");
-  assert.equal(afterQuestion("own", true), "mycloud");
-  assert.equal(afterQuestion("join", false), "name");
-  assert.equal(afterQuestion("join", true), "name");
+test("Get started goes to the reservation code; there is no question, and My Cloud is the one card that adds a server", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  assert.match(src, /setStep\(afterQuestion\("own", Boolean\(w\)\)\)/, "the question's own answer goes through afterQuestion, not straight to the My Cloud page");
-  assert.doesNotMatch(src, /QUESTION\.own\.title\}[^\n]*setStep\("mycloud"\)/);
-  assert.match(src, /ownServer\.current \? "mycloud"/, "after the name and the recovery code, an own-server first run carries on to My Cloud");
+  assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("name"\)\}/, "Get started opens the code step");
+  assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
+  assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
+  assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
+  assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });

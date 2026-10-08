@@ -24,29 +24,8 @@ export const WELCOME = {
   have: "I already have Vyre",
 };
 
-/** Setup's one question (the user, 5 Oct): joining a team needs only a name and a typed code; "my own server" sets up My Cloud. Never "Pro" or "Basic" in copy. */
-export const QUESTION = {
-  title: "Do you have your own server, or are you joining a team?",
-  join: { title: "I am joining a team", line: "Make your name, connect this device with a code, and you are in." },
-  own: { title: "I have my own server", line: "Set up My Cloud on it." },
-};
-
-/** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to, and where the question's second answer goes. */
+/** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to. */
 export const SERVER_SETUP_ROUTE = "/u/setup/server";
-
-/** "Set up My Cloud": the person's own server. A phone is sent the setup link (it never shows an install line); a computer shows the one line to run there, then connects by the code the server shows. */
-export const MY_CLOUD = {
-  title: "Set up My Cloud",
-  line: "My Cloud runs on a computer or a server that stays on. Your phones and browsers connect to it.",
-  lineComputer: "Open its terminal and paste the line. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
-  linePhone: "Send yourself the setup link and open it on that computer. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
-  send: "Send me the setup link",
-  ready: "My server shows a code",
-  share: "Set up My Cloud on a computer or a server: https://vyre.run",
-  codeTitle: "Type the code your server shows",
-  // The Windows app is a client only in 0.2.9 (the user): no home here, whatever the setup path says. The words are the ones vyred itself gives on Windows (core/daemon/host-guard.js).
-  windows: "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.",
-};
 
 /** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */
 export const MAC_WHERE = {
@@ -87,16 +66,21 @@ export function macServerSay(reason, left) {
 
 /**
  * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
- * @param {string | null | undefined} version
+ * `code` is the one-time setup code the app made for this server and `store` the Records choice (auto, or sqlite for a small server); both ride as variables on sh, the reader of the script.
+ * @param {string | null | undefined} version @param {{ code?: string, store?: string }} [vars]
  */
-export function installLine(version) {
+export function installLine(version, vars = {}) {
   const v = String(version ?? "").trim();
-  if (!/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v)) return "curl -fsSL vyre.run/i | sh";
+  const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
-  return `curl -fsSL ${base}install-box.sh | VYRE_BOX_URL=${base} sh`;
+  const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? `VYRE_STORE=${vars.store === "sqlite" ? "sqlite" : "auto"}` : ""].filter(Boolean).join(" ");
+  return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
 
 /** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
+/** A reservation code as the Worker prints it: VYRE- and four groups of four. */
+export const codeLooksRight = (/** @type {string} */ c) => /^VYRE-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/.test(String(c || "").trim().toUpperCase());
+
 export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
 
 /** The Mac's "Add your phone": the phone becomes the one that approves. */
@@ -233,8 +217,3 @@ export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few step
  */
 export const codeRoute = (code) => (code && code.kind === "ticket" && code.for === "phone" ? "add-device" : "pair-server");
 
-/**
- * Where the setup question's answer goes. A device that holds no name has no identity to pair a server with, so "I have my own server" asks for the name first (the name, then the recovery code) and My Cloud
- * comes after; a device that already holds a name goes straight to My Cloud. Joining a team always asks for the name. @param {"join" | "own"} answer @param {boolean} hasName
- */
-export const afterQuestion = (answer, hasName) => (answer === "own" && hasName ? "mycloud" : "name");
