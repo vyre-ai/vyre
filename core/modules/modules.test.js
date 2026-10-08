@@ -1375,6 +1375,10 @@ test("modules: appmods relays an installing person to the app's own Connection a
   for (const tool of ["connectors.connection.create", "connectors.connection.delete"]) assert.doesNotThrow(() => checkRelayTool("appmods", tool, {}, "deck"));
   for (const tool of ["vault.put", "vault.delete", "vault.release", "connectors.connection.approve", "connectors.connection.update", "gate.approve", "flows.approve"]) assert.throws(() => checkRelayTool("appmods", tool, {}, "deck"), /appmods may not call/, tool);
   assert.doesNotThrow(() => checkRelayTool("connectors", "vault.put", { kind: "api-credential" }, "deck"));
+  // a view over a wrapped app relays one declared operation; the free-form "request" is never relayed
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "templates.list" }, "deck"));
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "request", input: { method: "GET", path: "/" } }, "deck"), /may not call vault.request/);
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "templates.list", method: "POST", url: "https://x.example" }, "deck"), /may not call vault.request/);
   assert.doesNotThrow(() => checkRelayTool("connectors", "vault.delete", { name: "conn-docuseal" }, "deck"));
   assert.throws(() => checkRelayTool("connectors", "vault.delete", { name: "github-token" }, "deck"), /connectors may not call/);
   assert.throws(() => checkRelayTool("connectors", "vault.put", { kind: "secret" }, "deck"), /connectors may not call/);
