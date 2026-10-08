@@ -611,7 +611,7 @@ jobs:
             cp "dist/$apk" dist/Vyre-android.apk
           fi
           echo "Android: $apk and Vyre-android.apk, from this run's android job (sideloaded)" | tee -a "$GITHUB_STEP_SUMMARY"
-          printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. It is signed with Vyre's own Android release key, the same key every release, so a newer file installs over an older one and nothing signed with another key can.\n' >> dist/notes.md
+          printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. It is signed with the Vyre Android release key, the same key every release, so a newer file installs over an older one and nothing signed with another key can.\n' >> dist/notes.md
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |

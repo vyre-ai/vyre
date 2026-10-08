@@ -45,3 +45,20 @@ test("the composite actions parse as YAML too", { skip: have ? false : "python3 
   }
   assert.deepEqual(bad, []);
 });
+
+// A release-notes line with an apostrophe inside a single-quoted printf once ended the release job with "unexpected EOF" after every build had passed
+// (v0.2.12). Every bash run step (the default shell on Linux and macOS runners, or shell: bash) must parse with bash -n.
+const RUNS = 'import sys, json, yaml\nd = yaml.safe_load(open(sys.argv[1]))\nout = []\nfor jn, j in (d.get("jobs") or {}).items():\n  dflt = ((j.get("defaults") or {}).get("run") or {}).get("shell") or ((d.get("defaults") or {}).get("run") or {}).get("shell")\n  for i, s in enumerate(j.get("steps") or []):\n    if isinstance(s, dict) and isinstance(s.get("run"), str):\n      sh = s.get("shell") or dflt or ""\n      if sh in ("", "bash") or sh.startswith("bash "): out.append({"where": "%s step %d (%s)" % (jn, i + 1, s.get("name") or ""), "run": s["run"]})\nprint(json.dumps(out))';
+
+test("every bash run step in the workflows parses (bash -n)", { skip: have ? false : "python3 with PyYAML is not here" }, () => {
+  /** @type {string[]} */ const bad = [];
+  for (const f of ymls(path.join(REPO, ".github", "workflows"))) {
+    const r = spawnSync("python3", ["-c", RUNS, f], { encoding: "utf8" });
+    if (r.status !== 0) continue; // the parse test above reports it
+    for (const s of JSON.parse(r.stdout)) {
+      const b = spawnSync("bash", ["-n"], { input: s.run, encoding: "utf8" });
+      if (b.status !== 0) bad.push(`${path.relative(REPO, f)} ${s.where}: ${String(b.stderr).trim().split("\n")[0]}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
