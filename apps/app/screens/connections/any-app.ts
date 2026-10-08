@@ -71,3 +71,16 @@ export function toCreate(f: FormInput) {
     check: { path: f.checkPath.trim() },
   };
 }
+
+export type Proposal = { id: string; by: string; why: string; title: string; lines: string[] };
+/** The proposals an assistant made, as the cards the person is asked. */
+export function pickProposals(raw: unknown): Proposal[] {
+  const l = (raw as { proposals?: unknown[] } | null)?.proposals;
+  if (!Array.isArray(l)) return [];
+  return l.flatMap((x) => {
+    const p = x as Record<string, unknown> | null;
+    const card = p && (p.card as { title?: unknown; lines?: unknown } | undefined);
+    if (!p || typeof p.proposal !== "string" || !card || typeof card.title !== "string" || !Array.isArray(card.lines)) return [];
+    return [{ id: p.proposal, by: String(p.by ?? ""), why: typeof p.why === "string" ? p.why : "", title: card.title, lines: (card.lines as unknown[]).map(String) }];
+  });
+}

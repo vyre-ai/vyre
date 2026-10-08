@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { connections } from "./source-real";
 import { words } from "./model";
-import { emptyForm, formProblem, lightWords, SEND_HOWS, type FormInput, type MadeConnection } from "./any-app";
+import { emptyForm, formProblem, lightWords, SEND_HOWS, type FormInput, type MadeConnection, type Proposal } from "./any-app";
 import { ItemPick } from "./shared";
 
 const dot = (light: MadeConnection["light"]) => (light === "green" ? "Green" : light === "red" ? "Red" : light === "out_of_step" ? "Amber" : "Grey");
@@ -16,7 +16,11 @@ export default function RealAnyApp() {
   const [adding, setAdding] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState("");
-  const load = useCallback(() => { connections.madeList().then((x) => { setList(x); setProblem(""); }).catch((e) => setProblem(words(e))); }, []);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const load = useCallback(() => {
+    connections.madeList().then((x) => { setList(x); setProblem(""); }).catch((e) => setProblem(words(e)));
+    connections.madeProposals().then(setProposals).catch(() => setProposals([]));
+  }, []);
   useEffect(load, [load]);
   if (problem && !list) return <ErrorState title="Your connections did not load" reason={problem} retry={load} />;
   if (!list) return <LoadingState rows={2} />;
@@ -24,6 +28,19 @@ export default function RealAnyApp() {
   return (
     <View className="gap-s3 pt-s2">
       <Text tone="muted" size="secondary">Connect any app that has an API, from a key you already saved in the Vault. Agents, Flows and watchers can then use it.</Text>
+      {proposals.map((p) => (
+        <Card key={p.id}>
+          <View className="gap-s2">
+            <Text strong>{p.title}</Text>
+            {p.why ? <Text size="secondary" tone="muted">{`${p.by === "mcp" ? "Your assistant" : p.by} says: ${p.why}`}</Text> : null}
+            {p.lines.map((l, i) => <Text key={i} size="secondary">{l}</Text>)}
+            <View className="flex-row gap-s2">
+              <Button size="sm" kind="primary" label="Connect it" onPress={() => connections.madeApprove(p.id).then(() => { showToast("Connected."); load(); }).catch((e) => showToast(words(e)))} />
+              <Button size="sm" kind="ghost" label="No" onPress={() => connections.madeDecline(p.id).then(load).catch((e) => showToast(words(e)))} />
+            </View>
+          </View>
+        </Card>
+      ))}
       {list.length ? (
         <Card flush>
           {list.map((c, i) => (
