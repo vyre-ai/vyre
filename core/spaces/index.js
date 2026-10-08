@@ -165,6 +165,18 @@ export default {
       if (!s.exists || s.pending) throw refuse("Choose your Vyre name first.", "no_identity");
       return s;
     };
+    /**
+     * The person acting on a call. This device's own name when it holds one; else, on a server that holds no identity (the name's key lives in the owner's app), the owner the kernel verified this call's device for:
+     * the server does what the owner's app asks and the owner's yes (the presence proof) rides in the call, so nothing is signed here with a key this server does not have.
+     * @param {any} meta
+     */
+    const actor = meta => {
+      const s = identity.status();
+      if (s.exists && !s.pending) return s;
+      const f = meta && meta.kernelFacts;
+      if (K && typeof K.owner === "string" && f && f.kind === "device" && f.person === K.owner) return { ...s, exists: true, pending: false, id: K.owner, name: null, eid: String(f.device_key_id || "") };
+      throw refuse("Choose your Vyre name first.", "no_identity");
+    };
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
     const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** This device's own entry, for acts of the person's own list. */
@@ -204,7 +216,7 @@ export default {
       if (dev && !(await isEnrolled(dev, spaceId))) throw refuse("This device is not enrolled in this space.", "device_removed");
     };
     const gate = async (spaceId, action = "views.read", meta) => {
-      const s = me();
+      const s = actor(meta);
       await notRemoved(spaceId, meta);
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
