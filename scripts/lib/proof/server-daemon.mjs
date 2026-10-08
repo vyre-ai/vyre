@@ -31,8 +31,7 @@ export async function startDaemonServer(o) {
   const saved = { VYRE_HOME: process.env.VYRE_HOME, VYRE_SETUP_CODE: process.env.VYRE_SETUP_CODE, VYRE_SETUP_CODE_AT: process.env.VYRE_SETUP_CODE_AT, VYRE_STORE: process.env.VYRE_STORE,
     VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE };
   process.env.VYRE_HOME = root;
-  process.env.VYRE_SETUP_CODE = o.code;
-  process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000));
+  if (o.code) { process.env.VYRE_SETUP_CODE = o.code; process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000)); } else { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
   process.env.VYRE_STORE = o.store === "plain" ? "sqlite" : "auto";
   process.env.VYRE_TAILSCALE_BIN = path.join(o.dir, "no-tailscale");
   process.env.VYRE_SEAL_DEV = "1";

@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRun } from "./lib/proof/run.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
-import { walk } from "./lib/proof/walk.mjs";
+import { walk, walkTerminal } from "./lib/proof/walk.mjs";
 
 const argv = process.argv.slice(2);
 const take = (/** @type {string} */ f, /** @type {string} */ d = "") => { const i = argv.indexOf(f); return i < 0 ? d : argv[i + 1]; };
@@ -33,6 +33,7 @@ const ins = await startStandins({ out, ...(server === "installer" ? { host: "0.0
 let code = 1;
 try {
   for (const store of stores) await walk({ run, ins, server, store, out, inCI });
+  await walkTerminal({ run, ins, server, out });
 } finally {
   code = run.finish();
   await ins.stop();

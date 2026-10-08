@@ -22,9 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund
-      - name: The site, as vyre.run serves it
-        run: sh scripts/build-site.sh
-      - name: The walk, With and Without Records, on the real installer
+      - name: The walk, With and Without Records, on the real installer (from this checkout, signed with a throwaway key)
         run: node scripts/proof-install.mjs --server installer --store both --out proof-out
       - name: Diagnostics
         if: failure()

@@ -1,5 +1,5 @@
 // @ts-check
-// A server made by the REAL installer, on a throwaway CI runner with docker: scripts/install-box.sh from a locally built site (scripts/build-site.sh, read with VYRE_BOX_URL=file://), with the
+// A server made by the REAL installer, on a throwaway CI runner with docker: scripts/install-box.sh run from this checkout (--from, signed with a throwaway key for this server only), with the
 // one-time code and the store choice the app's install line carries (VYRE_CODE, VYRE_STORE). The box's relay and names directory are the stand-ins on this runner, written into the box's home
 // before it first starts (the way scripts/matrix/j1.sh does). The four words are the ones the installer printed on its terminal, which is what a person reads.
 // Refuses to run anywhere but a CI runner: it uses the fixed /srv/vyre folder and container names, and a shared test box already has a stack there.
@@ -12,8 +12,7 @@ const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync
 /** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string }} o */
 export async function startInstallerServer(o) {
   if (!process.env.CI) throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds");
-  const site = path.join(o.repo, "site", "box");
-  if (!fs.existsSync(path.join(site, "SHA256SUMS"))) throw new Error(`no built site at ${site}: run scripts/build-site.sh first`);
+  const script = path.join(o.repo, "scripts", "install-box.sh");
   fs.mkdirSync(o.dir, { recursive: true });
   const dir = process.env.VYRE_DIR || "/srv/vyre";
   sh(`sudo mkdir -p ${dir} && sudo chown "$(id -u):$(id -g)" ${dir}`);
@@ -23,9 +22,10 @@ export async function startInstallerServer(o) {
   const seeded = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e C='${cfg}' busybox sh -c 'mkdir -p /home/vyre/.vyre && printf "%s\\n" "$C" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'`);
   if (seeded.status !== 0) throw new Error(`could not seed the box's home: ${seeded.stderr}`);
   const logFile = path.join(o.dir, "install.log");
-  const env = { ...process.env, VYRE_BOX_URL: `file://${site}/`, VYRE_BUILD: "tgz", VYRE_CODE: o.code, VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir };
-  // the line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`; here the same script runs from the built site, with the same two variables
-  const child = spawn("sh", [path.join(site, "install-box.sh"), "--yes"], { env, stdio: ["ignore", "pipe", "pipe"] });
+  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir };
+  // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
+  // not a published release: it packs the checkout and signs it with a throwaway key for this server only (dev_sign), since a build that is not signed by Vyre's release key cannot run its modules.
+  const child = spawn("sh", [script, "--yes", "--from", o.repo], { env, stdio: ["ignore", "pipe", "pipe"] });
   let all = "";
   child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });
   const exit = await new Promise(res => child.on("close", res));

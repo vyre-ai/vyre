@@ -26,6 +26,7 @@ import { nodeCrypto, fileKeyStore } from "../../../relay/client/nodecrypto.js";
 import { utf8 } from "../../../relay/client/bytes.js";
 import { pairServer } from "../../../relay/client/serverpair.js";
 import { addThisDevice } from "../../../relay/client/phonepair.js";
+import { joinWithCode } from "../../../relay/client/join.js";
 import { addDeviceCore } from "../../../apps/app/src/identity/add-device-core.js";
 import { phoneAsk, added } from "../../../apps/app/screens/devices/real.js";
 import * as C from "../../../kernel/identity/chain.js";
@@ -36,15 +37,18 @@ const until = async (/** @type {() => any} */ fn, ms = 30_000, what = "the app")
 const plainName = (/** @type {string} */ n) => String(n).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/ {2,}/g, " ").trim().slice(0, 64);
 
 /**
- * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number } }} o
+ * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number }, about?: { kind: "app" | "web" } }} o
  * `directory` is the names directory's base (a stand-in), `relay` the relay's ws address, `dir` this app's own folder for its relay keys.
  */
 export function createApp(o) {
   fs.mkdirSync(o.dir, { recursive: true });
+  // what this app says it is at the relay: the Mac and Windows windows are web pages (api/relay.web.ts), the phone apps are native (api/relay.native.ts)
+  const about = o.about || { kind: /** @type {const} */ ("web") };
   const stretch = o.stretch || { memoryKiB: 64, passes: 1 };
   /** @type {any} */ let me = null;
   /** @type {any} */ let pairing = null;
   /** @type {any} */ let session = null;
+  let lastWords = "";
   const keyStore = fileKeyStore(path.join(o.dir, "relay-device-key.json"));
   const relayCrypto = nodeCrypto();
   // the key this device reports at pairing and signs its session start with (a browser's person key, ES256); software, since a runner has no secure chip
@@ -84,10 +88,29 @@ export function createApp(o) {
     pairing = await pairServer({
       payload: qr, owner: { id: me.id, name: plainName(me.name), vyre: me.name, pin: me.pin },
       signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: me.key.eid, sig: b64u(await me.key.sign(m)) }),
-      name: o.label, crypto: relayCrypto, keyStore, presenceKey, pollMs: 100, deviceKind: "computer", keyStorage: "software",
-      onWords: w => { words.push(w); },
+      name: o.label, crypto: relayCrypto, keyStore, presenceKey, about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
+      onWords: w => { words.push(w); lastWords = w; },
     });
     pairing.words = words;
+    return pairing;
+  }
+
+  /**
+   * Pair a server from its own terminal by the typed code it shows (WINK-...): the code runs through the relay, this app shows its ack, the person types the ack at the server (`typedAck`),
+   * and the pairing finishes with this identity's proof. The app's call is relay/client/join.js joinWithCode with the server options TypeCode.tsx gives it.
+   * @param {{ input: string, typedAck: (ack: string) => Promise<void> }} a
+   */
+  async function pairByTypedCode(a) {
+    if (!me) throw new Error("this app has no identity yet");
+    /** @type {any[]} */ const states = [];
+    let acked = false;
+    const joining = joinWithCode({ relay: o.relay, input: a.input, name: o.label, pollMs: 100, finishPollMs: 100, waitMs: 30_000,
+      onState: s => { states.push(s); if (s.state === "ack" && !acked) { acked = true; void a.typedAck(String(s.code)).catch(() => {}); } },
+      pairOptions: { crypto: relayCrypto, keyStore, about, presenceKey },
+      server: { owner: { id: me.id, name: plainName(me.name), vyre: me.name, pin: me.pin }, signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: me.key.eid, sig: b64u(await me.key.sign(m)) }), deviceKind: "computer", keyStorage: "software", crypto: relayCrypto, keyStore } });
+    const r = /** @type {any} */ (await joining);
+    if (!r.ok) throw Object.assign(new Error(`the typed code did not pair: ${r.reason}${r.message ? " (" + r.message + ")" : ""}`), { code: r.code || r.reason });
+    pairing = { ...r.paired, owner: r.done && r.done.owner, session: r.done ? r.done.session : undefined, relay: r.paired.relay || o.relay };
     return pairing;
   }
 
@@ -166,7 +189,7 @@ export function createApp(o) {
     return addDeviceCore({
       held: async () => Boolean(me),
       makeKey: async () => (kept = await generateDeviceKey({ forceSoftware: true })),
-      pair: async ({ key, onWords }) => addThisDevice({ payload: a.payload, key, name: o.label, crypto: relayCrypto, keyStore, presenceKey, pollMs: 100, onWords: w => { if (a.onWords) a.onWords(w); if (onWords) onWords(w); } }),
+      pair: async ({ key, onWords }) => addThisDevice({ payload: a.payload, key, name: o.label, crypto: relayCrypto, keyStore, presenceKey, about, pollMs: 100, onWords: w => { if (a.onWords) a.onWords(w); if (onWords) onWords(w); } }),
       readList: async name => {
         const res = await fetch(`${o.directory}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" } });
         const json = await res.json().catch(() => null);
@@ -179,7 +202,7 @@ export function createApp(o) {
   }
 
   return {
-    label: o.label, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    label: o.label, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
