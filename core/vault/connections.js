@@ -88,7 +88,7 @@ export function surfaceOf(caller, person) {
   if (c === "mcp") return { surface: "chat" };
   const th = /^mcp:thread:(.+)$/s.exec(c);
   if (th) return { surface: "chat", thread: th[1] };
-  if (/^(mcp|tailnet|harness):agent:./.test(c)) return { surface: "agents" };
+  if (/^(mcp|harness):agent:./.test(c)) return { surface: "agents" };
   // Anything else (the owner's own device over the tailnet or a relay pairing, a visiting device, an unknown label) is the person ONLY when the kernel's chain for the call says so (`person`,
   // from core/vault/person.js), never because of what its label looks like. A device with no verified person is no surface: it may not read or change what another surface may use.
   return person ? { surface: "person" } : { surface: null };

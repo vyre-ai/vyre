@@ -23,8 +23,6 @@ import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
 import { Fills } from "./fill.js";
 import { helper, tellComputerd } from "./helper.js";
-import * as egress from "./egress.js";
-import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
@@ -33,7 +31,7 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 /** The person's own surfaces; a module hop is checked against the original caller by the registry. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "device"];
 /** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
 const OWN = [...PEOPLE, "module", "mcp", "harness"];
 
@@ -69,13 +67,7 @@ export default {
     const cfg = (ctx.config && ctx.config.computers) || {};
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
-    // Read when a computer is made, from the live config, so a change needs no vyred restart.
-    const egressCfg = () => (ctx.config && ctx.config.glass && ctx.config.glass.egress) || undefined;
-    // Also live: computers.tailnet.set changes it without a restart. The key is fetched only when
-    // a computer starts with the switch on, and goes straight to that computer, nowhere else.
-    const tailnetCfg = () => (ctx.config && ctx.config.computers && ctx.config.computers.tailnet) || undefined;
-    const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg,
-      tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) },
+    const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
       memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
@@ -371,78 +363,11 @@ export default {
       obj({ computer: str, agent: str }, ["computer", "agent"]),
       async i => ({ disposed: await pool.disposeContext(String(i.computer), String(i.agent)) }));
 
-    // ---- egress: the listed sites through the user's Mac (egress.js) -------------------------
-
-    const APPLIES = "applies to computers started after the change: a stopped computer is made again with it on its next start (its home stays); a running or frozen one keeps its old setting until computers.stop";
-
-    tool("computers.egress.status", "Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, whether the egress sidecar answers right now, and whether its gate lets listed sites through (only while the Mac is in use as the exit node).",
-      obj({}), async () => {
-        const raw = egressCfg() || {};
-        const via = egress.proxy();
-        /** @type {{ enabled: boolean, sites: any[], proxy: string, applies: string, problem?: string }} */
-        let out;
-        try { out = { ...egress.setting(raw), proxy: via, applies: APPLIES }; }
-        catch (e) { out = { enabled: raw.enabled === true, sites: Array.isArray(raw.sites) ? raw.sites : [], proxy: via, applies: APPLIES, problem: /** @type {Error} */ (e).message }; }
-        const [p, g] = await Promise.all([egress.probe(via), egress.gateStatus()]);
-        // sidecar: whether egress:1055 accepts a connection; gate: whether it would let a listed
-        // site through right now (only while the Mac is in use as the exit node), and why not.
-        return { ...out, sidecar: p.answers ? { answers: true } : { answers: false, why: p.why }, gate: g };
-      });
-
-    tool("computers.egress.set", "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.",
-      obj({ enabled: { type: "boolean" }, sites: { type: "array", items: str } }), async (i, { caller }) => {
-        const who = String(caller || "");
-        if (agentClaim(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
-        const now = egress.setting(egressCfg());
-        const next = { enabled: i.enabled === undefined ? now.enabled : i.enabled === true, sites: i.sites === undefined ? now.sites : egress.checkSites(i.sites) };
-        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
-        config.save({ glass: { egress: next } }, ctx.paths.root, ctx.config);
-        ctx.log(`egress ${next.enabled ? "on" : "off"}, ${next.sites.length} site(s), set by ${who || "unknown"}`);
-        return { ...next, applies: APPLIES };
-      }, { presence: { summary: i => i && i.enabled === true ? "Send the listed sites through your Mac" : "Change which sites go through your Mac" } });
-
-    // ---- tailnet: each computer as its own ephemeral tagged node (tailnet.js) ----------------
-
-    const JOINS = "applies to computers that start or thaw after the change; one already running keeps what it has until computers.stop, and turning it off never logs a running node out early";
     const notAgent = (caller, what) => {
       const who = String(caller || "");
       if (agentClaim(who)) throw new Error(`"${who}" is an agent; ${what} is the owner's`);
       return who;
     };
-
-    tool("computers.tailnet.status", "Whether computers join the tailnet as their own tagged nodes (config computers.tailnet), the tag, whether the auth key is in the vault and granted (never its value), and each computer's node.",
-      obj({}), async (_, { caller }) => {
-        notAgent(caller, "the computers' tailnet setting");
-        /** @type {{ enabled: boolean, tag: string, applies: string, problem?: string }} */
-        let out;
-        try { out = { ...tailnet.setting(tailnetCfg()), applies: JOINS }; }
-        catch (e) { out = { enabled: false, tag: tailnet.DEFAULT_TAG, applies: JOINS, problem: /** @type {Error} */ (e).message }; }
-        /** @type {{ item: string, exists: boolean|null, granted: boolean|null, why?: string }} */
-        let vault = { item: tailnet.ITEM, exists: null, granted: null };
-        const v = await ctx.call("vault.list", { filter: tailnet.ITEM });
-        if (v.error) vault.why = v.error.code === "no_such_tool" ? "the vault is not running" : v.error.message;
-        else {
-          const it = ((v.data && v.data.items) || []).find(x => x && x.name === tailnet.ITEM);
-          vault = { item: tailnet.ITEM, exists: Boolean(it), granted: Boolean(it && (it.grants || []).some(g => g && g.module === "computers" && !g.watcher)) };
-        }
-        const computers = pool.rows().map(r => ({
-          agent: String(r.agent), running: r.state === "running",
-          node: r.stable_id ? String(r.node || "") : null, stableId: r.stable_id ? String(r.stable_id) : null,
-        }));
-        return { ...out, vault, computers };
-      });
-
-    tool("computers.tailnet.set", "Turn on or off each computer joining the tailnet as its own ephemeral node tagged tag:vyre-agent. The owner's to change, never an agent's; it applies to computers that start afterwards.",
-      obj({ enabled: { type: "boolean" } }, ["enabled"]), async (i, { caller }) => {
-        const who = notAgent(caller, "whether an agent's computer joins the tailnet");
-        if (typeof i.enabled !== "boolean") throw new Error("enabled must be true or false");
-        const now = tailnet.setting(tailnetCfg());
-        const next = { enabled: i.enabled, tag: now.tag };
-        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
-        config.save({ computers: { tailnet: next } }, ctx.paths.root, ctx.config);
-        ctx.log(`computers' tailnet nodes ${next.enabled ? "on" : "off"} (${next.tag}), set by ${who || "unknown"}`);
-        return { ...next, applies: JOINS };
-      }, { presence: { summary: i => i && i.enabled === true ? "Let each agent's computer join your tailnet as its own tagged node" : "Stop agents' computers joining your tailnet" } });
 
     // ---- idle hand-back: a take-over with no input goes back to the agent (keyboard.js) --------
 
@@ -462,21 +387,6 @@ export default {
         for (const agent of keyboard.takeovers.keys()) keyboard.arm(agent);
         return handback();
       });
-
-    // Which agent a tailnet node is, for the names listener (it maps a tagged node that answers
-    // here to the caller `tailnet:agent:<name>`).
-    //
-    // Identity doctrine: a whois of the agent's node strengthens the x-vyre-agent-key vouch and
-    // never replaces it. A node proves which container the request came from; the key proves
-    // which thread. Over the tailnet both must name the same agent (the daemon still requires the
-    // key); off the tailnet the key alone works as before. Only a stable id recorded when that
-    // computer joined counts, and only while it runs: a frozen, stopped or vanished computer's
-    // node maps to no one, and a policy grant (vyre.run/cap/agent) never names an agent here.
-    tool("computers.node.agent", "The agent whose running computer is this tailnet node (by stable id), or null.",
-      obj({ stableId: str }, ["stableId"]), async (i, { caller }) => {
-        if (!/^module:/.test(String(caller || ""))) throw new Error("only modules may ask which agent a node is");
-        return { agent: pool.agentOfNode(String(i.stableId || "")) };
-      }, { internal: true });
 
     return {
       pool, keyboard, shield, fills, driver, sweep,

@@ -31,21 +31,9 @@
   "owner": "memory",
   "seen": "lead integration 7 Oct 2026, fails on trunk too: the user's own session's memory.remember arrives with no kernel chain (denied) where the test expects a pending fact; the session token stamp in this harness is the open question."
  },
- "test/federation-answer.test.js": {
-  "owner": "cleanup",
-  "seen": "lead integration 7 Oct 2026, fails on trunk too: a Mac federated over the tailnet; the chat gate refuses its labelled calls. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0."
- },
- "test/federation-send.test.js": {
-  "owner": "cleanup",
-  "seen": "lead integration 8 Oct 2026 on testbox2, cause found: 3 of 8 cases fail, the same cause as federation-answer: a Mac federated over the tailnet, whose labelled calls (module:test notices, the box's send) the chat gate refuses or answers not_found. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0; the file goes with them."
- },
  "test/journey.test.js": {
   "owner": "network",
   "seen": "lead integration 6 Oct 2026: journey 5 is the Tailscale signed-out door, removed with Tailscale; the 0.3.0 cleanup drops it"
- },
- "test/link.test.js": {
-  "owner": "network",
-  "seen": "lead integration 6 Oct 2026: the link and tailnet listener were removed with Tailscale (network c67dcbfc6); the 0.3.0 cleanup (cleanup-tailnet 41283b712) rewrites these tests onto Wink"
  },
  "test/login-server-uid0.test.js": {
   "owner": "launch",

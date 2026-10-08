@@ -17,7 +17,6 @@ pub mod hotkey;
 
 pub mod shell;
 pub mod update;
-pub mod drive;
 pub mod devicekey;
 pub mod identity;
 pub mod bundled;

@@ -35,6 +35,7 @@ async function fakeVyred(t, root, tools) {
   t.after(() => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }));
   return calls;
 }
+const CODE = "abcd-efgh-ijkl-mnop-qrst-uv";
 const tools = o => ({
   "names.check": async ({ name }) => ({ data: name === "taken" ? { name, valid: true, available: false, address: `https://${name}.vyre.run`, why: "someone else has it" } : name === "bad_name" ? { name, valid: false, available: false, why: "names are lower case letters, digits and hyphens" } : { name, valid: true, available: true, address: `https://${name}.vyre.run` } }),
   "names.claim": async ({ name }) => o.claim ? o.claim(name) : ({ data: { address: `https://${name}.vyre.run`, phase: "named", why: "the address is published once your server pairs" } }),

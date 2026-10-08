@@ -73,7 +73,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
     "bridges.merge.links": { person: alexId },
     "bridges.kit.plan": { person: alexId, space, kit: {} },
   };
-  for (const label of ["mcp", "mcp:thread:fake", "tailnet-guest:mallory@example.com", "anonymous", "harness", "tailnet:bob@example.com", "mcp:agent:kit", "device:web0000000000001", "device:setup000000000002", "device:neverpaired00003"]) {
+  for (const label of ["mcp", "mcp:thread:fake", "guest:mallory@example.com", "anonymous", "harness", "device:l74gbpyrsbmwy4mi", "mcp:agent:kit", "device:web0000000000001", "device:setup000000000002", "device:neverpaired00003"]) {
     for (const [tool, input] of Object.entries(inputs)) {
       const r = await as(label)(tool, input);
       assert.ok(r.error, `${tool} as ${label} must be refused, got ${String(JSON.stringify(r)).slice(0, 200)}`);

@@ -120,10 +120,8 @@ export async function makeRig(o = {}) {
   }
   fs.writeFileSync(d("mirror", "SHA256SUMS"), sums.join("\n") + "\n");
 
-  // fakes: the Mac's ssh, open and tailscale; the box's tailscale and claude; the server's PATH
+  // fakes: the Mac's ssh and open; the box's claude; the server's PATH
   shim(d("fakes", "ssh"), "ssh.mjs");
-  shim(d("fakes", "tailscale-mac"), "tailscale.mjs", "mac");
-  shim(d("fakes", "tailscale-box"), "tailscale.mjs", "box");
   exe(d("fakes", "open"), `#!/bin/sh\nprintf '%s\\n' "$1" >> "${d("state", "opened")}"\n`);
   exe(d("fakes", "claude"), CLAUDE);
   shim(d("srv", "fakebin", "docker"), "docker.mjs");
@@ -145,12 +143,12 @@ export async function makeRig(o = {}) {
     } },
     container: { env: {
       HOME: d("srv", "home"), VYRE_HOME: d("srv", "home", ".vyre"), VYRE_SUPERVISOR: "docker", VYRE_ONBOARD_HOST: "::1",
-      VYRE_TAILSCALE_BIN: d("fakes", "tailscale-box"), VYRE_CLAUDE_BIN: d("fakes", "claude"), NO_COLOR: "1",
+      VYRE_CLAUDE_BIN: d("fakes", "claude"), NO_COLOR: "1",
       PATH: [path.dirname(NODE), SYSTEM_PATH, py].filter(Boolean).join(":"), JOURNEY_RIG: d("rig.json"),
     } },
     mac: { env: {
       HOME: d("mac"), VYRE_HOME: d("mac", ".vyre"), PATH: `${path.dirname(NODE)}:${SYSTEM_PATH}`, NO_COLOR: "1",
-      VYRE_TAILSCALE_BIN: d("fakes", "tailscale-mac"), VYRE_SSH_BIN: d("fakes", "ssh"), VYRE_OPEN_BIN: d("fakes", "open"),
+      VYRE_SSH_BIN: d("fakes", "ssh"), VYRE_OPEN_BIN: d("fakes", "open"),
       VYRE_BOX_POLL_MS: "250", JOURNEY_RIG: d("rig.json"),
       ...(process.env.JOURNEY_INSTALLER ? { VYRE_BOX_INSTALLER: installer } : {}),
     } },

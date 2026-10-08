@@ -4,7 +4,7 @@
 //
 // This is not a redactor: a chat transcript's meaning depends on its exact words, and cutting a
 // match out of the middle would corrupt what memory-iq reads. A file that scores unsafe is
-// quarantined whole (core/link/box.js), for the person to look at, never silently dropped and
+// quarantined whole (core/sync), for the person to look at, never silently dropped and
 // never partly indexed.
 
 /** Known secret token shapes, checked against the file's raw text. Labels only are ever reported. */

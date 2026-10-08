@@ -161,7 +161,7 @@ test("hooks: off means no listener; on binds 127.0.0.1 only; off again closes it
 
   await no("hooks.enable", { on: true }, "cli", "presence_required", {});
   await no("hooks.enable", { on: true }, "mcp:agent:kit", "denied");
-  await no("hooks.enable", { on: true }, "tailnet-guest:sam@example.com", "denied");
+  await no("hooks.enable", { on: true }, "guest:sam@example.com", "denied");
   await no("hooks.enable", { on: true }, "module:glass", "denied");
   assert.ok(await refused(port));
 
@@ -195,8 +195,8 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   const { ok, no, evts, p } = await registry(t);
   await no("hooks.open", NW, "cli", "presence_required", {});
   await no("hooks.open", NW, "mcp:agent:kit", "held_unavailable"); // an outward act by anyone but the person is held at the Gate, which is not wired yet: refused
-  await no("hooks.open", NW, "tailnet:agent:kit", "held_unavailable"); // an outward act by anyone but the person is held at the Gate, which is not wired yet: refused
-  await no("hooks.open", NW, "tailnet-guest:sam@example.com", "denied");
+  await no("hooks.open", NW, "agent:kit", "held_unavailable"); // an outward act by anyone but the person is held at the Gate, which is not wired yet: refused
+  await no("hooks.open", NW, "guest:sam@example.com", "denied");
   await no("hooks.open", NW, "module:watchers", "denied");
   await no("hooks.open", { name: "northwind-orders", verify: { secret: "northwind-orders-hook" } }, "cli", "bad_input");
   await no("hooks.open", { name: "northwind-orders", verify: { scheme: "none", secret: "northwind-orders-hook" } }, "cli", "bad_input");
@@ -205,7 +205,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   await no("hooks.open", { name: "../vault", verify: NW.verify }, "cli", "bad_input");
   assert.equal((await ok("hooks.list")).routes.length, 0);
 
-  const opened = await ok("hooks.open", NW, "tailnet:alex@example.com", { ...HERE, person: { id: "s1", kind: "cookie" } });
+  const opened = await ok("hooks.open", NW, "device:nw3b43olz4rzbzfe", { ...HERE, person: { id: "s1", kind: "cookie" } });
   assert.equal(opened.ready, true);
   assert.equal(opened.path, "/hooks/northwind-orders");
   assert.equal(opened.funnel, undefined, "no command for another product is handed out");
@@ -219,7 +219,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
 
   await no("hooks.close", { name: "northwind-orders" }, "cli", "presence_required", {});
   await no("hooks.close", { name: "northwind-orders" }, "mcp:agent:kit", "held_unavailable");
-  await no("hooks.close", { name: "northwind-orders" }, "tailnet-guest:sam@example.com", "denied");
+  await no("hooks.close", { name: "northwind-orders" }, "guest:sam@example.com", "denied");
   const closed = await ok("hooks.close", { name: "northwind-orders" });
   assert.equal(closed.closed, true);
   assert.equal(closed.last, false, "harlow-forms is still open");
@@ -319,7 +319,7 @@ test("hooks: a verified delivery is stored with allowlisted headers, the event c
   assert.equal(String(/** @type {any} */ (db.prepare("SELECT caller FROM hooks_deliveries").get()).caller), "internet:northwind-orders");
   assert.equal((await ok("hooks.delivery", { id: e.payload.id }, "cli", {})).body, ORDER);
   await no("hooks.delivery", { id: e.payload.id }, "mcp:agent:kit", "denied", {});
-  await no("hooks.delivery", { id: e.payload.id }, "tailnet-guest:sam@example.com", "denied", {});
+  await no("hooks.delivery", { id: e.payload.id }, "guest:sam@example.com", "denied", {});
   await no("hooks.delivery", { id: e.payload.id }, "internet:northwind-orders", "denied", {});
   await no("hooks.delivery", { id: "hd_nope" }, "cli", "not_found", {});
   const list = await ok("hooks.list", {}, "cli", {});
@@ -355,7 +355,7 @@ test("hooks.status: the listener and the routes, and it says plainly that the in
   assert.ok(Object.values(s.urls).every(u => u === null), "no route has a public address");
   assert.equal(s.listening, true);
   assert.ok(!/tailscale|funnel/i.test(JSON.stringify(s)), "nothing in the answer names another product");
-  await r.no("hooks.status", {}, "tailnet-guest:sam@example.com", "denied", {});
+  await r.no("hooks.status", {}, "guest:sam@example.com", "denied", {});
 });
 
 test("hooks.status: once the box's public gate is up, each route has its address, and a waiting gate says why", async t => {

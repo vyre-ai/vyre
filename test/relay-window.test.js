@@ -84,7 +84,7 @@ test("pairing window: only the owner's own screen can open it, with a proof; a t
   const w = await windowWorld(t);
   assert.ok(["denied", "no_such_tool"].includes((await w.call("relay.pair.window.open", {}, "cli", A)).error?.code), "a terminal cannot reach it");
   assert.ok((await w.call("relay.pair.window.open", {}, "module:x", A)).error);
-  assert.ok((await w.call("relay.pair.window.open", {}, "tailnet:agent:kit", A)).error);
+  assert.ok((await w.call("relay.pair.window.open", {}, "agent:kit", A)).error);
   const noProof = await w.call("relay.pair.window.open", {}, SCREEN, A2);
   assert.ok(noProof.error, "no proof, no window");
   

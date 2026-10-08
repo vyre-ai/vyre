@@ -196,13 +196,13 @@ test("onboard: join status says where the pair step stands and whether the relay
   assert.deepEqual(s.data.relay, { available: true, enabled: false, connected: false, pairing: null });
 });
 
-test("onboard: join verify forwards to link.health, unknown without a node to name, and never flips machine unless asked", async t => {
+test("onboard: join verify reads the Wink status, says offline with nothing connected, and never flips machine unless asked", async t => {
   const { root } = await box(t);
   const v = await call("onboard.join", { action: "verify" }, { root });
   assert.equal(v.error, undefined, JSON.stringify(v.error));
   assert.equal(v.data.online, false);
-  assert.match(v.data.why, /say which node/);
-  // becomeDevice is a no-op here: link.health said not online, and onboard.machine is not even
+  assert.deepEqual(v.data.spaces, []);
+  // becomeDevice is a no-op here: the Wink status said not online, and onboard.machine is not even
   // running in this test world, so nothing throws either way.
   const notOnline = await call("onboard.join", { action: "verify", becomeDevice: true }, { root });
   assert.equal(notOnline.error, undefined, JSON.stringify(notOnline.error));
@@ -221,7 +221,7 @@ test("onboard: join is the owner's alone — an agent with a valid presence proo
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
   // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, the same
   // way relay.pair.start already does, whatever proof rides along (reviewer's HOLD on af604cf8).
-  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "guest:sam@example.com", "hook", "anonymous"]) {
     const relay = await call("onboard.join", { action: "relay" }, { root, caller });
     assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
   }

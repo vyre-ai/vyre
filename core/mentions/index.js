@@ -9,7 +9,7 @@
 import { SURFACE_LABELS } from "../modules/index.js";
 
 /** Who may ask: the person's own surfaces and the owner's devices (a model, an agent or a guest never). */
-const PERSON = [...SURFACE_LABELS, "mobile", "tailnet", "device", "space", "agent"];
+const PERSON = [...SURFACE_LABELS, "mobile", "device", "space", "agent"];
 
 /** The order kinds are drawn in; any other kind follows by name. */
 const FIRST = ["vault", "drive", "artifact", "github"];

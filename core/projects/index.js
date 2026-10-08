@@ -6,8 +6,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Projects, MIGRATIONS, threadId } from "./projects.js";
-import { label } from "./brief.js";
-import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
 import { real } from "./folders.js";
@@ -19,32 +17,6 @@ const str = { type: "string" };
 const strs = { type: "array", items: str };
 const person = { type: "object", properties: { name: str, email: str } };
 /** On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's. */
-const machines = { type: "string", enum: ["all", "local"] };
-/** The catalogue's own order across machines: title matches, then how often it was said, then newest. */
-const byCatalog = (a, b) => Number(Boolean(b.titled)) - Number(Boolean(a.titled)) || (b.said || 0) - (a.said || 0) || (b.last || 0) - (a.last || 0);
-
-/**
- * A project's threads with its missing picks filled in from the Macs' recall.sessions answers:
- * name, title, folder and times from the Mac, labelled with it. Every other row is the box's and
- * labelled so; a pick no machine answered for stays as it was, missing, with no label. Newest
- * first, missing picks last, as threadsOf orders them.
- * @param {any} ctx @param {any[]} rows @param {Array<{ name: string, ok: boolean, data?: any }>} answers
- */
-function resolvePicks(ctx, rows, answers) {
-  /** @type {Map<string, any>} */
-  const found = new Map();
-  for (const a of answers) if (a.ok && Array.isArray(a.data)) for (const s of a.data) if (s && s.id && !found.has(s.id)) found.set(s.id, { s, where: macLabel(a) });
-  const out = rows.map(t => {
-    if (!t.missing) return { ...t, ...boxLabel(ctx) };
-    const f = found.get(t.id);
-    if (!f) return t;
-    const s = f.s;
-    const row = { ...t, name: s.name || null, title: s.title || null, cwd: s.cwd || null, started: Number(s.started) || 0,
-      last: Number(s.ended) || 0, turns: Number(s.turns) || 0, human: Number(s.human) === 1 || s.human === true, missing: false };
-    return { ...row, label: label(row), ...f.where };
-  });
-  return out.sort((a, b) => Number(Boolean(a.missing)) - Number(Boolean(b.missing)) || (b.last || 0) - (a.last || 0));
-}
 
 /**
  * The catalogue with live on each session: true when a terminal has it open now, from the
@@ -61,7 +33,7 @@ const OWNER = ["cli", "local", "capsule", "deck"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
 /** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
-const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
+const CATALOG_READERS = [...OWNER, "mobile", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -109,13 +81,9 @@ export default {
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
-      input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
+      input: { type: "object", properties: { archived: { type: "boolean" } } },
       run: async (input, meta = {}) => { const caller = meta.caller;
-        if (!(await wantsMacs(ctx, input, caller, meta))) return P.list({ archived: Boolean(input.archived) });
-        // On the box, for the person: the box's projects, then each Mac's, every one labelled.
-        const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
-        return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
-          problems: mergeRows(ctx, own.problems, answers, { rows: d => d && d.problems }), sources: sourcesOf(ctx, answers) };
+        return P.list({ archived: Boolean(input.archived) });
       },
     });
     ctx.tool("projects.create", {
@@ -223,19 +191,10 @@ export default {
     ctx.tool("projects.catalog", {
       callers: CATALOG_READERS,
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
-      input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
+      input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" } } },
       run: async (input, meta = {}) => { const caller = meta.caller;
-        const { machines: _, ...own } = input;
-        if (!(await wantsMacs(ctx, input, caller, meta))) return withLive(ctx, await P.catalog(own));
-        // On the box, for the person: every Mac's sessions too, in one list in the catalogue's
-        // order, capped at the limit. total counts every machine; sources says who answered, and
-        // each one's own total.
-        const [here, answers] = await Promise.all([P.catalog(own).then(c => withLive(ctx, c)), askMacs(ctx, "projects.catalog", own)]);
-        const total = answers.reduce((n, a) => n + (a.ok && a.data ? Number(a.data.total) || 0 : 0), here.total);
-        const sessions = mergeRows(ctx, here.sessions, answers, { rows: d => d && d.sessions, compare: byCatalog, limit: own.limit ?? 50 });
-        const totals = [here.total, ...answers.map(a => (a.ok && a.data ? Number(a.data.total) || 0 : undefined))];
-        const sources = sourcesOf(ctx, answers).map((x, i) => (totals[i] === undefined ? x : { ...x, total: totals[i] }));
-        return { ...here, total, sessions, sources };
+        const own = { ...input };
+        return withLive(ctx, await P.catalog(own));
       },
     });
     ctx.tool("projects.of", {
@@ -246,18 +205,12 @@ export default {
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
-      input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" }, machines } },
+      input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" } } },
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { project, limit = 100 } = input;
         P.refresh();
         const rows = P.threadsOf(P.resolve(project));
-        if (!(await wantsMacs(ctx, input, caller, meta))) return rows.slice(0, limit);
-        // On the box, for the person: a pick the box has no session for may be a Mac session
-        // picked from the Deck. The Macs are asked once, for those ids only, and what they have
-        // comes back labelled and is never stored here. A pick no machine has stays missing.
-        const ids = rows.filter(t => t.missing).map(t => t.id);
-        const answers = ids.length ? await askMacs(ctx, "recall.sessions", { ids, limit: ids.length }) : [];
-        return resolvePicks(ctx, rows, answers).slice(0, limit);
+        return rows.slice(0, limit);
       },
     });
     ctx.tool("projects.context", {

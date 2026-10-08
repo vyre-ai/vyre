@@ -341,37 +341,13 @@
    "module": "files",
    "reason": "read-only: names of folders inside the files roots through the guard (no dot folders, no secrets), no content"
   },
-  "files.drive.audit": {
-   "module": "files",
-   "reason": "owner check inside: reach(ctx).all is required, an agent is refused; it reports and changes nothing"
-  },
-  "files.drive.candidates": {
-   "module": "files",
-   "reason": "scope check: a scoped caller sees only granted folders; read-only"
-  },
-  "files.drive.list": {
-   "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
-  },
-  "files.drive.local": {
-   "module": "files",
-   "reason": "scope check: a named agent gets a local path only for a box path inside its grant; read-only"
-  },
-  "files.drive.measure": {
-   "module": "files",
-   "reason": "scope check: a scoped caller may measure only inside its granted folders (real path checked); read-only"
-  },
-  "files.drive.read": {
-   "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
-  },
   "files.drive.search": {
    "module": "files",
-   "reason": "scope check: a named agent searches only the intersection of each share and its granted folders; read-only"
+   "reason": "the Space Drive is read through the caller's own chain (gateway drive.listPage under their grants); read-only"
   },
   "files.drive.status": {
    "module": "files",
-   "reason": "scope check: a named agent sees only the shares inside its granted projects; read-only"
+   "reason": "the Space Drive state is read through the caller's own chain (the gateway drive's listPage under their grants); read-only"
   },
   "files.fetch": {
    "module": "files",
@@ -777,10 +753,6 @@
    "module": "hooks",
    "reason": "read-only: the listener and what Funnel publishes; reader() refuses guests and the internet"
   },
-  "link.call": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
   "link.companion.hello": {
    "module": "link",
    "reason": "callers limited in code to tailnet, and the call is signed by the companion core key, checked against a live companion row and its parent device on every call"
@@ -788,62 +760,6 @@
   "link.companion.pair": {
    "module": "link",
    "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
-  },
-  "link.events": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.find": {
-   "module": "link",
-   "reason": "callers limited in code to capsule, cli, local"
-  },
-  "link.health": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.hello": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.macs": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.pair.approve": {
-   "module": "link",
-   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
-  },
-  "link.pair.poll": {
-   "module": "link",
-   "reason": "tailnetLogin(caller) check plus a secret compared in constant time and the asking node pinned (peer.stableId): the link key goes once to the node that asked"
-  },
-  "link.pair.request": {
-   "module": "link",
-   "reason": "tailnetLogin(caller) check in the tool: only the owner's own device over the tailnet may start a pairing, the code shows on that device only, and pending requests are capped"
-  },
-  "link.peers": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.pending": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.reply": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.serve": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.signin": {
-   "module": "link",
-   "reason": "callers limited in code to capsule, cli, local"
-  },
-  "link.status": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
   },
   "mail.accounts": {
    "module": "mail",
@@ -1439,7 +1355,7 @@
   },
   "threads.answer": {
    "module": "threads",
-   "reason": "callers list in code (cli, local, deck, capsule) plus the link: callers a paired Mac federates through (the box's answer to a Mac's ask) and modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool; any installed module may answer an ask (module is on the callers list): a module is the person's own installed code, and a call traced to the session that raised the ask is refused"
+   "reason": "callers list in code (cli, local, deck, capsule) plus modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool; any installed module may answer an ask (module is on the callers list): a module is the person's own installed code, and a call traced to the session that raised the ask is refused"
   },
   "threads.archive": {
    "module": "threads",
@@ -1709,10 +1625,6 @@
    "module": "vault",
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
   },
-  "vault.grants.status": {
-   "module": "vault",
-   "reason": "read-only: tailnet policy status per pass holder, never a value"
-  },
   "vault.health": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
@@ -1960,6 +1872,14 @@
   "watchers.test": {
    "module": "watchers",
    "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+  },
+  "wink.server.call": {
+   "module": "wink",
+   "reason": "callers list in code (cli, local, deck, capsule, mobile, module); refuses a model or agent origin; the call goes to the server over the paired peer door, where the server's own reach and presence rules decide"
+  },
+  "wink.server.home": {
+   "module": "wink",
+   "reason": "callers list in code (cli, local, deck, capsule, mobile, module); read-only: whether this device is linked to a server and that server's name"
   },
   "work.call": {
    "module": "work",

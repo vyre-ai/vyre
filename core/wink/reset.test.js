@@ -139,7 +139,7 @@ test("the lock survives a restart of the daemon (same store, new process)", asyn
 test("only the local cli may call either tool: every other caller is refused with the right data, and nothing moves", async () => {
   const b = box(); b.own();
   const { code } = await b.begin();
-  const callers = ["deck", "hook", "anonymous", "mcp", "harness", "agent:kit", "cli:agent:kit", "mcp:agent:kit", "module:wink", "module:relay", "device:abcdefghijklmnop", "tailnet:alex", "tailnet:agent:kit", "tailnet-guest:x", "relay", "capsule", "local", "space:x", "org:x", ""];
+  const callers = ["deck", "hook", "anonymous", "mcp", "harness", "agent:kit", "cli:agent:kit", "mcp:agent:kit", "module:wink", "module:relay", "device:abcdefghijklmnop", "device:ie22vhobxbbkmu66", "agent:kit", "guest:x", "relay", "capsule", "local", "space:x", "org:x", ""];
   for (const c of callers) {
     await assert.rejects(() => b.call("wink.server.reset.confirm", { code }, c), e => e.code === "denied", `confirm from ${c || "(none)"}`);
     await assert.rejects(() => b.call("wink.server.reset.begin", beginInput(newCode()), c), e => e.code === "denied", `begin from ${c || "(none)"}`);
@@ -236,7 +236,7 @@ test("a reset leaves the vault sealed: a paired app or a new owner's device is n
   const { code } = await b.begin();
   await b.call("wink.server.reset.confirm", { code });
   b.p.meta.set("owner", { kind: "identity", id: ZOE, identity: ZOE }); b.p.meta.set("adopter", "device:zoe1");
-  for (const caller of ["device:zoe1aaaaaaaaaaaa", "tailnet:zoe", "deck", "mcp"]) await assert.rejects(() => v.release({ name: "stripe" }, caller), /only modules may ask the vault/, caller);
+  for (const caller of ["device:zoe1aaaaaaaaaaaa", "device:tuax4jubw7zrojpb", "deck", "mcp"]) await assert.rejects(() => v.release({ name: "stripe" }, caller), /only modules may ask the vault/, caller);
   for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !/\.key$|keys?\./.test(String(f))) assert.ok(!fs.readFileSync(p).includes(secret), `${f} holds no plaintext`); }
   assert.equal((await v.release({ name: "stripe" }, "module:x").catch(e => e.message)).includes("not granted"), true, "even a module needs the item granted to it");
 });

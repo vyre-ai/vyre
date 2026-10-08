@@ -327,7 +327,7 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
 /** The owner's own surfaces only: never an agent, a guest, a hook or an anonymous caller. @param {any} meta @param {string} what */
 export function ownerOnly(meta, what) {
   const c = String((meta && meta.caller) || "");
-  if (!c || (meta && meta.agent) || /^(anonymous|hook)$/.test(c) || c.startsWith("tailnet-guest:") || c.startsWith("agent:") || c.startsWith("tailnet:agent:") || c.startsWith("space:") || c.startsWith("org:"))
+  if (!c || (meta && meta.agent) || /^(anonymous|hook)$/.test(c) || c.startsWith("agent:") || c.startsWith("space:") || c.startsWith("org:"))
     throw fail("denied", `${what} is the owner's`);
 }
 

@@ -1,5 +1,3 @@
-import { allowsMock } from "@vyre/ui";
-import { call as boxCall } from "../../src/api/box";
 import { tool } from "../../src/real/box";
 import { driveSource } from "./source";
 import { spaceDriveSource } from "./space-source";

@@ -35,7 +35,7 @@ const person = async (ctx, meta, what) => {
     if (!owner || String(owner) !== id) throw denied(c, what);
     return id;
   }
-  if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c) || c.startsWith("tailnet:guest")) throw denied(c, what);
+  if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c)) throw denied(c, what);
   return null;
 };
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });

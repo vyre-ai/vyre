@@ -14,7 +14,7 @@ import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { Presence, inputHash } from "../core/presence/index.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, deviceFor } from "./helpers.js";
 
 const PHONE = { node: "alex-phone", stableId: "nTEST", login: "alex@example.com" };
 
@@ -40,7 +40,7 @@ async function world(t) {
   t.after(() => d.stop());
   // What the names module does for each tailnet request, with the phone as the peer.
   const handle = d.registry.deps.handler({});
-  const server = http.createServer((req, res) => handle(req, res, `tailnet:${PHONE.login}`, PHONE));
+  const server = http.createServer((req, res) => handle(req, res, deviceFor(PHONE.login), PHONE));
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => { server.closeAllConnections(); return new Promise(r => server.close(() => r(undefined))); });
   const base = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;

@@ -28,7 +28,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import { sign, verify, canonical } from "./crypto.js";
-import { capValues } from "../link/transport.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -70,18 +69,16 @@ function checkCard(c, v) {
   // relay may be empty: a Vyre with no relay listener can still receive sealed passes.
   for (const k of ["name", "sign", "box"]) if (!isStr(c?.[k])) throw new Error(`card is missing "${k}"`);
   if (typeof c.relay !== "string") throw new Error(`card is missing "relay"`);
-  if (c.login !== undefined && typeof c.login !== "string") throw new Error(`card "login" must be text`);
   if (c.acct !== undefined && typeof c.acct !== "string") throw new Error(`card "acct" must be text`);
   if (v === 2 && (!Array.isArray(c.devices) || !c.devices.every(d => d && typeof d === "object" && !Array.isArray(d)))) throw new Error(`card "devices" must be a list`);
-  // login, optional: the person's Tailscale login, so a pass can be bound to it as well as to the device key.
   /** @type {Card} */
-  const out = { v, name: c.name, sign: c.sign, box: c.box, relay: c.relay, ...(c.login ? { login: c.login } : {}) };
+  const out = { v, name: c.name, sign: c.sign, box: c.box, relay: c.relay };
   if (v === 2) Object.assign(out, c.acct ? { acct: c.acct } : {}, { devices: c.devices });
   return out;
 }
 
 /** The signed part of a v2 card. */
-const cardBody = c => ({ acct: c.acct, name: c.name, sign: c.sign, box: c.box, login: c.login, relay: c.relay, devices: c.devices || [] });
+const cardBody = c => ({ acct: c.acct, name: c.name, sign: c.sign, box: c.box, relay: c.relay, devices: c.devices || [] });
 
 /**
  * A v2 card: `vyre-card:v2:` + base64url(canonical JSON), signed by the identity key it names.
@@ -330,22 +327,6 @@ export function allowedOrigin(url, hosts) {
   return false;
 }
 
-/** The app capability a tailnet grant carries to let a peer use relayed vault items (ADR 0014, part 7). */
-export const VAULT_CAP = "vyre.run/cap/vault";
-
-/**
- * Whether the tailnet policy, as `whois` reported it for a peer, grants that peer `item` in
- * `mode`. A grant entry is `{ items: ["northwind-*", "harlow-portal"], mode: "relayed"|"sealed"|"any" }`;
- * an item pattern is an exact name or a trailing-* prefix, nothing else, and an entry without a
- * mode or items grants nothing. The answer only ever narrows: the pass is still what gives access.
- * @param {{ caps?: Record<string, any[]> } | null | undefined} who @param {string} item @param {string} mode
- */
-export function grantCovers(who, item, mode) {
-  return capValues(who, VAULT_CAP).some(g => g && typeof g === "object" && (g.mode === "any" || g.mode === mode)
-    && Array.isArray(g.items) && g.items.some(p => typeof p === "string" && p !== ""
-      && (p.endsWith("*") ? String(item).startsWith(p.slice(0, -1)) : p === item)));
-}
-
 const PLACEHOLDER =/\{\{\s*vault(?:\.([A-Za-z0-9_-]+))?\s*\}\}/g;
 const HAS_PLACEHOLDER = /\{\{\s*vault(?:\.[A-Za-z0-9_-]+)?\s*\}\}/;
 
@@ -451,13 +432,6 @@ export async function send(request, { timeoutMs = 30000, maxBytes = 5_000_000 } 
 
 const MAX_BODY = 6 * 1024 * 1024;
 
-/** Refuse `identity: "tailscale"` on a bind other than loopback, in words a person can act on. */
-export function checkBind(host, identity) {
-  if (identity === "tailscale" && !isLoopback(host)) {
-    throw new Error(`vault.relay.identity "tailscale" needs vault.relay.host to be 127.0.0.1: on ${host} anyone who reaches the port can forge the Tailscale login header · bind to loopback and publish it with tailscale serve`);
-  }
-}
-
 function reply(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -482,16 +456,12 @@ async function readJson(req) {
 /**
  * Start the relay listener. `POST /v1/relay`, and `/v1/sync` and `/v1/emergency` when their
  * handlers are given; everything else is 404.
- * `login` is the Tailscale-User-Login header that `tailscale serve` adds to what it proxies. It
- * means something only when the listener is reachable through serve alone, so it is passed on
- * only with `identity: "tailscale"`, and that is refused on a bind other than loopback: anyone
- * who can reach a public bind can write the header themselves.
- * @param {{ host?: string, port?: number, identity?: string|null, onRelay: (env: any, meta: { remoteAddress?: string, login?: string|null }) => Promise<{ status: number, body: any }>,
+ * Who the caller is comes from the signed envelope (the holder's key), never from a header or an address.
+ * @param {{ host?: string, port?: number, onRelay: (env: any, meta: { remoteAddress?: string }) => Promise<{ status: number, body: any }>,
  *   onSync?: ((env: any, meta: any) => Promise<{ status: number, body: any }>) | null, onEmergency?: ((env: any, meta: any) => Promise<{ status: number, body: any }>) | null }} o
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function serve({ host = "127.0.0.1", port = 0, identity = null, onRelay, onSync = null, onEmergency = null }) {
-  checkBind(host, identity);
+export async function serve({ host = "127.0.0.1", port = 0, onRelay, onSync = null, onEmergency = null }) {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url || "/", "http://relay").pathname;
@@ -501,8 +471,7 @@ export async function serve({ host = "127.0.0.1", port = 0, identity = null, onR
         : path === "/v1/emergency" && onEmergency ? onEmergency : null;
       if (req.method !== "POST" || !handler) return reply(res, 404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       const env = await readJson(req);
-      const login = identity === "tailscale" ? req.headers["tailscale-user-login"] : null;
-      const out = await handler(env, { remoteAddress: req.socket.remoteAddress, login: typeof login === "string" && login ? login : null });
+      const out = await handler(env, { remoteAddress: req.socket.remoteAddress });
       reply(res, out?.status || 200, out?.body ?? {});
     } catch (e) {
       if (e instanceof HttpError) return reply(res, e.status, { error: { code: e.code, message: e.message } });

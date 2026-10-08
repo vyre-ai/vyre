@@ -23,24 +23,25 @@ const wink = (o = {}) => ({
   ...o,
 });
 
-/** Tools as a paired Mac's vyred answers them; `box` answers what link.call carries. */
+/** Tools as a paired device's vyred answers them; `box` answers what wink.server.call carries. */
 function tools({ link = {}, box = {}, status = {} } = {}) {
   const remote = {
     "presence.keys": () => ({ data: [{ id: "k1", kind: "passkey", rp_id: "vyre.harlow.vyre.run" }] }),
     "onboard.status": () => ({ data: { detail: { claude: { installed: true, signedIn: true, via: "setup-token" } } } }),
+    "system.echo": () => ({ data: {} }),
     ...box,
   };
   return async (name, input) => {
     if (name === "network.wink.status") return { data: wink(status) };
-    if (name === "link.status") return { data: { role: "local", linked: true, reachable: true, box: { address: BOX, name: "vyre" }, pending: null, ...link } };
+    if (name === "wink.server.home") return { data: { linked: true, server: { id: "srv1", name: "vyre" }, servers: [{ id: "srv1", name: "vyre" }], ...link } };
     if (name === "recall.status") return { data: { sessions: 5678, turns: 40000, indexing: true, progress: { sessions: { done: 1234, total: 5678 }, paused: null, priority: "low" }, vectors: { on: true, ready: false, embedded: 0, pending: 40000, why: "not loaded yet" } } };
-    if (name === "link.call") return remote[input.tool] ? remote[input.tool]() : { error: { code: "no_such_tool", message: input.tool } };
+    if (name === "wink.server.call") return remote[input.tool] ? remote[input.tool]() : { error: { code: "no_such_tool", message: input.tool } };
     return { error: { code: "no_such_tool", message: name } };
   };
 }
 
 const deps = (o = {}) => ({
-  role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
+  role: "local", box: BOX, health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
   tool: tools(), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
   modules: async () => ({ data: [{ name: "settings", state: "running" }, { name: "recall", state: "running" }] }),
   ...o,
@@ -158,16 +159,16 @@ test("doctor: with vyred down, it says start it, and what it cannot check is a q
   assert.equal(c.paired.ok, null);
 });
 
-test("doctor: an unpaired Mac waiting for approval says the code to approve", async () => {
-  const c = byId(await diagnose(deps({ tool: tools({ link: { linked: false, reachable: false, pending: { code: "123-456" } } }) })));
-  assert.deepEqual([c.paired.ok, c.paired.fix], [false, "on the box: vyre link approve 123-456"]);
+test("doctor: an unpaired device says to pair with the server's code", async () => {
+  const c = byId(await diagnose(deps({ tool: tools({ link: { linked: false, server: undefined, servers: [] } }) })));
+  assert.deepEqual([c.paired.ok, c.paired.fix], [false, "vyre link pair <code>"]);
   assert.equal(c.passkey.ok, null, "not reachable yet is not a missing passkey");
 });
 
 test("doctor: a box that never answers costs its timeout, not a hang: the run stays under 2 s", async () => {
   const never = () => new Promise(() => {});
   const t0 = Date.now();
-  const r = await diagnose(deps({ tool: async (n, i) => (n === "link.call" || n === "network.wink.status" ? never() : tools()(n, i)) }));
+  const r = await diagnose(deps({ tool: async (n, i) => (n === "wink.server.call" || n === "network.wink.status" ? never() : tools()(n, i)) }));
   const took = Date.now() - t0;
   assert.ok(took < BUDGET_MS + 300, `took ${took} ms`);
   const c = byId(r);
@@ -176,12 +177,12 @@ test("doctor: a box that never answers costs its timeout, not a hang: the run st
   assert.equal(c.passkey.ok, null);
 });
 
-test("doctor: on a box it checks the box's side: its address, its passkey, Claude, paired Macs", async () => {
+test("doctor: on a box it checks the box's side: its address, its passkey, Claude, paired devices", async () => {
   const tool = async name => ({
     "names.status": { data: { address: BOX, phase: "serving" } },
     "presence.keys": { data: [] },
     "onboard.status": { data: { detail: { claude: { installed: true, signedIn: true, via: "api-key" } } } },
-    "link.peers": { data: [{ id: "p1" }] },
+    "wink.access": { data: { devices: [{ id: "p1", kind: "mac" }] } },
   })[name] || { error: { code: "no_such_tool", message: name } };
   const c = byId(await diagnose(deps({ role: "box", tool })));
   const boxTool = async name => (name === "network.wink.status" ? { data: wink({ spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: null, latencyMs: null, peers: 2, peerList: [], door: { listening: true, refused: false } }] }) } : tool(name));
@@ -193,7 +194,7 @@ test("doctor: on a box it checks the box's side: its address, its passkey, Claud
   assert.equal(c.capsule, undefined);
   assert.deepEqual([c.passkey.ok, c.passkey.detail], [false, "none enrolled"]);
   assert.deepEqual([c.claude.ok, c.claude.detail], [true, "with an API key"]);
-  assert.deepEqual([c.paired.ok, c.paired.detail], [true, "1 Mac"]);
+  assert.deepEqual([c.paired.ok, c.paired.detail], [true, "1 device"]);
 });
 
 test("doctor: the real command against a temp home answers in under 2 s, as JSON, with an exit code", async t => {

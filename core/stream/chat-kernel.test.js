@@ -32,7 +32,7 @@ function fakeThreadsFull(/** @type {string} */ dir) {
   fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, "module.json"), JSON.stringify({ name: "threads", version: "0.0.0", roles: ["box", "local"], requires: [], does: { tools: [{ name: "threads.get", reach: "person" }, { name: "threads.start", reach: "anyone" }, { name: "threads.send", reach: "anyone" }] }, watches: { emits: [] }, shows: {}, needs: {}, teaches: { tips: [] }, settings: [] }));
   fs.writeFileSync(path.join(d, "index.js"), `
-const callers = ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module"];
+const callers = ["cli", "local", "deck", "capsule", "device", "mcp", "harness", "module"];
 export default { async start(ctx) {
   const T = globalThis.__threadsFull = globalThis.__threadsFull || { n: 0, started: [], sent: [] };
   ctx.tool("threads.get", { description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers,

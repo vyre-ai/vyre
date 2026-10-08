@@ -72,7 +72,7 @@ test("server side of a server-homed space: host-here needs no proof from the own
   assert.ok(owned.data && owned.data.space, JSON.stringify(owned));
   assert.equal(d.kernel.spaces.list().length, before + 1, "the owner's call hosted one space");
   // ...and a caller that is not the owner is refused and hosts nothing
-  const stranger = await as("tailnet-guest:mallory@example.com", "spaces.host-here", { name: "another" });
+  const stranger = await as("guest:mallory@example.com", "spaces.host-here", { name: "another" });
   assert.ok(stranger.error, "a caller that is not the owner is refused");
   assert.equal(d.kernel.spaces.list().length, before + 1, "and nothing more was hosted");
   // taking one back asks for the proof too, and a space that was never made there is not touched

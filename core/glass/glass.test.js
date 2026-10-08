@@ -55,14 +55,14 @@ export default { async start(ctx) {
   return { sent, async stop() {} };
 } };`;
 
-// link.health as Glass sees it: the answer from config (stub.link), or an error, or one that never comes.
+// network.wink.status as Glass sees it: the peers' paths from config (stub.link), or an error, or one that never comes.
 const LINK_SRC = `
 export default { async start(ctx) {
   const asked = [];
-  ctx.tool("link.health", { input: { type: "object", properties: { node: { type: "string" } } }, run: async (i, { caller }) => {
+  ctx.tool("network.wink.status", { input: { type: "object", properties: {} }, run: async (i, { caller }) => {
     asked.push({ input: i, caller });
     const a = ctx.config.stub.link;
-    if (a === "throw") throw new Error("tailscale fell over");
+    if (a === "throw") throw new Error("the node fell over");
     if (a === "hang") return new Promise(() => {});
     return a;
   } });
@@ -92,7 +92,7 @@ async function boot(t, o = {}) {
   const mods = path.join(root, "stubs");
   writeModule(mods, "computers", { does: { tools } }, COMPUTERS_SRC);
   if (o.threads !== false) writeModule(mods, "threads", { does: { tools: ["threads.send"] } }, THREADS_SRC);
-  if (o.link !== undefined) writeModule(mods, "link", { does: { tools: ["link.health"] } }, LINK_SRC);
+  if (o.link !== undefined) writeModule(mods, "network", { does: { tools: ["network.wink.status"] } }, LINK_SRC);
 
   const cfg = { role: "box", glass: { roots: [files], ...(o.maxUploadMb ? { maxUploadMb: o.maxUploadMb } : {}) },
     stub: { shield: Boolean(o.shield), helper: o.helper === false ? null : { url: cd.url, token: cd.token }, link: o.link } };
@@ -125,7 +125,7 @@ async function boot(t, o = {}) {
   const as = caller => (tool, input = {}) => registry.call(tool, input, caller);
   return {
     root, files, agentHome, cd, registry, logs, base,
-    h: g.handle, computers: registry.modules.get("computers")?.handle, threads: registry.modules.get("threads")?.handle, link: registry.modules.get("link")?.handle,
+    h: g.handle, computers: registry.modules.get("computers")?.handle, threads: registry.modules.get("threads")?.handle, link: registry.modules.get("network")?.handle,
     deck: as("deck"), cli: as("cli"), kit: as("mcp:agent:kit"),
     events: (type = "") => events.since(0, { limit: 1000 }).filter(e => e.type.startsWith(type)),
   };
@@ -146,45 +146,43 @@ function fetchRaw(url, { method = "GET", headers = {}, body } = /** @type {any} 
 
 // ------------------------------------------------------------ the module and its targets
 
-test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a direct one does not", async t => {
-  const relayed = await boot(t, { link: { path: "relay", relay: "fra", latencyMs: 80, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
-  const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
-  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+const status = (via) => ({ spaces: [{ id: "home", state: "connected", peerList: [{ eid: "nPHONE", via, since: 1 }] }] });
+
+test("glass: a paired viewer on a relay gets link facts and a slow ticket; a direct one does not", async t => {
+  const relayed = await boot(t, { link: status("relay") });
+  const peer = { kind: "device", stableId: "nPHONE" };
+  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:aaaaaaaaaaaaaaaa", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(o.error, undefined, o.error?.message);
-  assert.deepEqual(o.data.link, { path: "relay", latencyMs: 80 });
-  assert.deepEqual(relayed.link.asked, [{ input: { node: "nPHONE" }, caller: "module:glass" }]);
+  assert.deepEqual(o.data.link, { path: "relay", latencyMs: null });
+  assert.equal(relayed.link.asked.length, 1);
   assert.deepEqual(relayed.computers.calls.find(c => c.tool === "computers.watch").input, { agent: "kit", surface: "phone:pocket", slow: true });
-  // Not a tailnet caller (the box's own socket): nothing is asked.
+  // Not a paired device (the server's own socket): nothing is asked.
   const local = await relayed.deck("glass.open", { target: "computer:kit", surface: "deck:laptop" });
   assert.equal(local.data.link, undefined);
   assert.equal(relayed.link.asked.length, 1);
 
-  const far = await boot(t, { link: { path: "direct", relay: null, latencyMs: 180, lastHandshake: null, online: true, checkedAt: 1, cached: true } });
-  await far.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
-  assert.equal(far.computers.calls.find(c => c.tool === "computers.watch").input.slow, true, "over 150 ms is slow too");
-
-  const direct = await boot(t, { link: { path: "direct", relay: null, latencyMs: 12, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
-  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
-  assert.deepEqual(d.data.link, { path: "direct", latencyMs: 12 });
+  const direct = await boot(t, { link: status("direct") });
+  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:aaaaaaaaaaaaaaaa", { peer, person: { id: "s1", kind: "bearer" } });
+  assert.deepEqual(d.data.link, { path: "direct", latencyMs: null });
   assert.deepEqual(direct.computers.calls.find(c => c.tool === "computers.watch").input, { agent: "kit", surface: "phone:pocket" });
 });
 
-test("glass: open never fails for link.health, whether it errors or is slow to answer", async t => {
+test("glass: open never fails for network.wink.status, whether it errors or is slow to answer", async t => {
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
   const broken = await boot(t, { link: "throw" });
-  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(a.error, undefined);
   assert.equal(a.data.link, undefined);
   assert.ok(a.data.screen.ticket);
   const hung = await boot(t, { link: "hang" });
   const at = Date.now();
-  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(b.error, undefined);
   assert.ok(Date.now() - at < 5000, "the open waited only briefly");
   assert.ok(b.data.screen.ticket);
   // No link module at all.
   const none = await boot(t);
-  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
+  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "device:nw3b43olz4rzbzfe", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(c.error, undefined);
   assert.equal(c.data.link, undefined);
 });

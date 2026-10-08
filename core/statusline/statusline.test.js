@@ -1,5 +1,5 @@
 // @ts-check
-// The statusline module against fake gate, threads, link and agents modules in a temp home.
+// The statusline module against fake gate, threads, wink and agents modules in a temp home.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -47,7 +47,7 @@ async function world(t, fakes = [], role = "local") {
 const FAKES = [
   ["gate", ["gate.held"], `export default { async start(ctx) { ctx.tool("gate.held", { effect: "read", run: async () => globalThis.fake.held }); return {}; } };`],
   ["threads", ["threads.asks"], `export default { async start(ctx) { ctx.tool("threads.asks", { effect: "read", run: async () => globalThis.fake.asks }); return {}; } };`],
-  ["link", ["link.status"], `export default { async start(ctx) { ctx.tool("link.status", { effect: "read", run: async () => globalThis.fake.link }); return {}; } };`],
+  ["wink", ["wink.server.home"], `export default { async start(ctx) { ctx.tool("wink.server.home", { effect: "read", run: async () => globalThis.fake.link }); return {}; } };`],
   ["agents", ["agents.list"], `export default { async start(ctx) {
     ctx.tool("agents.list", { effect: "read", run: async () => globalThis.fake.agents });
     ctx.tool("agents.poke", { effect: "read", run: async () => { ctx.events.emit("agents.changed", {}); return true; } });

@@ -266,12 +266,6 @@ function defaults(root, platform = process.platform) {
     transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced"), ...accountTranscripts()],
     modules: { enable: [], disable: [] },
     network: {},
-    // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
-    // (core/computers/egress.js, box/compose.egress.yml).
-    glass: { egress: { enabled: false, sites: [] } },
-    // Off: no computer joins the tailnet as its own node until the owner turns it on
-    // (core/computers/tailnet.js, ADR 0014 part 9).
-    computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
     // On: the one app answers "/" (ADR 0027; core/daemon/app.js); a person may turn it off.
@@ -299,8 +293,8 @@ export function load(root = home(), platform = process.platform) {
     me: { ...d.me, ...(user.me || {}) },
     modules: { ...d.modules, ...(user.modules || {}) },
     network: { ...d.network, ...(user.network || {}) },
-    glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
-    computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
+    glass: { ...(user.glass || {}) },
+    computers: { ...(user.computers || {}) },
     hooks: { ...d.hooks, ...(user.hooks || {}) },
     app: { ...d.app, ...(user.app || {}) },
     term: { ...d.term, ...(user.term || {}) },

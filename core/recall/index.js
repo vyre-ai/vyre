@@ -39,7 +39,6 @@ import { scanIndex, scrubIndex, scrubLog } from "./sealed.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
-import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
 import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
@@ -229,7 +228,6 @@ export default {
 
     const stringArray = { type: "array", items: { type: "string" } };
     // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
-    const machines = { type: "string", enum: ["all", "local"] };
 
     // Project scoping (security: recall.search/thread/sessions had none — an agent limited to
     // project A could search or read any other project's sessions). Mirrors core/memory/index.js's
@@ -367,13 +365,13 @@ export default {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, ...agentField,
         links: { type: "array", items: { type: "object", required: ["ref"], properties: { kind: { type: "string", enum: ["file", "read", "commit", "url"] }, ref: { type: "string" } } },
           description: "keep only turns that touched these (a file path or name, a commit hash, a url), or sit next to one that did" },
       } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
-        const { machines: _, ...q } = input;
+        const q = { ...input };
         // sessions widens a scope, so only a module or the person's own surface may name them: a
         // model's scope is its folders (the MCP server holds an agent to its projects' folders).
         if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
@@ -389,10 +387,7 @@ export default {
           const e = q.hybrid === false || !any ? null : await embedder();
           return scoped((await search(db, q, e, dense)).hits);
         };
-        if (!(await wantsMacs(ctx, input, caller, meta))) return here();
-        // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
-        const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
-        return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
+        return here();
       },
     });
     ctx.tool("recall.related", {
@@ -425,11 +420,11 @@ export default {
       effect: "read",
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
-        source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" },
+        ...agentField } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
-        const { machines: _, source, agent, ...q } = input;
+        const { agent, ...q } = input;
         const r = await reach(agent, caller, meta);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
@@ -448,21 +443,7 @@ export default {
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
         };
-        if (!(await wantsMacs(ctx, input, caller, meta))) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
-        // On the box, for the person: the box's own session first. A session the box does not
-        // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
-        // has it answers. Its turns go back to the caller and are never stored here.
-        if (source !== "mac") {
-          try { return gate({ ...thread(db, { ...q, session: resolveScoped(q.session) }), ...boxLabel(ctx) }); }
-          catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
-        }
-        const answers = await askMacs(ctx, "recall.thread", q);
-        const found = answers.find(a => a.ok && a.data);
-        if (found) return gate({ ...found.data, ...macLabel(found) });
-        // Not a failure of the server: no Mac to ask, or none that has it, is "not found", as recall.transcript says (a 404, with words a person can read).
-        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
-        const asleep = answers.some(a => a.error && a.error.code !== "not_found" && !/^no session /.test(String(a.error.message || "")));
-        throw Object.assign(new Error(answers.length && !asleep ? `no session ${q.session} (${why})` : `That session is on a Mac that isn't connected. (${why})`), { code: "not_found" });
+        return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
       },
     });
     /**
@@ -528,29 +509,13 @@ export default {
       effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
-        source: { type: "string", enum: ["box", "mac"] } } },
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" } } },
       // A person's surfaces only: tool output can hold anything the session read, so it is never
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (input, meta = {}) => { const caller = meta.caller;
-        const { machines: _, source, ...q } = input;
-        if (!(await wantsMacs(ctx, input, caller, meta))) return transcript(q);
-        // On the box, for the person: a session the box does not have, or one the caller says is
-        // on the Mac, is read from the Macs, as recall.thread does. The blocks go back to the
-        // caller and are never stored here.
-        if (source !== "mac") {
-          try { return { ...transcript(q), ...boxLabel(ctx) }; }
-          catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; }
-        }
-        const answers = await askMacs(ctx, "recall.transcript", q);
-        const found = answers.find(a => a.ok && a.data);
-        if (found) return { ...found.data, ...macLabel(found) };
-        // Still "not_found" when every Mac answered that it has no such session, so the Deck
-        // takes it as quietly as the box's own miss; an away Mac says so.
-        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
-        const none = answers.every(a => a.error && (a.error.code === "not_found" || /^no session /.test(String(a.error.message || ""))));
-        throw Object.assign(new Error(`no session ${q.session} (${why})`), none ? { code: "not_found" } : {});
+        const q = { ...input };
+        return transcript(q);
       },
     });
     /** One session read as blocks, on this machine. @param {any} input */
@@ -600,19 +565,16 @@ export default {
       effect: "read",
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, ...agentField } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
-        const { machines: _, agent, ...q } = input;
+        const { agent, ...q } = input;
         const r = await reach(agent, caller, meta);
         if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
         const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
-        if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
-        // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
-        const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
-        return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+        return scoped(sessions(db, q));
       },
     });
     ctx.tool("recall.forget", {

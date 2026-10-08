@@ -57,7 +57,7 @@ test("a browser reaches only WEB_REACH and a setup page only SETUP_REACH, whatev
 test("a label nobody recognises reaches nothing, a known one goes on to the tool's own list", () => {
   assert.equal(classReach("zz:1", "memory.search"), false);
   assert.equal(callerAllowed(null, "zz:1", "memory.search"), false);
-  for (const l of ["cli", "deck", "capsule", "mobile", "mcp:agent:kit", "module:notes", "device:abc", "tailnet:alex@example.com", "tailnet-guest:x", "unknown", "anonymous"]) assert.equal(classReach(l, "memory.search"), null, l);
+  for (const l of ["cli", "deck", "capsule", "mobile", "mcp:agent:kit", "module:notes", "device:abc", "device:nw3b43olz4rzbzfe", "unknown", "anonymous"]) assert.equal(classReach(l, "memory.search"), null, l);
   assert.equal(callerKind(WEB), "web");
   assert.ok(KNOWN_LABELS.has("web") && KNOWN_LABELS.has("setup"));
 });

@@ -54,7 +54,7 @@ export function duration(ms) {
 
 const FROM = { deck: "the Deck", phone: "phone", glass: "Glass", capsule: "the Capsule" };
 
-/** How long glass.open waits for link.health before opening without it. */
+/** How long glass.open waits for the network status before opening without it. */
 const HEALTH_WAIT = 1500;
 
 /** A link slow enough that the screen should send fewer frames: relayed, or over 150 ms. */
@@ -147,7 +147,7 @@ export default {
 
     // The file tools that change a target (upload, move, mkdir, trash) are open to the person's surfaces and to a model: filesFor holds a model to its own computer's files and gives a plain mcp or harness session none.
     const FILE_WRITERS = new Set(["glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"]);
-    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...(FILE_WRITERS.has(name) ? { callers: FILE_WRITE_CALLERS } : {}), ...extra });
 
     // ---- screens -------------------------------------------------------------------------
@@ -189,24 +189,27 @@ export default {
       });
 
     /**
-     * How the box reaches the viewer's device, for a tailnet viewer: link.health, best effort. A
-     * first check can take seconds (a ping), so the open waits at most HEALTH_WAIT for it; the
-     * check goes on and its cached answer serves the next open. Never fails the open.
-     * @param {any} peer the node the tailnet listener identified, or undefined on the socket
+     * How the server reaches the viewer's device, for a paired device: network.wink.status's peer path (direct or relay), best effort. The open waits at most HEALTH_WAIT for it. Never
+     * fails the open.
+     * @param {any} peer the device the peer door admitted, or undefined on the socket
      */
     const viewerLink = async peer => {
       if (!peer || !peer.stableId) return null;
       try {
-        const r = await within(ctx.call("link.health", { node: String(peer.stableId) }), HEALTH_WAIT);
-        const d = r && !r.error ? r.data : null;
-        return d && d.path ? { path: String(d.path), latencyMs: typeof d.latencyMs === "number" ? d.latencyMs : null } : null;
+        const r = await within(ctx.call("network.wink.status", {}), HEALTH_WAIT);
+        const spaces = r && !r.error && r.data && Array.isArray(r.data.spaces) ? r.data.spaces : [];
+        for (const sp of spaces) {
+          const p = (sp.peerList || []).find((/** @type {any} */ x) => x && x.eid === String(peer.stableId));
+          if (p && (p.via === "direct" || p.via === "relay")) return { path: String(p.via), latencyMs: null };
+        }
+        return null;
       } catch { return null; }
     };
 
     tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async (i, { caller } = {}) => {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM glass_sessions WHERE id = ? AND closed IS NULL").get(i.session));
       // A guest closes only the sessions it opened, never the owner's.
-      if (!row || (String(caller).startsWith("tailnet-guest:") && row.caller !== String(caller))) return { closed: false };
+      if (!row) return { closed: false };
       const at = now();
       db.prepare("UPDATE glass_sessions SET closed = ? WHERE id = ?").run(at, i.session);
       emit("glass.closed", { session: row.id, target: row.target, surface: row.surface, seconds: Math.round((at - Number(row.opened)) / 1000) });

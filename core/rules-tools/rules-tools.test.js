@@ -28,5 +28,5 @@ test("rules.*: the owner's device lists, tries and reads rules under its own cha
   assert.equal((await refused("rules.disable", { id: "rule_nope" })).code, "needs_presence");
   assert.equal((await refused("rules.remove", { id: "rule_nope" })).code, "needs_presence");
   assert.equal((await ok("rules.list", {})).rules.length, 0, "nothing was made");
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) await refused("rules.list", {}, caller);
+  for (const caller of ["mcp", "mcp:agent:kit", "guest:x", "anonymous"]) await refused("rules.list", {}, caller);
 });

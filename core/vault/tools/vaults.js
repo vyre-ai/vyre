@@ -23,7 +23,7 @@ export function register({ vault, tool }) {
   tool("vault.vaults.create", PEOPLE, "Make a shared vault. This Vyre is its owner and its home.",
     obj({ name: str }, ["name"]), (input, { caller }) => shared.create(input, caller));
 
-  tool("vault.vaults.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Shared vaults: members, roles, fingerprints and item names. Never a value.",
+  tool("vault.vaults.list", ["cli", "local", "deck", "capsule", "device", "module"], "Shared vaults: members, roles, fingerprints and item names. Never a value.",
     obj({}), () => shared.list());
 
   tool("vault.vaults.sync", [...PEOPLE, "mcp"], "Pull what changed in shared vaults from their homes.",
@@ -64,7 +64,7 @@ export function register({ vault, tool }) {
         : `Let ${j.name} (fingerprint ${j.fingerprint}) open your whole vault, personal items included, with your password`;
     }));
 
-  tool("vault.device.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Your devices in this vault's group: names, roles, fingerprints.",
+  tool("vault.device.list", ["cli", "local", "deck", "capsule", "device", "module"], "Your devices in this vault's group: names, roles, fingerprints.",
     obj({}), () => vault.devices.list());
 
   tool("vault.device.sync", [...PEOPLE, "mcp"], "Push and pull items between your devices now.",

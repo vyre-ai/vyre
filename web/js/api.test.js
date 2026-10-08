@@ -212,14 +212,14 @@ test("ifPresent: a tool your server does not list is never called; one it lists,
   const seen = /** @type {string[]} */ ([]);
   globalThis.fetch = /** @type {any} */ (async (/** @type {string} */ url) => {
     seen.push(String(url));
-    if (String(url) === "/v1/tools") return { status: 200, json: async () => ({ data: [{ name: "link.pending" }, { name: "projects.list" }] }) };
+    if (String(url) === "/v1/tools") return { status: 200, json: async () => ({ data: [{ name: "agents.list" }, { name: "projects.list" }] }) };
     return { status: 200, statusText: "", json: async () => ({ data: [] }) };
   });
   const { attempt } = await import("./api.js");
   const gone = await attempt("github.accounts", {}, { ifPresent: true });
   assert.equal(gone.error?.missing, true);
   assert.ok(!seen.some(u => u.includes("github.accounts")), "no request for a tool your server lacks");
-  const there = await attempt("link.pending", {}, { ifPresent: true });
+  const there = await attempt("agents.list", {}, { ifPresent: true });
   assert.deepEqual(there.data, []);
   assert.equal(seen.filter(u => u === "/v1/tools").length, 1, "the list is asked once");
 });

@@ -14,7 +14,6 @@ test("accounts: callerFor comes from what vyred verified", () => {
   assert.equal(callerFor("mcp", {}), "mcp");
   assert.equal(callerFor("mcp"), "mcp");
   assert.equal(callerFor("mcp:agent:kit", {}), "mcp:agent:kit");
-  assert.equal(callerFor("tailnet:agent:juno", {}), "tailnet:agent:juno");
   assert.equal(callerFor("mcp", { agent: "kit", thread: "t-k" }), "mcp:agent:kit", "the verified agent wins over the thread");
   assert.equal(callerFor("cli", {}), "cli");
   assert.equal(callerFor("local", {}), "local");
@@ -45,7 +44,6 @@ test("accounts: filingFor", () => {
   assert.deepEqual(filingFor("mcp", { thread: "t-1" }), { thread: "t-1" });
   assert.deepEqual(filingFor("mcp:agent:kit", {}), { agent: "kit" });
   assert.deepEqual(filingFor("mcp:agent:kit", { agent: "kit", thread: "t-kit" }), { thread: "t-kit", agent: "kit" });
-  assert.deepEqual(filingFor("tailnet:agent:juno", {}), { agent: "juno" });
   assert.deepEqual(filingFor("module:mail", { firstParty: true }, { surface: "agent", agent: "kit", thread: "t-9" }), { thread: "t-9", agent: "kit" });
   assert.deepEqual(filingFor("module:mail", { firstParty: true }, { surface: "chat", thread: "t-9" }), { thread: "t-9" });
   assert.deepEqual(filingFor("module:bakery-helper", {}, { surface: "chat", thread: "t-9" }), {});

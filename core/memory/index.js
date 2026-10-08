@@ -371,14 +371,13 @@ export default {
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
     /**
-     * The user on another of their devices: a listener sets "tailnet:<login>" for a person's own device, and no caller can claim it. It reads as the owner does (graph, facts,
+     * The user on another of their devices: a paired device the kernel names, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
-    // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
+    const viaDevice = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^device:[a-z2-7]{16}$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
     /** The person at one of their own surfaces or on their own device signed in, as the kernel's Who or (SHIM(legacy labels), kernel off) the surface labels: never a module and never a model label. */
     const mayRebuild = caller => { const w = whoNow(); return w ? (w.ownerSurface || (w.device && w.signedIn)) : OWNER.has(String(caller)); };
-    const reader = caller => owner(caller) || viaTailnet(caller);
+    const reader = caller => owner(caller) || viaDevice(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
      * gate has already refused another person's device, an agent and a group chat with the plain refusal, and `Who` says no agent or Flow stands beside it, so the hint never tells
@@ -402,10 +401,10 @@ export default {
      * specific project that holds it, so an agent granted ~/Work is not granted a project
      * nested inside it.
      * @param {{ agent?: string, project_cwds?: string[], room?: string }} input
-     * @param {{ whole?: boolean, tailnet?: boolean }} [opts]  whole: the call reads or steers everything by design;
-     *   tailnet: a read the user's tailnet devices make as the owner
+     * @param {{ whole?: boolean, device?: boolean }} [opts]  whole: the call reads or steers everything by design;
+     *   device: a read the user's paired devices make as the owner
      */
-    const guard = async ({ agent, project_cwds = [], room }, caller, { whole = false, tailnet = false, firstParty = false } = {}) => {
+    const guard = async ({ agent, project_cwds = [], room }, caller, { whole = false, device = false, firstParty = false } = {}) => {
       const r = await reach(agent, caller);
       const cwds = clean(project_cwds);
       const scoped = Boolean((room && room !== "*") || cwds.length);
@@ -413,7 +412,7 @@ export default {
         // MS-1: `reach` reads an unnamed model session (`mcp`, `mcp:thread:<id>`, `harness`) as every project, which is right for reading a project room it names but never lets it STEER or rebuild
         // (whole: pin, mute, curate): that widens the graph the person sees, so it needs the person's own surface, a module, or a named agent held to its own project below.
         if (whole && !r.agent && !mayRebuild(caller)) throw denied("this changes the whole graph, which only the person's own surfaces and the assistant may do");
-        if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
+        if (!scoped && !whole && !r.agent && !(device ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return { ...r, cwds: project_cwds };
       }
       // THE assistant rule: unfiled is never the assistant's either, only the true owner's
@@ -465,7 +464,7 @@ export default {
       input: { type: "object", properties: { project_cwds: cwds, ...roomField, around: { type: "string" }, depth: { type: "integer" }, limit: { type: "integer" }, since: { type: "integer" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         input = { ...input, room: roomOf(input) };
-        const r = await guard(input, caller, { tailnet: true });
+        const r = await guard(input, caller, { device: true });
         // The main graph is a drawing of every client at once. Beyond the rule above, only the
         // user's own surfaces or the assistant are given it: a session that has not said who it
         // is gets its project's graph, not everyone's.
@@ -486,10 +485,10 @@ export default {
         const room = roomOf(rest);
         if (thread) {
           if (about || clean(project_cwds).length) throw new Error("thread is read on its own or with room, not with about or project_cwds");
-          await guard({ agent, room }, caller, { tailnet: true });
+          await guard({ agent, room }, caller, { device: true });
           return graph.threadFacts({ thread, room, limit: Math.min(200, Math.max(1, limit ?? 50)) });
         }
-        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const r = await guard({ agent, project_cwds, room }, caller, { device: true });
         const out = graph.facts({ about, project_cwds: r.cwds, room, limit: Math.min(200, Math.max(1, limit ?? 20)) });
         // A fact about the person's own life (their wife, their dog) lives in the personal store that
         // memory.me reads, not in this graph of outside people and orgs. Say so, to a caller who may
@@ -510,7 +509,7 @@ export default {
       run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, extra = {}) => {
         const { caller } = extra;
         const room = roomOf(rest);
-        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const r = await guard({ agent, project_cwds, room }, caller, { device: true });
         const lim = Math.min(20, Math.max(1, limit));
         // Writes that bear on it, trusted ones only, quoted and attributed (core/memory/write.js).
         const scope = await writeScope(agent, caller, extra, { room, cwds: clean(project_cwds) });
@@ -526,7 +525,7 @@ export default {
       input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
-        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const r = await guard({ agent, project_cwds, room }, caller, { device: true });
         return graph.why({ fact, project_cwds: r.cwds, room, limit: Math.min(50, Math.max(1, limit)) });
       },
     });
@@ -601,9 +600,9 @@ export default {
       return run(input, extra);
     };
     /**
-     * Corrections are the person's: their own surfaces, or their device over the tailnet or the
-     * relay with a person session (a passkey, ADR 0032), the rule settings uses for secrets. Never
-     * an agent, an agent's node, or a device nobody signed in on.
+     * Corrections are the person's: their own surfaces, or their paired device
+     * with a person session (a passkey, ADR 0032), the rule settings uses for secrets. Never
+     * an agent, or a device nobody signed in on.
      */
     const personWrites = (caller, meta) => {
       const w = whoNow();
@@ -611,18 +610,18 @@ export default {
       const c = String(caller || ""); // SHIM(legacy labels): the label branch goes with the kernel-off path
       if (/(?:^|[\s:])agent:/.test(c)) return false;
       if (OWNERS.includes(c)) return true;
-      return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+      return /^device:[a-z2-7]{16}$/.test(c) && Boolean(meta && meta.person);
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
         // SHIM(legacy labels): the label branch runs only with the kernel off
-        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^device:/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
       }
       return run(input, extra);
     });
-    /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
+    /** Reading corrections: the owner's surfaces, or the user on a paired device. Never an agent. */
     const readerOnly = (run, name = "memory.corrections") => ownerOnly(async (input, extra = {}) => {
       if (!reader(extra.caller)) throw signInHint() || denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
       return run(input, extra);
@@ -822,8 +821,7 @@ export default {
         } catch (e) { return { ...out, filed: null, filed_why: plain(/** @type {Error} */ (e).message, 160) }; }
       },
     });
-    // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
-    // checks the owner surfaces and tailnet callers itself.
+    // No callers list: readerOnly checks the owner surfaces and paired devices itself.
     ctx.tool("memory.corrections", {
       effect: "read",
       callers: PEOPLE_MOD,
@@ -833,7 +831,7 @@ export default {
         : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
         : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) }); }),
     });
-    // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
+    // Personal facts are the user's, not a project's: owner surfaces and the user's paired
     // devices read them; agents never do.
     ctx.tool("memory.me", {
       effect: "read",
@@ -851,7 +849,7 @@ export default {
       }, "memory.me"),
     });
     // One line about the user's life from what they have said (team/archive/work-journals/memory-iq.md). Personal
-    // facts are the user's, not a project's: the user's own surfaces, their tailnet devices,
+    // facts are the user's, not a project's: the user's own surfaces, their paired devices,
     // modules and the assistant ask it. Any named agent is refused, a projects: "*" one
     // included: narrowed by the user's decision, 2026-09-28, from docs/adr/0007-intelligence.md
     // decision 1, which had treated a wildcard agent as the assistant's equal here. Two of the
@@ -860,7 +858,7 @@ export default {
     // them; and projects.access revoking a wildcard agent from every project used to leave
     // personal facts reachable regardless, which broke "projects.access is one source of truth".
     /**
-     * Personal facts are the user's, not a project's: the user's own surfaces, their tailnet
+     * Personal facts are the user's, not a project's: the user's own surfaces, their paired
      * devices, modules and the assistant. Any named agent is refused, wildcard-granted or not.
      */
     // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
@@ -934,7 +932,7 @@ export default {
      * rather than repeating it as a second, easy-to-miss copy.
      */
     const scopedCwds = async (sees, agent, caller, project_cwds) => {
-      if (!sees) return (await guard({ agent, project_cwds }, caller, { tailnet: true })).cwds;
+      if (!sees) return (await guard({ agent, project_cwds }, caller, { device: true })).cwds;
       const r = await reach(agent, caller);
       if (!r.assistant) return project_cwds;
       if (!project_cwds.length) return r.folders.length ? r.folders : NOTHING;
@@ -1669,7 +1667,7 @@ export default {
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
       run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
-        const g = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const g = await guard({ agent, project_cwds, room }, caller, { device: true });
         const lines = graph.relevant({ text, project_cwds: g.cwds, room, limit: Math.min(20, Math.max(1, limit)) }).map(x => String(x.text));
         let a = null;
         // Only a question memory's rules can read, only a fact (never a loose quote), only for
@@ -1707,7 +1705,7 @@ export default {
         const room = roomOf(input);
         const project_cwds = clean(input.project_cwds);
         if (!room && !project_cwds.length) return { lines: [] };
-        await guard({ agent: input.agent, project_cwds, room }, caller, { tailnet: true });
+        await guard({ agent: input.agent, project_cwds, room }, caller, { device: true });
         let sc;
         try { sc = graph.view(project_cwds, room); } catch { return { lines: [] }; }
         if (!sc) return { lines: [] };
@@ -1825,7 +1823,7 @@ export default {
       input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
-        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const r = await guard({ agent, project_cwds, room }, caller, { device: true });
         const g = graph.facts({ about: String(about), project_cwds: clean(project_cwds), room, limit: 40 });
         let sees = true;
         try { await personalOnly({ agent }, caller, "memory.card"); } catch { sees = false; }
@@ -1935,7 +1933,7 @@ export default {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() }, iq: fixed.week() }),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { device: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() }, iq: fixed.week() }),
     });
 
     // Names memory knows go into every surface's predictive text (suggest, ADR 0036): offered now,

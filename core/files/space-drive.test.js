@@ -17,6 +17,7 @@ const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE 
 function rig({ drive = true, chain = person } = {}) {
   const calls = /** @type {any[]} */ ([]), files = /** @type {Map<string, any[]>} */ (new Map());
   const gd = {
+    async listPage(c, prefix, o) { calls.push(["listPage", c, prefix, o]); const all = [...files.keys()].sort().filter(k => k > String(o.after ?? "") || o.after == null).map(k => ({ path: k, size: 5 })); return { entries: all.slice(0, o.limit), next: all.length > o.limit ? all[o.limit - 1].path : null }; },
     async put(c, p, bytes, o) { calls.push(["put", c, p, bytes.length, o]); const v = (files.get(p) || []); const r = { version: v.length + 1, conflict: Boolean(o.base && o.base < v.length) }; v.push({ ver: r.version, size: bytes.length, by: "person:per_alex" }); files.set(p, v); return r; },
     async history(c, p) { calls.push(["history", c, p]); if (!files.has(p)) throw Object.assign(new Error("the drive could not do that"), { code: "not_found" }); return files.get(p); },
     async restore(c, p, version, o) { calls.push(["restore", c, p, version, o]); const v = files.get(p) || []; if (!v[version - 1]) throw Object.assign(new Error("the drive could not do that"), { code: "not_found" }); v.push({ ver: v.length + 1, size: v[version - 1].size, by: "person:per_alex" }); return { version: v.length }; },
@@ -35,8 +36,8 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions"]);
-  for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.search", "files.drive.space.list", "files.drive.space.read", "files.drive.status", "files.drive.upload", "files.drive.versions", "files.mentions.resolve", "files.mentions.search"]);
+  for (const [n, d] of r.tools) if (!/^files\.(drive\.status|mentions\.)/.test(n)) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"], n);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
   assert.deepEqual(up, { path: "Clients/A/retainer.txt", version: 1, conflict: false, size: 5 });
   assert.equal(r.calls[0][1], person, "the call's own chain, never another");
@@ -97,7 +98,7 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   assert.equal(nothing.error && nothing.error.code, "not_found");
   const restored = await call("files.drive.restore", { path: "Clients/A/retainer.txt", version: 1 }, { root, caller: "cli" });
   assert.ok(restored.error ? ["needs_presence", "presence_required", "denied"].includes(restored.error.code) : restored.data.from === 1, `restore: ${JSON.stringify(restored)}`);
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "guest:x", "anonymous"]) {
     for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
   // a restore that went through is itself a new version; the model, guest and anonymous calls above wrote nothing
@@ -117,4 +118,27 @@ test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad 
   assert.deepEqual([p3.versions.map((/** @type {any} */ v) => v.ver), p3.next], [[5], null]);
   assert.equal(await code(run("files.drive.versions", { path: "a/b.txt", limit: 0 })), "bad_input");
   assert.equal(await code(run("files.drive.space.list", { limit: -1 })), "bad_input");
+});
+
+test("the Space Drive's own state, name search and the # file tag run under the caller's own chain, names only, and tag nothing that was not found", async () => {
+  const r = rig();
+  await r.run("files.drive.upload", { path: "Clients/Harlow/Retainer 2026.pdf", base64: b64("hello") });
+  await r.run("files.drive.upload", { path: "Clients/Harlow/notes.txt", base64: b64("hello") });
+  await r.run("files.drive.upload", { path: "Misc/harbour.png", base64: b64("hello") });
+  assert.deepEqual(await r.run("files.drive.status", {}), { space: { enabled: true, files: 3, more: false } });
+  const s = await r.run("files.drive.search", { q: "harlow retainer" });
+  assert.deepEqual(s.results.map(/** @param {any} x */ x => x.path), ["Clients/Harlow/Retainer 2026.pdf"]);
+  assert.equal(s.results[0].name, "Retainer 2026.pdf");
+  assert.equal(await code(r.run("files.drive.search", { q: "  " })), "bad_input");
+  assert.equal(r.calls.filter(c => c[0] === "listPage").every(c => c[1] === person), true, "every read used the call's own chain");
+  const m = await r.run("files.mentions.search", { q: "har", limit: 5 });
+  assert.deepEqual(m.items.map(/** @param {any} x */ x => [x.id, x.name, x.hint]).sort(), [["Clients/Harlow/Retainer 2026.pdf", "Retainer 2026.pdf", "Clients/Harlow"], ["Clients/Harlow/notes.txt", "notes.txt", "Clients/Harlow"], ["Misc/harbour.png", "harbour.png", "Misc"]]);
+  assert.deepEqual((await r.run("files.mentions.search", { q: "" })).items, []);
+  const tag = await r.run("files.mentions.resolve", { id: "Misc/harbour.png", thread: "t1" }, { caller: "module:sessions" });
+  assert.equal(tag.name, "harbour.png"); assert.match(tag.note, /files\.drive\.space\.read/);
+  assert.equal(await code(r.run("files.mentions.resolve", { id: "Misc/harbour.png", thread: "t1" }, { caller: "cli" })), "denied");
+  assert.equal(await code(r.run("files.mentions.resolve", { id: "../x", thread: "t1" }, { caller: "module:sessions" })), "bad_input");
+  const none = rig({ drive: false });
+  assert.deepEqual(await none.run("files.drive.status", {}), { space: { enabled: false, why: "this Space has no Drive yet" } });
+  assert.deepEqual((await none.run("files.mentions.search", { q: "x" })).items, [], "a Space with no Drive finds nothing and does not fail the picker");
 });

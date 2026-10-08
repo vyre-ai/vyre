@@ -15,7 +15,7 @@ import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import * as config from "../config/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, deviceFor } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { encodeClientFrame } from "../../lib/ws.js";
 import { onCommand } from "./index.js";
@@ -237,7 +237,7 @@ test("term session: kill the socket mid-output, reattach from the offset, get ex
 test("C-2: term.open {cwd, session: victim} is refused for a caller who may not use that thread, and nothing is written to the victim's record", { skip: SKIP }, async t => {
   const { reg, work, events } = await registry(t);
   globalThis.__fakeThreadsKnown.set("victim_thread", { cwd: path.join(work, "proj"), deny: "bob" });
-  const as = (login, caller) => (tool, input) => reg.call(tool, input, caller || `tailnet:${login}`, { peer: { login, stableId: `n_${login}` }, person: { id: "s1", kind: "cookie" }, ...facts(`per_${login}`) });
+  const as = (login, caller) => (tool, input) => reg.call(tool, input, caller || deviceFor(login), { peer: { login, stableId: `n_${login}` }, person: { id: "s1", kind: "cookie" } });
   const r = await as("bob@example.com")("term.open", { cwd: path.join(work, "proj"), session: "victim_thread", surface: "deck:bobs" });
   assert.equal(r.error?.code, "denied");
   assert.equal((await as("bob@example.com")("term.open", { session: "ghost_thread", surface: "deck:bobs" })).error?.code, "not_found");
@@ -262,7 +262,8 @@ test("C-2: a typed command is recorded under the typist (author, via, surface), 
   const { reg, work, events } = await registry(t);
   const port = await server(t, reg);
   const peer = { login: "carol@example.com", stableId: "n_carol" };
-  const o = (await reg.call("term.open", { session: "s_one", surface: "deck:carols" }, "tailnet:carol@example.com", { peer, person: { id: "s1", kind: "cookie" }, ...facts("per_carol") }));
+  const carolDevice = deviceFor("carol@example.com");
+  const o = (await reg.call("term.open", { session: "s_one", surface: "deck:carols" }, carolDevice, { peer, person: { id: "s1", kind: "cookie" } }));
   assert.ok(!o.error, JSON.stringify(o.error));
   const c = await connect(port, o.data.path);
   await c.until(/\$ $|# $|> $|%/);
@@ -273,10 +274,10 @@ test("C-2: a typed command is recorded under the typist (author, via, surface), 
   assert.equal(ev.length, 1);
   assert.equal(ev[0].thread, "s_one");
   assert.equal(ev[0].payload.author, "person:carol@example.com");
-  assert.equal(ev[0].payload.via, "tailnet:carol@example.com");
+  assert.equal(ev[0].payload.via, carolDevice);
   assert.equal(ev[0].payload.surface, "deck:carols");
   // the session is no longer hers: attach is refused
   globalThis.__fakeThreadsKnown.set("s_one", { cwd: path.join(work, "proj"), deny: "carol" });
-  const a = await reg.call("term.attach", { term: o.data.term, surface: "deck:carols" }, "tailnet:carol@example.com", { peer, person: { id: "s1", kind: "cookie" }, ...facts("per_carol") });
+  const a = await reg.call("term.attach", { term: o.data.term, surface: "deck:carols" }, carolDevice, { peer, person: { id: "s1", kind: "cookie" } });
   assert.equal(a.error?.code, "not_found");
 });

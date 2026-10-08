@@ -54,6 +54,7 @@ const legacy = (w, box, name, over = {}) => {
 const data = r => { assert.ok(r.json && r.json.data, JSON.stringify(r.json)); return r.json.data; };
 const code = r => r.json && r.json.error && r.json.error.code;
 const TOKEN = "x".repeat(43);
+const nextHash = (name, c) => W.codeHash(name, c);
 
 test("the repeated rules and constants equal core/names/rules.js and core/relay/wire.js", async () => {
   assert.deepEqual([...W.RESERVED].sort(), [...rules.RESERVED].sort());
@@ -64,6 +65,7 @@ test("the repeated rules and constants equal core/names/rules.js and core/relay/
   const key = wire.newRouteKey();
   assert.equal(await W.routeId(key.pub), wire.routeId(key.pub));
   assert.equal(await W.routeHash(wire.routeId(key.pub)), rules.routeHash(wire.routeId(key.pub)));
+  assert.equal(await W.codeHash("alex", "ABCD-efgh"), rules.codeHash("alex", "abcdefgh"));
 });
 
 test("names: reserved, lookalikes, format", () => {

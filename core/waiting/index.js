@@ -18,10 +18,7 @@ const DEBOUNCE_MS = 300;
 const TITLE_MAX = 120;
 const DETAIL_MAX = 160;
 const LIMIT_MAX = 500;
-/** How long a pairing request lives on the box (core/link/box.js TTL): link.pending gives only its expiry. */
-const PAIR_TTL_MS = 10 * 60_000;
-
-export const KINDS = /** @type {const} */ (["ask", "draft", "reminder", "pairing"]);
+export const KINDS = /** @type {const} */ (["ask", "draft", "reminder"]);
 
 // Owners' events that can change what waits. planner.* is narrowed: added, removed and schedule
 // never ring or stop a ring by themselves.
@@ -29,7 +26,6 @@ const WATCH = [
   ["ask.*", () => true],
   ["gate.*", () => true],
   ["planner.*", t => t === "planner.fired" || t === "planner.acked" || t === "planner.changed"],
-  ["link.*", t => t === "link.pair-requested" || t === "link.paired" || t === "link.unpaired"],
 ];
 
 // A title reaches every device and the lock screen. The owners redact what they store, but a
@@ -80,22 +76,10 @@ export const fromRinging = rows => rows.map(r => ({
   ...opt("detail", r.missed ? "missed" : ""), at: at(r.due), source: "planner",
   answer: { tool: "planner.done", input: { firing: r.firing }, fill: [] } }));
 
-/** link.pending rows. The code is on the Mac's screen only, so the person types it in. `created` is
- * the request's real timestamp (core/link/box.js); a box that has not shipped it yet falls back to
- * the fixed TTL subtracted from `expires`, which only holds while both sides agree on the TTL. */
-export const fromPending = rows => rows.map(p => {
-  const name = clean(p.name, 80);
-  return { id: `link:${p.id}`, kind: "pairing", title: name ? `Pair the Mac "${name}"` : "Pair a new Mac",
-    ...opt("detail", clean([p.node, p.login].filter(Boolean).join(" · "), DETAIL_MAX)),
-    at: at(typeof p.created === "number" ? p.created : typeof p.expires === "number" ? p.expires - PAIR_TTL_MS : 0), source: "link",
-    answer: { tool: "link.pair.approve", input: {}, fill: ["code"] } };
-});
-
 const SOURCES = /** @type {const} */ ([
   ["threads", "threads.asks", fromAsks],
   ["gate", "gate.held", fromHeld],
   ["planner", "planner.ringing", fromRinging],
-  ["link", "link.pending", fromPending],
 ]);
 
 /** @param {any[]} rows */

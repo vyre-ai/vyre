@@ -262,13 +262,13 @@ test("module: apps.setup answers only the surfaces a person drives", async t => 
   const home = tempHome(t);
   const f = fakeExec((file, args) => (args[0] === "sign" ? (fs.writeFileSync(args[args.indexOf("--output") + 1], "x"), {}) : {}));
   const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
-  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "module:chat", "anonymous", "local", "tailnet-guest:juno", "tailnet:agent:kit"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "module:chat", "anonymous", "local", "guest:juno", "agent:kit"]) {
     const r = await reg.call("apps.setup", { app: "clock" }, caller);
     assert.equal(r.error && r.error.code, "denied", `${caller} ran apps.setup`);
   }
   assert.equal(f.calls.length, 0);
   assert.equal(reg.listTools("mcp").some(x => x.name === "apps.setup"), false);
-  for (const caller of ["cli", "capsule", "deck", "tailnet:alex"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
+  for (const caller of ["cli", "capsule", "deck", "device:ie22vhobxbbkmu66"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
 });
 
 

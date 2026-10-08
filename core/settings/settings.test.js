@@ -93,9 +93,9 @@ test("the person's own changes ask nothing (C25): env, plugins and taking an ent
 test("asPerson names a person's surface, the owner's device as the Deck, and refuses anything else", async () => {
   const { asPerson } = await import("./index.js");
   assert.equal(asPerson("cli"), "cli");
-  assert.equal(asPerson("tailnet:alex"), "deck");
+  assert.equal(asPerson("device:ie22vhobxbbkmu66"), "deck");
   assert.equal(asPerson("device:abcdefghijklmnop"), "deck");
-  for (const c of ["mcp", "tailnet:agent:kit", "cli agent:kit", "module:bakery", "tailnet-guest:juno", "unknown"]) assert.throws(() => asPerson(c), /not a person's surface/, c);
+  for (const c of ["mcp", "agent:kit", "cli agent:kit", "module:bakery", "guest:juno", "unknown"]) assert.throws(() => asPerson(c), /not a person's surface/, c);
 });
 
 test("coerce reads CLI text and refuses what is out of range", () => {
@@ -328,12 +328,12 @@ test("only a person changes a setting: agent labels, mcp, anonymous and an unsig
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
   for (const tool of ["settings.set", "settings.reset"]) {
     const input = tool === "settings.set" ? { key: "sessions.mode", value: "bypassPermissions", confirm: true } : { key: "sessions.mode" };
-    for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "deck agent:kit", "unknown", "module:bakery", "tailnet:agent:kit"]) {
+    for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "deck agent:kit", "unknown", "module:bakery", "agent:kit"]) {
       const r = await as(caller, tool, input);
       assert.equal(r.error && r.error.code, "denied", `${tool} from ${caller}: ${JSON.stringify(r)}`);
     }
     // The owner's own device over the tailnet still needs the person's session.
-    assert.equal((await as("tailnet:alex", tool, input)).error.code, "person_session_required", tool);
+    assert.equal((await as("device:ie22vhobxbbkmu66", tool, input)).error.code, "person_session_required", tool);
     assert.equal((await as("device:abcdefghijklmnop", tool, input)).error.code, "person_session_required", tool);
   }
   const mode = (await d.registry.call("settings.get", { key: "sessions.mode" }, "cli")).data;
@@ -363,7 +363,7 @@ test("a secret setting's values reach only the person: agents and a device witho
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
   const get = (/** @type {string} */ caller, /** @type {any} */ opts = {}) => d.registry.call("settings.get", { key: "sessions.env" }, caller, opts);
-  for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "tailnet:agent:kit", "tailnet:alex", "device:abcdefghijklmnop", "module:bakery"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "agent:kit", "device:ie22vhobxbbkmu66", "device:abcdefghijklmnop", "module:bakery"]) {
     const r = await get(caller);
     assert.equal(r.error, undefined, `${caller}: ${JSON.stringify(r)}`);
     assert.deepEqual(r.data.value, { NORTHWIND_TOKEN: "•••• set", LOG_LEVEL: "•••• set" }, caller);

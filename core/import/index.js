@@ -123,7 +123,7 @@ export default {
     const consent = async input => {
       const r = await ctx.call("sync.consent", input);
       if (r?.error?.code !== "no_such_tool" || ctx.config.role === "box") return r;
-      return ctx.call("link.call", { tool: "sync.consent", input });
+      return ctx.call("wink.server.call", { tool: "sync.consent", input });
     };
     /** @type {{ id: string, stop: boolean, done: Promise<void>|null }|null} */
     let current = null;

@@ -3,6 +3,7 @@
 // the real ~/.vyre. A past prototype test read live state and printed a real key into a failure
 // message, which is why this is the only way tests get a home.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,10 +25,6 @@ if (process.env.VYRE_TEST_SELF_RESERVE === undefined) process.env.VYRE_TEST_SELF
 // person picks the right words. Tests of the relay's own pairing run with no one to confirm, so they take the one-step ring; test/wink.test.js unsets this and tests the gate.
 if (process.env.VYRE_TEST_UNGATED_RING === undefined) process.env.VYRE_TEST_UNGATED_RING = "1";
 
-// No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
-// the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
-// that needs Tailscale sets its own fake, which replaces this.
-if (!process.env.VYRE_TAILSCALE_BIN) process.env.VYRE_TAILSCALE_BIN = path.join(os.tmpdir(), "vyre-no-tailscale", "tailscale");
 
 /**
  * @param {any} t
@@ -53,14 +50,8 @@ export function tempHome(t, { stop } = {}) {
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;
   process.env.VYRE_HOME = dir;
-  // No test reaches the user's real Tailscale: unless a test set its own fake, point the binary at
-  // a path that does not exist, which every caller treats as "no tailnet". Child processes a test
-  // spawns inherit it.
-  const prevTs = process.env.VYRE_TAILSCALE_BIN;
-  if (!prevTs) process.env.VYRE_TAILSCALE_BIN = path.join(dir, "no-tailscale");
   t.after(async () => {
     if (prev === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = prev;
-    if (prevTs === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prevTs;
     // A test that ran `vyre up` in a child process may still have that vyred running: after-hooks
     // run in the order they were added, so this cleanup runs before the test's own `vyre down`.
     // Deleting the home under a live vyred orphaned it (fourteen of them, found running). So stop
@@ -221,4 +212,13 @@ export function kernelCaller(d, root, caller = "cli") {
   try { d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone"); } catch { /* no relay table in this home: the call carries its facts anyway */ }
   const meta = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } };
   return (tool, input = {}) => d.registry.call(tool, input, caller, meta);
+}
+
+/** A stable, valid `device:<16 base32>` caller label for a name: the label a paired device arrives under. It keeps the name's own letters first, so a test can still tell whose device it is. @param {string} name */
+export function deviceFor(name) {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+  const bits = crypto.createHash("sha256").update(String(name)).digest();
+  let out = String(name).toLowerCase().replace(/[^a-z2-7]/g, "").slice(0, 12);
+  for (let i = 0; out.length < 16; i++) out += alphabet[bits[i] % 32];
+  return `device:${out}`;
 }

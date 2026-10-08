@@ -50,7 +50,7 @@ export async function firstRun({ repo, log, seconds = 60, real = false }) {
     writeTranscripts(dir);
     const synth = writeSyntheticCorpus(dir, { sessions: 250, turnsPerSession: 80, projects: 25 });
     const runtime = path.join(home, "embedder");
-    const env = { ...process.env, VYRE_HOME: home, VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: path.join(home, "no-tailscale") };
+    const env = { ...process.env, VYRE_HOME: home, VYRE_NO_DIALOGS: "1" };
     if (!real) {
       const { fakeNpm } = await import(path.join(repo, "core", "recall", "testing.js"));
       const { install } = await import(path.join(repo, "core", "recall", "embed.js"));

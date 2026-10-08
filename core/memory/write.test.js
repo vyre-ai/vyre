@@ -79,8 +79,8 @@ test("write: who wrote it comes from the caller, never the input", async t => {
   assert.deepEqual([await who("deck"), await who("mcp"), await who(PAX), await who("module:notes", { firstParty: true })].map(f => `${f.kind}:${f.name}`),
     ["person:you", "person:session", "assistant:pax", "module:notes"]);
   // A caller vyred does not know as the person or an agent writes nothing.
-  for (const caller of ["hook", "tailnet-guest:someone@example.com", ""]) assert.equal((await call("memory.write", { kind: "note", project: "harlow", text: "x" }, caller)).code, "denied", caller);
-  assert.equal((await call("memory.write", { kind: "note", project: "harlow", text: "x" }, "tailnet:alex@example.com")).code, "person_session_required");
+  for (const caller of ["hook", "guest:someone@example.com", ""]) assert.equal((await call("memory.write", { kind: "note", project: "harlow", text: "x" }, caller)).code, "denied", caller);
+  assert.equal((await call("memory.write", { kind: "note", project: "harlow", text: "x" }, "device:nw3b43olz4rzbzfe")).code, "person_session_required");
   // Secrets are never kept.
   assert.ok(secretIn("key sk-ant-api03-" + "a".repeat(30)));
   const s = await call("memory.write", { kind: "note", project: "harlow", text: "the token is ghp_" + "b".repeat(36) }, JUNO);

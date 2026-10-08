@@ -60,8 +60,7 @@ export async function buildGlassWorld({ agent = "kit", width = 1024, height = 76
     // real deployment keeps the container's Xvnc size and the pool's advertised size in sync.
     computers: { driver: "fake", local: { host: "127.0.0.1", ports: { vnc: xvnc.port, helper: 1 } }, screens: 1, size: { w: width, h: height } },
   }, null, 2));
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
-    VYRE_TAILSCALE_BIN: path.join(REPO, "web", "test", "fake-tailscale.js") };
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
 
   const { socketPath } = await import("../../core/config/index.js");
   const { call } = await import("../../core/daemon/client.js");

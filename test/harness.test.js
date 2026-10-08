@@ -263,7 +263,7 @@ test("hooks: a plain yes accepts a lesson only when a person typed it into an in
   if (kernelOn) {
     assert.match(answered, refused, "a person at an interactive claude: still not accepted, the kernel is on");
     assert.equal(status(), "proposed");
-    for (const caller of ["mcp", "cli", "hook", "module:x", "tailnet:alex", "mcp:agent:kit", "harness:agent:juno", "deck", "harness"]) {
+    for (const caller of ["mcp", "cli", "hook", "module:x", "device:ie22vhobxbbkmu66", "mcp:agent:kit", "harness:agent:juno", "deck", "harness"]) {
       await d.registry.call("harness.enrich", { session: "s1", cwd: "/w", prompt_id: `p-x-${caller}`, prompt: "yes", interactive: true }, caller);
       assert.equal(status(), "proposed", `${caller} cannot make a plain yes count`);
     }

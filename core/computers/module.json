@@ -24,11 +24,6 @@
       {"name": "computers.may-act", "reach": "modules"},
       {"name": "computers.helper", "reach": "modules"},
       {"name": "computers.shield", "reach": "modules"},
-      {"name": "computers.egress.status", "effect": "read", "reach": "person"},
-      {"name": "computers.egress.set", "effect": "write", "reach": "person"},
-      {"name": "computers.tailnet.status", "effect": "read", "reach": "person"},
-      {"name": "computers.tailnet.set", "effect": "write", "reach": "person"},
-      {"name": "computers.node.agent", "reach": "modules"},
       {"name": "computers.handback.status", "effect": "read", "reach": "person"},
       {"name": "computers.handback.set", "effect": "write", "reach": "person"},
       {"name": "computers.fill.begin", "reach": "modules"},
@@ -43,12 +38,12 @@
     "emits": ["device.renamed", 
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
       "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
-      "computer.shielded", "computer.unshielded", "computer.joined", "computer.left",
+      "computer.shielded", "computer.unshielded", 
       "computer.member-added", "computer.member-removed", "computer.member-rotated"
     ]
   },
   "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
-  "needs": { "vault": ["tailscale-agent-authkey", "vyre-shared-computer-member-key"] },
+  "needs": { "vault": ["vyre-shared-computer-member-key"] },
   "teaches": {},
   "settings": [
     {"key": "computers.handback_minutes", "group": "devices", "label": "Hand a computer back after (minutes idle)", "help": "0 is never.", "type": "int", "choices": [0, 2, 5, 15], "default": 5, "levels": ["account"], "apply": "live", "store": {"config": "computers.handbackIdleMin"}}

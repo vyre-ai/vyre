@@ -95,7 +95,7 @@ const KNOWN_OWN_PERSON_SETS = new Set([
   "local/hands-chrome-mac/caller.js", // the standalone Chrome package's sanctioned copy: caller.test.js compares it to core/presence PERSON_SURFACES
   "core/planner/index.js",   // FOLLOWS: the callers whose time zone follows the device in hand (tailnet and device too), not a person check
   "core/memory/identity/test-facts.js", // a test fixture's surfaces, not a person check
-  "core/harness/rules.js", "core/link/box.js", "core/link/mac.js", "core/files/drive.js",
+  "core/harness/rules.js", "core/link/box.js", "core/link/mac.js",
 ]);
 test("hygiene: no new hand-rolled copy of PERSON_SURFACES (a Set of exactly cli/local/deck/capsule)", () => {
   const hits = [];

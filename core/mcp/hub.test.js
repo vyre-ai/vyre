@@ -165,10 +165,10 @@ test("whoFrom: an owner device is not person: true here, even though lib/caller.
   // admitting it here would skip inScope()'s per-agent check for every connected MCP server, so
   // this stays excluded on purpose to keep today's behaviour, unlike goals/planner's swap (which
   // is intentionally stricter, not identical - see their own tests/comments).
-  assert.equal(whoFrom("tailnet:alex@example.com").person, false, "a tailnet owner device is not the person");
+  assert.equal(whoFrom("device:nw3b43olz4rzbzfe").person, false, "a tailnet owner device is not the person");
   assert.equal(whoFrom("device:abcdefghijklmnop").person, false, "a paired device is not the person");
   // An agent's own tailnet node was already refused before the swap, and still is.
-  assert.equal(whoFrom("tailnet:agent:kit").person, false);
+  assert.equal(whoFrom("agent:kit").person, false);
 });
 
 // ---- a hub with a fake connect ----

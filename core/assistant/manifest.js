@@ -29,10 +29,9 @@ export async function capabilities(call, area) {
     for (const s of out.connectors) if (!s.working) missing.push(`${s.name} is ${s.state === "failed" ? "broken" : "not connected"}: say "connect ${s.name}"`);
   }
   if (want("devices")) {
-    const [macs, phones] = await Promise.all([read(call, "link.macs"), read(call, "push.devices")]);
-    const list = a => Array.isArray(a) ? a : a && Array.isArray(a.macs) ? a.macs : [];
+    const phones = await read(call, "push.devices");
+    const list = a => Array.isArray(a) ? a : [];
     out.devices = [
-      ...list(macs).map(m => ({ name: m.node || m.name || "Mac", kind: "mac", online: Boolean(m.online) })),
       ...list(phones).map(p => ({ name: p.label || "phone", kind: "phone", last_seen: p.last_ok || null })),
     ];
   }

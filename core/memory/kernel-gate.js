@@ -1,6 +1,6 @@
 // @ts-check
 // The minimum kernel wiring for core/memory in 0.3 (CUTOVER section G, a and c). Personal memory is one person's, so every tool is asked two things of the KERNEL, not of the
-// 0.2 caller label (the `tailnet:` labels are going away):
+// 0.2 caller label:
 //   a. the room: a call that runs in a chat with more than one person is refused. Personal memory never feeds a shared room. The room is the running turn's own, from
 //      `ctx.kernel.audienceFor` (no argument names it). A call with no session of its own is not in a chat. A call WITH a session whose room cannot be built is refused.
 //   c. whose: when the kernel built a chain with a person in it, that person is the owner of this home (kernel membership: role owner) and no other person is in the chain;

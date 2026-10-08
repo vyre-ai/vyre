@@ -107,13 +107,13 @@ test("open: Glass needs a paired box and opens its page for the agent named", as
   /** @type {(string|null)[]} */
   const launched = [];
   let linked = false;
-  const call = async tool => tool === "link.status" ? { data: linked ? { linked: true, box: { address: "https://juno.example.ts.net" } } : { linked: false } } : {};
+  const call = async tool => tool === "wink.server.call" ? (linked ? { data: { address: "https://juno.vyre.run" } } : { error: { code: "no_link", message: "no link" } }) : {};
   const v = new Sideview({ tile: f.tile, call, launch: async url => { launched.push(url); } });
   await assert.rejects(v.open({ browser: "glass" }), e => e.code === "no_box" && /vyre link pair/.test(e.message));
   linked = true;
   await v.open({ browser: "glass" });
   await v.open({ browser: "glass", glass: "kit" });
-  assert.deepEqual(launched, ["https://juno.example.ts.net/glass/box", "https://juno.example.ts.net/glass/kit"]);
+  assert.deepEqual(launched, ["https://juno.vyre.run/glass/box", "https://juno.vyre.run/glass/kit"]);
   await assert.rejects(v.open({ browser: "glass", glass: "../x" }), e => e.code === "bad_input");
   await assert.rejects(v.open({ browser: "glass", url: "https://example.com" }), e => e.code === "bad_input");
 });

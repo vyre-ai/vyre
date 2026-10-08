@@ -23,7 +23,7 @@ import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
 import { dropWink } from "./drop-wink.js";
-import { drive } from "./drive.js";
+import { MIGRATIONS as MENTION_MIGRATIONS } from "./mentions.js";
 import { registerSpaceDrive } from "./space-drive.js";
 import { registerSpaceLinks } from "./space-links.js";
 import { dirs } from "./dirs.js";
@@ -90,7 +90,7 @@ export function openChecked(d) {
  * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
  * the owner; access.js's reach() now also refuses that internally, but this is the registry's
  * own backstop, the same list core/memory's tools are read by. */
-const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "tailnet", "device", "space", "agent"];
+const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "device", "space", "agent"];
 
 /** Only the fields a search result is meant to carry, whatever a remote sent. */
 const tidy = (r, source) => ({ source, path: String(r.path), name: String(r.name), kind: String(r.kind),
@@ -406,8 +406,7 @@ export default {
 
     // VyreDrop over Wink: files.send and files.receive on a computer, the held-for-you drops on the server (drop-wink.js).
     const dropped = dropWink(ctx, { role, g, cfg });
-    // VyreDrive: the box's chosen folders, mounted on the paired Mac (drive.js).
-    drive(ctx, { role, guard: g, roots });
+    ctx.store.migrate(MENTION_MIGRATIONS);
     // The Space's own Drive for the app: upload, versions, restore (core/files/space-drive.js).
     registerSpaceDrive(ctx);
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).

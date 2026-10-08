@@ -20,11 +20,6 @@
         "effect": "write"
       },
       {
-        "name": "threads.continue-here",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
         "name": "threads.send",
         "reach": "anyone",
         "effect": "write"
@@ -344,7 +339,6 @@
       "ask.answered",
       "lease.changed",
       "thread.contended",
-      "thread.continued",
       "thread.watched",
       "thread.limit",
       "thread.queued",

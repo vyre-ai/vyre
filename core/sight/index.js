@@ -66,12 +66,12 @@ export function parseTarget(t) {
 
 /**
  * Did this call come from off the Mac? A network listener sets meta.peer (the screen module
- * refuses on the same test); the owner's devices, guests and agents' nodes arrive labelled
- * "tailnet:", "tailnet-guest:" or "device:" (core/modules/index.js ownerDevice). The screen module
+ * refuses on the same test); the owner's devices arrive labelled
+ * "device:" (core/modules/index.js ownerDevice). The screen module
  * cannot see this itself when sight asks it, because sight calls it as "module:sight".
  * @param {any} meta
  */
-export const offMac = meta => Boolean(meta && (meta.peer || /^(tailnet|tailnet-guest|device):/.test(String(meta.caller || ""))));
+export const offMac = meta => Boolean(meta && (meta.peer || /^device:/.test(String(meta.caller || ""))));
 
 /**
  * The agent name this call's real caller claims to be, when it is not the assistant, or null.

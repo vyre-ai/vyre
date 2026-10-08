@@ -11,7 +11,7 @@
 //   vyre phone test [id]                   send a test notification
 //
 // The phone pairs with the box, so on a box every call is local; on a Mac linked to a box the
-// reads go over link.call. Minting the code and removing a passkey need presence on the box
+// reads go over wink.server.call. Minting the code and removing a passkey need presence on the box
 // itself, which a Mac cannot give over the link (a passkey is the only proof the box takes from
 // another machine, ADR 0004), so from a Mac those two point at the box or the Deck instead.
 //
@@ -67,24 +67,24 @@ const APPLE = /(^|\.)push\.apple\.com$/;
 // ------------------------------------------------------------ where the phone pairs
 
 /**
- * The box this terminal reaches, and how to call it. On a box: this vyred. On a Mac: the box it
- * is linked to, over link.call. Null after printing why there is none.
+ * The server this terminal reaches, and how to call it. On a server: this vyred. On a device: the server it
+ * is paired to, over Wink (wink.server.call). Null after printing why there is none.
  * @returns {Promise<{ local: boolean, address: string|null, tool: (name: string, input?: any) => Promise<any> } | null>}
  */
 export async function target() {
-  const s = await call("link.status");
-  if (s.error && s.error.code !== "no_such_tool") { failTool(s.error); return null; }
-  const role = s.data ? s.data.role : config.load().role;
+  const role = config.load().role;
   if (role === "box") {
     const n = await call("names.status");
     const address = (n.data && n.data.address) || (config.load().network || {}).address || null;
     return { local: true, address, tool: (name, input = {}) => call(name, input) };
   }
+  const s = await call("wink.server.home");
+  if (s.error) { failTool(s.error); return null; }
   if (!s.data || !s.data.linked) {
-    fail("this Mac is not paired with a box, and a phone pairs with the box", { next: "vyre link pair <address>, or run vyre phone add on the box" });
+    fail("this device is not paired with a server, and a phone pairs with the server", { next: "vyre link pair <code>, or run vyre phone add on the server" });
     return null;
   }
-  return { local: false, address: s.data.box.address, tool: async (name, input = {}) => call("link.call", { tool: name, input }) };
+  return { local: false, address: null, tool: async (name, input = {}) => call("wink.server.call", { tool: name, input }) };
 }
 
 const hostOf = a => { try { return new URL(String(a)).hostname; } catch { return String(a || ""); } };
@@ -204,9 +204,9 @@ export async function add(flags, deps = {}) {
 
   // The pairing first: it is the one step that asks the person, and nothing is worth showing
   // without it. The relay's single-use QR (https://vyre.run/pair#<offer>); on a Mac it is minted
-  // on the box through the link.
+  // on the box through Wink.
   let expires = Date.now() + (deps.life ?? CODE_LIFE);
-  // From a Mac the box cannot check a proof made here (link.call refuses human-only tools, and a
+  // From a Mac the box cannot check a proof made here (wink.server.call refuses human-only tools, and a
   // Touch ID on the Mac is not something the box can verify), so pairing happens on the box.
   // TODO(e2e, ADR 0032): the Mac's Secure Enclave device key (approved, after batch 2) will let
   // the Mac prove human-only calls to the box; then call relay.pair.start through the link here.
@@ -621,7 +621,7 @@ export async function remove(ids, deps = {}) {
     if (relayDevices(rl).some(x => x.id === id)) {
       // Removing one asks for the person (it removes the device's presence key too).
       const r = t.local ? await callAsPerson("relay.devices.remove", { id }, { io: deps.io || personIO() })
-        : await callAsPerson("link.call", { tool: "relay.devices.remove", input: { id } }, { io: deps.io || personIO() });
+        : await callAsPerson("wink.server.call", { tool: "relay.devices.remove", input: { id } }, { io: deps.io || personIO() });
       if (r.error) return failTool(r.error);
       removed.push({ id, kind: "relay" });
     } else if (list(d).some(x => x.device === id)) {
@@ -629,7 +629,7 @@ export async function remove(ids, deps = {}) {
       if (r.error) return failTool(r.error);
       removed.push({ id, kind: "device" });
     } else if (list(k).some(x => x.id === id)) {
-      // Removing a passkey needs presence on the box; a Mac cannot give it over the link.
+      // Removing a passkey needs presence on the box; a device cannot give it over Wink.
       if (!t.local) return fail(`${id} is a passkey, and removing one needs you at the box`, { next: `vyre phone remove ${id} on the box, or remove it in the Deck` });
       const r = await callAsPerson("presence.remove", { id }, { io: deps.io || personIO() });
       if (r.error) return failTool(r.error);

@@ -2,21 +2,16 @@
 // access: who may read a session's stream (ADR 0052, reviewer gate C-1).
 //
 // A chat's readers are its participants. An assistant acting for a person reads what that person reads
-// and nothing more; an owner or an admin gets no read grant to a chat they are not in. Two kinds of session:
+// and nothing more; an owner or an admin gets no read grant to a chat they are not in. The call's own chain
+// (ctx.kernel.chain(meta): the person's own, or a session token's for an assistant acting for them) decides:
 //
-//   a thread (a switchboard session)  resolved with threads.get AS THE CALLER (ctx.call with `as`): a
-//                                     refusal (denied, not_found) is the answer. This is the 0.2 path.
-//   a group chat (a stream session)   its readers are the people in its log's participant-joined frames.
-//                                     The caller's person (verified peer, else the named or owner person
-//                                     of a local surface; an assistant never names its own) must be one.
+//   a chat (a kernel chat)            chats.read(chain, id): its readers are the chat's participants as the kernel
+//                                     holds them (an owner or admin outside the chat, and an assistant acting for
+//                                     someone outside it, are refused; a refusal looks like absence).
+//   a thread (a switchboard session)  resolved with threads.get AS THE CALLER (ctx.call with `as`): a refusal
+//                                     (denied, not_found) is the answer.
 //
-// With the kernel wired in (ctx.kernel) and the call carrying a session token (ctx.kernel.chain(meta) is then the caller's
-// chain, not the module's own), a chat is the kernel's: chats.read(chain, id) decides, so its readers are the chat's
-// participants as the kernel holds them (an owner or admin outside the chat, and an assistant acting for someone outside
-// it, are refused; a refusal looks like absence). The 0.2 group store is then only a mirror of the kernel's list, and the
-// group path below is closed. A session that is not a kernel chat (a switchboard thread) is still read with threads.get.
-// Where no kernel is wired (a 0.2 daemon) only the two paths above run. Nothing here creates a log or a
-// map entry for an id it refuses.
+// A call with no person chain of its own (a local surface's label) reads a thread only. Nothing here creates a log or a map entry for an id it refuses.
 
 import { isAgent } from "../../lib/caller.js";
 
@@ -51,7 +46,7 @@ export function createAccess({ ctx, groups, logs }) {
   };
 
   /**
-   * The kernel's chat for this call, when it can speak for the caller: null when no kernel or no token (0.2), { chat: null } when the caller is
+   * The kernel's chat for this call, when it can speak for the caller: null when the call has no person of its own, { chat: null } when the caller is
    * not in a chat by that id (or there is none: the kernel does not say which), else { chat, chain, person }.
    * @param {string} session @param {any} meta
    * @returns {Promise<null | { chat: any, chain: any, person: string }>}
@@ -74,7 +69,7 @@ export function createAccess({ ctx, groups, logs }) {
     /**
      * Throws not_found or denied unless the caller may read the session. Returns the viewer and which path decided.
      * @param {string} session @param {any} meta @param {any} [i]
-     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"group"|"chat", chain: any, chat?: any, person?: string }>}
+     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"chat", chain: any, chat?: any, person?: string }>}
      */
     async read(session, meta, i = {}) {
       const kc = await chat(session, meta);
@@ -86,15 +81,10 @@ export function createAccess({ ctx, groups, logs }) {
         // The kernel is on and this person is not in a chat by that id: there is nothing to read. (A run is reached through its chat; a thread id is no longer a way in.)
         throw fail("not_found", "no such chat");
       }
+      // A call with no person chain of its own (a local surface's label): only a switchboard thread it may read. The group store is never a chat's authority.
       const person = personOf(meta, i);
-      // 0.2: every person caller on the box's own surfaces is the owner; a tailnet peer holds no role here (it fails closed).
       const viewer = { id: person, roles: /** @type {string[]} */ (person === "person:owner" ? ["owner"] : []) };
       if (await thread(session, meta)) return { viewer, via: "thread", chain: null };
-      // The kernel is on and this call carries no session of its own: the 0.2 group store is not a chat's authority any more.
-      if (!(ctx.kernel && ctx.kernel.chats) && groups && groups.known(session)) {
-        if (groups.people(session).has(person)) return { viewer, via: "group", chain: null };
-        throw fail("not_found", "no such session");
-      }
       throw fail("not_found", "no such session");
     },
   };

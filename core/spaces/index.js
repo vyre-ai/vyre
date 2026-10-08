@@ -101,7 +101,7 @@ export const hooks = {
 
 const DAY = 24 * 60 * 60 * 1000;
 /** Before membership exists the only callers are the relay and the person's devices: a local anonymous or model caller cannot spend a use count or burn the five tries. */
-const RELAY_DEVICE_CALLERS = Object.freeze(["tailnet", "relay", "device"]);
+const RELAY_DEVICE_CALLERS = Object.freeze(["relay", "device"]);
 const b64u = (/** @type {Buffer|Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const PERSON_RE = /^per_[a-z2-7]{26}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -1168,7 +1168,7 @@ export default {
     // The Vyre name for an identity id, for the pairing question at a server ("Alex (alex.vyre.run)"). The directory has no reverse lookup, so: this device's own identity (its claimed name), else a name the asker CLAIMS
     // (owner.vyre) that the directory resolves to exactly this id, else a name this home verified when that person joined. Otherwise null: the short id is shown, never an unchecked name.
     tool("spaces.person.learn", "For the peer door: remember a person's Vyre name once the directory says it is theirs, so this home can find their identity list (member-device enrolment). Answers { known }.", obj({ id: str, name: str }, ["id", "name"]), async (i, meta) => {
-      onlyModules(meta, ["vyred", "wink", "tailnet", "relay"]);
+      onlyModules(meta, ["vyred", "wink", "relay"]);
       const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
       if (!/^per_[a-z2-7]{26}$/.test(String(i.id)) || !/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { known: false };
       try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === String(i.id)) { await kv.put(`person-name/${i.id}`, label); return { known: true }; } } catch { /* not theirs, or unreachable */ }

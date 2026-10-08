@@ -94,13 +94,8 @@ export default {
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      // The caller's identity on this listener is whatever the request carries and the pass binds to (the holder's device key). The old modes that took a login from a
-      // VPN's `whois` answer or a proxy header are retired with that VPN (removal plan, step 4): a pass binds to the device key and the signed envelope.
-      if (vault.relayGrants === "require") ctx.log("vault: vault.relay.grants is require, which needs a network policy that no longer exists, so every relayed request is refused; switch it off");
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
-        onRelay: async (env, meta) => {
-          return vault.onRelay(env, meta);
-        },
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0),
+        onRelay: (env, meta) => vault.onRelay(env, meta),
         onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
@@ -248,7 +243,7 @@ export default {
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
-    tool("vault.revoke", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
+    tool("vault.revoke", ["cli", "local", "deck", "capsule", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
         const c = String(caller);
         const k = callerKind(c);
@@ -296,7 +291,7 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", [...SURFACES, "module", "tailnet", "device"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module", "device"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
       obj({ name: str, id: str, session: str }),
       async ({ name, id }, { caller }) => {
@@ -360,7 +355,7 @@ export default {
         return scanEnvFiles(dirs);
       });
 
-    tool("vault.audit", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Who used which item, when, and whether it was allowed. Never a value.",
+    tool("vault.audit", ["cli", "local", "deck", "capsule", "device", "module"], "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));
 
     tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
@@ -387,15 +382,7 @@ export default {
         return `Share ${list(items)} with ${String(holder).slice(0, 64)}, ${mode === "sealed" ? "sealed (a copy leaves this Vyre)" : "relayed"}${until}`;
       }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
-    // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
-    // callers only: an agent caller has no business mapping who can reach what.
-    tool("vault.grants.status", [...SURFACES, "mcp"], "Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.",
-      obj({}), async (_input, { caller }) => {
-        if (/(?:^|[\s:])agent:/.test(String(caller))) throw new Error("vault.grants.status is for the owner, not an agent");
-        return vault.grantsStatus();
-      });
-
-    tool("vault.pass.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
+    tool("vault.pass.list", ["cli", "local", "deck", "capsule", "device", "module"], "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
 
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.revokePass(input, caller));
@@ -425,7 +412,7 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.deny(input, caller));
     tool("vault.emergency.remove", null, "End a contact's emergency access and delete its escrow.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.remove(input, caller));
-    tool("vault.emergency.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
+    tool("vault.emergency.list", ["cli", "local", "deck", "capsule", "device", "module"], "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
       obj({}), () => vault.emergency.list());
     tool("vault.emergency.request", SURFACES, "Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.",
       obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.request(input, caller),

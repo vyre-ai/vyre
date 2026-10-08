@@ -13,7 +13,7 @@
 // completes ("a used or expired ticket gets a 403 before any byte of RFB"); an open connection
 // counts as needing to look, so it holds the checkout (pool.viewer) for as long as it lasts; an
 // unparseable client message closes the connection, because a stream Glass cannot follow is one
-// it cannot gate. A ticket marked slow (the viewer is relayed or far away, per link.health) has
+// it cannot gate. A ticket marked slow (the viewer is relayed or far away, per network.wink.status) has
 // its incremental update requests paced to 5 a second (Pacer); nothing else is held back.
 
 import { STOPPED, UNKNOWN } from "./pool.js";
@@ -134,7 +134,7 @@ export class Glass {
     if (!redeemed) { reject(socket, 403, "Forbidden"); return; }
     const { agent, surface } = redeemed;
     this.log(`glass: ${agent}/${surface} opening`);
-    // The viewer's link is relayed or slow (glass.open asked link.health): pace its frames.
+    // The viewer's link is relayed or slow (glass.open asked network.wink.status): pace its frames.
     const slow = Boolean(/** @type {any} */ (redeemed).slow);
 
     const key = req.headers && req.headers["sec-websocket-key"];

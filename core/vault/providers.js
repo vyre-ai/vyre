@@ -39,8 +39,6 @@ const LIST = [
     capabilities: ["files", "other"], help: "https://github.com/settings/connections/applications", next: { tool: "github.connect", input: { name: "" } } },
   { name: "cloudflare", label: "Cloudflare", kinds: ["api-key"], how: "field", fields: [key("API token", "^[A-Za-z0-9_-]{30,}$")],
     capabilities: ["other"], help: "https://dash.cloudflare.com/profile/api-tokens" },
-  { name: "tailscale", label: "Tailscale", kinds: ["api-key"], how: "field", fields: [key("API key", "^tskey-[A-Za-z0-9-]{10,}$")],
-    capabilities: ["other"], help: "https://login.tailscale.com/admin/settings/keys" },
   { name: "telegram", label: "Telegram bot", kinds: ["api-key"], how: "field", fields: [key("Bot token", "^\\d{6,12}:[A-Za-z0-9_-]{30,}$")],
     capabilities: ["send_message"], help: "https://t.me/BotFather" },
   { name: "google-oauth", label: "Google (sign in)", kinds: ["oauth"], how: "oauth", fields: [],

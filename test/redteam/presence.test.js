@@ -16,7 +16,7 @@ import { tempHome } from "../helpers.js";
 
 const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 const OTHER = { tool: "gate.approve", input: { id: "b2" } };
-const WHO = "tailnet:alex@example.com";
+const WHO = "device:nw3b43olz4rzbzfe";
 const spki = k => k.export({ format: "der", type: "spki" }).toString("base64url");
 const rsa = (modulusLength = 2048, publicExponent = 65537) => crypto.generateKeyPairSync("rsa", { modulusLength, publicExponent });
 const p256 = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });

@@ -37,11 +37,9 @@ test("a link is made, listed, and taken away", { skip: !strip }, async () => {
   assert.equal(/** @type {any} */ ((await call("files.drive.link.list")).data).links.length, 0);
 });
 
-test("the artifacts and the box folders answer too; an unknown tool is not available", { skip: !strip }, async () => {
+test("the artifacts answer too; an unknown tool is not available", { skip: !strip }, async () => {
   const call = await fresh();
   const a = /** @type {any} */ ((await call("artifacts.list", {})).data).artifacts;
   assert.ok(a.length >= 1 && a.every((/** @type {any} */ x) => x.id && x.title));
-  assert.equal(/** @type {any} */ ((await call("files.drive.status")).data).shares.length, 1);
-  assert.equal(/** @type {any} */ ((await call("files.drive.read", { share: "Documents", path: "/Notes.txt" })).data).done, true);
   assert.equal((await call("nope.tool")).error?.code, "not_available");
 });

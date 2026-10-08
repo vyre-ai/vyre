@@ -204,7 +204,7 @@ test("approving runs exactly the held request, re-checked; an edit, a wrong call
   // Not approved yet: nothing runs, whoever asks.
   await assert.rejects(run("vault.api.send", { id: held.held }, "module:gate"), /not an approved item being sent/);
   approve(held.held);
-  for (const who of ["cli", "mcp", "mcp:agent:juno", "module:vault", "module:sessions", "tailnet-guest:x@y.test"]) await assert.rejects(run("vault.api.send", { id: held.held }, who), /only the Gate sends/, who);
+  for (const who of ["cli", "mcp", "mcp:agent:juno", "module:vault", "module:sessions", "guest:x@y.test"]) await assert.rejects(run("vault.api.send", { id: held.held }, who), /only the Gate sends/, who);
   net.script = () => json(202, { echoed: secret });
   const out = await run("vault.api.send", { id: held.held }, "module:gate");
   assert.equal(out.status, 202);

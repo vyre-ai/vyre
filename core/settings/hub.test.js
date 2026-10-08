@@ -163,15 +163,15 @@ const phoneMeta = (/** @type {any} */ d) => {
 
 test("a device's value beats the account's for that device only; the owner's device reads its own by default", async t => {
   const { d, c, hub, edit } = await world(t, { before: root => oven(root) });
-  assert.ok(!(await c("settings.set", { key: "oven.look", value: "crumb", device: "tailnet:alex-phone" })).error);
-  assert.equal(hub().devices["tailnet:alex-phone"]["oven.look"], "crumb");
-  assert.equal((await c("settings.get", { key: "oven.look", device: "tailnet:alex-phone" })).data.value, "crumb");
+  assert.ok(!(await c("settings.set", { key: "oven.look", value: "crumb", device: "device:2uwffior5lehgnfh" })).error);
+  assert.equal(hub().devices["device:2uwffior5lehgnfh"]["oven.look"], "crumb");
+  assert.equal((await c("settings.get", { key: "oven.look", device: "device:2uwffior5lehgnfh" })).data.value, "crumb");
   assert.equal((await c("settings.get", { key: "oven.look", device: "mac:alex-mbp" })).data.value, "crust", "another device keeps the account's");
   // The phone over the tailnet, signed in, names no device and still reads its own.
-  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "tailnet:alex-phone", phoneMeta(d));
-  assert.deepEqual([phone.data.value, phone.data.source, phone.data.device_id], ["crumb", "device", "tailnet:alex-phone"]);
-  const snap = await d.registry.call("settings.snapshot", {}, "tailnet:alex-phone", phoneMeta(d));
-  assert.equal(snap.data.device, "tailnet:alex-phone", "the id it resolved is echoed");
+  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "device:2uwffior5lehgnfh", phoneMeta(d));
+  assert.deepEqual([phone.data.value, phone.data.source, phone.data.device_id], ["crumb", "device", "device:2uwffior5lehgnfh"]);
+  const snap = await d.registry.call("settings.snapshot", {}, "device:2uwffior5lehgnfh", phoneMeta(d));
+  assert.equal(snap.data.device, "device:2uwffior5lehgnfh", "the id it resolved is echoed");
   assert.equal(snap.data.values["oven.look"], "crumb");
   assert.equal(snap.data.sources["oven.look"], "device");
   assert.deepEqual(snap.data.levels["oven.look"], { device: "crumb" });
@@ -182,8 +182,8 @@ test("a device's value beats the account's for that device only; the owner's dev
   const e = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
   assert.deepEqual([e.key, e.level, e.device, e.by], ["oven.look", "device", "mac:alex-mbp", "hub.json"]);
   // The device's own reset brings the account's back.
-  await c("settings.reset", { key: "oven.look", device: "tailnet:alex-phone", level: "device" });
-  assert.equal((await c("settings.get", { key: "oven.look", device: "tailnet:alex-phone" })).data.value, "crust");
+  await c("settings.reset", { key: "oven.look", device: "device:2uwffior5lehgnfh", level: "device" });
+  assert.equal((await c("settings.get", { key: "oven.look", device: "device:2uwffior5lehgnfh" })).data.value, "crust");
 });
 
 test("a key's check is asked before anything is stored, by hand or by tool, and its choices come from its module", async t => {
@@ -250,8 +250,8 @@ test("/theme.css and /v1/theme serve the appearance module's answer per device, 
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "appearance", version: "0.1.0", roles: ["box", "local"], does: { tools: ["appearance.resolve"] } }));
     fs.writeFileSync(path.join(dir, "index.js"), `export default { async start(ctx) {
-  ctx.tool("appearance.resolve", { input: { type: "object" }, run: async i => ({ theme: "vyre", scheme: i.device === "tailnet:alex-phone" ? "paper" : "dark",
-    tokens: { color: { dark: {}, paper: {} } }, css: ":root { --bg: " + (i.device === "tailnet:alex-phone" ? "#fff" : "#000") + "; }", version: "v1", rev: 7 }) });
+  ctx.tool("appearance.resolve", { input: { type: "object" }, run: async i => ({ theme: "vyre", scheme: i.device === "device:2uwffior5lehgnfh" ? "paper" : "dark",
+    tokens: { color: { dark: {}, paper: {} } }, css: ":root { --bg: " + (i.device === "device:2uwffior5lehgnfh" ? "#fff" : "#000") + "; }", version: "v1", rev: 7 }) });
   return { async stop() {} };
 } };`);
   } });
@@ -260,11 +260,11 @@ test("/theme.css and /v1/theme serve the appearance module's answer per device, 
       let b = ""; res.on("data", x => (b += x)); res.on("end", () => ok({ status: res.statusCode, etag: res.headers.etag, type: res.headers["content-type"], body: b }));
     }).end();
   });
-  const css = /** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone"));
+  const css = /** @type {any} */ (await get("/theme.css?device=device:2uwffior5lehgnfh"));
   assert.equal(css.status, 200);
   assert.match(css.type, /text\/css/);
-  assert.match(css.etag, /-tailnet:alex-phone"$/, "the ETag names the device");
-  assert.equal((/** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone", { "if-none-match": css.etag }))).status, 304);
+  assert.match(css.etag, /-device:2uwffior5lehgnfh"$/, "the ETag names the device");
+  assert.equal((/** @type {any} */ (await get("/theme.css?device=device:2uwffior5lehgnfh", { "if-none-match": css.etag }))).status, 304);
   const json = /** @type {any} */ (await get("/v1/theme?device=mac:alex-mbp"));
   assert.equal(json.status, 200);
   const body = JSON.parse(json.body).data;
@@ -272,7 +272,7 @@ test("/theme.css and /v1/theme serve the appearance module's answer per device, 
   assert.ok(body.tokens && body.tokens.color, "the whole tokens.json");
   if (!shipped) {
     assert.equal(css.body, ":root { --bg: #fff; }");
-    assert.equal(css.etag, '"7-tailnet:alex-phone"');
+    assert.equal(css.etag, '"7-device:2uwffior5lehgnfh"');
     assert.deepEqual([body.scheme, body.rev], ["dark", 7]);
   }
 });
@@ -300,7 +300,7 @@ test("/theme.css and /v1/theme serve the real appearance module's answer per dev
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
-  const phone = { level: "device", device: "tailnet:alex-phone" };
+  const phone = { level: "device", device: "device:2uwffior5lehgnfh" };
   assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "dark" })).error);
   let r = await c("settings.set", { key: "appearance.scheme", value: "paper", ...phone });
   assert.ok(!r.error, JSON.stringify(r.error));
@@ -312,18 +312,18 @@ test("/theme.css and /v1/theme serve the real appearance module's answer per dev
     }).end();
   });
   const rev = (await c("settings.schema")).data.hub.rev;
-  const css = /** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone"));
+  const css = /** @type {any} */ (await get("/theme.css?device=device:2uwffior5lehgnfh"));
   assert.equal(css.status, 200);
   assert.match(css.type, /text\/css/);
   assert.match(css.body, /--radius-card: 16px;/);
-  assert.equal(css.body, (await c("appearance.resolve", { device: "tailnet:alex-phone" })).data.css);
-  assert.equal(css.etag, `"${rev}-tailnet:alex-phone"`);
-  assert.equal((/** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone", { "if-none-match": css.etag }))).status, 304);
+  assert.equal(css.body, (await c("appearance.resolve", { device: "device:2uwffior5lehgnfh" })).data.css);
+  assert.equal(css.etag, `"${rev}-device:2uwffior5lehgnfh"`);
+  assert.equal((/** @type {any} */ (await get("/theme.css?device=device:2uwffior5lehgnfh", { "if-none-match": css.etag }))).status, 304);
   const json = /** @type {any} */ (await get("/v1/theme?device=mac:alex-mbp"));
   assert.equal(json.status, 200);
   const data = JSON.parse(json.body).data;
   assert.deepEqual([data.theme, data.scheme, data.rev, data.device], ["vyre", "dark", rev, "mac:alex-mbp"]);
   assert.doesNotMatch(data.css, /--radius-card: 16px;/);
-  const phoneJson = JSON.parse(/** @type {any} */ (await get("/v1/theme?device=tailnet:alex-phone")).body).data;
+  const phoneJson = JSON.parse(/** @type {any} */ (await get("/v1/theme?device=device:2uwffior5lehgnfh")).body).data;
   assert.deepEqual([phoneJson.scheme, phoneJson.tokens.radius.card], ["paper", 16]);
 });

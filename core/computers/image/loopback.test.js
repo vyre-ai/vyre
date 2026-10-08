@@ -22,7 +22,6 @@ test("image: nothing that forwards remote traffic to loopback is installed or st
   }
 });
 
-test("image: computerd's tailnet node is not started by the image, and says shields up", () => {
+test("image: no tailnet node is started by the image", () => {
   assert.doesNotMatch(code("entrypoint.sh"), /tailnet|tailscale/);
-  assert.match(read("computerd/tailnet.js"), /shields up/);
 });

@@ -104,7 +104,7 @@ test("tz, localTime and day: the reporting device's own clock, never the server'
   assert.equal((await call("context.now")).data.tz, null);
   assert.equal((await call("context.now")).data.day, null);
 
-  await call("context.report", { surface: "phone", device: "alex-phone", tz: "America/Los_Angeles", localTime: "2026-09-28T07:15:00-07:00" }, "tailnet:alex");
+  await call("context.report", { surface: "phone", device: "alex-phone", tz: "America/Los_Angeles", localTime: "2026-09-28T07:15:00-07:00" }, "device:ie22vhobxbbkmu66");
   let now = (await call("context.now")).data;
   assert.equal(now.tz, "America/Los_Angeles");
   assert.equal(now.localTime, "2026-09-28T07:15:00-07:00");
@@ -221,7 +221,7 @@ test("context.changed: first change at once, later ones in the window folded int
   assert.equal(seen.length, 2);
 
   // Another surface has its own window.
-  await call("context.report", { surface: "phone", device: "alex-phone", thread: "t-juno-2" }, "tailnet:alex");
+  await call("context.report", { surface: "phone", device: "alex-phone", thread: "t-juno-2" }, "device:ie22vhobxbbkmu66");
   await advance(1);
   await emitted(3);
   assert.deepEqual(seen[2].payload, { changed: ["thread"], surface: "phone", device: "alex-phone", thread: "t-juno-2" });
@@ -240,7 +240,7 @@ test("screen part: from sight on this Mac, refused over the tailnet, and absent 
   assert.deepEqual(local.screen.asked, ["text"]);
   assert.equal(local.screen_why, undefined);
 
-  for (const [caller, meta] of [["tailnet:alex", {}], ["cli", { peer: { node: "alex-phone" } }]]) {
+  for (const [caller, meta] of [["device:ie22vhobxbbkmu66", {}], ["cli", { peer: { node: "alex-phone" } }]]) {
     const r = (await call("context.now", { parts: ["screen"] }, /** @type {string} */ (caller), meta)).data;
     assert.equal(r.screen, null, String(caller));
     assert.equal(r.screen_why, "local_only");

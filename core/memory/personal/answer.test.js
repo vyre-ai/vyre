@@ -192,13 +192,13 @@ test("answer: the user's surfaces, their devices, modules and the assistant ask;
   // personal facts either, narrowed by the user's decision, 2026-09-28, from
   // docs/adr/0007-intelligence.md decision 1 (which this test itself used to record, before the
   // narrowing, as an all-projects agent asking successfully alongside the assistant).
-  for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["tailnet:alex@example.com"], ["mcp:agent:juno"],
+  for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["device:nw3b43olz4rzbzfe"], ["mcp:agent:juno"],
     ["mcp"], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }], ["mcp:thread:t_42"]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.ok(!r.error, `${caller}: ${r.error}`);
     assert.equal(r.data.answer, "Your wife is Jordan.");
   }
-  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}],
+  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}],
     ["mcp:thread:t_42 agent:kit", {}], ["mcp:thread:", {}], ["harness:agent:hal", {}]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.equal(r.code, "denied", `${caller} ${JSON.stringify(input)}: ${JSON.stringify(r)}`);
@@ -262,7 +262,7 @@ test("remember: told outright, kept at once, answered at once, no prompt", async
   await call("memory.curate", { full: true });
   assert.equal((await ask("who is my brother")).answer, "Your brother is Leo.");
 
-  for (const caller of ["mcp:agent:kit", "harness", "tailnet:agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
+  for (const caller of ["mcp:agent:kit", "harness", "agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
   // The user's own Claude Code session (/vyre remember through the plugin) is a model (HD-8): its fact is kept PENDING, not as the person's own, so it never answers as theirs.
   const cc = await call("memory.remember", { text: "My sister Ana lives in Austin." }, "mcp");
   assert.ok(!cc.error, cc.error);

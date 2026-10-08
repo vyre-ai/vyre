@@ -4,7 +4,7 @@
   "description": "Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "reads": ["files.drive.list", "files.drive.read", "files.drive.search", "files.drive.status"], "tools": [
+  "does": { "reads": ["files.drive.search", "files.drive.status"], "tools": [
     {"name": "files.search", "effect": "read", "reach": "anyone"},
     {"name": "files.stat", "effect": "read", "reach": "anyone"},
     {"name": "files.dirs", "effect": "read", "reach": "anyone"},
@@ -36,27 +36,12 @@
     {"name": "files.drive.link.create", "outward": true, "effect": "write", "reach": "person"},
     {"name": "files.drive.link.list", "effect": "read", "reach": "person"},
     {"name": "files.drive.link.revoke", "effect": "write", "reach": "person"},
-    {"name": "files.drive.share", "outward": true, "effect": "write", "reach": "person"},
-    {"name": "files.drive.unshare", "effect": "write", "reach": "person"},
-    {"name": "files.drive.access", "effect": "write", "reach": "person"},
-    {"name": "files.drive.audit", "effect": "read", "reach": "anyone"},
     {"name": "files.drive.search", "reach": "anyone"},
-    {"name": "files.drive.address", "effect": "read", "reach": "person"},
     {"name": "files.mentions.search", "effect": "read", "reach": "person"},
-    {"name": "files.mentions.resolve", "reach": "modules"},
-    {"name": "files.drive.list", "reach": "anyone"},
-    {"name": "files.drive.read", "reach": "anyone"},
-    {"name": "files.drive.candidates", "effect": "read", "reach": "anyone"},
-    {"name": "files.drive.measure", "effect": "read", "reach": "anyone"},
-    {"name": "files.drive.offer", "outward": true, "effect": "write", "reach": "person"},
-    {"name": "files.drive.url", "outward": true, "effect": "read", "reach": "person"},
-    {"name": "files.drive.mount", "effect": "write", "reach": "person"},
-    {"name": "files.drive.unmount", "effect": "write", "reach": "person"},
-    {"name": "files.drive.open", "effect": "write", "reach": "person"},
-    {"name": "files.drive.local", "effect": "read", "reach": "anyone"}
+    {"name": "files.mentions.resolve", "reach": "modules"}
   ] },
   "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}],
-  "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
+  "watches": { "emits": ["files.sent", "files.received"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },
   "needs": {},
   "teaches": {
@@ -70,9 +55,7 @@
       {"id": "roots", "text": "Files looks only in the folders you chose: `/work` on a box and your home on a Mac, until `files.roots` in config.json says otherwise.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "files.roots", "docs": "reference/tools.md#files"},
       {"id": "inbox-config", "text": "Want received files somewhere else on the box? Set `files.inbox` in config.json to a folder inside one of your roots.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "files.inbox", "docs": "reference/tools.md#files"},
       {"id": "find-one-box", "text": "Open Find in the Deck, `/find`, to search sessions, files, agents, memory and projects in one box. On the phone it is a tab.", "surfaces": ["deck", "phone"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"},
-      {"id": "drive-mount", "text": "Mount a shared box folder at `~/Vyre/Box/<share>` with `vyre call files.drive.mount` so Finder opens box files in place.", "surfaces": ["cli", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call files.drive.mount", "docs": "reference/tools.md#files"},
       {"id": "recent-folders", "text": "`vyre call files.recent` lists the folders your sessions worked in lately, newest first, with how many sessions ran in each.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre call files.recent", "docs": "reference/tools.md#files"},
-      {"id": "drive-pick", "text": "`files.drive.candidates` lists the folders on your server you could share, projects first. `files.drive.measure` sizes one first.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.2.0", "command": "vyre call files.drive.candidates", "docs": "reference/tools.md#files"},
       {"id": "drive-search", "text": "`files.drive.search` finds a file on your server by its name or what's in it, across every folder you've shared.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call files.drive.search", "docs": "reference/tools.md#files"}
     ]
   }

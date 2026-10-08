@@ -82,12 +82,12 @@ async function boot(t, o = {}) {
 test("computers: the manifest loads on the box with its tools and the glass stream declared", async t => {
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
-  assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
+  assert.deepEqual(tools.sort(), ["computers.checkout", "computers.get", "computers.giveback",
     "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list",
     "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
     "computers.pause", "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
-    "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
+    "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -421,133 +421,6 @@ test("computers: limits are a person's or the assistant's to set, and restart ap
   assert.match((await s.kit("computers.restart", { agent: "pax" })).error.message, /kit can only use its own computer/);
 });
 
-// ---- egress ------------------------------------------------------------------------------
-
-/** A port on loopback that nothing listens on: bound once, then closed. */
-async function closedPort() {
-  const net = await import("node:net");
-  const srv = net.createServer();
-  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
-  const port = /** @type {any} */ (srv.address()).port;
-  await new Promise(r => srv.close(() => r(undefined)));
-  return port;
-}
-
-/** Point the status tool's probe, and its gate status read, at local addresses for this test. */
-function viaLocal(t, port, gatePort = port) {
-  const prev = process.env.VYRE_EGRESS_PROXY, prevGate = process.env.VYRE_EGRESS_GATE_STATUS;
-  process.env.VYRE_EGRESS_PROXY = `127.0.0.1:${port}`;
-  process.env.VYRE_EGRESS_GATE_STATUS = `127.0.0.1:${gatePort}`;
-  t.after(() => {
-    if (prev === undefined) delete process.env.VYRE_EGRESS_PROXY; else process.env.VYRE_EGRESS_PROXY = prev;
-    if (prevGate === undefined) delete process.env.VYRE_EGRESS_GATE_STATUS; else process.env.VYRE_EGRESS_GATE_STATUS = prevGate;
-  });
-}
-
-test("computers: egress is off by default, and status says the sidecar does not answer on a closed port", async t => {
-  viaLocal(t, await closedPort());
-  const s = await boot(t);
-  const r = await s.cli("computers.egress.status");
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.equal(r.data.enabled, false);
-  assert.deepEqual(r.data.sites, []);
-  assert.equal(r.data.sidecar.answers, false);
-  assert.match(r.data.sidecar.why, /ECONNREFUSED|no answer/);
-  assert.equal(r.data.gate.answers, false, "no gate, no verdict");
-  assert.match(r.data.applies, /started after the change/);
-  // Nothing about egress reached a new computer's env.
-  await s.cli("computers.checkout", { agent: "kit" });
-  const spec = [...FakeDriver.for(s.root).containers.values()][0].spec;
-  assert.equal(spec.env.VYRE_PROXY_PAC, undefined);
-});
-
-test("computers: status reports a listening sidecar, and the configured sites", async t => {
-  const net = await import("node:net");
-  const srv = net.createServer(c => c.destroy());
-  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
-  t.after(() => srv.close());
-  viaLocal(t, /** @type {any} */ (srv.address()).port);
-  const s = await boot(t, { glass: { egress: { enabled: true, sites: ["bank.example.com", "*.harlow.example"] } } });
-  const r = await s.cli("computers.egress.status");
-  assert.deepEqual([r.data.enabled, r.data.sites, r.data.sidecar.answers], [true, ["bank.example.com", "*.harlow.example"], true]);
-});
-
-test("computers: status carries the gate's verdict, so a listed site that fails says why", async t => {
-  const net = await import("node:net");
-  const http = await import("node:http");
-  const socks = net.createServer(c => c.destroy());
-  await new Promise(r => socks.listen(0, "127.0.0.1", () => r(undefined)));
-  const verdict = { allowed: false, reason: "the exit node is not offering itself, or its route is not approved (ExitNodeOption is false)" };
-  const gate = http.createServer((req, res) => res.writeHead(req.url === "/status" ? 200 : 404, { connection: "close" }).end(JSON.stringify(verdict)));
-  await new Promise(r => gate.listen(0, "127.0.0.1", () => r(undefined)));
-  t.after(() => { socks.close(); gate.close(); });
-  viaLocal(t, /** @type {any} */ (socks.address()).port, /** @type {any} */ (gate.address()).port);
-  const s = await boot(t, { glass: { egress: { enabled: true, sites: ["portal.northwind.example"] } } });
-  const r = await s.cli("computers.egress.status");
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.deepEqual(r.data.gate, { answers: true, ...verdict });
-  verdict.allowed = true;
-  verdict.reason = "the exit node is online and offering itself";
-  assert.equal((await s.cli("computers.egress.status")).data.gate.allowed, true);
-});
-
-test("computers: egress.set is the owner's, refused to an agent, saved to config and used by the next computer", async t => {
-  viaLocal(t, await closedPort());
-  const s = await boot(t);
-  const refused = await s.kit("computers.egress.set", { enabled: true, sites: ["bank.example.com"] });
-  assert.ok(refused.error, "an agent changed where its own browser goes out");
-  const juno = await s.juno("computers.egress.set", { enabled: true, sites: ["bank.example.com"] });
-  assert.ok(juno.error, "the assistant changed the egress setting");
-  const bad = await s.cli("computers.egress.set", { enabled: true, sites: ['bank.example.com", "x'] });
-  assert.match(bad.error.message, /is not a hostname/);
-  const ok = await s.cli("computers.egress.set", { enabled: true, sites: ["Bank.Example.com"] });
-  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
-  assert.deepEqual([ok.data.enabled, ok.data.sites], [true, ["bank.example.com"]]);
-  assert.match(ok.data.applies, /started after the change/);
-  const saved = JSON.parse(fs.readFileSync(path.join(s.root, "config.json"), "utf8"));
-  assert.deepEqual(saved.glass.egress, { enabled: true, sites: ["bank.example.com"] });
-  await s.cli("computers.checkout", { agent: "kit" });
-  const spec = [...FakeDriver.for(s.root).containers.values()][0].spec;
-  assert.match(spec.env.VYRE_PROXY_PAC, /^data:application\/x-ns-proxy-autoconfig;base64,/);
-  assert.match(Buffer.from(spec.env.VYRE_PROXY_PAC.split(",")[1], "base64").toString(), /"bank\.example\.com"/);
-});
-
-// ---- tailnet: each computer as its own node ------------------------------------------------
-
-test("computers: tailnet is off by default; status says so, and whether the key is in the vault, never its value", async t => {
-  const s = await boot(t);
-  const r = await s.cli("computers.tailnet.status");
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.deepEqual([r.data.enabled, r.data.tag], [false, "tag:vyre-agent"]);
-  assert.equal(r.data.vault.item, "tailscale-agent-authkey");
-  assert.ok(r.data.vault.exists === false || r.data.vault.exists === null, JSON.stringify(r.data.vault));
-  assert.deepEqual(r.data.computers, []);
-  // Off: a computer starts and nothing asks the vault for the key.
-  await s.cli("computers.checkout", { agent: "kit" });
-  const h = s.h.pool.joins.get("kit");
-  if (h) await h.done;
-  assert.equal(s.h.pool.joins.size, 0);
-  assert.ok(!s.d.events.since(0, { limit: 1000 }).some(e => e.type === "vault.released" || e.type === "computer.joined"));
-  const after = await s.cli("computers.tailnet.status");
-  assert.deepEqual(after.data.computers, [{ agent: "kit", running: true, node: null, stableId: null }]);
-});
-
-test("computers: tailnet.set and status are the owner's, refused to agents and the assistant; set is saved to config", async t => {
-  const s = await boot(t);
-  for (const as of [s.kit, s.juno]) {
-    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /is an agent|not available to mcp callers/);
-    assert.match((await as("computers.tailnet.status")).error.message, /is an agent|not available to mcp callers/);
-  }
-  assert.ok(s.d.registry.tools.get("computers.tailnet.set")?.presence, "computers.tailnet.set does not declare presence");
-  const ok = await s.cli("computers.tailnet.set", { enabled: true });
-  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
-  assert.deepEqual([ok.data.enabled, ok.data.tag], [true, "tag:vyre-agent"]);
-  const saved = JSON.parse(fs.readFileSync(path.join(s.root, "config.json"), "utf8"));
-  assert.deepEqual(saved.computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
-  assert.equal(saved.computers.driver, "fake", "saving the switch dropped another computers key");
-  assert.equal((await s.cli("computers.tailnet.status")).data.enabled, true);
-});
-
 test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
@@ -590,13 +463,6 @@ test("computers: fill.begin and fill.end are the vault's only, and a take-over w
   s.h.fills.open.delete("kit");
 });
 
-test("computers: node.agent is internal and for modules only, and knows no node that never joined", async t => {
-  const s = await boot(t);
-  assert.equal((await s.cli("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
-  assert.equal((await s.kit("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
-  assert.deepEqual((await s.module("computers.node.agent", { stableId: "nKit7CNTRL" })).data, { agent: null });
-});
-
 // ---- shared (browser-kind) computers: membership tools ---------------------------------
 
 test("computers: all four member tools are on the PERSON_ONLY floor -- the same protection computers.takeover already stands behind, enforced by the harness's own rules layer and presence checks, not this module", () => {
@@ -607,8 +473,7 @@ test("computers: all four member tools are on the PERSON_ONLY floor -- the same 
 
 test("computers: the admin tools are a person's alone: an agent and a module are refused, the person is not", async t => {
   const s = await boot(t);
-  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
-    "computers.egress.set", "computers.tailnet.set"];
+  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"];
   for (const tool of person) {
     const input = { agent: "kit", computer: "browser-abc123", name: "alice", mode: "off", on: false, minutes: 5 };
     for (const [who, call] of [["an agent", s.kit], ["the assistant", s.juno], ["a module", s.module]]) {

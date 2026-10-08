@@ -63,8 +63,8 @@ test("reach holds against the real registry: asked for a model, person for delet
   for (const tool of ["watchers.delete", "watchers.run", "watchers.resume"]) {
     assert.equal(await code(tool, "cli"), "ran", tool);
     // the owner's device is the person only with the person's own session (reach person needs it, the sign-in the registry asks of a device)
-    assert.equal(await code(tool, "tailnet:alex"), "person_session_required", tool);
-    assert.equal((await reg.call(tool, { name: "w" }, "tailnet:alex", { person: { id: "ps1" } })).error, undefined, `${tool} with the person's session`);
+    assert.equal(await code(tool, "device:ie22vhobxbbkmu66"), "person_session_required", tool);
+    assert.equal((await reg.call(tool, { name: "w" }, "device:ie22vhobxbbkmu66", { person: { id: "ps1" } })).error, undefined, `${tool} with the person's session`);
     // "cli:agent:kit" is left out on purpose: the registry's person reach lets that caller string through today
     // (a cli transport with an agent claim), which platform owns; every other agent, the harness and a module are refused.
     for (const c of ["mcp", "mcp:agent:kit", "harness", "module:team"]) assert.equal(await code(tool, c), "denied", `${tool} for ${c}`);

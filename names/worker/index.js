@@ -28,6 +28,7 @@
 
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
+export const CODE_TAG = "vyre-names-code";
 export const ZONE_TAG = "vyre-acme-zone";
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
 const DAY = 86_400_000;
@@ -188,6 +189,8 @@ export const sha256 = /** @param {string} s */ async s => hex(await crypto.subtl
 export async function routeId(pub) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", pub))).slice(0, 26); }
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export async function routeHash(route) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${ZONE_TAG}\n${route}`)))).slice(0, 26); }
+/** @param {string} name @param {string} code the recovery code, dashes and case ignored */
+export const codeHash = (name, code) => sha256(`${CODE_TAG}\n${name}\n${String(code).toLowerCase().replace(/[^a-z2-7]/g, "")}`);
 /** Equal strings, in time that depends only on length. */
 export function same(a, b) {
   const x = enc.encode(a), y = enc.encode(b);
@@ -384,7 +387,7 @@ const NOTICES = 20;
 
 /**
  * Every name, in one object. Keys:
- *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, notices, log }
+ *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, codeHash, notices, log }
  *   r/<route>         the one name a route holds
  *   c/<kind>/<day>/<key>   a day's counter
  *   nc/<route>/<nonce>     a used signature nonce

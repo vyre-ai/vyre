@@ -100,9 +100,9 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
     globalThis.__filesLinks = globalThis.__filesLinks || new Map();
     globalThis.__filesLinks.set(root, link);
     t.after(() => globalThis.__filesLinks.delete(root));
-    writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.remote"] } },
+    writeModule(mods, "wink", { roles: ["local"], does: { tools: ["wink.server.call"] } },
       `export default { async start(ctx) {
-        ctx.tool("link.remote", { effect: "read", run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
+        ctx.tool("wink.server.call", { effect: "read", run: async ({ tool, input }) => { const r = await globalThis.__filesLinks.get(ctx.paths.root)(tool, input); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data !== undefined ? r.data : r; } });
         return { async stop() {} };
       } };`);
     fp.push(mods);
@@ -524,7 +524,7 @@ test("files: the assistant reads every mapped project, unconditional, but files 
 test("files: an unrecognised caller (a tailnet guest, say) reads with no projects at all, never as the owner (reviewer's M2 on 450c34b6)", async t => {
   const { work, harlow, vyreHome } = twoProjects(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
-  for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
+  for (const caller of ["unknown", "guest:eve@example.com", "hook"]) {
     const r = await reg.call("files.stat", { path: path.join(harlow, "brief.md") }, caller);
     assert.ok(r.error, `${caller} should not read as the owner`);
   }

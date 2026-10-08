@@ -20,7 +20,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use vyre_capsule_win::hotkey;
 use vyre_capsule_win::shell::Pinned;
-use vyre_capsule_win::{applog, bundled, devicekey, drive, update};
+use vyre_capsule_win::{applog, bundled, devicekey, update};
 use vyre_capsule_win::shell;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
@@ -343,35 +343,6 @@ fn spawn_update_loop(app: AppHandle) {
     });
 }
 
-fn net_use(args: &[String]) -> Result<String, String> {
-    let mut cmd = std::process::Command::new(sys("System32\\net.exe"));
-    cmd.args(args);
-    #[cfg(windows)]
-    { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
-    let out = cmd.output().map_err(|e| e.to_string())?;
-    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    if out.status.success() { Ok(text) } else { Err(drive::explain(&text)) }
-}
-
-/// Map a Vyre Drive share (the UNC from the box's files.drive.address) to a free letter and
-/// open it in Explorer. Only 100.100.100.100@8080 shares are accepted, whoever asks.
-#[tauri::command]
-fn mount_drive(unc: String) -> Result<String, String> {
-    if !drive::is_vyre_unc(&unc) { return Err("That is not a Vyre Drive share.".into()); }
-    let used = net_use(&[]).map(|o| drive::used_letters(&o)).unwrap_or_default();
-    let letter = drive::free_letter(&used, |l| std::path::Path::new(&format!("{l}\\")).exists()).ok_or("No free drive letter.")?;
-    net_use(&drive::map_args(&letter, &unc))?;
-    let _ = std::process::Command::new(sys("explorer.exe")).arg(format!("{letter}\\")).spawn();
-    Ok(letter)
-}
-
-#[tauri::command]
-fn unmount_drive(letter: String) -> Result<(), String> {
-    let b = letter.as_bytes();
-    if b.len() != 2 || !b[0].is_ascii_alphabetic() || b[1] != b':' { return Err("That is not a drive letter.".into()); }
-    net_use(&drive::unmap_args(&letter.to_ascii_uppercase())).map(|_| ())
-}
-
 /// A pairing made with the typed code another device showed (relay/client/join.js, the ack typed back there is the person's yes): keep it as the device-first pairing does, pinned to the
 /// box's own address. Only the bundled first-run page may call this; the address is checked by `pin_from_offer`.
 #[tauri::command]
@@ -549,7 +520,7 @@ fn get_link(app: AppHandle) -> Option<serde_json::Value> {
     v.get("link").filter(|l| l.is_object()).cloned()
 }
 
-/// The persistent, hidden, bundled page that holds the box channel and makes box calls (Drive).
+/// The persistent, hidden, bundled page that holds the box channel and makes box calls.
 /// The main panel never gets this: only this window has the device key commands after pairing.
 fn ensure_link_window(app: &AppHandle) {
     if app.get_webview_window("link").is_some() || get_link(app.clone()).is_none() { return; }
@@ -692,21 +663,19 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
-            let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &drive, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_panel(app, "/quick"),
-                    "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
                     "quit" => app.exit(0),
                     _ => {}
                 })

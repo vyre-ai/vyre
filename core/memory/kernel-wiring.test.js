@@ -81,7 +81,7 @@ test("c. personal memory is read only by its person and that person's own assist
   // another member of the Space, or their assistant: refused whatever the caller label says
   for (const [who, agent] of [["per_bob", undefined], ["per_bob", "kit"]]) {
     const tok = await w.session(who, agent ? { agent } : {});
-    for (const label of ["deck", "cli", "capsule", "mcp", "tailnet:bob@example.com"]) {
+    for (const label of ["deck", "cli", "capsule", "mcp", "device:l74gbpyrsbmwy4mi"]) {
       const r = await w.call("memory.stats", {}, label, tok);
       assert.equal(r.code, "denied", `${who} ${agent || ""} as ${label}`);
       assert.match(r.error, /only by its person and that person's own assistant/);
@@ -92,7 +92,7 @@ test("c. personal memory is read only by its person and that person's own assist
 test("c. a call with no kernel chain is refused: the caller label decides nothing, and only the two named exceptions get past", async t => {
   const w = await world(t);
   // no chain at all: a model on the socket, a client's claim, an unproven caller, whatever label it wears
-  for (const label of ["deck", "cli", "local", "mcp", "tailnet:alex@example.com", "harness", "hook"]) {
+  for (const label of ["deck", "cli", "local", "mcp", "device:nw3b43olz4rzbzfe", "harness", "hook"]) {
     const r = await w.call("memory.stats", {}, label);
     assert.equal(r.code, "denied", label);
     assert.match(r.error, /no kernel chain/);

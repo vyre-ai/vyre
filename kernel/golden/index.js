@@ -64,7 +64,7 @@ export function weakened(a, b, allow = []) {
 }
 
 /** A caller that is a model, a guest or an MCP client: the ones a tool must not newly open to without a named reason. */
-export const risky = (/** @type {string} */ id) => /agent/.test(id) || id.startsWith("tailnet-guest") || id.startsWith("mcp") || id.startsWith("harness");
+export const risky = (/** @type {string} */ id) => /agent/.test(id) || id.startsWith("mcp") || id.startsWith("harness");
 
 /**
  * For every tool ADDED by a refresh (present in `b`, absent from `a`, or recorded there as `no_such_tool` for every cell), the callers it would run for:

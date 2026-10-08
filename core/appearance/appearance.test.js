@@ -115,7 +115,7 @@ test("appearance: check accepts a good override and names each broken rule", asy
 
 test("appearance: check answers the hub's call, { key, value, level, device? }, with ok or a message naming the failing pair", async t => {
   const { c } = await world(t);
-  let r = await c("appearance.check", { key: "appearance.tokens", value: { radius: { card: 16 } }, level: "device", device: "tailnet:phone" });
+  let r = await c("appearance.check", { key: "appearance.tokens", value: { radius: { card: 16 } }, level: "device", device: "device:ivlj3jl7jn57i4wx" });
   assert.equal(r.data.ok, true);
   assert.equal(r.data.message, undefined);
   r = await c("appearance.check", { key: "appearance.tokens", value: { color: { paper: { text2: "#B8B2A8" } } }, level: "account" });
@@ -195,7 +195,7 @@ test("appearance: only a person changes the theme; an agent is refused", async t
 test("appearance: a device's value beats the account's, and the check runs at device level too", async t => {
   const { c, hub } = await world(t);
   if (!hub) return t.skip(NO_HUB);
-  const phone = { level: "device", device: "tailnet:phone" };
+  const phone = { level: "device", device: "device:ivlj3jl7jn57i4wx" };
   let r = await c("settings.set", { key: "appearance.tokens", value: { control: { touch: 30 } }, ...phone });
   assert.equal(r.error.code, "bad_input");
   assert.equal(r.error.message, "control.touch: 30 is under the 44 pt touch target");
@@ -207,29 +207,29 @@ test("appearance: a device's value beats the account's, and the check runs at de
   r = await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 20 } }, ...phone });
   assert.ok(!r.error, JSON.stringify(r.error));
 
-  const onPhone = (await c("appearance.resolve", { device: "tailnet:phone" })).data;
+  const onPhone = (await c("appearance.resolve", { device: "device:ivlj3jl7jn57i4wx" })).data;
   const onMac = (await c("appearance.resolve", { device: "mac:studio" })).data;
-  assert.deepEqual([onPhone.scheme, onPhone.tokens.radius.card, onPhone.device], ["paper", 20, "tailnet:phone"]);
+  assert.deepEqual([onPhone.scheme, onPhone.tokens.radius.card, onPhone.device], ["paper", 20, "device:ivlj3jl7jn57i4wx"]);
   assert.deepEqual([onMac.scheme, onMac.tokens.radius.card, onMac.device], ["dark", 16, "mac:studio"]);
   assert.equal(onPhone.rev, onMac.rev, "one hub, one rev");
   assert.notEqual(onPhone.version, onMac.version);
   // A device's value goes, and the account's is back for it.
   assert.ok(!(await c("settings.reset", { key: "appearance.scheme", ...phone })).error);
-  assert.equal((await c("appearance.resolve", { device: "tailnet:phone" })).data.scheme, "dark");
+  assert.equal((await c("appearance.resolve", { device: "device:ivlj3jl7jn57i4wx" })).data.scheme, "dark");
 });
 
 test("appearance: vyred's /v1/theme and /theme.css serve resolve's answer per device, with the rev as the ETag", async t => {
   const { c, root } = await world(t);
   const probe = /** @type {any} */ (await get(root, "/v1/theme"));
   if (probe.status === 404) return t.skip("vyred does not serve /v1/theme on this branch (native-core, ADR 0035 section 3)");
-  await c("settings.set", { key: "appearance.scheme", value: "paper", level: "device", device: "tailnet:phone" });
-  await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } }, level: "device", device: "tailnet:phone" });
-  const want = (await c("appearance.resolve", { device: "tailnet:phone" })).data;
-  const json = /** @type {any} */ (await get(root, "/v1/theme?device=tailnet:phone"));
+  await c("settings.set", { key: "appearance.scheme", value: "paper", level: "device", device: "device:ivlj3jl7jn57i4wx" });
+  await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } }, level: "device", device: "device:ivlj3jl7jn57i4wx" });
+  const want = (await c("appearance.resolve", { device: "device:ivlj3jl7jn57i4wx" })).data;
+  const json = /** @type {any} */ (await get(root, "/v1/theme?device=device:ivlj3jl7jn57i4wx"));
   assert.equal(json.status, 200);
   assert.deepEqual(JSON.parse(json.body).data, want);
-  assert.equal(json.headers.etag, `"${want.rev}-tailnet:phone"`);
-  const css = /** @type {any} */ (await get(root, "/theme.css?device=tailnet:phone"));
+  assert.equal(json.headers.etag, `"${want.rev}-device:ivlj3jl7jn57i4wx"`);
+  const css = /** @type {any} */ (await get(root, "/theme.css?device=device:ivlj3jl7jn57i4wx"));
   assert.equal(css.status, 200);
   assert.match(css.headers["content-type"], /^text\/css/);
   assert.equal(css.body, want.css);
@@ -237,9 +237,9 @@ test("appearance: vyred's /v1/theme and /theme.css serve resolve's answer per de
   const mac = /** @type {any} */ (await get(root, "/theme.css?device=mac:studio"));
   assert.doesNotMatch(mac.body, /--radius-card: 16px;/, "another device keeps the account's");
   // Unchanged: 304. A change through the hub moves the rev, and the ETag with it.
-  assert.equal(/** @type {any} */ (await get(root, "/v1/theme?device=tailnet:phone", { "if-none-match": json.headers.etag })).status, 304);
-  await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 18 } }, level: "device", device: "tailnet:phone" });
-  const moved = /** @type {any} */ (await get(root, "/v1/theme?device=tailnet:phone", { "if-none-match": json.headers.etag }));
+  assert.equal(/** @type {any} */ (await get(root, "/v1/theme?device=device:ivlj3jl7jn57i4wx", { "if-none-match": json.headers.etag })).status, 304);
+  await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 18 } }, level: "device", device: "device:ivlj3jl7jn57i4wx" });
+  const moved = /** @type {any} */ (await get(root, "/v1/theme?device=device:ivlj3jl7jn57i4wx", { "if-none-match": json.headers.etag }));
   assert.equal(moved.status, 200);
   assert.equal(JSON.parse(moved.body).data.tokens.radius.card, 18);
 });

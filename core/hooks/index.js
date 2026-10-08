@@ -35,7 +35,7 @@ const HEADER = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const NOT_A_SIGNATURE = /^(?:content-type|content-length|transfer-encoding|host|user-agent|connection|cookie|x-forwarded-.*|forwarded)$/;
 
 const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
-const isPublic = caller => /^(?:internet|tailnet-guest):/.test(String(caller || ""));
+const isPublic = caller => /^internet:/.test(String(caller || ""));
 const refuse = (message, code = "denied") => Object.assign(new Error(message), { code });
 
 /** Anyone may read what is open, except a guest or the internet. */

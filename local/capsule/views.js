@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { SURFACE_LABELS } from "../../core/modules/index.js";
 import { allowed, fill, fillDeep, dataOf, listFrame, detailFrame, formFrame, askedHash, previewToken, previewOk, effectOf, error, clip, actionsOf, LIMITS } from "./frames.js";
 
-const PERSON = [...SURFACE_LABELS, "tailnet", "device", "space", "agent"];
+const PERSON = [...SURFACE_LABELS, "device", "space", "agent"];
 /** How long the fields of the last list's rows are kept, for the templates of an action on one. */
 const ROW_MS = 60_000;
 /** Answers a tool gives when a credential or a connection is missing. */

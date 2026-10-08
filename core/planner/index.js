@@ -165,7 +165,7 @@ export default {
     let linked = false;
     const checkLink = async () => {
       if (role !== "local") return false;
-      const r = await ctx.call("link.status", {});
+      const r = await ctx.call("wink.server.home", {});
       const was = linked;
       linked = Boolean(r && r.data && r.data.linked);
       if (linked && !was) scheduler.stop();
@@ -174,8 +174,8 @@ export default {
     };
     const offs = [];
     if (role === "local") {
-      offs.push(ctx.events.on("link.paired", () => { checkLink().catch(() => {}); }));
-      offs.push(ctx.events.on("link.unpaired", () => { checkLink().catch(() => {}); }));
+      offs.push(ctx.events.on("device.paired", () => { checkLink().catch(() => {}); }));
+      offs.push(ctx.events.on("device.removed", () => { checkLink().catch(() => {}); }));
     }
     const forward = async (tool, input) => {
       const r = await ctx.remote(tool, input);

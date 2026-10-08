@@ -87,11 +87,11 @@ export default {
     const run = fake ? opts.runner : makeRunner({ bin: opts.bin || process.env.VYRE_HANDS_BIN || undefined });
     const overlay = isOverlay(opts.overlay) ? opts.overlay : fake ? NO_OVERLAY : makeOverlay({ bin: process.env.VYRE_OVERLAY_BIN || undefined });
     // The paired box's origin, for the floor: a Deck or Glass tab in a browser is a Vyre surface.
-    // No link module means no box, which is the answer, not an error.
+    // No paired server means no box, which is the answer, not an error.
     const known = async () => {
-      const r = await ctx.call("link.status", {}).catch(() => null);
+      const r = await ctx.call("wink.server.call", { tool: "names.status", input: {} }).catch(() => null);
       const s = r && r.data;
-      return { box: s && s.linked && s.box && typeof s.box.address === "string" ? s.box.address : null };
+      return { box: s && typeof s.address === "string" ? s.address : null };
     };
     // Which thread, tool call and agent a tool call came from, for the events it causes: a
     // view ties the step to the chat row that asked for it (ADR 0036). Carried per call, so two

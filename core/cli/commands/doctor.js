@@ -91,15 +91,14 @@ export async function diagnose(deps = {}) {
     ? pass("vyred", "vyred is running", buildLabel({ version: d.version, commit: d.commit ?? null, dirty: d.dirty ?? null }))
     : failed("vyred", "vyred is not running", null, "vyre up"));
 
-  // Box-only facts come through vyred. On a Mac they come through the link, from the box.
-  const remote = (name, input = {}) => role === "box" ? tool(name, input) : tool("link.call", { tool: name, input });
+  // Box-only facts come through vyred. On a device they come through Wink, from the server.
+  const remote = (name, input = {}) => role === "box" ? tool(name, input) : tool("wink.server.call", { tool: name, input });
   const up = await h;
-  const linkStatus = role === "box" || !up ? Promise.resolve(null) : within(tool("link.status"), STEP_MS, () => ({ error: { message: "no answer" } }));
+  const linkStatus = role === "box" || !up ? Promise.resolve(null) : within(tool("wink.server.home"), STEP_MS, () => ({ error: { message: "no answer" } }));
   const names = role === "box" && up ? within(tool("names.status"), STEP_MS, () => ({ error: { message: "no answer" } })) : Promise.resolve(null);
   const box = (async () => {
     if (role === "box") { const n = await names; return n && n.data ? n.data.address || null : null; }
-    const l = await linkStatus;
-    return (l && l.data && l.data.box && l.data.box.address) || deps.box || config.load().network?.box || null;
+    return deps.box || config.load().network?.box || null;
   })();
 
   // --------------------------------------------------------------- the network, as the Wink node sees it
@@ -188,17 +187,18 @@ export async function diagnose(deps = {}) {
 
   // --------------------------------------------------------------- what only the box knows
   const paired = role === "box"
-    ? (up ? within(tool("link.peers"), STEP_MS, () => null) : Promise.resolve(null)).then(r => {
-        const n = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.peers || []).length : null;
-        if (n === null) return unknown("paired", "A Mac is paired", up ? "link.peers did not answer" : "vyred is not running");
-        return n ? pass("paired", "A Mac is paired", `${n} Mac${n === 1 ? "" : "s"}`) : failed("paired", "A Mac is paired", "none yet", "on your Mac: vyre up");
+    ? (up ? within(tool("wink.access"), STEP_MS, () => null) : Promise.resolve(null)).then(r => {
+        const n = r && r.data ? (Array.isArray(r.data.devices) ? r.data.devices.filter(x => x.kind !== "server" && x.kind !== "storage").length : null) : null;
+        if (n === null) return unknown("paired", "A device is paired", up ? "wink.access did not answer" : "vyred is not running");
+        return n ? pass("paired", "A device is paired", `${n} device${n === 1 ? "" : "s"}`) : failed("paired", "A device is paired", "none yet", "on your computer or phone: pair with this server's code");
       })
-    : linkStatus.then(l => {
-        if (!up) return unknown("paired", "This Mac is paired", "vyred is not running", "vyre up");
+    : linkStatus.then(async l => {
+        if (!up) return unknown("paired", "This device is paired", "vyred is not running", "vyre up");
         const d = l && l.data;
-        if (!d) return unknown("paired", "This Mac is paired", (l && l.error && l.error.message) || "link.status did not answer");
-        if (!d.linked) return failed("paired", "This Mac is paired", d.pending ? `waiting for approval, code ${d.pending.code}` : "not paired", d.pending ? `on the box: vyre link approve ${d.pending.code}` : "vyre up");
-        return d.reachable ? pass("paired", "This Mac is paired", d.box.name || host(d.box.address)) : failed("paired", "This Mac is paired", "paired, but the box is not answering", "check the box is on: vyre status on the box");
+        if (!d) return unknown("paired", "This device is paired", (l && l.error && l.error.message) || "wink.server.home did not answer");
+        if (!d.linked) return failed("paired", "This device is paired", "not paired", "vyre link pair <code>");
+        const probe = await within(tool("wink.server.call", { tool: "system.echo", input: {} }), STEP_MS, () => ({ error: { message: "no answer" } }));
+        return probe.error ? failed("paired", "This device is paired", "paired, but the server is not answering", "check the server is on: vyre status on the server") : pass("paired", "This device is paired", d.server.name || d.server.id);
       });
   const linked = paired.then(p => role === "box" || p.ok === true);
   const passkey = Promise.all([box, linked]).then(async ([a, ok]) => {

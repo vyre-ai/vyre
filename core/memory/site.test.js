@@ -66,9 +66,9 @@ test("site.put then site.get: the card comes back, and since_rev says not modifi
 
 test("who may use it: the person's surfaces and first-party modules; never an agent or an added module", async t => {
   const w = await world(t);
-  for (const who of ["deck", "cli", "capsule", "local", "tailnet:alex@example.com"]) assert.equal((await w.call("memory.site.get", { origin: ORIGIN }, who)).error, undefined, who);
+  for (const who of ["deck", "cli", "capsule", "local", "device:nw3b43olz4rzbzfe"]) assert.equal((await w.call("memory.site.get", { origin: ORIGIN }, who)).error, undefined, who);
   assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() }, "module:hands-chrome", { firstParty: true })).data.accepted, true);
-  for (const [who, meta] of [["mcp:agent:juno", {}], ["mcp", {}], ["module:bakery", {}], ["module:bakery", { firstParty: false }], ["tailnet:agent:juno", {}], ["harness:agent:juno", {}]]) {
+  for (const [who, meta] of [["mcp:agent:juno", {}], ["mcp", {}], ["module:bakery", {}], ["module:bakery", { firstParty: false }], ["agent:juno", {}], ["harness:agent:juno", {}]]) {
     assert.equal((await w.call("memory.site.get", { origin: ORIGIN }, who, meta)).code, "denied", who);
     assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() }, who, meta)).code, "denied", who);
   }

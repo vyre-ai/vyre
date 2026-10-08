@@ -23,7 +23,7 @@ test("surfaceFor with a kernel chain: only the chain names the person's own surf
   assert.equal(surfaceFor({ surface: "capsule" }, "web", "", hop({ device: "device:k1" }), "per_owner"), "capsule");
   assert.equal(surfaceFor({ surface: "deck" }, "web", "", hop({ device: "device:k1" }, "per_other"), "per_owner"), "via:web", "another member's device is not the owner's");
   assert.equal(surfaceFor({ surface: "cli:9" }, "cli", "", hop({ surface: "cli" }), "per_owner"), "cli:9", "the person's own socket names which surface");
-  for (const label of ["web", "setup", "device:aaaaaaaaaaaaaaaa", "tailnet:owner@example", "tailnet:other@x"]) {
+  for (const label of ["web", "setup", "device:aaaaaaaaaaaaaaaa", "device:sglwyckbiq7ahkl6", "device:z6pmyd34b6pffzjl"]) {
     assert.equal(surfaceFor({ surface: "deck" }, label, "owner@example", null, "per_owner"), `via:${label}`, `${label} with no chain`);
     assert.equal(surfaceFor({}, label, "owner@example", { hops: [{ actor: { kind: "service", id: "x" }, via: {} }] }, "per_owner"), label, `${label} with a service chain`);
   }
@@ -45,7 +45,7 @@ test("on a kernel-on daemon the keyboard holder follows the chain: a web, setup,
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   const lease = async (/** @type {string} */ label, /** @type {any} */ meta) => (await d.registry.call("threads.lease", { thread: r.data.id, surface: "deck" }, label, meta)).data;
-  for (const label of ["web", "setup", "device:aaaaaaaaaaaaaaaa", "tailnet:owner@example", "tailnet:other@x"]) {
+  for (const label of ["web", "setup", "device:aaaaaaaaaaaaaaaa", "device:sglwyckbiq7ahkl6", "device:z6pmyd34b6pffzjl"]) {
     const got = await lease(label, undefined);
     if (got) assert.equal(ownSurface(got.holder), false, `${label} must not hold the keyboard as the person's own surface (got ${got.holder})`);
   }

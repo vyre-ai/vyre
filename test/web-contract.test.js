@@ -20,8 +20,6 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
-  "onboard.tailscale": "the old owner wizard (web/onboard) still has its Tailscale step; no setup path opens the wizard (the app's first run replaced it) and it is deleted with the 0.3.0 cleanup (team/BACKLOG.md).",
-  "threads.continue-here": "sessions ships it (0.2.2, drafted in CHAT.md); the Mac session's \"Continue on the server\" button says so when a box lacks it. Leaves this list when sessions merges.",
   "github.star.status": "github ships it (0.2.2, asked in CHAT.md); the star button shows nothing on a box without it. Leaves this list when github merges.",
   "github.star": "github ships it (0.2.2, asked in CHAT.md); only called after status says connected and not starred. Leaves this list when github merges.",
   "watchers.card": "watchers ships it (work/watchers 4e04a220); the watcher card reads it only after a proposal and says so in a line when it fails. Leaves this list when watchers merges.",

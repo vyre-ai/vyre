@@ -182,12 +182,12 @@ test("term: a surface is <kind>:<name>; the CLI opens as cli:<name>, and a bare 
 
 test("term: only a person's surfaces may use it; a tailnet guest and an agent are refused", async t => {
   const { reg, work } = await registry(t);
-  for (const caller of ["tailnet-guest:someone@example.com", "mcp", "mcp:agent:kit", "anonymous"]) {
+  for (const caller of ["guest:someone@example.com", "mcp", "mcp:agent:kit", "anonymous"]) {
     const r = await reg.call("term.open", { cwd: work, surface: DECK }, caller);
     assert.ok(r.error, `${caller} should be refused`);
     assert.ok(["denied", "no_such_tool"].includes(r.error.code), `${caller}: ${r.error.code}`);
   }
-  assert.ok(!reg.listTools("tailnet-guest:x").some(x => x.name.startsWith("term.")));
+  assert.ok(!reg.listTools("guest:x").some(x => x.name.startsWith("term.")));
 });
 
 test("term: the owner opens a terminal with no passkey, and only the screen that opened it reattaches", async t => {
@@ -200,9 +200,9 @@ test("term: the owner opens a terminal with no passkey, and only the screen that
   // Another screen, another caller or another tailnet node cannot pick it up.
   assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "not_found");
   assert.equal((await reg.call("term.attach", { term: o.term, surface: DECK }, "cli")).error?.code, "not_found");
-  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
-  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "not_found");
-  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
+  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nPhone" }, person: PERSON });
+  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "not_found");
+  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nPhone" }, person: PERSON });
 });
 
 test("term: cwd must pass the files guard", async t => {
@@ -418,7 +418,7 @@ test("term: an offset that has left the ring gets the whole ring, from a line st
 test("term: with a real dtach the shell survives a vyred stop and start, and from= gets only new bytes", { skip: NO_DTACH, timeout: 60_000 }, async t => {
   const first = await registry(t);
   const port1 = await server(t, first.reg);
-  const o = await ok(first.reg, "term.open", { cwd: path.join(first.work, "proj"), surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  const o = await ok(first.reg, "term.open", { cwd: path.join(first.work, "proj"), surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nLaptop" } });
   assert.equal(o.durable, true);
   const c = await connect(port1, o.path + "&from=0");
   c.send({ t: "in", d: "sleep 1000 & echo BG=$!; echo OL''D-MARK\n" });
@@ -446,8 +446,8 @@ test("term: with a real dtach the shell survives a vyred stop and start, and fro
   const port2 = await server(t, second.reg);
   const listed = (await ok(second.reg, "term.list", {})).terms;
   assert.deepEqual(listed.map(x => [x.term, x.durable, x.offset]), [[o.term, true, at.offset]]);
-  assert.equal((await second.reg.call("term.attach", { term: o.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
-  const re = await ok(second.reg, "term.attach", { term: o.term, surface: DECK, from: at.offset }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  assert.equal((await second.reg.call("term.attach", { term: o.term, surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  const re = await ok(second.reg, "term.attach", { term: o.term, surface: DECK, from: at.offset }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nLaptop" } });
   assert.equal(re.durable, true);
   const c2 = await connect(port2, re.path);
   assert.equal(c2.status, 101);
@@ -474,21 +474,21 @@ test("term: a terminal the box lost while vyred was down (a deploy) answers term
   const dir = path.join(root, "run", "term");
   fs.mkdirSync(dir, { recursive: true });
   // What a vyred in the old container left: a table row whose socket and master went with it.
-  const key = `tailnet:alex|nLaptop|${DECK}`;
+  const key = `device:ie22vhobxbbkmu66|nLaptop|${DECK}`;
   fs.writeFileSync(path.join(dir, "terms.json"), JSON.stringify({ terms: [{ id: "tlost", cwd: "/", surface: DECK, key, offset: 42, started: Date.now(),
     pid: 999_999, sock: path.join(dir, "tlost.sock"), left: Date.now(), cols: 80, rows: 24 }] }));
   const { reg, events, work, stop } = await registry(t, {}, { root });
   const closed = events.since(0, { type: "term.closed", limit: 10 });
   assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "server updated" }]);
-  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON });
+  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nLaptop" }, person: PERSON });
   assert.equal(r.error?.code, "terminal_closed");
   assert.match(r.error.message, /server was updated/);
   // Another screen still learns nothing about it.
-  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON })).error?.code, "not_found");
+  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nPhone" }, person: PERSON })).error?.code, "not_found");
   // And it is remembered across the next restart, without a second announcement.
   await stop();
   const again = await registry(t, {}, { root, work });
-  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "terminal_closed");
+  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "device:ie22vhobxbbkmu66", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "terminal_closed");
   assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
 });
 

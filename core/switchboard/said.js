@@ -14,13 +14,11 @@ export const MAX_MENTIONS = 8;
 /**
  * A caller that is the person at their own surface: lib/caller's isPerson (cli, local, deck,
  * capsule, the owner's device over the tailnet; never an agent or thread label, a bare mcp,
- * harness, hook or guest) or the box's link. Labels are matched whole, never by prefix.
+ * harness, hook or guest). Labels are matched whole, never by prefix.
  * @param {unknown} caller
  */
 export function personTurn(caller) {
-  const c = String(caller || "");
-  if (isPerson(c)) return true;
-  return /^link:[^\s:]+$/.test(c);
+  return isPerson(String(caller || ""));
 }
 
 /**

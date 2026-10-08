@@ -21,7 +21,7 @@
 // redact().
 //
 // Which binary: VYRE_HEADSCALE_BIN wins; under node --test there is none unless VYRE_WINK_REAL=1,
-// so no test reaches a real Headscale by accident (the same rule as VYRE_TAILSCALE_BIN).
+// so no test reaches a real Headscale by accident.
 
 import fs from "node:fs";
 import net from "node:net";

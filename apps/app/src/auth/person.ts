@@ -328,12 +328,9 @@ export const HUMAN_ONLY = new Set([
   "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
   "vault.session.open", "vault.export", "vault.kit",
   "learn.skill-install",
-  "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   "presence.person.start",
-  "files.drive.share", "files.drive.unshare",
   "hooks.enable", "hooks.open", "hooks.close",
-  "computers.tailnet.set", "computers.egress.set",
   "projects.access.grant",
 ]);
 

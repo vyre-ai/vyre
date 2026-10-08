@@ -160,13 +160,13 @@ test("recall.watch: a session quiet past the idle time ends its watch", async t 
 
 test("recall.watch: a person's surfaces only, and an unknown session is not_found", async t => {
   const w = await world(t);
-  for (const caller of ["tailnet-guest:someone@example.com", "mcp", "mcp:agent:kit"]) {
+  for (const caller of ["guest:someone@example.com", "mcp", "mcp:agent:kit"]) {
     for (const [tool, input] of [["recall.watch", { session: ID }], ["recall.unwatch", { watch: "w_0" }]]) {
       const r = await w.reg.call(tool, input, caller);
       assert.ok(["denied", "no_such_tool"].includes(r.error?.code), `${caller} used ${tool}`);
     }
   }
-  for (const caller of ["cli", "local", "capsule", "tailnet:alex@example.com"]) {
+  for (const caller of ["cli", "local", "capsule", "device:nw3b43olz4rzbzfe"]) {
     const r = await w.reg.call("recall.watch", { session: ID }, caller);
     assert.ok(r.data?.watch, `${caller}: ${JSON.stringify(r.error)}`);
   }

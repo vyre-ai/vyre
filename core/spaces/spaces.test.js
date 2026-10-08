@@ -576,11 +576,11 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   assert.equal((await d.call("spaces.invites.redeem", acc.redeem, "device:bbbbbbbbbbbbbbbb")).error?.code, "used_up");
   const other = person();
   const otherProof = crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${JSON.parse(Buffer.from(t2[0], "base64url")).id}\nharlow.vyre.run\n${other.id}`), crypto.createPrivateKey({ key: Buffer.from(other.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
-  assert.equal((await d.call("spaces.invites.redeem", { token: made.member.token, person: { id: other.id, publicKey: other.publicKey }, proof: otherProof }, "tailnet:x")).error?.code, "used_up");
+  assert.equal((await d.call("spaces.invites.redeem", { token: made.member.token, person: { id: other.id, publicKey: other.publicKey }, proof: otherProof }, "device:fvyrmqvxe2yeialc")).error?.code, "used_up");
   // A proof from another key, or for another person's id, is refused.
   const adminLink = made.admin;
-  assert.equal((await d.call("spaces.invites.redeem", { token: adminLink.token, person: { id: other.id, publicKey: other.publicKey }, proof: acc.redeem.proof }, "tailnet:x")).error?.code, "bad_proof");
-  assert.equal((await d.call("spaces.invites.redeem", { token: adminLink.token, person: { id: kitId.id, publicKey: other.publicKey }, proof: otherProof }, "tailnet:x")).error?.code, "bad_proof");
+  assert.equal((await d.call("spaces.invites.redeem", { token: adminLink.token, person: { id: other.id, publicKey: other.publicKey }, proof: acc.redeem.proof }, "device:fvyrmqvxe2yeialc")).error?.code, "bad_proof");
+  assert.equal((await d.call("spaces.invites.redeem", { token: adminLink.token, person: { id: kitId.id, publicKey: other.publicKey }, proof: otherProof }, "device:fvyrmqvxe2yeialc")).error?.code, "bad_proof");
   // The admin, manager and temp links each make that role.
   const roles = {};
   for (const role of ["admin", "manager", "temp"]) {
@@ -588,7 +588,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
     const tok = made[role].token;
     const id = JSON.parse(Buffer.from(tok.split(".")[0], "base64url")).id;
     const proof = crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${id}\nharlow.vyre.run\n${p.id}`), crypto.createPrivateKey({ key: Buffer.from(p.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
-    const r = await d.call("spaces.invites.redeem", { token: tok, person: { id: p.id, publicKey: p.publicKey }, proof }, "tailnet:x");
+    const r = await d.call("spaces.invites.redeem", { token: tok, person: { id: p.id, publicKey: p.publicKey }, proof }, "device:fvyrmqvxe2yeialc");
     assert.ok(!r.error, `${role}: ${JSON.stringify(r.error)}`);
     roles[role] = r.data.membership;
   }
@@ -612,7 +612,7 @@ test("invites: revoke, expiry and the sweep, and a revoked link is refused by th
   assert.equal(host.error?.code, "revoked", "the home knows it was cancelled");
   const p = person();
   const proof = crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${a.id}\nharlow.vyre.run\n${p.id}`), crypto.createPrivateKey({ key: Buffer.from(p.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
-  assert.equal((await d.call("spaces.invites.redeem", { token: a.token, person: { id: p.id, publicKey: p.publicKey }, proof }, "tailnet:x")).error?.code, "revoked");
+  assert.equal((await d.call("spaces.invites.redeem", { token: a.token, person: { id: p.id, publicKey: p.publicKey }, proof }, "device:fvyrmqvxe2yeialc")).error?.code, "revoked");
   assert.equal((await d.call("spaces.invites.revoke", { space, id: "inv_nothingatallhere" })).error?.code, "unknown_invite");
   // A day passes: b is past its life; the sweep says so once.
   w.clock.t += 2 * DAY;
@@ -1045,7 +1045,7 @@ test("space creation asks the kernel which store it would use: a machine that ca
 test("spaces.code.submit and spaces.invites.redeem take only the relay and the devices: a local anonymous or model caller cannot spend a use count or burn the five tries", async t => {
   const w = world(t);
   const { d, space } = await harlow(t, w);
-  for (const caller of ["cli", "mcp", "mcp:agent:juno", "harness", "tailnet-guest:mallory@example.com", "hook"]) {
+  for (const caller of ["cli", "mcp", "mcp:agent:juno", "harness", "guest:mallory@example.com", "hook"]) {
     const a = await d.call("spaces.code.submit", { space, code: "000000" }, caller);
     const b = await d.call("spaces.invites.redeem", { token: "x.y", person: { id: "per_" + "a".repeat(26) }, proof: "z" }, caller);
     for (const r of [a, b]) assert.ok(["denied", "no_such_tool"].includes(r.error?.code), `${caller}: ${JSON.stringify(r.error)}`);
@@ -1243,9 +1243,9 @@ test("an invite made `to` a person refuses another person at redeem (forbidden),
   assert.ok(tok, JSON.stringify(made));
   const id = JSON.parse(Buffer.from(tok.split(".")[0], "base64url")).id;
   const prove = p => crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${id}\nharlow.vyre.run\n${p.id}`), crypto.createPrivateKey({ key: Buffer.from(p.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
-  const wrong = await d.call("spaces.invites.redeem", { token: tok, person: { id: other.id, publicKey: other.publicKey }, proof: prove(other) }, "tailnet:x");
+  const wrong = await d.call("spaces.invites.redeem", { token: tok, person: { id: other.id, publicKey: other.publicKey }, proof: prove(other) }, "device:fvyrmqvxe2yeialc");
   assert.equal(wrong.error?.code, "forbidden", JSON.stringify(wrong));
-  const right = await d.call("spaces.invites.redeem", { token: tok, person: { id: named.id, publicKey: named.publicKey }, proof: prove(named) }, "tailnet:x");
+  const right = await d.call("spaces.invites.redeem", { token: tok, person: { id: named.id, publicKey: named.publicKey }, proof: prove(named) }, "device:fvyrmqvxe2yeialc");
   assert.ok(!right.error, JSON.stringify(right.error));
   const row = (await d.ok("spaces.invites.list", { space })).invites.find(r => r.id === id);
   assert.deepEqual([row.accepted_by, row.joined_by_label, row.joined_device, row.to], [[named.id], [null], null, named.id]);

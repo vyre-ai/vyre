@@ -1,6 +1,6 @@
 // @ts-check
 // core/files/space-drive.js: the Space's own Drive (kernel/storage/drive.js, behind kernel/gateway/drive.js) for the app: upload a new version of a file, list a file's versions, restore one.
-// Not the box's shared folders (files.drive.list and files.drive.read in browse.js are those). Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
+// The box's shared folders (the mounted VyreDrive) are gone until the mounted Drive returns in 0.3.0. Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
 // no person is refused, the kernel's `drive.write`, `drive.read` and `drive.restore` grants decide, a path is checked in one form (kernel/seal/uses.js safePath) and an upload is size-capped.
 // A Space with no Drive wired answers `unavailable`.
 import { createDoor } from "../../lib/gateway-door.js";
@@ -12,6 +12,8 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
 /** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
 export const MAX_UPLOAD = 8 * 1024 * 1024;
+/** How many Drive entries one name search looks through before it stops. */
+const SEARCH_SCAN = 20_000;
 
 /** @param {any} ctx */
 export function registerSpaceDrive(ctx) {
@@ -24,14 +26,79 @@ export function registerSpaceDrive(ctx) {
   } });
   const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
 
+  /** The Space's Drive state for the person asking: is one wired, and can they list the top of it? Never throws. */
+  const state = async (/** @type {any} */ meta) => {
+    try {
+      const d = await door.open({}, meta);
+      if (!d.gateway.drive) return { enabled: false, why: "this Space has no Drive yet" };
+      try { const r = await d.gateway.drive.listPage(d.chain, "", { limit: 1000 }); return { enabled: true, files: r.entries.length, more: r.next !== null }; }
+      catch { return { enabled: true, readable: false, why: "you may not list this Drive" }; }
+    } catch { return { enabled: null, why: "the Drive's state is for a signed-in person" }; }
+  };
+  ctx.tool("files.drive.status", {
+    description: "The Space's own Drive: whether one is wired here and how many files the caller can see at the top. { enabled, files?, more?, why? }.",
+    input: obj({}), run: async (/** @type {any} */ _i, /** @type {any} */ meta) => ({ space: await state(meta) }),
+  });
+
+  /** Names in the Space's Drive that hold every word of `q`, under the caller's own grants (the Drive keeps no plain index, so this reads names, never contents). Up to `scan` entries are looked at. */
+  const find = async (/** @type {string} */ q, /** @type {number} */ limit, /** @type {any} */ i, /** @type {any} */ meta) => {
+    const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const d = await door.open(i || {}, meta);
+    if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+    const out = []; let after = null, looked = 0;
+    for (;;) {
+      const r = await d.gateway.drive.listPage(d.chain, "", { limit: 1000, after });
+      for (const e of r.entries) {
+        const path = String(e.path ?? e.name ?? e), hay = path.toLowerCase();
+        if (words.every(w => hay.includes(w))) { out.push({ path, name: path.split("/").pop(), ...(typeof e.size === "number" ? { size: e.size } : {}) }); if (out.length >= limit) return out; }
+      }
+      looked += r.entries.length;
+      if (!r.next || looked >= SEARCH_SCAN) return out;
+      after = r.next;
+    }
+  };
+  ctx.tool("files.drive.search", {
+    description: "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Answers { results: [{ path, name, size? }] }. Names only: the Drive keeps its contents sealed.",
+    input: obj({ space: str, q: str, limit: { type: "integer" } }, ["q"]), callers: CALLERS,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const q = String((i || {}).q ?? "").trim();
+      if (!q) throw refuse("q is required", "bad_input");
+      return { results: await find(q, Math.min(500, Math.max(1, Number(i.limit) || 50)), i, meta) };
+    },
+  });
+
+  // The # tag for files (core/mentions): the picker searches the Drive by name as the person asking; picking one tags that file.
+  ctx.tool("files.mentions.search", {
+    description: "Files in the Space's Drive whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
+    input: obj({ q: str, limit: { type: "integer" }, space: str }), callers: [...CALLERS, "space", "agent"],
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const q = String((i || {}).q ?? "").trim(), limit = Math.min(50, Math.max(1, Number((i || {}).limit) || 30));
+      if (!q) return { items: [] };
+      let found;
+      try { found = await find(q, limit, i, meta); } catch { return { items: [] }; }
+      return { items: found.map((/** @type {any} */ f) => ({ id: f.path, name: f.name, hint: f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "", icon: "file" })) };
+    },
+  });
+  ctx.tool("files.mentions.resolve", {
+    description: "Say which Drive file a # tag names, for the chat it was tagged in. Only the sessions module or the assistant call it. Reading stays under the reader's own grants: this grants nothing.",
+    input: obj({ id: str, thread: str, said: str }, ["id", "thread"]), callers: ["module"],
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!/^module:(sessions|assistant)$/.test(String((meta && meta.caller) || ""))) throw refuse("only the chat itself resolves a tag", "denied");
+      const p = pathOf(i.id);
+      return { name: p.split("/").pop(), hint: p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "",
+        note: `The person tagged the file "${p}" in the Space's Drive. Read it with files.drive.space.read {path: "${p}"}; your own grants decide whether you may.` };
+    },
+  });
+
   tool("files.drive.upload", `Put a file in the Space's Drive as a new version, under the caller's own grants: { space?, path, base64, base? }. \`path\` is relative (Clients/A/retainer.pdf), \`base64\` the bytes (at most ${MAX_UPLOAD / 1048576} MB here), \`base\` the version you edited from (a second writer on one file makes a new version flagged conflict, never a merge). Answers { path, version, conflict }.`,
     obj({ space: str, path: str, base64: str, base: { type: "integer" } }, ["path", "base64"]), async (i, d, drive) => {
       const p = pathOf(i.path), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
       // Check the size before decoding: 4 base64 characters carry 3 bytes.
-      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow`, "too_large");
       const bytes = new Uint8Array(Buffer.from(text, "base64"));
-      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow`, "too_large");
       if (i.base !== undefined && (!Number.isInteger(i.base) || i.base < 1)) throw refuse("base is a version number", "bad_input");
       const r = await drive.put(d.chain, p, bytes, { base: i.base ?? null });
       return { path: p, version: r.version, conflict: Boolean(r.conflict), size: bytes.length };

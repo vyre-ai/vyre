@@ -1,29 +1,29 @@
 // @ts-check
-// link — the Mac and the box as one system (docs/SPEC.md, sections 3 and 9; ADR 0002).
-//
-// On the box, this module pairs Macs, answers their check-ins, and asks them for their sessions
-// (link.macs.call). On the Mac, it pairs with the box, carries ctx.remote(tool, input) to the
-// box's tools, answers the box's questions, and proxies the box's event stream at
-// /v1/link/events so the Capsule sees box threads as they happen. The box identifies the Mac by
-// its WireGuard address (the box's tailnet listener does that); the Mac identifies the box the
-// same way, pinned to the node it paired with. No header is trusted in either direction.
+// link: the companion core's side on a server (docs: a Windows PC's local core, vouched for by the desktop app device that is its parent; companion.js). Pairing a computer or a phone with a
+// server is Wink's (core/wink); a tool on the server from a device is wink.server.call. What is left here is the companion's table and its tools.
 
-import { boxSide } from "./box.js";
-import { macSide } from "./mac.js";
-
-/**
- * Test seams, keyed by the VYRE_HOME a vyred runs with. Tests run a Mac and a box in one process
- * and simulate the tailnet with these: { verify(ip), insecure, heartbeat, pollMs, hostname, timeout, now,
- * hold, allow } (hold: how long link.serve waits; allow: the box's list of tools it may ask a Mac for).
- * Production never sets them.
- * @type {Map<string, any>}
- */
-export const seams = new Map();
+import { companionSide } from "./companion.js";
+import { boxKey } from "./key.js";
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    const seam = seams.get(ctx.paths.root) || {};
-    return ctx.config.role === "box" ? boxSide(ctx, seam) : macSide(ctx, seam);
+    const db = ctx.store.db;
+    ctx.store.migrate(MIGRATIONS);
+    const now = Date.now;
+    let signing = null;
+    const key = () => (signing ||= boxKey(ctx.paths.root));
+    const companion = companionSide(ctx, { db, now, box: () => ({ pub: key().publicKey, name: ctx.config.name || null }),
+      deviceInfo: async id => { const r = /** @type {any} */ (await ctx.call("relay.device.info", { id })); return r && r.data ? r.data : null; } });
+    return { async stop() { companion.stop(); } };
   },
 };
+
+/** The list is append-only (test/migrations-append-only.test.js): a released step is never edited. The columns a Mac pairing once used stay, unused. */
+export const MIGRATIONS = [
+  `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
+       key_hash TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, last_seen INTEGER)`,
+  `ALTER TABLE link_peers ADD COLUMN kind TEXT NOT NULL DEFAULT 'mac'`,
+  `ALTER TABLE link_peers ADD COLUMN parent TEXT`,
+  `ALTER TABLE link_peers ADD COLUMN core_pub TEXT`,
+];

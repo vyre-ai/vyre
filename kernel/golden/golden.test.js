@@ -31,10 +31,6 @@ test("golden sanity: the facts the kernel brief relies on hold today", () => {
   for (const t of Object.keys(g.roles.box.rows)) {
     if (cell("box", t, "hook", "bare") === "would run") assert.notEqual(cell("box", t, "cli", "person+proof"), "would run", `${t} is a hook tool`);
   }
-  // a guest never gets further than a person would
-  for (const t of Object.keys(g.roles.box.rows)) {
-    if (cell("box", t, "tailnet-guest", "person+proof") === "would run") assert.equal(cell("box", t, "cli", "person+proof"), "would run", `${t}: guest ran where the person's own surface did not`);
-  }
 });
 
 test("the matrix lists are unique and the world ids are stable", () => {
@@ -78,11 +74,11 @@ test("a refresh fails on any existing cell moving from refused to run unless an 
 });
 
 test("a refresh lists the callers each added tool runs for and refuses one that runs for a model, guest or MCP caller unless allow.json names it", () => {
-  const set = rows => ({ v: 1, callers: ["cli", "mcp:agent:kit", "tailnet-guest", "deck"], worlds: ["bare"], legend: { R: "would run", a: "denied", b: "no_such_tool" }, roles: { box: { rows, emptyBad: {} } } });
+  const set = rows => ({ v: 1, callers: ["cli", "mcp:agent:kit", "cli:agent:kit", "deck"], worlds: ["bare"], legend: { R: "would run", a: "denied", b: "no_such_tool" }, roles: { box: { rows, emptyBad: {} } } });
   const was = set({ old: "RaaR" });
   assert.deepEqual(addedRuns(was, set({ old: "RaaR", mine: "RaaR" })), [{ role: "box", tool: "mine", callers: ["cli", "deck"], risky: [] }], "person-only: nothing risky");
   const open = addedRuns(was, set({ old: "RaaR", fresh: "RRRR" }));
-  assert.deepEqual(open[0].risky, ["mcp:agent:kit", "tailnet-guest"]);
+  assert.deepEqual(open[0].risky, ["mcp:agent:kit", "cli:agent:kit"]);
   assert.deepEqual(addedRuns(was, set({ old: "RaaR", fresh: "RRRR" }), [{ tool: "fresh", reason: "an assistant starts these on purpose" }])[0].risky, []);
   assert.equal(addedRuns(was, set({ old: "RaaR", fresh: "RRRR" }), [{ tool: "fresh", reason: "" }])[0].risky.length, 2, "a reason is required");
   assert.deepEqual(addedRuns(was, set({ old: "RaaR", ghost: "bbbb" })), [], "a tool nobody can run is not an opening");

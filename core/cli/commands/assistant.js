@@ -23,14 +23,14 @@ const authFor = via => via === "subscription" ? { vault: "claude-setup-token", f
   : via === "api-key" ? { fallback: "anthropic-api-key" } : {};
 
 /**
- * A tool on the machine the assistant lives on: the box. On a Mac paired with one, through the
- * link; otherwise here.
+ * A tool on the machine the assistant lives on: the server. On a device paired with one, through
+ * Wink (wink.server.call); otherwise here.
  * @param {(name: string, input?: any) => Promise<any>} [tool]
  */
 export function onBox(tool = (n, i = {}) => call(n, i)) {
   const cfg = config.load();
-  const remote = cfg.role === "local" && cfg.network && cfg.network.box;
-  return remote ? (name, input = {}) => tool("link.call", { tool: name, input }) : tool;
+  const remote = cfg.role === "local";
+  return remote ? (name, input = {}) => tool("wink.server.call", { tool: name, input }) : tool;
 }
 
 /** The assistant agent, or null. @param {(name: string, input?: any) => Promise<any>} t */

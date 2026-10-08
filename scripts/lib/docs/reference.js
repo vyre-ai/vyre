@@ -81,7 +81,7 @@ export function harvest({ root = REPO, tmp = os.tmpdir() } = {}) {
     const out = path.join(home, "harvest.json");
     const none = path.join(home, "no-such-binary");
     const env = { PATH: process.env.PATH || "/usr/bin:/bin", HOME: home, TMPDIR: path.join(home, "tmp"), VYRE_HOME: path.join(home, ".vyre"),
-      VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: none, VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
+      VYRE_NO_DIALOGS: "1", VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
       VYRE_HANDS_BIN: none, VYRE_NO_OPEN: "1", VYRE_NO_UP: "1" };
     fs.mkdirSync(env.TMPDIR);
     const r = spawnSync(process.execPath, [path.join(HERE, "harvest.mjs"), root, out], { env, encoding: "utf8", timeout: 120_000 });
@@ -257,7 +257,6 @@ const ENV_MEANING = {
   SOCKET: "The path of vyred's socket, for the Capsule.",
   SSH_BIN: "The `ssh` binary to run.",
   SUPERVISOR: "What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it.",
-  TAILSCALE_BIN: "The `tailscale` binary to run. A path that does not exist means no tailnet.",
   TAILSCALE_UP_FLAGS: "Extra flags for `tailscale up`, space separated.",
   TEXT_PRUNE_MS: "How long a thread's streamed text events are kept before they are pruned.",
   THREAD: "The session id of a headless thread vyred runs.",

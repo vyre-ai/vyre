@@ -1,9 +1,7 @@
 // @ts-check
 // sync — a paired device sends its own Claude Code session files to the box (ADR 0008 5a,
-// session import). Not link's: link owns pairing and what capability a peer's kind carries
-// (link.macs and link.macs.call never see a "device" kind peer at all); this module owns the
-// upload protocol only, and asks link.peer-of (internal) to turn a connection's own tailnet node
-// into the peer it is, since a device's claimed name is never trusted.
+// session import). This module owns the upload protocol only, and asks relay.device.info (internal) to turn a connection's own
+// paired device into the peer it is, since a device's claimed name is never trusted.
 //
 // sync.upload.plan and sync.upload.start are ordinary tool calls (small JSON). The chunk bytes
 // ride a dedicated route (core/daemon/index.js POST /v1/sync/upload/<id>) as
@@ -46,7 +44,7 @@ const projectOf = rel => { const p = String(rel).split("/"); return p.length > 2
 const includedSet = row => { if (!row.plan_included) return null; try { const a = JSON.parse(row.plan_included); return Array.isArray(a) ? new Set(a.map(String)) : null; } catch { return null; } };
 
 /** How many chunk bytes go in one request (link.upload's carrier: link.reply's own body sizing). */
-const SEND_CHUNK = 1024 * 1024;
+const SEND_CHUNK = 256 * 1024;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -116,17 +114,18 @@ export default {
       return full;
     }
 
-    /** The link_peers row this connection's own tailnet node is, or null. Never trusts a claimed name. */
+    /** Who this connection is: a companion core by its own proof, or the paired device the peer door admitted. Never trusts a claimed name. */
     async function peerOf(peer, tool, companion, input) {
       // A companion core proves its own key on every call (core/link/companion.js): when a token is present it alone decides who the
-      // peer is, and a bad one is no peer. It never falls back to the tailnet node, which a companion row does not carry.
+      // peer is, and a bad one is no peer. It never falls back to the connection's device, which a companion row does not carry.
       if (companion !== undefined && companion !== null) {
         const r = await ctx.call("link.companion.verify", { token: companion, tool, input });
         return r && r.data ? { id: r.data.id, name: r.data.name, kind: "companion" } : null;
       }
-      if (!peer || !peer.stableId) return null;
-      const r = await ctx.call("link.peer-of", { stableId: String(peer.stableId) });
-      return r && r.data ? r.data : null;
+      if (!peer || !peer.stableId || peer.kind !== "device") return null;
+      const r = await ctx.call("relay.device.info", { id: String(peer.stableId) });
+      const d = r && r.data;
+      return d && !d.removed ? { id: String(peer.stableId), name: d.name || String(peer.stableId), kind: d.kind } : null;
     }
 
     /** This peer's sync row, made on first need (off, no quota set). */
@@ -177,11 +176,12 @@ export default {
     // below only stop new uploads (sync_on off, or the peer gone so peerOf finds nothing) and say
     // so (sync.revoked, informational); nothing here removes a file, a row or a derived fact.
     // Deleting is sync.delete, its own person-only action, elsewhere.
-    const off = ctx.events.on("link.unpaired", e => {
+    const off = ctx.events.on("device.removed", e => {
       const p = e.payload || {};
-      if (typeof p.name !== "string") return;
-      db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(String(p.peer || ""));
-      ctx.events.emit("sync.revoked", { machine: p.name });
+      const row = /** @type {any} */ (db.prepare("SELECT peer, name FROM sync_peers WHERE peer = ?").get(String(p.id || "")));
+      if (!row) return;
+      db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(row.peer);
+      ctx.events.emit("sync.revoked", { machine: row.name });
     });
 
     ctx.tool("sync.consent", {
@@ -195,8 +195,11 @@ export default {
       // itself is not a secret action either, so this stays plain person-only, not presence-gated.
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, on, planHash, included, folders }) => {
-        const peers = await ctx.call("link.peers", {});
-        const row = (peers.data || []).find(p => p.id === machine || p.name === machine);
+        const byId = await ctx.call("relay.device.info", { id: String(machine) });
+        const byName = byId.data ? null : await ctx.call("relay.device.info", { name: String(machine) });
+        const comp = await ctx.call("link.companion.peers", {});
+        const dev = [byId.data, byName && byName.data].find(d => d && !d.removed);
+        const row = dev || ((comp.data && comp.data.peers) || []).find(p => !p.removed && (p.id === machine || p.name === machine));
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
@@ -264,7 +267,7 @@ export default {
       effect: "write",
       description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
       input: { type: "object", required: ["files"], properties: { companion: { type: "string" },  files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ files, companion }, meta) => {
         const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
@@ -289,7 +292,7 @@ export default {
       effect: "write",
       description: "Start (or resume) sending one file: offset is 0 for new, or how many bytes the box already holds for a retry of the exact same path and hash.",
       input: { type: "object", required: ["path", "bytes", "hash"], properties: { companion: { type: "string" },  path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
         const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
@@ -330,7 +333,7 @@ export default {
       effect: "write",
       description: "One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own route calls this after reading the request body.",
       input: { type: "object", required: ["upload", "offset", "data"], properties: { companion: { type: "string" },  upload: { type: "string" }, offset: { type: "number" }, data: {} } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, offset, data, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -358,7 +361,7 @@ export default {
       effect: "write",
       description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
       input: { type: "object", required: ["upload"], properties: { companion: { type: "string" },  upload: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
@@ -374,7 +377,7 @@ export default {
       effect: "write",
       description: "Verify and land a finished upload: checks its hash, scrubs it for secrets, and renames it into synced/<machine>/ (or quarantines it).",
       input: { type: "object", required: ["upload", "hash"], properties: { companion: { type: "string" },  upload: { type: "string" }, hash: { type: "string" } } },
-      callers: ["tailnet", "device", "space", "agent"],
+      callers: ["device", "space", "agent"],
       run: async ({ upload, hash, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
@@ -490,7 +493,7 @@ function allowedSessionPath(p, root) {
   return real;
 }
 
-/** A bound on how many filesystem entries one scan looks at, so a huge folder cannot make sync.scan slow (files/drive.js's SCAN_LIMIT convention). */
+/** A bound on how many filesystem entries one scan looks at, so a huge folder cannot make sync.scan slow (the same bound the Drive share scan used). */
 const SCAN_LIMIT = 50_000;
 
 /**
@@ -597,7 +600,7 @@ async function sendOne(ctx, f) {
   let offset = Number(start.data.offset) || 0;
   while (offset < buf.length) {
     const chunk = buf.subarray(offset, Math.min(offset + SEND_CHUNK, buf.length));
-    const r = await ctx.call("link.upload", { upload: start.data.upload, offset, data: chunk });
+    const r = await ctx.remote("sync.upload.chunk", { upload: start.data.upload, offset, data: Buffer.from(chunk).toString("base64") });
     if (r.error) return r;
     offset = Number(r.data ? r.data.offset : r.offset) || offset + chunk.length;
   }

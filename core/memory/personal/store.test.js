@@ -236,11 +236,11 @@ test("personal store: memory.me through the module, for the user and never for a
   assert.equal(me.about.label, "Jordan");
   assert.ok(me.facts.some(f => f.rel === "birthday" && f.object === "14 March"), JSON.stringify(me));
   assert.ok(me.facts.some(f => f.subj === "me" && f.rel === "spouse"));
-  const top = (await call("memory.me", {}, "tailnet:alex@example.com")).data;
+  const top = (await call("memory.me", {}, "device:nw3b43olz4rzbzfe")).data;
   assert.ok(top.facts.some(f => f.rel === "lives_in" && f.object === "Portland"));
   assert.equal((await call("memory.me", {}, "cli agent:kit")).code, "denied");
   assert.equal((await call("memory.me", {}, "mcp")).code, "denied");
-  assert.equal((await call("memory.me", {}, "tailnet:agent:kit")).code, "denied");
+  assert.equal((await call("memory.me", {}, "agent:kit")).code, "denied");
   assert.ok((await call("memory.stats", {}, "cli")).data.personal.facts >= 3);
   // A rewritten transcript is dropped here too, and read again.
   db.prepare("DELETE FROM recall_turns WHERE session = ?").run(s.id);

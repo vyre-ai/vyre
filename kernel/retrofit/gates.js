@@ -1,5 +1,5 @@
 // kernel/retrofit/gates.js: stage 1 of "compile the old into the new" (contract section 16, K2). The registry's static
-// permission gates (module reach, outward, visibility, callers, guest, person session), its presence requirement and its
+// permission gates (module reach, outward, visibility, callers, person session), its presence requirement and its
 // asked requirement are decided by `authorize` over grants compiled from today's rules. The compiled grants are produced
 // on demand from the tool's own facts and the caller string, so the old predicates are written once, here, as policy.
 // The registry still owns what is not a permission: the input schema, projectArg, the rules hook, proof verification,
@@ -14,7 +14,7 @@ import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
-const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
+const GATES = ["declared", "outward", "visible", "callers", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
 const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space: SPACE });
 
@@ -29,7 +29,6 @@ export function parseCaller(caller, person, thread) {
   if (c === "hook") return { kind: "service", id: "hooks", ...base };
   const claim = agentClaim(c);
   if (claim !== null) return { kind: "agent", id: claim, ...base };
-  if (c.startsWith("tailnet-guest:")) return { kind: "person", id: "guest:" + c.slice(14), ...base };
   if (ownerDevice(c)) return { kind: "person", id: "owner", device: c, ...base };
   const k = callerKind(c);
   if (["cli", "local", "deck", "capsule", "mobile"].includes(k) && k === c) return { kind: "person", id: "owner", ...base };
@@ -45,7 +44,7 @@ export function createLegacyGates(cfg) {
   const chains = createLegacyChainBuilder({ space: SPACE });
   const flags = (/** @type {string} */ tool, /** @type {any} */ def, /** @type {any} */ input) => {
     const pr = reg.deps.presence ? Boolean(reg.deps.presence.required(tool, def, input)) : Boolean(def.presence);
-    return `pr=${pr ? 1 : 0};ms=${machineSelf(tool, input) ? 1 : 0}`;
+    return `pr=${pr ? 1 : 0}`;
   };
 
   /** The compiled policy: which gate grants exist for this hop, tool and request. Written once; this is the old code as data. */
@@ -54,7 +53,7 @@ export function createLegacyGates(cfg) {
     const tool = req.resource.slice(`vyre://${SPACE}/tool/`.length);
     const def = reg.tools.get(tool);
     const c = String(hop.via.legacy);
-    const pr = /pr=1/.test(req.input_class || ""), ms = /ms=1/.test(req.input_class || "");
+    const pr = /pr=1/.test(req.input_class || "");
     const isModule = c.startsWith("module:");
     let allowed = false, conditions = {};
     switch (gate) {
@@ -68,11 +67,10 @@ export function createLegacyGates(cfg) {
       case "outward": allowed = !((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
       case "callers": allowed = (callerAllowed(def.callers, c, tool, () => reg.declaredSetupTools()) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
-      case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;
       case "session": {
         allowed = true;
         // The owner's device acts as the person only with the person's session, for a person-only or proof-needing tool.
-        if (ownerDevice(c) && !PERSON_FREE.has(tool) && !ms && (PERSON_ONLY.has(tool) || def.reach === "person" || pr)) conditions = { how: { presence: "session" } };
+        if (ownerDevice(c) && !PERSON_FREE.has(tool) && (PERSON_ONLY.has(tool) || def.reach === "person" || pr)) conditions = { how: { presence: "session" } };
         break;
       }
       case "presence": allowed = true; if (!isModule && pr) conditions = { how: { presence: "fresh" } }; break;
@@ -110,7 +108,6 @@ export function createLegacyGates(cfg) {
       if ((await ask("outward", chain, tool, cls)).effect !== "allow") return (typeof reg.outwardRefusal === "function" ? await reg.outwardRefusal({ tool, def, caller, input, meta }) : null) || { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       if ((await ask("visible", chain, tool, cls)).effect !== "allow") return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if ((await ask("callers", chain, tool, cls)).effect !== "allow") return ["web", "setup"].includes(callerKind(caller)) && classReach(caller, tool, () => reg.declaredSetupTools()) === false ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-      if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
       const s = await ask("session", chain, tool, cls);
       if (s.effect !== "allow") return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       return null;

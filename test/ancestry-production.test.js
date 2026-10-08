@@ -15,7 +15,6 @@ import * as config from "../core/config/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "..", "core", "daemon", "main.js");
-const FAKE_TAILSCALE = path.join(HERE, "..", "web", "test", "fake-tailscale.js");
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
 /** @param {string} socketPath */
@@ -28,7 +27,7 @@ const ask = socketPath => new Promise(resolve => {
 
 test("50 concurrent real CLI calls on a busy box, through the production peer read, are all classified alike and none is refused for a late helper", { timeout: 300_000, skip: process.platform === "win32" }, async t => {
   const root = tempHome(t);
-  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", VYRE_KERNEL: "1", VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", ...(fs.existsSync(FAKE_TAILSCALE) ? { VYRE_TAILSCALE_BIN: FAKE_TAILSCALE } : {}) };
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", VYRE_KERNEL: "1", VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1" };
   const daemon = spawn(process.execPath, [MAIN], { env, stdio: "ignore" });
   t.after(() => { daemon.kill("SIGTERM"); });
   const socket = config.paths(root).socket;

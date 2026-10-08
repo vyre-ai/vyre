@@ -17,7 +17,7 @@ import { storedZip, verifyApk } from "./testing.js";
 import { checkManifest } from "./index.js";
 
 const FILE = "vyre-0.4.0-abc1234.apk";
-const OWNER = "tailnet:alex", DEVICE = "device:abcdefghijklmnop", GUEST = "tailnet-guest:juno", AGENT = "tailnet:agent:kit";
+const OWNER = "device:ie22vhobxbbkmu66", DEVICE = "device:abcdefghijklmnop";
 const sha = b => crypto.createHash("sha256").update(b).digest("hex");
 
 /** A vyred with the releases module on, a release in its folder, and an HTTP door that names the caller the way a listener would. */
@@ -104,13 +104,13 @@ test("names that are not the release are refused", async t => {
   assert.throws(() => checkManifest({ ...b.manifest, minSdk: 21 }), /below 24/);
 });
 
-test("guests, agents and socket labels get nothing", async t => {
+test("socket labels get nothing", async t => {
   const b = await box(t);
-  for (const who of [GUEST, AGENT, "anonymous"]) {
-    // An agent's node is stopped by vyred's router first (403: no agent key); the rest reach the route and get 404.
+  for (const who of ["anonymous"]) {
+    // A socket label with no identity reaches the route and gets 404.
     for (const p of ["/v1/releases/android", `/v1/releases/android?file=${FILE}`]) {
       const r = await b.get(p, who);
-      assert.equal(r.status, who === AGENT ? 403 : 404, `${who} ${p}`);
+      assert.equal(r.status, 404, `${who} ${p}`);
       assert.ok(!r.body.includes(Buffer.from("PK")) && !r.body.includes(Buffer.from("cert_sha256")), `${who} ${p} got nothing`);
     }
   }

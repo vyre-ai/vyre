@@ -32,7 +32,7 @@ const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), 
 export function callerFor(caller, meta = {}, behalf) {
   const c = String(caller || "");
   if (meta.agent) return `mcp:agent:${meta.agent}`;
-  if (/^(mcp|tailnet|harness):agent:./.test(c)) return c;
+  if (/^(mcp|harness):agent:./.test(c)) return c;
   if (c === "mcp") return meta.thread ? `mcp:thread:${meta.thread}` : "mcp";
   if (c.startsWith("module:")) {
     const b = meta.firstParty === true && behalf && typeof behalf === "object" ? behalf : {};
@@ -54,7 +54,7 @@ export function filingFor(caller, meta = {}, behalf) {
   const c = String(caller || "");
   const b = c.startsWith("module:") && meta.firstParty === true && behalf && typeof behalf === "object" ? behalf : {};
   const thread = meta.thread || (typeof b.thread === "string" && b.thread ? b.thread : undefined);
-  const named = /^(?:mcp|tailnet|harness):agent:(.+)$/s.exec(c);
+  const named = /^(?:mcp|harness):agent:(.+)$/s.exec(c);
   const agent = meta.agent || (named ? named[1] : undefined) || (b.surface === "agent" && typeof b.agent === "string" && b.agent ? b.agent : undefined);
   return { ...(thread ? { thread } : {}), ...(agent ? { agent } : {}) };
 }

@@ -402,10 +402,10 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
     return { async stop() {} };
   } };`;
   const reg = await registry(t, [["notes", good, src]]);
-  const r = await reg.call("notes.add", {}, "tailnet:owner@example.com", { peer: { stableId: "n1" } });
+  const r = await reg.call("notes.add", {}, "device:zdgtyzbhgapk6ztf", { peer: { stableId: "n1" } });
   assert.deepEqual(r.data.input, {});
   assert.deepEqual(r.data.peer, { stableId: "n1" });
-  assert.equal(r.data.caller, "tailnet:owner@example.com");
+  assert.equal(r.data.caller, "device:zdgtyzbhgapk6ztf");
   assert.equal(r.data.remote.error.code, "no_link");
   assert.ok(reg.routes.has("/v1/notes/feed"));
 });
@@ -440,32 +440,32 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli", firstParty: false });
 });
 
-test("modules: a \"tailnet\" entry in callers lets the owner's devices in, and nothing else that looks like one", async t => {
+test("modules: a \"device\" entry in callers lets the owner's paired devices in, and nothing else that looks like one", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { callers: ["cli", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
+    ctx.tool("notes.add", { callers: ["cli", "device"], run: async (i, meta) => ({ caller: meta.caller }) });
     ctx.tool("notes.wipe", { callers: ["cli"], run: async () => 1 });
     return {};
   } };`;
   const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.wipe"] } }, src]]);
-  for (const caller of ["tailnet:alex@example.com", "tailnet:alex-phone@example.com"]) {
+  for (const caller of ["device:nw3b43olz4rzbzfe", "device:4jzjytdaw7zsp6bi"]) {
     assert.deepEqual(await reg.call("notes.add", {}, caller), { data: { caller } }, caller);
     assert.ok(reg.listTools(caller).some(x => x.name === "notes.add"), caller);
     assert.ok(!reg.listTools(caller).some(x => x.name === "notes.wipe"), caller);
   }
-  assert.equal((await reg.call("notes.wipe", {}, "tailnet:alex@example.com")).error.code, "denied", "a list without tailnet still refuses a device");
-  for (const caller of ["tailnet", "tailnet:", "tailnet:agent:kit", "tailnet-guest:juno@example.com", "xtailnet:alex@example.com", "mcp tailnet:alex", "mcp"]) {
+  assert.equal((await reg.call("notes.wipe", {}, "device:nw3b43olz4rzbzfe")).error.code, "denied", "a list without device still refuses a device");
+  for (const caller of ["device", "device:", "agent:kit", "guest:juno@example.com", "xdevice:nw3b43olz4rzbzfe", "mcp device:ie22vhobxbbkmu66", "mcp"]) {
     assert.equal((await reg.call("notes.add", {}, caller)).error.code, "denied", caller);
     assert.ok(!reg.listTools(caller).some(x => x.name === "notes.add"), caller);
   }
-  assert.equal(callerKind("tailnet:alex@example.com"), "tailnet:alex@example.com", "callerKind still returns the whole string");
+  assert.equal(callerKind("device:nw3b43olz4rzbzfe"), "device:nw3b43olz4rzbzfe", "callerKind still returns the whole string");
 });
 
 test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
   const deck = ["cli", "local", "deck", "capsule"];
-  assert.equal(callerAllowed(deck, "tailnet:alex@example.com"), true);
-  assert.equal(callerAllowed(["cli", "local"], "tailnet:alex@example.com"), false);
-  assert.equal(callerAllowed(deck, "tailnet:agent:kit"), false);
-  assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
+  assert.equal(callerAllowed(deck, "device:nw3b43olz4rzbzfe"), true);
+  assert.equal(callerAllowed(["cli", "local"], "device:nw3b43olz4rzbzfe"), false);
+  assert.equal(callerAllowed(deck, "agent:kit"), false);
+  assert.equal(callerAllowed(deck, "guest:juno@example.com"), false);
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
 });
@@ -473,10 +473,10 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
 test("modules: agentClaim finds the agent name behind any transport shape, or null", () => {
   for (const [caller, name] of [
     ["mcp:agent:kit", "kit"], ["harness:agent:kit", "kit"], ["cli:agent:kit", "kit"],
-    ["module:agent:kit", "kit"], ["tailnet:agent:kit", "kit"], ["agent:kit", "kit"],
+    ["module:agent:kit", "kit"], ["agent:kit", "kit"], ["agent:kit", "kit"],
     ["cli agent:kit", "kit"], ["mcp agent:kit", "kit"],
   ]) assert.equal(agentClaim(caller), name, caller);
-  for (const caller of ["cli", "tailnet:alex@example.com", "module:notes", "mcp", "", null, undefined]) {
+  for (const caller of ["cli", "device:nw3b43olz4rzbzfe", "module:notes", "mcp", "", null, undefined]) {
     assert.equal(agentClaim(caller), null, String(caller));
   }
   // An empty or odd name still counts as a claim (e2e review, 2026-09-28): every caller checks
@@ -747,8 +747,8 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   for (const c of ["mcp", "mcp:agent:kit", "harness", "cli:agent:kit", "module:notes"]) assert.equal((await reg.call("bakery.target", {}, c)).error.code, "not_asked", c);
   // CR-H1: outward runs only from the person's own surface or device; everyone else is held_unavailable.
   assert.equal((await reg.call("bakery.flour", {}, "cli")).data.ran, "bakery.flour");
-  assert.equal((await reg.call("bakery.flour", {}, "tailnet:alex")).data.ran, "bakery.flour");
-  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "harness", "hook", "module:notes", "tailnet-guest:juno"]) {
+  assert.equal((await reg.call("bakery.flour", {}, "device:ie22vhobxbbkmu66")).data.ran, "bakery.flour");
+  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "harness", "hook", "module:notes"]) {
     const r = await reg.call("bakery.flour", {}, c);
     assert.equal(r.error && r.error.code, "held_unavailable", c);
     assert.match(r.error.message, /lands with the Gate wiring/);
@@ -756,7 +756,7 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   // One yes: an outward tool marked `outward: true` is HELD for a caller that is not you (an agent, the harness, a module with no person behind it, a guest): a card, never a run, until the card's yes comes back.
   const ran0 = (await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "cli")).data.ran;
   assert.equal(ran0, "bakery.mailout", "you: no prompt");
-  for (const c of ["mcp:agent:kit", "cli:agent:kit", "mcp", "harness", "module:notes", "tailnet-guest:juno"]) {
+  for (const c of ["mcp:agent:kit", "cli:agent:kit", "mcp", "harness", "module:notes"]) {
     const r = await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, c);
     assert.equal(r.error && r.error.code, "held_for_approval", c);
     assert.ok(!r.data, `${c}: nothing ran`);
@@ -772,9 +772,9 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   const card = globalThis.__cards.at(-1);
   let spent = false;
   setCardRedeemer((id, moment, request, device) => (id === card.id && moment === "outward" && request.op === "bakery.mailout" && JSON.stringify(request.fields) === JSON.stringify(card.fields) && device === card.from && !spent ? (spent = true, "ok") : "no_proof"));
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(501) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "other input, other asker");
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
-  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(501) }, "module:notes", { approval: card.id })).error.code, "approval_refused", "other input, other asker");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "module:notes", { approval: card.id })).data.ran, "bakery.mailout");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "module:notes", { approval: card.id })).error.code, "approval_refused", "spent once");
   setCardRedeemer(null);
   // The kernel's legacy gates, wired as the daemon wires them, leave the plain `outward: true` hold to this inline rule: it still holds the agent and still lets you through.
   const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
@@ -795,8 +795,8 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.hook", {}, "hook")).data.ran, "bakery.hook");
   // person: the person's own surfaces and the owner's devices, never an agent or a module.
   assert.equal((await reg.call("bakery.own", {}, "cli")).data.ran, "bakery.own");
-  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex")).error.code, "person_session_required", "the owner's device with no person session gets no surface from its label");
-  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex", { person: "per_alex" })).data.ran, "bakery.own", "the same device signed in");
+  assert.equal((await reg.call("bakery.own", {}, "device:ie22vhobxbbkmu66")).error.code, "person_session_required", "the owner's device with no person session gets no surface from its label");
+  assert.equal((await reg.call("bakery.own", {}, "device:ie22vhobxbbkmu66", { person: "per_alex" })).data.ran, "bakery.own", "the same device signed in");
   assert.equal((await reg.call("bakery.own", {}, "mcp:agent:kit")).error.code, "denied");
   assert.equal((await reg.call("bakery.own", {}, "module:notes")).error.code, "denied");
   // The listing carries what an object entry declared; a string entry adds nothing.
@@ -867,7 +867,7 @@ test("modules v1: an outward: true tool on reach hook or modules is held for eve
   // the webhook route's caller is not you: held, and the callers that cannot reach a hook tool at all never get that far
   const h = await reg.call("oven.till", { receipt: "r1" }, "hook");
   assert.equal(h.error && h.error.code, "held_for_approval", "hook");
-  for (const c of ["mcp", "mcp:agent:kit", "tailnet-guest:juno"]) assert.ok((await reg.call("oven.till", { receipt: "r1" }, c)).error, c);
+  for (const c of ["mcp", "mcp:agent:kit"]) assert.ok((await reg.call("oven.till", { receipt: "r1" }, c)).error, c);
   assert.deepEqual(globalThis.__ovenRan, ["oven.notify"], "only your own call ran");
   assert.equal(globalThis.__cards.length, 4, "each held call is a card");
 });
@@ -1177,12 +1177,10 @@ test("modules: the agents relay check lets threads.send through and throws for e
 test("modules: the device, space and agent classes are list entries only; a bare word or a look-alike is never a caller", () => {
   const dev = "device:abcdefghijklmnop";
   assert.equal(callerAllowed(["cli", "device"], dev), true, "a device entry admits a paired device");
-  assert.equal(callerAllowed(["cli", "tailnet"], dev), true, "as a tailnet entry already did");
-  assert.equal(callerAllowed(["cli", "device"], "tailnet:alex@example.com"), false, "a device entry is the paired device label only");
   assert.equal(callerAllowed(["cli"], dev), false);
-  for (const bare of ["device", "space", "agent", "tailnet"]) assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], bare), false, bare);
+  for (const bare of ["device", "space", "agent"]) assert.equal(callerAllowed(["cli", "device", "space", "agent"], bare), false, bare);
   for (const c of ["Device:abcdefghijklmnop", "device :abcdefghijklmnop", "device:", "device:abc", "device:abcdefghij​klmnop", "dev​ice:abcdefghijklmnop", "space:alex@harlow", "space:", "agent:kit", "agent:", "mcp:agent:kit"]) {
-    assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], c), false, JSON.stringify(c));
+    assert.equal(callerAllowed(["cli", "device", "space", "agent"], c), false, JSON.stringify(c));
   }
 });
 

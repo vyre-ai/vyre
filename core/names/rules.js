@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 
+export const CODE_TAG = "vyre-names-code";
 export const ZONE_TAG = "vyre-acme-zone";
 
 const NAME_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -109,3 +110,5 @@ export function base32(buf) {
 
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export const routeHash = route => base32(crypto.createHash("sha256").update(`${ZONE_TAG}\n${route}`).digest()).slice(0, 26);
+/** The hash of a recovery code the directory stores; dashes and case are ignored. @param {string} name @param {string} code */
+export const codeHash = (name, code) => crypto.createHash("sha256").update(`${CODE_TAG}\n${name}\n${String(code).toLowerCase().replace(/[^a-z2-7]/g, "")}`).digest("hex");

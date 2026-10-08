@@ -125,7 +125,7 @@ test("tools: the four are internal to the network module, and nobody else may ca
   registerNetwork(ctx, { host: fakeHost() });
   assert.deepEqual([...tools.keys()], ["wink.network.status", "wink.network.whois", "wink.network.join", "wink.network.leave"]);
   assert.equal((await tools.get("wink.network.status").run({}, { caller: "module:network" })).spaces.length, 0);
-  for (const bad of ["cli", "module:link", "agent:kit", "anonymous", "tailnet-guest:x@y.z"]) for (const [n, d] of tools) await assert.rejects(Promise.resolve().then(() => d.run({ space: "x", eid: "e" }, { caller: bad })), { code: "denied" }, `${n} for ${bad}`);
+  for (const bad of ["cli", "module:link", "agent:kit", "anonymous", "guest:x@y.z"]) for (const [n, d] of tools) await assert.rejects(Promise.resolve().then(() => d.run({ space: "x", eid: "e" }, { caller: bad })), { code: "denied" }, `${n} for ${bad}`);
   for (const d of tools.values()) assert.ok(!/tailscale|tailnet/i.test(d.description), "no word a person should not read");
 });
 

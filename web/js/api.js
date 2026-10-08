@@ -393,7 +393,7 @@ function getOutbox() {
         if (err?.code === "offline" || err?.code === "restarting") return { error: { code: err.code, message: String(err.message || "") } };
         if (/^http_5\d\d$/.test(String(err?.code))) return { error: { code: "unreachable", message: String(err.message || "") } };
         // Anything else is the box's answer on the merits, never tried again: under its own code a
-        // tool's "timeout" (a Mac that did not answer) would read as "not now" to the outbox, and a
+        // tool's "timeout" would read as "not now" to the outbox, and a
         // presence_required would park it until someone proves presence.
         return { error: { code: "refused:" + String(err?.code || "failed"), message: String(err?.message || err), apiError: err } };
       }

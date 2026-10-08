@@ -298,7 +298,7 @@ export default {
       // Only the surfaces a person drives: it signs files and opens import windows, which a
       // model or another module has no business doing on its own. The Deck (and the phone's
       // installed Deck) calls as "deck", and the Registry lets "deck" admit the box owner's own
-      // devices over the tailnet (tailnet:<owner>), never a guest or an agent's node.
+      // paired devices (device:<id>), never an agent.
       callers: ["cli", "capsule", "deck"],
       async run({ app }) {
         const a = registry.find(app);
@@ -329,7 +329,7 @@ export default {
       description: "Do one thing in an app that sends, posts or pays as the person. Every call needs a person's proof, shown the preview (\"WhatsApp → juno: running late\"). Returns said and the action's data.",
       input: actInput,
       // Listed so a first-party module may call it (the floor asks every non-module caller for a person's proof); a model that asks is held for a person.
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"],
       presence: {
         // Every send may ride a session; the floor's SESSIONABLE list is what allows it at all.
         session: () => true,
