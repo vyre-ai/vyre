@@ -67,7 +67,7 @@ export function createRemoteServer(cfg) {
     const no = (/** @type {string} */ code, /** @type {string} */ message) => ({ code, message });
     if (!bind || typeof bind !== "object" || Array.isArray(bind)) return no("bad_binding", "that key binding is not usable");
     const text = (/** @type {any} */ v, /** @type {number} */ max) => typeof v === "string" && v.length > 0 && v.length <= max;
-    if (!text(bind.key_id, 64) || !text(bind.spki, 400) || !text(bind.signer, 40) || !text(bind.sig, 200) || (bind.attestation !== undefined && (typeof bind.attestation !== "object" || bind.attestation === null || JSON.stringify(bind.attestation).length > MAX_PROOF_BYTES))) return no("bad_binding", "that key binding is not usable");
+    if (!text(bind.key_id, 64) || !text(bind.spki, 400) || !text(bind.signer, 40) || !text(bind.sig, 1500) || (bind.rp !== undefined && !text(bind.rp, 253)) || (bind.attestation !== undefined && (typeof bind.attestation !== "object" || bind.attestation === null || JSON.stringify(bind.attestation).length > MAX_PROOF_BYTES))) return no("bad_binding", "that key binding is not usable");
     if (typeof k.joinKey !== "function" || typeof cfg.identityEvidence !== "function" || typeof peer.entry !== "string" || !peer.entry) return no("unavailable", "this server cannot add your device's key yet");
     // the invite must be live, unused and meant for this person before anything is enrolled
     try { const inv = await k.gateway.grants.invites.get(chain, invite); if (!inv || inv.status !== "pending") return no("bad_invite", "that invite cannot be used"); } catch { return no("bad_invite", "that invite cannot be used"); }
@@ -80,7 +80,7 @@ export function createRemoteServer(cfg) {
     if (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since)) return no("unavailable", "this server could not read your identity list");
     if (youngAt(entry, clock())) return no("young_device", "this sign-in is under 24 hours old; join from an older device");
     try {
-      await k.joinKey({ chain, person: peer.person, ops: ev.ops, bind: { eid: peer.entry, sig: bind.sig }, invite, key_id: bind.key_id, spki: bind.spki, signer: bind.signer, ...(bind.attestation ? { attestation: bind.attestation } : {}) });
+      await k.joinKey({ chain, person: peer.person, ops: ev.ops, bind: { eid: peer.entry, sig: bind.sig }, invite, key_id: bind.key_id, spki: bind.spki, signer: bind.signer, ...(bind.rp ? { rp: bind.rp } : {}), ...(bind.attestation ? { attestation: bind.attestation } : {}) });
     } catch (e) {
       const code = e && typeof /** @type {any} */ (e).code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(/** @type {any} */ (e).code) ? /** @type {any} */ (e).code : "unavailable";
       return no(code, code === "bad_binding" ? "that key binding does not check out" : code === "known_person" ? "this server already knows you: add this device with your other device" : "this server could not add your device's key");

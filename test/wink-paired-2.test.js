@@ -291,6 +291,20 @@ async function standinIdentity(t) {
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
+  /** An identity claimed as a Windows PC does (the app's claimIdentity, a key a page script can reach: its entry is `held: "web"`), in the same directory. @param {string} name */
+  const anotherHeld = async name => {
+    const { claimIdentity } = await import("../apps/app/src/identity/claim.js");
+    const dir2 = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+    const made = await claimIdentity({ name, code: (await dir2.reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, held: true, forceSoftware: true });
+    return { id: made.id, eid: made.eid, key: made.key };
+  };
+  /** An identity whose first device is a passkey (a browser's, or a Windows PC's Windows Hello), in the same directory. @param {string} name @param {any} webauthn */
+  const anotherPasskey = async (name, webauthn, rp = undefined) => {
+    const { claimIdentityWithPasskey } = await import("../apps/app/src/identity/claim.js");
+    const dir2 = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+    const made = await claimIdentityWithPasskey({ name, code: (await dir2.reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, webauthn, ...(rp ? { rp } : {}) });
+    return { id: made.id, eid: made.eid, key: made.key, pin: made.pin };
+  };
   /** Another identity in the same directory (a second person), made by the app libraries as a box-less device makes it. @param {string} name */
   const another = async name => {
     const st = fileIdentityStore(path.join(tempHome(t), "spaces"));
@@ -299,7 +313,7 @@ async function standinIdentity(t) {
     await ops2.create({ name, password: "four plain words here", deviceLabel: `${name}'s phone`, code: (await dir2.reserve(name)).code });
     return { id: /** @type {string} */ (st.status().id), eid: /** @type {string} */ (st.status().eid), store: st };
   };
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir, another,
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir, another, anotherHeld, anotherPasskey,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -1428,4 +1442,116 @@ test("join on a release server (the sealing process takes no unattested-by-switc
   await assert.rejects(() => open2.accept(), e => /software_refused|bad_signer|unattested/.test(String(e.code)), "a software key is refused");
   await assert.rejects(() => hosted.gateway.grants.members.get(ownerChain, sw.who.id), e => e.code === "not_found", "no membership was made");
   assert.equal((await hosted.gateway.grants.invites.get(ownerChain, inv2.id)).status, "pending", "the invite is not spent");
+});
+
+test("a Windows PC joins a team on a release server with its Windows Hello passkey as the presence key: the passkey is made for the window's site, enrolled as webauthn_platform with that rp, and its WebAuthn assertion is the yes", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
+  const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, made, hosted, ownerChain, linkFor, sealer } = await teamRig(t, { release: true });
+  assert.equal((await sealer.health()).unattested_allowed, false);
+  const kit = await ident.another("kit");
+  const auth = authenticator({ rp: "kit-pc.vyre.run" });
+  const kept = new Map();
+  const store = { get: async k => kept.get(k), put: async (k, v) => { kept.set(k, v); } };
+  // the window's own site decides the passkey's rp; a page the shell does not take makes none
+  assert.equal(await windowsPasskey({ origin: "https://example.com", store, webauthn: auth }), null);
+  assert.equal(auth.seen.creates, 0);
+  const wp = await windowsPasskey({ origin: "https://kit-pc.vyre.run", store, webauthn: auth });
+  assert.equal(wp.rp, "kit-pc.vyre.run");
+  assert.equal(wp.enrolment.signer, "webauthn_platform");
+  assert.equal(auth.seen.creates, 1);
+  const again = await windowsPasskey({ origin: "https://kit-pc.vyre.run", store, webauthn: auth });
+  assert.equal(again.enrolment.key_id, wp.enrolment.key_id, "the kept passkey is used again, none is made");
+  assert.equal(auth.seen.creates, 1);
+  const deps = {
+    who: { id: kit.id, name: "kit", eid: kit.eid, sign: async m => new Uint8Array(await kit.store.sign(Buffer.from(m))) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: req => wp.signer.signPresence(req),
+    presenceKey: async () => wp.enrolment,
+    store: { get: async () => undefined, put: async () => {} },
+  };
+  const inv = await linkFor(kit.id);
+  const open = await openInvite(deps, inv.link);
+  t.after(() => open.close());
+  const joined = await open.accept();
+  assert.equal(joined.joined, true);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.id)).role, "member");
+  assert.ok(auth.seen.gets >= 1, "the Hello prompt (the authenticator's get) was asked for the yes");
+});
+
+
+test("a person whose device entry is a passkey joins a team through the invitee door on a release server: the hello is a WebAuthn assertion, the held key is still refused", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
+  const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, made, hosted, ownerChain, linkFor, sealSigner } = await teamRig(t, { release: true });
+  const mk = (who, name, sign, sg, chain, store) => ({
+    who: { id: who.id, name, eid: who.eid, sign },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS, store,
+    signPresence: async r => (sg.proof ? sg.proof(chain, r.op, r.fields) : sg.signer.signPresence(r)), presenceKey: async () => sg.enrolment,
+  });
+  // the held key (a page script can reach it) is not a device the door takes
+  const held = await ident.anotherHeld("heldpc");
+  const hsg = sealSigner(held.id, undefined, "secure_enclave");
+  const hchain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: held.id, vouched: true });
+  const hinv = await linkFor(held.id);
+  await assert.rejects(() => openInvite(mk(held, "heldpc", async m => new Uint8Array(await held.key.sign(m)), hsg, hchain, { get: async () => undefined, put: async () => {} }), hinv.link), e => e.code === "not_for_you");
+  // a passkey is: the identity's own device is the Hello passkey, and the hello is its assertion
+  const auth = authenticator({ rp: "app.vyre.run" });
+  const pk = await ident.anotherPasskey("passpc", auth);
+  const pw = await windowsPasskey({ origin: "https://app.vyre.run", store: { get: async () => undefined, put: async () => {} }, webauthn: authenticator({ rp: "app.vyre.run" }) });
+  const rows = new Map();
+  const deps = mk(pk, "passpc", async m => pk.key.sign(m), pw, null, { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } });
+  const inv = await linkFor(pk.id);
+  const open = await openInvite(deps, inv.link);
+  t.after(() => open.close());
+  assert.equal((await open.accept()).joined, true);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, pk.id)).role, "member");
+  // and it reaches the space as a member: a new hello, a new assertion
+  const list = await callTeam(deps, made.space, "grants.members.list", []);
+  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person), [pk.id]);
+});
+
+
+test("a Windows PC that claimed its name with Windows Hello (rp vyreapp.localhost): one passkey is the identity, the presence key and the signer of list changes; it joins a team, reaches it as a member, and adds a phone to its own name", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
+  const { enrolDevice } = await import("../apps/app/src/identity/enrol-device.js");
+  const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const C = await import("../kernel/identity/chain.js");
+  const { ident, made, hosted, ownerChain, linkFor } = await teamRig(t, { release: true });
+  const auth = authenticator({ rp: "vyreapp.localhost" });
+  const pc = await ident.anotherPasskey("winhello", auth, "vyreapp.localhost");
+  assert.equal(auth.seen.creates, 1, "the claim made the passkey");
+  const wp = await windowsPasskey({ origin: "https://vyreapp.localhost", key: pc.key, store: { get: async () => undefined, put: async () => {} }, webauthn: auth });
+  assert.equal(auth.seen.creates, 1, "the same passkey is the presence key: none is made");
+  assert.equal(wp.rp, "vyreapp.localhost");
+  const rows = new Map();
+  const deps = {
+    who: { id: pc.id, name: "winhello", eid: pc.eid, sign: async m => pc.key.sign(m) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: req => wp.signer.signPresence(req), presenceKey: async () => wp.enrolment,
+    store: { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } },
+  };
+  const inv = await linkFor(pc.id);
+  const open = await openInvite(deps, inv.link);
+  t.after(() => open.close());
+  assert.equal((await open.accept()).joined, true);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, pc.id)).role, "member");
+  const list = await callTeam(deps, made.space, "grants.members.list", []);
+  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person), [pc.id]);
+  // its own name: a phone's key joins the list, the change signed by the passkey (not held, so the chain takes it)
+  const phone = crypto.generateKeyPairSync("ed25519");
+  const phoneKey = phone.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("base64url");
+  const done = await enrolDevice({ name: "winhello", eid: pc.eid, pin: pc.pin, base: "http://127.0.0.1:1", fetch: ident.fetch, now: () => ident.clock.t, sign: async m => pc.key.sign(m), entry: { publicKey: phoneKey, label: "Sam's phone" } });
+  assert.equal(done.already, false);
+  const res = await (await ident.fetch("http://127.0.0.1:1/v1/ids/resolve?name=winhello", { headers: {} })).json();
+  const state = await C.verifyChain(res.data.ops, { now: ident.clock.t + C.SKEW_MS });
+  assert.ok(state.entries.some(e => e.pub === phoneKey), "the phone is on the list");
+  assert.equal(state.entries.find(e => e.eid === pc.eid).held, undefined, "the PC's entry is a full device, not held");
+  assert.equal(res.data.ops.at(-1).by, pc.eid, "signed by the passkey");
 });

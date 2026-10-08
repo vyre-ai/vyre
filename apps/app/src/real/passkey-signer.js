@@ -14,7 +14,8 @@ export const PROOF_LIFE_MS = 60_000;
 
 /**
  * Sign one held act with the browser's passkey.
- * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string }} card
+ * A space on a server asks with a one-use challenge: the proof then names that home and challenge in its signed body, as the other signers do (presence-proof.js proofBody).
+ * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string, home?: string, challenge?: string }} card
  * @param {{ key: { sign(message: Uint8Array): Promise<Uint8Array>, keep(): any }, now?: () => number, nonce?: () => string }} o
  */
 export async function signPresenceWithPasskey(card, o) {
@@ -25,7 +26,7 @@ export async function signPresenceWithPasskey(card, o) {
   const spki = new Uint8Array(Buffer.from(pk.key, "base64url"));
   const issued = (o.now ?? Date.now)();
   const nonce = o.nonce ? o.nonce() : b64url(crypto.getRandomValues(new Uint8Array(8)));
-  const p = { signer: "webauthn_platform", key_id: presenceKeyId(spki), payload_hash: card.payload_hash, decision: card.op, chain_hash: chainHash(card.person, card.space), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce };
+  const p = { signer: "webauthn_platform", key_id: presenceKeyId(spki), payload_hash: card.payload_hash, decision: card.op, chain_hash: chainHash(card.person, card.space), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce, ...(card.home && card.challenge ? { home: String(card.home), challenge: String(card.challenge) } : {}) };
   const envelope = await o.key.sign(proofBytes(p));
   return { ...p, signature: b64url(envelope) };
 }

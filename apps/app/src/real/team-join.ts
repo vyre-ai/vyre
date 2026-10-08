@@ -14,17 +14,25 @@ const store = {
 const mem = new Map<string, unknown>();
 
 /** The hardware key that gives the yes on this device: the Mac's or Windows' window, else the phone's. Null where there is none. */
-async function yesSigner() {
+async function yesSigner(mine?: { key: { alg?: string; rp?: string } } | null) {
   const { shellSigner } = await import("./shell-signer");
   const s = await shellSigner();
   if (s) return { kind: "shell" as const, signer: s };
+  // A Windows PC on a release server: its TPM key is no yes there (shell-signer.ts), so its Windows Hello passkey is (src/real/windows-passkey.js).
+  const { shellKind } = await import("../shell/shell.ts");
+  if (shellKind() === "windows" && typeof location !== "undefined") {
+    const { windowsPasskey } = await import("./windows-passkey.js");
+    const wp = await windowsPasskey({ origin: location.origin, ...(mine?.key?.alg === "webauthn-es256" ? { key: mine.key } : {}), store: { get: (k: string) => store.get(k), put: (k: string, v: unknown) => store.put(k, v) } }).catch(() => null);
+    if (wp) return { kind: "passkey" as const, signer: wp.signer, enrolment: wp.enrolment };
+  }
   const { phoneSigner } = await import("./phone-signer");
   const p = await phoneSigner();
   return p ? { kind: "phone" as const, signer: p } : null;
 }
 
 /** The presence key to enrol on the team's server with the accept: what a signed proof names (key id, signer) and the key itself. */
-async function enrolment(kind: "shell" | "phone", invite: string) {
+async function enrolment(kind: "shell" | "phone" | "passkey", invite: string, passkey?: { key_id: string; spki: string; signer: string; rp: string }) {
+  if (kind === "passkey" && passkey) return passkey;
   if (kind === "phone") {
     const m = await import("../../modules/vyre-signer");
     const key = await m.presenceKey();
@@ -49,11 +57,11 @@ export async function joinDeps(): Promise<JoinDeps | null> {
   const { DIRECTORY } = await import("./install");
   const client = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
   const peer = (await import("@vyre/relay-client/peerclient.js")) as unknown as { openServerPeer: (c: any, o?: any) => Promise<any> };
-  const yes = await yesSigner();
+  const yes = await yesSigner(mine);
   return {
     who: { id: mine.id, name: mine.name, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) },
     fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, connect: client.connect, openServerPeer: peer.openServerPeer, crypto: relayCrypto(), words: WORDS as unknown as string[],
-    ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: (invite: string) => enrolment(yes.kind, invite) } : {}),
+    ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: (invite: string) => enrolment(yes.kind, invite, yes.kind === "passkey" ? yes.enrolment : undefined) } : {}),
     store,
   };
 }
@@ -102,7 +110,7 @@ async function inviteDeps(space: string) {
   const { openPeer } = await import("./peer");
   const { kernelWire } = await import("./kernel-wire.js");
   const { DIRECTORY } = await import("./install");
-  const yes = await yesSigner();
+  const yes = await yesSigner(mine);
   const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
