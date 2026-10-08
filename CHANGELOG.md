@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(lumen): a failed identity key step says the shell's own reason on screen and in ~/Library/Logs/Vyre/app.log, and `defaults write sh.vyre.capsule inspect -bool true` makes the window inspectable (IR-31).
 
 ## 0.2.11 (8 Oct 2026)
 - fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
