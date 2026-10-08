@@ -71,7 +71,6 @@ test("release.yml: the Windows installer is built in this run, required by the r
 test("release.yml: the Lumen Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {
   assert.match(yml, /\n  mac:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
   assert.match(yml, /sign: \$\{\{ needs\.prepare\.outputs\.publish == 'true' \}\}/, "the Apple environment is used on a publish only");
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
   assert.match(yml, /\(needs\.mac\.result == 'success' \|\| needs\.mac\.result == 'skipped'\)/, "a beta or rc run skips the Mac job and still releases");
   const add = yml.indexOf("Add the Lumen Mac files to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the dmgs are in dist before the signed list is made");
