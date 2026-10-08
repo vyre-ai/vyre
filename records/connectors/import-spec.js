@@ -115,7 +115,7 @@ function fromOpenApi(doc) {
         hasBody = true;
       } else if (m !== "get" && m !== "head" && m !== "delete" && rb) hasBody = true;
       const input = { ...(Object.keys(params).length ? { params } : {}), ...(Object.keys(query).length ? { query } : {}), ...(Object.keys(body).length ? { body } : {}) };
-      operations.push({ name, method: m.toUpperCase(), path, ...(typeof op.summary === "string" && op.summary ? { label: op.summary.slice(0, 80) } : {}), ...(Object.keys(input).length ? { input } : {}) });
+      operations.push({ name, method: m.toUpperCase(), path, ...(typeof op.summary === "string" && op.summary.trim() ? { label: op.summary.replace(/\s+/g, " ").trim().slice(0, 80) } : {}), ...(Object.keys(input).length ? { input } : {}) });
       if (hasBody && !Object.keys(body).length) notes.push(`${name}: its body is not a plain object, so no body fields were listed; use the generic request for it`);
     }
   }
