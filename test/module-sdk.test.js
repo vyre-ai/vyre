@@ -183,10 +183,10 @@ test("module sdk: flow.steps and flow.triggers compile to what Flows already hav
     watches: { emits: ["docs.signed"] },
     flow: { steps: [{ name: "docs.find", label: "Find a document", inputs: { q: "string" }, outputs: { n: "number" } }, { name: "docs.send", label: "Send a document", outward: true }],
       triggers: [{ name: "docs.signed-trigger", label: "A document is signed", event: "docs.signed", inputs: { id: "string" } }, { name: "docs.inbox", label: "A document lands", watcher: "docs.inbox" }] } });
-  assert.deepEqual(checkManifest(base()), []);
+  assert.deepEqual(checkManifest(base(), { firstParty: true }), []);
   assert.deepEqual(flowSteps(base()).map(s => [s.name, s.risk]), [["docs.find", "read"], ["docs.send", "outward"]]);
   assert.deepEqual(flowTriggers(base()).map(t => t.trigger), [{ on: "event", event: "docs.signed" }, { on: "watcher", watcher: "docs.inbox" }]);
-  const bad = (/** @type {(m: any) => void} */ f, /** @type {RegExp} */ re) => { const m = base(); f(m); assert.match(checkManifest(m).join("\n"), re); };
+  const bad = (/** @type {(m: any) => void} */ f, /** @type {RegExp} */ re) => { const m = base(); f(m); assert.match(checkManifest(m, { firstParty: true }).join("\n"), re); };
   bad(m => { m.flow.steps.push({ name: "docs.nope", label: "x" }); }, /is not one of this module's tools/);
   bad(m => { m.flow.steps[1].outward = false; }, /outward tool's step must say outward/);
   bad(m => { m.flow.steps[0].outward = true; }, /so its tool must be marked outward/);
