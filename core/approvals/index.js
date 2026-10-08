@@ -7,10 +7,13 @@ import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
+import { holdFields, viewOf, editedInput } from "../../lib/hold-fields.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
 const ASK_MS = 5 * 60_000, MAX_OPEN = 5, MAX_PROOF = 4096;
+/** Cards the same asker holds within this long of each other are one group (one list, one yes); a group has at most MAX_GROUP cards. */
+const GROUP_MS = 90_000, MAX_GROUP = 20;
 /** Plain words for what each op does; an op not here is shown by its name. */
 const WORDS = { "grant.invite": "Invite someone to this space", "grant.role": "Change who is in this space and what they may do", "grant.create": "Give access", "grant.revoke": "Take access away", "grant.narrow": "Narrow an access", "grant.offer": "Offer something to the space", "task.decide": "Approve or reject a task" };
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -19,7 +22,7 @@ const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {stri
 export default {
   async start(ctx) {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
-    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean }>} */
+    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, group?: string, input?: any, edited?: boolean }>} */
     const open = new Map();
     const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > ASK_MS) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
     const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
@@ -52,6 +55,24 @@ export default {
       a.used = true;
       return "ok";
     });
+    // ---- a group of held calls: one list, one yes, each item its own exact words and its own proof ---------------------------------------------------
+    /** Groups the person has begun to answer: a card held after that starts a group of its own, so an answered group never grows. @type {Set<string>} */
+    const closed = new Set();
+    /** The group a new card from this asker belongs to: the one it is already holding cards in, if the newest of them is recent and there is room; else a new one. @param {string} from */
+    const groupFor = from => {
+      /** @type {Map<string, { n: number, at: number }>} */ const mine = new Map();
+      for (const a of open.values()) if (a.moment === "outward" && a.from === from && a.group && a.state === "waiting" && !closed.has(a.group)) { const g = mine.get(a.group) || { n: 0, at: 0 }; g.n++; g.at = Math.max(g.at, a.at); mine.set(a.group, g); }
+      for (const [id, g] of mine) if (g.n < MAX_GROUP && now() - g.at <= GROUP_MS) return id;
+      return `gp_${newId()}`;
+    };
+    /** What a group says about itself, from its waiting cards: how many, and what each is. @param {string} group */
+    const groupLine = group => {
+      const items = [...open.values()].filter(a => a.group === group && a.state === "waiting");
+      const asker = items.length ? items[0].from.replace(/^[a-z]+:/, "").slice(0, 40) : "";
+      const ops = [...new Set(items.map(a => a.request.op))];
+      return `${asker ? `An assistant (${asker})` : "An assistant"} wants to run ${items.length} calls${ops.length === 1 ? ` of ${ops[0]}` : ""}: ${items.map(a => String(a.request.fields.to || a.request.fields.name || a.request.fields.subject || a.request.op).slice(0, 40)).join(", ")}`;
+    };
+
     ctx.tool("approvals.request", {
       description: "The exact proof request for a kernel act, so no client re-implements the kernel's hashing: give the space, the act's name (one of the grants and rules calls, see `calls` in the answer to a call with no name) and its arguments as that call takes them. Answers { op, space, fields, payload_hash }: ask with these (approvals.ask) and have the phone sign payload_hash. Changes nothing.",
       input: obj({ space: { type: "string" }, call: { type: "string" }, args: { type: "array" } }, ["space", "call"]),
@@ -113,7 +134,7 @@ export default {
     ctx.tool("approvals.hold", {
       internal: true,
       description: "The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.",
-      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" } }, ["tool", "fields", "from"]),
+      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" }, input: { type: "object" } }, ["tool", "fields", "from"]),
       callers: ["module"],
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry holds a call", "denied");
@@ -122,21 +143,29 @@ export default {
         if (!request) throw refuse("that call does not fit an outward card", "bad_input");
         const from = String(input.from || "");
         const same = [...open.values()].find(a => a.moment && a.from === from && a.state === "waiting" && a.request.op === request.op && canon(a.request.fields) === canon(request.fields));
-        if (same) return { id: same.id, line: same.line };
+        if (same) return { id: same.id, line: same.line, ...(same.group ? { group: same.group } : {}) };
         if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
         const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
         const payload_hash = payloadHash(sg.op, space, sg.fields);
         const id = `ap_${newId()}`;
         const line = lineOfOp(request.op, request.fields, `An assistant (${from.replace(/^[a-z]+:/, "").slice(0, 40) || "unknown"})`);
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment: "outward", request, line });
-        return { id, line };
+        // The call's own input (the registry's, the asker's words never reach it any other way) lets the person read every word and change some of them. It is held only if it is what the card's digest covers.
+        const held = input.input && typeof input.input === "object" && !Array.isArray(input.input) && holdFields(input.input).input_sha256 === request.fields.input_sha256 ? input.input : null;
+        const group = groupFor(from);
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, group, ...(held ? { input: held } : {}) });
+        return { id, line, group };
       },
     });
     ctx.tool("approvals.pending", {
       description: "What is waiting for the person, as the phone shows it: [{ id, title, body, op, space, fields, payload_hash, asked_from, expires_in_s }]. Sign payload_hash and nothing else.",
       input: obj(),
       callers: SURFACES,
-      run: async () => { sweep(); return { approvals: [...open.values()].filter(a => a.state === "waiting").map(a => (a.moment ? { ...card(a), moment: a.moment, request: a.request, line: a.line, sign: { op: a.op, space: a.space, fields: a.fields } } : card(a))) }; },
+      run: async () => {
+        sweep();
+        const waiting = [...open.values()].filter(a => a.state === "waiting");
+        const groups = [...new Set(waiting.filter(a => a.group).map(a => /** @type {string} */ (a.group)))].map(g => ({ id: g, size: waiting.filter(a => a.group === g).length, line: groupLine(g) }));
+        return { approvals: waiting.map(a => (a.moment ? { ...card(a), moment: a.moment, request: a.request, line: a.line, sign: { op: a.op, space: a.space, fields: a.fields }, ...(a.group ? { group: a.group } : {}), ...(a.input ? (() => { const v = viewOf(a.input); return { words: v.words, edited: Boolean(a.edited), ...(v.partial ? { partial: true, note: "Part of this is not shown. Open it on its own to see all of it." } : {}) }; })() : {}) } : card(a))), ...(groups.length ? { groups } : {}) };
+      },
     });
     ctx.tool("approvals.answer", {
       description: "The person's answer: { id, approve: true } with the presence proof signed over the card's payload_hash beside the call (x-vyre-kernel-proof), or { id, approve: false }. A no ends it only from the person's own signed-in session. Nothing is checked here: the act verifies the proof.",
@@ -174,6 +203,92 @@ export default {
         return { answered: "approved" };
       },
     });
+    // ---- one yes for a group ---------------------------------------------------------------------------------------------------------------------------
+    // The person reads every item's own words, drops or edits any, and says yes once on the phone: the phone signs each item it approves over THAT item's own payload hash, in one unlock. Nothing here is
+    // stretched across items: an item is approved only by a proof over its own exact request that the one verifier accepts (yes(), spent as it is used), an item with no decision stays waiting, and a card
+    // held after the group was answered is in a group of its own, so a yes can never reach it.
+    /** May this caller say no, edit or drop? The same rule as a single card's no: the owner's own surface on the server, or a device with a session of a real key (a software browser's word is ignored). @param {any} meta */
+    const mayDecline = async meta => {
+      if (!deviceOf(meta)) return true;
+      const sid = meta && meta.person && meta.person.id;
+      const st = sid ? await ctx.call("presence.person.strength", { id: String(sid) }).catch(() => null) : null;
+      return Boolean(st && st.data && st.data.strength === "real");
+    };
+    ctx.tool("approvals.answer-group", {
+      description: "The person's answer to a group of held calls in one step: { group, decisions: [{ id, approve }], proofs: { <id>: <proof> } }. An approve needs the proof signed over that card's own payload_hash; approve false drops the item (it is not held against the asker). An item with no decision is still waiting. Answers one result per decision.",
+      input: obj({ group: { type: "string" }, decisions: { type: "array", items: obj({ id: { type: "string" }, approve: { type: "boolean" } }, ["id", "approve"]) }, proofs: { type: "object" } }, ["group", "decisions"]),
+      callers: SURFACES,
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        sweep();
+        const group = String(input.group || "");
+        const decisions = Array.isArray(input.decisions) ? input.decisions : [];
+        if (!decisions.length || decisions.length > MAX_GROUP) throw refuse(`answer between 1 and ${MAX_GROUP} items`, "bad_input");
+        const seen = new Set();
+        for (const d of decisions) {
+          const a = open.get(String(d && d.id));
+          if (!a || a.group !== group || a.moment !== "outward") throw refuse("an item is not in this group", "bad_input");
+          if (seen.has(a.id)) throw refuse("an item is answered twice", "bad_input");
+          seen.add(a.id);
+          if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot answer its own card", "denied");
+        }
+        const proofs = input.proofs && typeof input.proofs === "object" && !Array.isArray(input.proofs) ? input.proofs : {};
+        if (JSON.stringify(proofs).length > MAX_PROOF * MAX_GROUP) throw refuse("the proofs are too large", "bad_input");
+        closed.add(group);
+        /** @type {{ id: string, answered: string, why?: string }[]} */ const results = [];
+        /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
+        for (const d of decisions) {
+          const a = /** @type {any} */ (open.get(String(d.id)));
+          if (a.state !== "waiting") { results.push({ id: a.id, answered: "ignored", why: "this item is no longer waiting" }); continue; }
+          if (d.approve !== true) {
+            if (!(await mayDecline(meta))) { results.push({ id: a.id, answered: "ignored", why: "a drop counts from your phone's own session or this server's own screen" }); continue; }
+            a.state = "refused"; results.push({ id: a.id, answered: "dropped" }); continue;
+          }
+          // Part of this call is not shown to the person (see viewOf), so one yes over a list cannot cover it: it is approved on its own, with its whole content in view.
+          if (!a.input || viewOf(a.input).partial) { results.push({ id: a.id, answered: "waiting", why: "part of this call is not shown here, so it cannot be approved with the others: open it on its own" }); continue; }
+          const proof = proofs[a.id];
+          if (!proof || typeof proof !== "object" || Array.isArray(proof) || JSON.stringify(proof).length > MAX_PROOF) { results.push({ id: a.id, answered: "waiting", why: "this item needs its own proof" }); continue; }
+          if (proof.payload_hash !== a.payload_hash) { results.push({ id: a.id, answered: "waiting", why: "that proof was not for this item" }); continue; }
+          const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, proof);
+          if (!v.ok) { results.push({ id: a.id, answered: "waiting", why: v.reason === "software_key" ? "approve this with the key in your phone: a software key cannot say yes here" : `that yes did not stand (${v.reason})` }); continue; }
+          a.state = "approved"; a.verified = true; a.at = now();
+          results.push({ id: a.id, answered: "approved" });
+        }
+        return { group, results };
+      },
+    });
+    ctx.tool("approvals.edit-item", {
+      description: "The person changes some of the words of one held call before saying yes: { id, edits: { <text field>: <new text> } }. The card is made again over the changed call (a new payload_hash to sign), and when the asker retries it, the call that runs is the edited one. Only text fields the call already has; only from the person's own surface, never the asker's.",
+      input: obj({ id: { type: "string" }, edits: { type: "object" } }, ["id", "edits"]),
+      callers: SURFACES,
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        sweep();
+        const a = open.get(String(input.id));
+        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id that can be edited", "not_found");
+        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot edit its own card", "denied");
+        if (!(await mayDecline(meta))) throw refuse("editing counts from your phone's own session or this server's own screen", "denied");
+        let next;
+        try { next = editedInput(a.input, input.edits); } catch (e) { throw refuse(String(/** @type {Error} */ (e).message), "bad_input"); }
+        const request = cardRequest("outward", { op: a.request.op, fields: holdFields(next) });
+        if (!request) throw refuse("that call does not fit an outward card once edited", "bad_input");
+        const sg = signOf("outward", request);
+        a.input = next; a.request = request; a.op = sg.op; a.fields = sg.fields; a.payload_hash = payloadHash(sg.op, a.space, sg.fields); a.edited = true; a.at = now();
+        a.line = lineOfOp(request.op, request.fields, a.line.split(" wants to ")[0]);
+        { const v = viewOf(next); return { id: a.id, payload_hash: a.payload_hash, words: v.words, ...(v.partial ? { partial: true } : {}), line: a.line }; }
+      },
+    });
+    ctx.tool("approvals.card-input", {
+      internal: true,
+      description: "The registry's own: the call an approved card now covers, when the person edited it. Answers { input } for an edited card the asker holds, else nothing.",
+      input: obj({ id: { type: "string" }, tool: { type: "string" }, from: { type: "string" } }, ["id", "tool", "from"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry reads a card's call", "denied");
+        const a = open.get(String(input.id));
+        if (!a || !a.edited || !a.input || a.moment !== "outward" || a.from !== String(input.from) || a.request.op !== String(input.tool) || a.state !== "approved" || !a.verified || a.used) return {};
+        return { input: a.input };
+      },
+    });
+
     ctx.tool("approvals.status", {
       description: "Where an approval this session asked for stands: { state: waiting | approved | refused | none }, and when approved the proof, once, to attach to the act as kernel_proof. Only the session that asked reads it.",
       input: obj({ id: { type: "string" } }, ["id"]),

@@ -813,8 +813,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     return sessionFor(k.chain, grp, person);
   }
 
-  /** @param {any} i @param {any} meta */
-  async function sendOnce(i, meta) {
+  /** @param {any} i @param {any} meta @param {string} [hidden] words the server adds to what the assistants are given (never to what the chat shows), made from this chat's own log: only secondOpinion passes any */
+  async function sendOnce(i, meta, hidden = "") {
     {
       const grp = sessionOf(i);
       const author = personOf(meta, i);
@@ -911,7 +911,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const surface = typeof i.surface === "string" ? i.surface : "deck";
       const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text, asker: author, answer: a.message, surface, mode, tz };
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : ""), asker: author, answer: a.message, surface, mode, tz };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
         q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz);
         return row;
@@ -921,7 +921,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     }
   }
 
-  return {
+  /** @type {any} */ const api = {
     port,
     markers,
     person: personOf,
@@ -929,6 +929,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     known: grp => groups.has(grp) || logs.known(grp),
     /** Does any assistant of this chat's group answer on a thread of its own yet? (A chat whose one run was started outside the stream has none: its transcript is that run's own log.) @param {string} grp */
     bound: grp => (groups.has(grp) || logs.known(grp)) && [...group(grp).bots.values()].some(m => Boolean(m.thread)),
+    /** The chat a thread answers in and who it is there ("assistant:juno"), or null when the thread is in no chat. @param {string} thread */
+    ofThread: thread => { const m = byThread.get(thread); return m && m.grp ? { grp: m.grp, who: m.who } : null; },
     /** The people in a group, from its log. Call only for a known group. @param {string} grp */
     people: grp => new Set(group(grp).people),
 
@@ -968,12 +970,12 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     },
 
     /** One send at a time per message id: a retry that arrives while the first is still being written to the kernel waits and then finds it done. @param {any} i @param {any} meta */
-    async send(i, meta) {
+    async send(i, meta, hidden = "") {
       const grp = sessionOf(i);
       const key = typeof i.message === "string" && ID.test(i.message) ? `${grp}|${i.message}` : null;
-      if (!key) return sendOnce(i, meta);
+      if (!key) return sendOnce(i, meta, hidden);
       const before = inflight.get(key) || Promise.resolve();
-      const run = before.catch(() => {}).then(() => sendOnce(i, meta));
+      const run = before.catch(() => {}).then(() => sendOnce(i, meta, hidden));
       inflight.set(key, run);
       try { return await run; } finally { if (inflight.get(key) === run) inflight.delete(key); }
     },
@@ -1039,6 +1041,47 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       return { session: grp, cur: f.cur };
     },
 
+    /**
+     * "Ask another model" on an answer (SPEC-0.3.0 12.10): the person asks one other assistant or model of THIS chat for its own answer to the same question. The chat shows one short line from the person
+     * (a reply to the answer, to that one assistant), and the assistant is given, besides, the question, the answer and the last turns, all read from this chat's own log (never from the caller), so it
+     * answers with the same context. It uses the chat's ordinary send, so the Gate, the kernel's membership and the accounting are the ones every message has.
+     * @param {any} i { chat, message, to } @param {any} meta
+     */
+    async secondOpinion(i, meta) {
+      const grp = sessionOf(i);
+      const message = String(i.message || ""), to = String(i.to || "");
+      if (!ID.test(message) || !to) throw fail("bad_input", "name the answer (message) and the assistant to ask (to)");
+      const g = group(grp);
+      const fr = logs.get(grp).read(0);
+      const mine = fr.filter(f => f.data && f.data.message === message && (f.type === "chat.text-delta" || f.type === "chat.text-done"));
+      if (!mine.length) throw fail("not_found", "that answer is not in this chat");
+      const authorOf = String((mine.find(f => f.author) || mine[0]).author || "");
+      if (!botId(authorOf)) throw fail("bad_input", "a second opinion is asked on an assistant's answer");
+      const target = mentionedIn({ participants: participants(g), mentions: [to] })[0];
+      if (!target || !botId(target)) throw fail("bad_input", `${to} is not an assistant in this chat: add it to the chat first`);
+      if (target === authorOf) throw fail("bad_input", "ask a different assistant or model than the one that answered");
+      const answer = mine.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => String(f.data.text || "")).join("").trim();
+      if (!answer) throw fail("bad_input", "that answer has no text yet");
+      const first = mine[0];
+      // The question: the person's message just before the answer began. The turns before it: up to six exchanges, newest last, each cut, the whole capped.
+      const says = fr.filter(f => f.cur < first.cur && f.type === "chat.user-message" && f.data.enc === undefined && typeof f.data.text === "string");
+      const q = says[says.length - 1];
+      if (!q) throw fail("not_found", "the question this answered is not in this chat");
+      const name = (/** @type {string} */ id) => g.names.get(id) || shortOf(id) || id;
+      const cut = (/** @type {string} */ t, /** @type {number} */ n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+      const earlier = says.slice(-7, -1).map(f => `${name(String(f.author || "person"))}: ${cut(String(f.data.text).replace(/\s+/g, " ").trim(), 600)}`);
+      const hidden = [
+        `Context for your second opinion. ${name(authorOf)} was asked this and answered. Give your own answer to the question from scratch; say plainly where you differ from theirs and why. Do not just agree.`,
+        earlier.length ? `Earlier in this chat:\n${earlier.join("\n")}` : "",
+        `The question (${name(String(q.author || "person"))}):\n${cut(String(q.data.text), 4000)}`,
+        `${name(authorOf)}'s answer:\n${cut(answer, 6000)}`,
+      ].filter(Boolean).join("\n\n");
+      const visible = `What does ${name(target)} make of ${name(authorOf)}'s answer?`;
+      // the other assistant works where the one that answered works, so it sees the same files
+      const there = g.bots.get(authorOf);
+      return api.send({ chat: grp, text: visible, reply_to: message, to: [target], ...(there && there.cwd ? { cwd: there.cwd } : {}), ...(typeof i.surface === "string" ? { surface: i.surface } : {}) }, meta, hidden);
+    },
+
     /** Keep one answer of a fan-out. @param {any} i @param {any} meta */
     keep(i, meta) {
       const grp = sessionOf(i);
@@ -1090,4 +1133,5 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     },
     stop() { stopped = true; flush(); },
   };
+  return api;
 }

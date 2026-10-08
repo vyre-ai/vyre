@@ -27,6 +27,7 @@ const good = {
   "fanout-keep": { group: "g", keep: "a1" },
   "step-summary": { step: "kit#1", count: 3, kinds: { read: 2, shell: 1 }, summary: "Read 2 files, ran a command", ok: true },
   "text-cut": { message: "m", note: "n" },
+  "handoff": { request: "r_1", to: { agent: "kit-billing", role: "kit" }, state: "running", text: "chase the invoices", thread: "thr_kit" },
 };
 
 test("protocol: every kind validates with its data and is refused without it", () => {
@@ -37,7 +38,7 @@ test("protocol: every kind validates with its data and is refused without it", (
     assert.equal(f.corr, "3");
     assert.equal(validate({ ...f, data: {} }).ok, false, `${k} with empty data`);
   }
-  assert.equal(KINDS.length, 21);
+  assert.equal(KINDS.length, 22);
 });
 
 test("protocol: a hidden stub keeps a cursor and holds nothing", () => {

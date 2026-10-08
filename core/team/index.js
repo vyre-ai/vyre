@@ -646,7 +646,9 @@ export default {
       db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, reply_to, via, text, refs, priority, state, attempt, key, created_at, model)
         VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 1, ?, ?, ?)`).run(id, teammate, project, from_kind, from, reply_to,
         JSON.stringify(via), text, JSON.stringify(refs), priority, key, Date.now(), model);
-      ctx.events.emit("summon.queued", { request: id, teammate, project, priority });
+      const cut = (/** @type {unknown} */ v, /** @type {number} */ n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
+      const tmRow = byAgent(teammate);
+      ctx.events.emit("summon.queued", { request: id, teammate, project, priority, reply_to: reply_to || null, role: tmRow ? tmRow.role : null, from_kind, text: cut(text, 300) });
       pump(teammate); // never blocks the caller
       return id;
     };
@@ -662,7 +664,7 @@ export default {
       if (!fresh || fresh.state !== "running") return fresh; // already closed (or never started)
       db.prepare("UPDATE team_requests SET state = ?, result = ?, result_refs = ?, finished_at = ? WHERE id = ?")
         .run(status, result, JSON.stringify(result_refs), Date.now(), req.id);
-      ctx.events.emit("summon.finished", { request: req.id, teammate: req.teammate, project: req.project, status, reply_to: req.reply_to || null });
+      ctx.events.emit("summon.finished", { request: req.id, teammate: req.teammate, project: req.project, status, reply_to: req.reply_to || null, result: String(result == null ? "" : result).replace(/\s+/g, " ").trim().slice(0, 600) });
       if (req.reply_to) {
         // A teammate wrote `result`, so it is untrusted text: a nonce (chosen here, after the
         // teammate has already written it, so it cannot be guessed and echoed back) makes the
@@ -742,7 +744,7 @@ export default {
           db.prepare("UPDATE team_requests SET state = 'running', started_at = ?, notes_hash_at_start = ? WHERE id = ?")
             .run(Date.now(), hash(noteCurrent(agent, "general")), req.id);
           setTeammate(agent, { current_request: req.id, state: "working" });
-          ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project });
+          ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project, reply_to: req.reply_to || null });
           // The integrator's own merge is tried mechanically, by vyred, before its session is
           // ever started: a clean merge with no test_command needs no reasoning at all, so no
           // slot and no turn are spent on it. A real conflict, or a test_command that needs
@@ -843,6 +845,7 @@ export default {
                 ...(over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) }) });
             } finally { early(); } // always unsubscribed, whether launch succeeded or threw (reviewer LOW, 20d0f121)
             const already = finishedEarly.has(t.id);
+            ctx.events.emit("summon.thread", { request: req.id, teammate: agent, project: req.project, thread: t.id, reply_to: req.reply_to || null });
             if (over) db.prepare("UPDATE team_requests SET thread = ? WHERE id = ?").run(t.id, req.id);
             else setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
             if (already) { await onTurnEnded(); }

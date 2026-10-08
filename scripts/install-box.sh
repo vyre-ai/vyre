@@ -711,7 +711,9 @@ mbx_send() {
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
   n=0
-  while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
+  # A first start (the record store, the relay link) can take a few minutes: wait up to three, saying so once, before giving the fallback (the 0.2.12 live walk saw both).
+  while [ "$n" -lt "${VYRE_WORDS_TRIES:-180}" ]; do
+    [ "$n" != 10 ] || say "  Waiting for the four words while Vyre starts (this can take a few minutes the first time)..."
     out=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
     words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
     if [ -z "$words" ] && [ -z "$DOCKER_SUDO" ] && [ -n "$SUDO" ] && [ "$n" -ge 2 ]; then
