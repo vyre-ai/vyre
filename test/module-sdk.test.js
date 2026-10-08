@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkManifest, checkManifestFull, checkSchema, SCHEMA, API_VERSIONS } from "../packages/module-sdk/manifest.js";
+import { checkManifest, checkManifestFull, checkSchema, SCHEMA, API_VERSIONS, flowSteps, flowTriggers, capabilities } from "../packages/module-sdk/manifest.js";
 import { validate, Registry } from "../core/modules/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -175,4 +175,28 @@ test("module sdk: the package ships only what it names, and its schema is the on
   for (const f of pkg.files) assert.ok(fs.existsSync(path.join(SDK, f)), f);
   assert.equal(pkg.types, "index.d.ts");
   assert.equal(SCHEMA.$id, "https://vyre.run/schema/module-1.json");
+});
+
+test("module sdk: flow.steps and flow.triggers compile to what Flows already have, and the checker refuses the wrong ones", () => {
+  const base = () => ({ vyre: "1", name: "docs", version: "0.1.0", description: "Documents.",
+    does: { tools: [{ name: "docs.find", reach: "anyone", effect: "read" }, { name: "docs.send", reach: "anyone", outward: "send" }, { name: "docs.secret", reach: "person" }] },
+    watches: { emits: ["docs.signed"] },
+    flow: { steps: [{ name: "docs.find", label: "Find a document", inputs: { q: "string" }, outputs: { n: "number" } }, { name: "docs.send", label: "Send a document", outward: true }],
+      triggers: [{ name: "docs.signed-trigger", label: "A document is signed", event: "docs.signed", inputs: { id: "string" } }, { name: "docs.inbox", label: "A document lands", watcher: "docs.inbox" }] } });
+  assert.deepEqual(checkManifest(base()), []);
+  assert.deepEqual(flowSteps(base()).map(s => [s.name, s.risk]), [["docs.find", "read"], ["docs.send", "outward"]]);
+  assert.deepEqual(flowTriggers(base()).map(t => t.trigger), [{ on: "event", event: "docs.signed" }, { on: "watcher", watcher: "docs.inbox" }]);
+  const bad = (/** @type {(m: any) => void} */ f, /** @type {RegExp} */ re) => { const m = base(); f(m); assert.match(checkManifest(m).join("\n"), re); };
+  bad(m => { m.flow.steps.push({ name: "docs.nope", label: "x" }); }, /is not one of this module's tools/);
+  bad(m => { m.flow.steps[1].outward = false; }, /outward tool's step must say outward/);
+  bad(m => { m.flow.steps[0].outward = true; }, /so its tool must be marked outward/);
+  bad(m => { m.flow.steps.push({ name: "docs.secret", label: "x" }); }, /reach anyone/);
+  bad(m => { m.flow.steps.push({ name: "docs.find", label: "again" }); }, /declared twice|uniqueItems|duplicate/);
+  bad(m => { m.flow.triggers[0].event = "docs.other"; }, /not an event this module emits/);
+  bad(m => { m.flow.triggers[1].event = "docs.signed"; }, /exactly one of event or watcher/);
+  bad(m => { m.flow.triggers[0].name = "other.signed"; }, /must start with "docs\."/);
+  assert.deepEqual(capabilities(base()).flows, { steps: [{ tool: "docs.find", label: "Find a document", outward: false }, { tool: "docs.send", label: "Send a document", outward: true }], triggers: [{ name: "docs.signed-trigger", label: "A document is signed" }, { name: "docs.inbox", label: "A document lands" }] });
+  // an old per-tool declaration no longer does anything
+  const old = base(); delete old.flow; old.does.tools[0].flowAction = { risk: "read" };
+  assert.deepEqual(flowSteps(old), []);
 });

@@ -164,13 +164,28 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   for (const t of entries) {
     if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && t.outward !== true && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
   }
-  // A tool a Flow may call says so with a risk, and an outward one is marked outward too (so the one yes holds it); only Vyre's own modules offer one for now.
-  for (const t of entries) {
-    if (!TYPES.object(t) || typeof t.name !== "string" || t.flowAction === undefined) continue;
-    if (!TYPES.object(t.flowAction) || (t.flowAction.risk !== "read" && t.flowAction.risk !== "outward")) out.push(`tool "${t.name}": flowAction is { "risk": "read" | "outward" }`);
-    else if (t.flowAction.risk === "outward" && !t.outward) out.push(`tool "${t.name}": a flowAction with risk "outward" must be marked outward: true`);
-    else if (t.flowAction.risk === "read" && t.outward) out.push(`tool "${t.name}": an outward tool's flowAction risk is "outward"`);
-    if (!firstParty) out.push(`tool "${t.name}": flowAction is built in only; an added module can't offer a Flow step yet`);
+  // What the module adds to Flows (flow.steps, flow.triggers): each step is one of its own tools, each trigger an event it emits or a watcher it hosts. Nothing else makes a tool a Flow step.
+  if (m.flow !== undefined) {
+    const fl = TYPES.object(m.flow) ? m.flow : {};
+    const byName = new Map(entries.filter((/** @type {any} */ t) => TYPES.object(t) && typeof t.name === "string").map((/** @type {any} */ t) => [t.name, t]));
+    const seen = new Set();
+    for (const st of Array.isArray(fl.steps) ? fl.steps : []) {
+      if (!TYPES.object(st) || typeof st.name !== "string") continue;
+      const tool = byName.get(st.name);
+      if (seen.has(st.name)) out.push(`flow step "${st.name}" is declared twice`);
+      seen.add(st.name);
+      if (!tool) out.push(`flow step "${st.name}" is not one of this module's tools (object form)`);
+      else if (st.outward === true && !tool.outward) out.push(`flow step "${st.name}" is outward, so its tool must be marked outward too`);
+      else if (st.outward !== true && tool.outward) out.push(`flow step "${st.name}": an outward tool's step must say outward: true`);
+      else if (tool.reach !== undefined && tool.reach !== "anyone") out.push(`flow step "${st.name}": a tool that can be a Flow step must be reach anyone`);
+    }
+    const emits = new Set((TYPES.object(m.watches) && Array.isArray(m.watches.emits) ? m.watches.emits : []));
+    for (const tr of Array.isArray(fl.triggers) ? fl.triggers : []) {
+      if (!TYPES.object(tr) || typeof tr.name !== "string") continue;
+      if (!own(tr.name)) out.push(`flow trigger "${tr.name}" must start with "${m.name}."`);
+      if ((tr.event === undefined) === (tr.watcher === undefined)) out.push(`flow trigger "${tr.name}" names exactly one of event or watcher`);
+      else if (tr.event !== undefined && !emits.has(tr.event)) out.push(`flow trigger "${tr.name}": ${tr.event} is not an event this module emits (watches.emits)`);
+    }
   }
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.
@@ -294,6 +309,24 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
 // What a module may do, read from its manifest alone (ADR 0047 sections 2, 4 and 6)
 
 /**
+ * The Flow steps a module declares (manifest `flow.steps`), each in one shape: the tool it runs, how a card names it, its typed fields and whether it leaves Vyre.
+ * @param {any} m @returns {{ name: string, label: string, risk: "read" | "outward", inputs: Record<string, string>, outputs: Record<string, string> }[]}
+ */
+export function flowSteps(m) {
+  const list = TYPES.object(m) && TYPES.object(m.flow) && Array.isArray(m.flow.steps) ? m.flow.steps : [];
+  return list.filter((/** @type {any} */ s) => TYPES.object(s) && typeof s.name === "string").map((/** @type {any} */ s) => ({ name: s.name, label: typeof s.label === "string" ? s.label : s.name, risk: s.outward === true ? "outward" : "read", inputs: TYPES.object(s.inputs) ? { ...s.inputs } : {}, outputs: TYPES.object(s.outputs) ? { ...s.outputs } : {} }));
+}
+
+/**
+ * The triggers a module declares (manifest `flow.triggers`): a named way to start a Flow that is an `event` or a `watcher` trigger underneath.
+ * @param {any} m @returns {{ name: string, label: string, trigger: { on: "event", event: string } | { on: "watcher", watcher: string }, inputs: Record<string, string> }[]}
+ */
+export function flowTriggers(m) {
+  const list = TYPES.object(m) && TYPES.object(m.flow) && Array.isArray(m.flow.triggers) ? m.flow.triggers : [];
+  return list.filter((/** @type {any} */ t) => TYPES.object(t) && typeof t.name === "string" && (typeof t.event === "string") !== (typeof t.watcher === "string")).map((/** @type {any} */ t) => ({ name: t.name, label: typeof t.label === "string" ? t.label : t.name, trigger: typeof t.event === "string" ? { on: /** @type {"event"} */ ("event"), event: t.event } : { on: /** @type {"watcher"} */ ("watcher"), watcher: t.watcher }, inputs: TYPES.object(t.inputs) ? { ...t.inputs } : {} }));
+}
+
+/**
  * Every tool entry in one shape. A string entry is the built in grace form, so its reach is
  * anyone and it acts as no one outside.
  * @param {any} m
@@ -312,10 +345,10 @@ export function toolEntries(m) {
     if (t.projectIsRecord === true) extra.projectIsRecord = true;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
-    if (TYPES.object(t.flow) && typeof t.flow.risk === "string") extra.flow = { risk: t.flow.risk, ...(typeof t.flow.label === "string" ? { label: t.flow.label } : {}) };
     if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;
-    // A tool a Flow's call step may run: `flowAction: { risk: "read" | "outward" }` (an outward one is also `outward: true`, so it is held for a yes before it runs).
-    if (TYPES.object(t.flowAction) && (t.flowAction.risk === "read" || t.flowAction.risk === "outward")) extra.flowAction = { risk: t.flowAction.risk };
+    // A tool a Flow's call step may run is one the module lists in flow.steps (an outward one is also `outward: true`, so it is held for a yes before it runs).
+    const step = flowSteps(m).find(x => x.name === t.name);
+    if (step) extra.flowStep = step;
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }
@@ -351,9 +384,12 @@ export function capabilities(m) {
     }))],
     front: list(needs.slots).includes("front"),
   } : null;
+  // What it adds to Flows (flow.steps, flow.triggers): the card says so, steps that leave Vyre marked.
+  const steps = flowSteps(m), triggers = flowTriggers(m);
   return {
     tools, outward,
     ...(capsule ? { capsule } : {}),
+    ...(steps.length || triggers.length ? { flows: { steps: steps.map(x => ({ tool: x.name, label: x.label, outward: x.risk === "outward" })), triggers: triggers.map(x => ({ name: x.name, label: x.label })) } } : {}),
     hosts: [...list(needs.network)],
     credentials: list(needs.credentials).filter(TYPES.object).map((/** @type {any} */ c) => ({ id: c.id, kind: c.kind, provider: c.provider, purpose: c.purpose })),
     connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
