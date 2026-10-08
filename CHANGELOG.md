@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(connect): a Connection is an app the person connects themselves from a key already in the Vault (spec part 4, piece 1): `connectors.connection.create/update/check/list/get/rebuild/delete`. The quick form (label, https host, how the key is sent, Vault item, fixed headers, one check request) becomes a declaration the existing connector format checks; the record is the only source and the vault credential `conn-<id>` is derived from it (config only, the key stays in its own item), written only in a person's act and shown out of step if changed behind the record. New vault auth: basic, an api-key in a query parameter, and fixed headers vyred adds that a caller cannot override. The check says green or "the key was refused (401)", "that id was not found (404)", "no answer from the host (timeout)".
 - fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
 - fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
 - fix(mac-app): the ad hoc Lumen package is signed again after the version stamp and web build, and must verify; an invalid signature made the Keychain refuse the identity key ("This Mac would not keep your key", IR-31).
