@@ -337,7 +337,8 @@ test("peer: a person's label from under a claude is the session's own, for every
     // model's relabel to "mcp" is even reached, rather than a plain caller-kind mismatch.
     const mine = await client(dir, socket, "probe.mine", {}, { underClaude: true, headers });
     assert.equal(mine.status, 403, `${label}: ${JSON.stringify(mine)}`);
-    assert.match(mine.body.error.message, /inside a Claude session/);
+    // Refused to the model's label by the callers gate, or by the floor when the tool is person-only: either way a model's shell does not reach a tool made for the person's surfaces.
+    assert.match(mine.body.error.message, /inside a Claude session|is not available to mcp callers/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
     assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
