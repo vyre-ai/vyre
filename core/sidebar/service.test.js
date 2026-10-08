@@ -69,3 +69,27 @@ test("a request from someone who is not a member, from another Space, or from mo
   await assert.rejects(svc.get({ space: SP, hops: [{ actor: { kind: "person", id: "per_ana", space: SP } }, { actor: { kind: "agent", id: "kit", space: SP } }] }, {}), /** @type {any} */ e => e.code === "not_found");
   await assert.rejects(svc.team(chain("per_ana"), { op: "set", entries: [{ kind: "place", id: "now" }], as: "per_owner" }), /Only an owner/, "a request cannot name its own person or role");
 });
+
+test("through the Space's remote server: a member's sidebar call arrives as a kernel call and answers, and the role is the kernel's", async t => {
+  const { d } = await world(t);
+  const { createRemoteServer } = await import("../../kernel/remote/server.js");
+  const kernel = {
+    gateway: { members: { roleOf: (/** @type {any} */ a) => (a.space === SP ? ROLES[a.id] ?? null : null) } },
+    chains: { fromFacts: async (/** @type {any} */ f) => ({ space: SP, hops: [{ actor: { kind: "person", id: f.person, space: SP } }] }) },
+  };
+  const server = createRemoteServer({ space: SP, kernel, log: () => {}, services: { sidebar: createSidebarService({ space: SP, kernel, registry: d.registry }) } });
+  let n = 0;
+  const ask = async (/** @type {string} */ person, /** @type {string} */ call, /** @type {any} */ arg) => server.serve({ v: 1, space: SP, id: `rq_${++n}`, ts: Date.now(), call, args: [arg] }, { device_key_id: `dk_${person}`, person, path: "relay" });
+  const g = /** @type {any} */ (await ask("per_ana", "sidebar.get", {}));
+  assert.equal(g.ok, true, JSON.stringify(g));
+  assert.equal(g.result.can_set_default, false);
+  const e = /** @type {any} */ (await ask("per_ana", "sidebar.edit", { op: "hide", what: "Vault" }));
+  assert.equal(e.ok, true, JSON.stringify(e));
+  const refused = /** @type {any} */ (await ask("per_ana", "sidebar.team", { op: "hide", what: "Vault" }));
+  assert.equal(refused.ok, false);
+  assert.match(refused.error.message, /Only an owner or an admin/);
+  const admin = /** @type {any} */ (await ask("per_admin", "sidebar.team", { op: "hide", what: "Memory" }));
+  assert.equal(admin.ok, true, JSON.stringify(admin));
+  assert.equal(((/** @type {any} */ (await ask("per_ben", "sidebar.get", {}))).result.entries.find((/** @type {any} */ x) => x.id === "memory")).hidden, true);
+  assert.equal((/** @type {any} */ (await ask("per_stranger", "sidebar.get", {}))).ok, false, "a person the Space does not know gets nothing");
+});
