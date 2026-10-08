@@ -1378,6 +1378,10 @@ test("modules: appmods relays an installing person to the app's own Connection a
   assert.doesNotThrow(() => checkRelayTool("connectors", "vault.delete", { name: "conn-docuseal" }, "deck"));
   assert.throws(() => checkRelayTool("connectors", "vault.delete", { name: "github-token" }, "deck"), /connectors may not call/);
   assert.throws(() => checkRelayTool("connectors", "vault.put", { kind: "secret" }, "deck"), /connectors may not call/);
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "submissions.list", input: {} }, "deck"), "a view over a Connection runs its operation as the person");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "github-token", operation: "x" }, "deck"), /connectors may not call/, "not another credential");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", method: "GET", url: "https://evil.example/" }, "deck"), /connectors may not call/, "not a free-form request through a Connection's credential");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "x", url: "https://evil.example/" }, "deck"), /connectors may not call/, "nor an operation with a url beside it");
   assert.doesNotThrow(() => checkRelayTool("mentions", "anything", {}, "deck"), "other modules are checked where they always were");
 });
 

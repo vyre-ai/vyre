@@ -32,7 +32,7 @@
       "title": "Waiting for signature", "icon": "clock", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda"],
       "list": {
         "connection": "docuseal", "operation": "submissions.list", "input": { "query": { "status": "pending", "limit": 50 } },
-        "map": { "rows": "data", "id": "id", "title": "template.name", "subtitle": "submitters.0.email", "accessory": "status" },
+        "map": { "rows": "body.data", "id": "id", "title": "template.name", "subtitle": "submitters.0.email", "accessory": "status" },
         "empty": "Nothing is waiting for a signature."
       }
     },
@@ -40,7 +40,7 @@
       "title": "Send for signature", "icon": "paperplane", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda", "send"],
       "list": {
         "connection": "docuseal", "operation": "templates.list", "input": { "query": { "limit": 50 } },
-        "map": { "rows": "data", "id": "id", "title": "name", "subtitle": "folder_name" },
+        "map": { "rows": "body.data", "id": "id", "title": "name", "subtitle": "folder_name" },
         "empty": "Make a template in DocuSeal first: open DocuSeal from the Apps screen.",
         "actions": [{ "id": "send", "title": "Send for signature", "form": "send" }]
       },
