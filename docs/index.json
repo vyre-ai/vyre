@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":343,"tool":1350,"event":461,"config":271,"env":253,"screen":0,"concept":39},
+  "counts": {"command":343,"tool":1352,"event":461,"config":271,"env":253,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -30,10 +30,12 @@
     {"kind":"tool","name":"appmods.catalog","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodscatalog","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.connection","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsconnection","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.hook","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodshook","module":"appmods","mentions":[]},
+    {"kind":"tool","name":"appmods.hosts","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodshosts","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.install","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsinstall","module":"appmods","mentions":[]},
     {"kind":"event","name":"appmods.installed","definedIn":"core/appmods/index.js","page":"reference/events.md#appmods","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.list","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodslist","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.logs","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodslogs","module":"appmods","mentions":[]},
+    {"kind":"tool","name":"appmods.open","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsopen","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.origin","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsorigin","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.remove","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsremove","module":"appmods","mentions":[]},
     {"kind":"event","name":"appmods.removed","definedIn":"core/appmods/index.js","page":"reference/events.md#appmods","module":"appmods","mentions":[]},
