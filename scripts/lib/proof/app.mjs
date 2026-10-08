@@ -201,8 +201,28 @@ export function createApp(o) {
     }, { deviceLabel: o.label, ...(a.onWords ? { onWords: a.onWords } : {}) });
   }
 
+  /**
+   * "Join a team": paste the invite, run on the org's server with no server of your own (spec 0.3.0 part 10, 2b). There is no app module for this yet that an identity with no server can use:
+   * previewInvite and acceptInvite (apps/app/src/real/install.ts) call spaces.invites.preview and spaces.invites.accept on THIS person's own server, which this person does not have.
+   * @param {{ link: string }} a
+   */
+  async function joinTeam(a) {
+    void a;
+    throw Object.assign(new Error("no app code joins a team from an identity with no server of its own: the join path (real/install.ts previewInvite/acceptInvite) calls the person's own box, and there is none (spec 0.3.0 part 10, Join a team)"), { code: "not_built" });
+  }
+
+  /** A team space on the server this app is paired with: the app's claimServerSpace, with the server hosting it (spaces.host-here) and the names directory holding its record. @param {string} name */
+  async function createTeamSpace(name) {
+    if (!me || !pairing) throw new Error("this app has no identity or no server yet");
+    return claimServerSpace({
+      identity: { id: me.id, name: me.name, eid: me.key.eid, ops: me.ops, key: me.key }, name, displayName: name, base: o.directory,
+      route: { relay: pairing.relay, route: pairing.route, box: pairing.box },
+      host: a => callTool("spaces.host-here", { ...a }), retire: space => callTool("spaces.retire", { space }),
+    });
+  }
+
   return {
-    label: o.label, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    label: o.label, joinTeam, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },

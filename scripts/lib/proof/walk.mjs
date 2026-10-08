@@ -97,6 +97,27 @@ export async function walk(w) {
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
 
     const CALL = S("the app reaches the server and calls a tool");
+    /** @type {any} */ let team = null, invite = null;
+    await run.step(S("create a team space on the server (named in the app, signed with the identity)"), async () => {
+      team = await mac.createTeamSpace(`team${person.slice(-6)}`);
+      assert.match(team.space, /^spc_/);
+      const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
+      assert.equal(r.status, 200, "the directory resolves the space's name");
+      return team.name;
+    }, { needs: [CALL] });
+    await run.step(S("invite a second person to the team"), async () => {
+      invite = await mac.callTool("spaces.invites.create", { space: team.space, role: "member", to: "second" });
+      assert.ok(invite && typeof invite.link === "string" && invite.link.length > 10, "the invite has a link");
+      return `a ${invite.role || "member"} invite`;
+    }, { needs: [S("create a team space on the server (named in the app, signed with the identity)")] });
+    await run.step(S("a second identity joins the team from its own app, with no server of its own"), async () => {
+      const bob = createApp({ label: "Proof second Mac", dir: path.join(dir, "second"), directory: ins.names, relay: ins.relay });
+      try {
+        const r = await bob.reserve(`second${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`);
+        await bob.becomeYourself({ name: r.name, code: r.code });
+        await bob.joinTeam({ link: invite.link });
+      } finally { bob.close(); }
+    }, { needs: [S("invite a second person to the team")] });
     /** @type {any} */ let code = null, askSeen = null;
     const phone = createApp({ label: "Proof phone", dir: path.join(dir, "phone"), directory: ins.names, relay: ins.relay, about: { kind: "app" } });
     try {
