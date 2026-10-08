@@ -240,8 +240,7 @@ export class Presence {
     if (typeof req.signature === "string" && req.signer === "webauthn_platform" && typeof req.key_id === "string") {
       const k = this.keys.get(req.key_id);
       if (k && k.signer === "webauthn_platform" && k.rp) {
-        const raw = Buffer.from(k.spki, "base64").subarray(-65);
-        found.push((async () => { let ok = false; try { ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; } if (ok) this.waOk.add(req); })());
+        found.push((async () => { let ok = false; try { const raw = Buffer.from(k.spki, "base64").subarray(-65); ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; } if (ok) this.waOk.add(req); })());
       }
       return depth === 0 && found.length ? Promise.all(found).then(() => {}) : undefined;
     }
