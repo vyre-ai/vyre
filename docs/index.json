@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":343,"tool":1352,"event":461,"config":271,"env":253,"screen":0,"concept":39},
+  "counts": {"command":343,"tool":1353,"event":461,"config":272,"env":253,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -26,9 +26,11 @@
     {"kind":"tool","name":"appearance.check","definedIn":"core/appearance/index.js","page":"reference/tools.md#appearancecheck","module":"appearance","mentions":[{"page":"adr/0035-settings-hub.md","line":128,"anchor":"3-design-tokens-are-hub-values"},{"page":"design/system/tokens.md","line":61,"anchor":"themes"}]},
     {"kind":"tool","name":"appearance.presets","definedIn":"core/appearance/index.js","page":"reference/tools.md#appearancepresets","module":"appearance","mentions":[{"page":"adr/0035-settings-hub.md","line":124,"anchor":"3-design-tokens-are-hub-values"},{"page":"design/system/tokens.md","line":53,"anchor":"themes"}]},
     {"kind":"tool","name":"appearance.resolve","definedIn":"core/appearance/index.js","page":"reference/tools.md#appearanceresolve","module":"appearance","mentions":[{"page":"adr/0035-settings-hub.md","line":132,"anchor":"3-design-tokens-are-hub-values"},{"page":"adr/0035-settings-hub.md","line":139,"anchor":"3-design-tokens-are-hub-values"},{"page":"design/system/tokens.md","line":26,"anchor":"tokens"},{"page":"design/system/tokens.md","line":73,"anchor":"themes"},{"page":"design/system/capsule.md","line":237,"anchor":"appearance-and-the-hub"}]},
+    {"kind":"config","name":"appmods","definedIn":"core/appmods/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"appmods.card","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodscard","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.catalog","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodscatalog","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.connection","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsconnection","module":"appmods","mentions":[]},
+    {"kind":"tool","name":"appmods.front","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsfront","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.hook","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodshook","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.hosts","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodshosts","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.install","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsinstall","module":"appmods","mentions":[]},

@@ -1103,8 +1103,6 @@ function loginFrom(tty) {
 
 async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
-  // An app module's own origin (<module>.<host>, core/appmods): such a request is the app's and nothing else's, whatever its path; Vyre's routes are not on that origin.
-  if (registry.hostMount && String(req.headers.host || "").includes(".")) { const done = await registry.hostMount.fn(req, res, { url }); if (done) return; }
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes

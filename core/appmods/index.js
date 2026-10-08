@@ -23,6 +23,7 @@ export const MIGRATIONS = [
   `CREATE TABLE appmods_apps (
      name TEXT PRIMARY KEY, space TEXT NOT NULL, version TEXT NOT NULL, state TEXT NOT NULL, origin TEXT, hook_port INTEGER, login_email TEXT, installed INTEGER NOT NULL, note TEXT
    );`,
+  `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -80,6 +81,12 @@ export async function handleWebhook(p) {
 }
 /** A value as one safe part of a Drive path: letters, digits, space, dot, dash and underscore; nothing that climbs. @param {any} v */
 const clean = v => String(v ?? "").replace(/[^A-Za-z0-9 _.-]+/g, "-").replace(/^[. -]+/, "").slice(0, 80) || "file";
+/** The form the Connections module's create takes for an app module's `connection` block (IFACE-connection.md: `app` instead of a host; the key is the Vault item the install made). @param {any} m @param {string} vaultItem */
+export function connectionForm(m, vaultItem) {
+  const c = m.connection;
+  const send = c.auth.kind === "header" || c.auth.kind === "query" ? { how: c.auth.kind, name: c.auth.name } : { how: c.auth.kind };
+  return { label: c.label, app: m.name, send, credential: { item: vaultItem, field: "value" }, check: { path: c.check.path }, operations: c.operations || [] };
+}
 /** A dotted path with [n] indexes, into JSON. @param {any} o @param {string} at */
 export function pick(o, at) {
   let v = o;
@@ -197,7 +204,7 @@ export default {
       description: "Install an app module. The owner's yes: it makes the app's keys in the Vault, starts the container on this server, sets the app up and connects its events. Takes a minute or two.",
       input: obj({ name: str }, ["name"]),
       presence: { summary: async (/** @type {any} */ i) => `Install ${i && i.name} on this server` },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const m = known(i.name);
         if (row(m.name)) throw refuse(`${m.name} is already installed`, "exists");
         const sp = space();
@@ -225,8 +232,20 @@ export default {
             }
           }
           db.prepare("UPDATE appmods_apps SET state = 'running' WHERE name = ?").run(m.name);
+          // The app's own API as a Connection (team/0.3/IFACE-connection.md): the person's act relays through the Connections module, so agents and Flows use the app like any Connection. A build without the
+          // Connections module (or without the app-origin form) installs the app all the same and says so.
+          let connection = null;
+          if (m.connection) {
+            try {
+              const form = connectionForm(m, item(m.name, m.connection.credential.replace(/_/g, "-")));
+              const made = await ctx.call("connectors.connection.create", form, { as: meta && meta.caller });
+              if (made.error) throw new Error(made.error.message);
+              connection = made.data && made.data.id ? String(made.data.id) : null;
+              if (connection) db.prepare("UPDATE appmods_apps SET connection_id = ? WHERE name = ?").run(connection, m.name);
+            } catch (e) { ctx.log.warn(`appmods: ${m.name} is installed without its Connection: ${/** @type {Error} */ (e).message}`); db.prepare("UPDATE appmods_apps SET note = ? WHERE name = ?").run(`no Connection yet: ${String(/** @type {Error} */ (e).message).slice(0, 200)}`, m.name); }
+          }
           ctx.events.emit("appmods.installed", { name: m.name, version: m.version });
-          return { name: m.name, state: "running" };
+          return { name: m.name, state: "running", connection };
         } catch (e) {
           db.prepare("UPDATE appmods_apps SET state = 'failed', note = ? WHERE name = ?").run(String(/** @type {Error} */ (e).message).slice(0, 300), m.name);
           throw e;
@@ -254,8 +273,9 @@ export default {
       description: "Remove an installed app: the container and its network. Its data stays unless you say data: true.",
       input: obj({ name: str, data: { type: "boolean" } }, ["name"]),
       presence: { summary: async (/** @type {any} */ i) => `Remove ${i && i.name} from this server${i && i.data ? " and delete its data" : ""}` },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+        if (r.connection_id) await ctx.call("connectors.connection.delete", { id: r.connection_id }, { as: meta && meta.caller }).catch(() => {});
         await driver.down({ space: r.space, manifest: known(r.name), hookPort: r.hook_port }, { data: i.data === true });
         const l = listeners.get(r.name); if (l) { l.close(); listeners.delete(r.name); }
         db.prepare("DELETE FROM appmods_apps WHERE name = ?").run(r.name);
@@ -271,7 +291,7 @@ export default {
 
     // The apps' own screens, each on its own origin (<module>.<base>), answered by Host before any Vyre route (proxy.js). Only an installed app that is running is served.
     const tickets = createTickets();
-    ctx.mountHost(createHostProxy({
+    const hostProxy = createHostProxy({
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
@@ -282,7 +302,18 @@ export default {
         return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [],
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
-    }));
+    });
+    // The apps' front: a listener on this machine's loopback of its own (config appmods.listen, else any free port) that answers requests by Host and nothing else. The public gate carries
+    // `<module>.<name>.vyre.run` to it (ingress `apps`); a request that is not an installed running app's host is a plain 404 here, so Vyre's own routes are not on this port at all.
+    const front = http.createServer((req, res) => {
+      let url; try { url = new URL(req.url || "/", "http://x"); } catch { res.writeHead(400).end(); return; }
+      hostProxy(req, res, { url }).then(done => { if (!done && !res.headersSent) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); res.end("not found"); } }).catch(() => { if (!res.headersSent) res.writeHead(502); res.end(); });
+    });
+    front.on("error", e => ctx.log.warn(`appmods: the apps' front could not listen: ${e.message}`));
+    await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
+    ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
+      const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening", "unavailable"); return { port: a.port };
+    } });
     /** The host Vyre is served at, which the apps' hosts hang from: config appmods.base, else <the box's name>.vyre.run, else localhost. */
     const baseHost = () => {
       const c = ctx.config || {};
@@ -325,6 +356,6 @@ export default {
         .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
-    return { async stop() { for (const s of listeners.values()) s.close(); listeners.clear(); } };
+    return { async stop() { for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
   },
 };

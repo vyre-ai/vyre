@@ -640,8 +640,6 @@ export class Registry {
     this.routes = new Map();
     /** What each route declared: read-only, or the writing methods it answers. @type {Map<string, { readOnly: boolean, methods: string[] }>} */
     this.routeInfo = new Map();
-    /** The one handler that answers requests by their Host, before any route: an app module's own origin (<module>.<host>, core/appmods/proxy.js). It returns true when the request was its own. Only appmods may claim it. @type {null | { module: string, fn: (req: any, res: any, at: { url: URL }) => Promise<boolean> }} */
-    this.hostMount = null;
     /** @type {Map<string, { module: string, driver: any }>} session providers (ADR 0030), by name */
     this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
@@ -826,7 +824,6 @@ export class Registry {
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      if (this.hostMount && this.hostMount.module === m.name) this.hostMount = null;
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
@@ -1286,13 +1283,6 @@ export class Registry {
         if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
         this.routes.set(at, fn);
         this.routeInfo.set(at, { readOnly: opts.readOnly === true, methods: writes ? [...opts.methods] : ["GET", "HEAD"] });
-      },
-      // The handler for an app module's own origin: a request whose Host is <installed app>.<anything> goes to it first, whatever its path, and it answers or says the request is not its own. Only Vyre's
-      // own app-modules host may claim it (its screens are the apps' own pages on their own origins, with no Vyre on them).
-      mountHost: fn => {
-        if (m.name !== "appmods" || !firstPartyRec()) throw new Error(`${m.name} may not answer by host`);
-        if (this.hostMount) throw new Error("the host handler is already taken");
-        this.hostMount = { module: m.name, fn };
       },
       // A session provider: a driver the Switchboard runs sessions on (core/sessions/provider.js).
       // Declared under does.providers; it must pass core/sessions/conformance.js.

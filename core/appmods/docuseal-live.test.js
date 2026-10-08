@@ -42,10 +42,10 @@ puts "api_token=#{AccessToken.first.token}"
 
 test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF is in the Drive", { skip: !LIVE, timeout: 900_000 }, async t => {
   const root = tempHome(t);
-  // the host the apps' hosts hang from: <app>.localhost:<port> (a browser reaches *.localhost on this machine with no DNS); the port is the bridge the browser step below listens on
+  // the host the apps' hosts hang from: <app>.localhost:<port> (a browser reaches *.localhost on this machine with no DNS); the port is the apps' front, which listens on it
   const portProbe = http.createServer(); await new Promise(r => portProbe.listen(0, "127.0.0.1", r));
   const bridgePort = /** @type {any} */ (portProbe.address()).port; await new Promise(r => portProbe.close(r));
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "appmods-live", vault: { keystore: "file" }, appmods: { base: `localhost:${bridgePort}` } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "appmods-live", vault: { keystore: "file" }, appmods: { base: `localhost:${bridgePort}`, listen: bridgePort } }));
   const d = await start({ root, presence: present, log: m => { if (process.env.WLOG) console.error(m); }, kernel: true });
   const space = d.kernel.id.space;
   const names = namesOf(space, "docuseal");
@@ -66,7 +66,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   // install: the owner's yes. The image is pulled by digest, the container started with its limits, set up with no browser
   const t0 = Date.now();
   const inst = await cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(inst.data, { name: "docuseal", state: "running" }, JSON.stringify(inst));
+  assert.equal(inst.data && inst.data.state, "running", JSON.stringify(inst));
   console.log(`installed in ${Math.round((Date.now() - t0) / 1000)} s`);
   const ins = JSON.parse(docker(["inspect", names.container]).stdout)[0];
   assert.equal(ins.HostConfig.Memory, 1536 * 1048576);
@@ -77,8 +77,8 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
 
   // its screens, on the app's own origin (docuseal.localhost:<port>): a ticket from Vyre's sign-in, the real app's pages signed in for the person, nothing of Vyre on that origin
   const H = `docuseal.localhost:${bridgePort}`;
-  const web = (/** @type {string} */ p, headers = {}, caller = "cli") => new Promise((resolve, reject) => {
-    const req = http.request({ socketPath: config.paths(root).socket, path: p, method: "GET", headers: { host: H, "x-vyre-caller": caller, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
+  const web = (/** @type {string} */ p, headers = {}) => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port: bridgePort, path: p, method: "GET", headers: { host: H, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
     req.on("error", reject); req.end();
   });
   assert.equal((await web("/")).status, 404, "no cookie, no word");
@@ -97,13 +97,10 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.equal(page.headers["set-cookie"], undefined);
   console.log(`screens: ${page.text.length} bytes of the app's own page on ${H}`);
 
-  // With VYRE_APPMODS_BROWSER=1 a real browser (puppeteer's image, on the host network) opens the address and walks to a second screen through a bridge to the daemon's socket, and the same bridge
-  // is Vyre's own origin (localhost:<port>) for a last check: the app's script cannot reach Vyre from its origin. Every request the page makes is to the app's origin and none may fail.
+  // With VYRE_APPMODS_BROWSER=1 a real browser (puppeteer's image, on the host network) opens the address straight on the apps' front (Chrome sends *.localhost to this machine) and walks to a second
+  // screen. Every request the page makes must go to the app's origin and none may fail; and from the app's page Vyre's address (the same port, no app host) must give nothing.
   if (process.env.VYRE_APPMODS_BROWSER === "1") {
     const seenReq = [];
-    const bridge = http.createServer((q, r) => { const t1 = Date.now(); const up = http.request({ socketPath: config.paths(root).socket, path: q.url, method: q.method, headers: { ...q.headers, "x-vyre-caller": "anonymous" } }, res => { seenReq.push(`${q.method} ${q.headers.host} ${q.url.slice(0, 60)} ${res.statusCode} ${Date.now() - t1}ms`); r.writeHead(res.statusCode, res.headers); res.pipe(r); }); up.on("error", () => { r.writeHead(502).end(); }); q.pipe(up); });
-    await new Promise(r => bridge.listen(bridgePort, "127.0.0.1", r));
-    t.after(() => bridge.close());
     const second = await d.registry.call("appmods.open", { name: "docuseal", origin: `http://localhost:${bridgePort}` }, "cli", await ownerMeta());
     const out = path.join(root, "browser"); fs.mkdirSync(out, { recursive: true }); fs.chmodSync(out, 0o777);
     fs.copyFileSync(new URL("./browser-probe.cjs", import.meta.url), path.join(root, "probe.cjs"));

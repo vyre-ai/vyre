@@ -9,10 +9,9 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import * as config from "../config/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { seam, handleWebhook, pick } from "./index.js";
+import { seam, handleWebhook, pick, connectionForm } from "./index.js";
 
 const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.json", import.meta.url), "utf8"));
 
@@ -61,8 +60,10 @@ async function world(t) {
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  const web = (method, p, { caller = "cli", headers = {}, body } = {}) => new Promise((resolve, reject) => {
-    const req = http.request({ socketPath: config.paths(root).socket, path: p, method, headers: { host: "localhost", "x-vyre-caller": caller, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
+  // The apps' front: a loopback listener that answers by Host (what the public gate carries <module>.<name>.vyre.run to)
+  const frontPort = (await d.registry.call("appmods.front", {}, "module:vyred")).data.port;
+  const web = (method, p, { headers = {}, body } = {}) => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port: frontPort, path: p, method, headers: { host: "localhost", ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
     req.on("error", reject); req.end(body);
   });
   return { d, root, cli, web, seen, log, lines, boot: () => boot, model: (tool, input = {}) => d.registry.call(tool, input, "mcp", { thread: "t-1" }) };
@@ -90,7 +91,7 @@ test("a model cannot install, start, stop or remove an app", async t => {
 test("install: keys in the Vault, the app started with them, set up by its bootstrap, webhooks become events; no secret anywhere", async t => {
   const w = await world(t);
   const r = await w.cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", state: "running" }, JSON.stringify(r));
+  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: null }, JSON.stringify(r));
   assert.match(w.log[0][1], /^spc_[a-z2-7]{12}$/);
   assert.deepEqual([w.log[0][0], w.log[0][2]], ["up", "docuseal"]);
   assert.deepEqual(w.log[0][4], ["SECRET_KEY_BASE"]);
@@ -175,12 +176,12 @@ test("the app's screens are on the app's own origin: a ticket from Vyre's sign-i
   await w.cli("appmods.install", { name: "docuseal" });
   const H = "docuseal.localhost:9999";
   const at = (method, p, o = {}) => w.web(method, p, { ...o, headers: { host: H, ...(o.headers || {}) } });
-  // no cookie, no word: whoever asks, a person at the terminal included, gets a plain 404 on this origin
-  for (const caller of ["cli", "mcp", "hook"]) assert.equal((await at("GET", "/", { caller })).status, 404, caller);
+  // no cookie, no word: whoever asks gets a plain 404 on this origin
+  assert.equal((await at("GET", "/")).status, 404);
   assert.equal((await at("GET", "/v1/health")).status, 404, "Vyre's API is not on the app's origin");
   assert.equal((await at("GET", "/manifest.json")).status, 200, "a public static path (the manifest lists it) is open without a session: a browser fetches it without cookies");
   assert.equal((await at("POST", "/manifest.json")).status, 404, "and only a GET is open");
-  assert.equal((await w.web("GET", "/v1/health", { headers: { host: "localhost" } })).status, 200, "Vyre's own origin is untouched");
+  assert.equal((await w.web("GET", "/v1/health", { headers: { host: "localhost" } })).status, 404, "this port is the apps' front and nothing else: Vyre is not on it");
   // a model cannot ask for the ticket; the owner can, and gets an address on the app's origin
   assert.ok((await w.model("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).error);
   const opened = await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" });
@@ -220,4 +221,27 @@ test("the app's screens are on the app's own origin: a ticket from Vyre's sign-i
   // removing the app ends the sessions and the host
   await w.cli("appmods.remove", { name: "docuseal" });
   assert.notEqual((await at("GET", "/", { headers: jar })).status, 200);
+});
+
+test("the Connection form for an app is the Connections module's create form with `app` and no host, and the key is the Vault item the install made", () => {
+  const m = docuseal();
+  const form = connectionForm(m, "app-docuseal-api-token");
+  assert.deepEqual(Object.keys(form).sort(), ["app", "check", "credential", "label", "operations", "send"]);
+  assert.equal(form.app, "docuseal");
+  assert.deepEqual(form.send, { how: "header", name: "X-Auth-Token" });
+  assert.deepEqual(form.credential, { item: "app-docuseal-api-token", field: "value" });
+  assert.deepEqual(form.check, { path: "/api/user" });
+  assert.ok(!("base_url" in form) && !("host" in form));
+  assert.deepEqual(form.operations.map(o => o.name), ["templates.list", "submissions.create", "submissions.get", "submissions.documents"]);
+  m.connection.auth = { kind: "bearer" }; assert.deepEqual(connectionForm(m, "x").send, { how: "bearer" });
+});
+
+test("without the Connections module's app form the install still works and says the Connection is pending", async t => {
+  const w = await world(t);
+  const r = await w.cli("appmods.install", { name: "docuseal" });
+  assert.equal(r.data.state, "running");
+  assert.equal(r.data.connection, null);
+  const row = w.d.registry.deps.db.prepare("SELECT note, connection_id FROM appmods_apps WHERE name = 'docuseal'").get();
+  assert.match(row.note, /^no Connection yet/);
+  assert.equal(row.connection_id, null);
 });
