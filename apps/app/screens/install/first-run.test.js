@@ -190,3 +190,10 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
   assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
+
+test("the paste check accepts every character the directory can put in a code", async () => {
+  const { ALPHA32 } = await import("../../../../names/worker/ids.js");
+  const { codeLooksRight } = await import("./first-run.js");
+  for (const ch of ALPHA32) assert.equal(codeLooksRight(`vyre-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), true, ch);
+  assert.equal(codeLooksRight("VYRE-IIII-OOOO-0000-1111"), false);
+});

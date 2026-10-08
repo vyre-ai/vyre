@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(setup): the reserve page and the app's paste check accept every character the directory puts in a reservation code (A-Z without I and O, 2-9); they refused any code with an 8 or 9.
 - feat(site): vyre.run/setup checks a name, reserves it and shows the code for the app; the browser setup flow (key, install follow, claim, AI, devices) and its relay client copies are removed; staging override and build scripts follow.
 - feat(app): a first name is made by pasting the code from vyre.run/setup; one add-a-server step (install line with a one-time owner token, With Records or Without Records, the words checked in the app) replaces the question, server and VPS screens; My Home upgrades to My Cloud and moves everything.
 - feat(names): a server holds no name: `names.serve` and `names.unserve` replace names.claim and names.release, the directory points a space's name at a server only when the space lists it, spaces.create on a paired server lists it and tells it; `vyre setup --name`, `vyre name claim|release` and onboard.name claim are removed; the installer takes VYRE_STORE (auto or sqlite) and ends with "Back in the Vyre app"; the setup channel offers wink.server.setup-offer and system.info only.

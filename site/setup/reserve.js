@@ -4,6 +4,8 @@
 // shown once, in this tab.
 
 export const DIRECTORY = "https://names.vyre.run";
+/** The directory's code alphabet (names/worker/ids.js ALPHA32): A-Z without I and O, then 2-9. reserve.test.js checks it against the Worker. */
+export const CODE_RE = /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/;
 const NAME = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
 /** What the person typed, as a name to ask about ("" when nothing usable). @param {string} text */
@@ -24,7 +26,7 @@ export function checkAnswer(status, body) {
 /** The directory's answer to a reservation: the code, or the plain reason there is none. @param {number} status @param {any} body @returns {{ ok: true, code: string, expires: number } | { ok: false, say: string }} */
 export function reserveAnswer(status, body) {
   const d = body && body.data;
-  if (status === 200 && d && typeof d.code === "string" && /^VYRE(-[A-Z2-7]{4}){4}$/.test(d.code)) return { ok: true, code: d.code, expires: Number(d.expires) || 0 };
+  if (status === 200 && d && typeof d.code === "string" && CODE_RE.test(d.code)) return { ok: true, code: d.code, expires: Number(d.expires) || 0 };
   if (status === 429) return { ok: false, say: "Too many names were reserved from this connection today. Try again tomorrow." };
   if (status === 409) return { ok: false, say: "Someone else holds that name. Pick another." };
   return { ok: false, say: "Vyre could not reserve that name just now. Try again in a minute." };
