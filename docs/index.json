@@ -2314,7 +2314,7 @@
     {"kind":"env","name":"VYRE_CHROME_TEST_NOFETCH","definedIn":"local/hands-chrome-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_CLAUDE_BIN","definedIn":"core/memory/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"contributing/testing.md","line":76,"anchor":"fakes-for-outside-services"}]},
     {"kind":"env","name":"VYRE_CLAUDE_HOME","definedIn":"core/config/dialogs.js","page":"reference/config.md#environment-variables","mentions":[]},
-    {"kind":"env","name":"VYRE_CODE","definedIn":"scripts/install-box.sh","page":null,"mentions":[{"page":"get-started/install.md","line":73,"anchor":"5-add-a-server"},{"page":"get-started/install.md","line":74,"anchor":"5-add-a-server"},{"page":"using/windows.md","line":52,"anchor":"the-windows-app"}]},
+    {"kind":"env","name":"VYRE_CODE","definedIn":"scripts/install/i.sh","page":null,"mentions":[{"page":"get-started/install.md","line":73,"anchor":"5-add-a-server"},{"page":"get-started/install.md","line":74,"anchor":"5-add-a-server"},{"page":"using/windows.md","line":52,"anchor":"the-windows-app"}]},
     {"kind":"env","name":"VYRE_CODE_TRIES","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_CODEX_HOME","definedIn":"core/import/formats/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_COLIMA_SHA256","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
