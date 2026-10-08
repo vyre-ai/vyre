@@ -5857,6 +5857,7 @@ Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 
   - `kind` one of "capsule", "passkey", "device", required
   - `public_key` string, required
   - `alg` integer
+  - `core_proof` string
   - `credential_id` string
   - `device` string
   - `name` string
