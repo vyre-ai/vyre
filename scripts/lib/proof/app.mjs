@@ -14,6 +14,7 @@ import { claimIdentity } from "../../../apps/app/src/identity/claim.js";
 import { claimServerSpace } from "../../../apps/app/src/identity/claim-space.js";
 import { generateDeviceKey } from "../../../apps/app/src/identity/keys.js";
 import { createAddServer } from "../../../apps/app/src/real/add-server.js";
+import { withCoreProof } from "../../../apps/app/src/real/core-proof.js";
 import { installLine } from "../../../apps/app/screens/install/first-run.js";
 import { startPaired } from "../../../apps/app/src/auth/paired.ts";
 import { proofWith, devicePresence, keyIdFromXY } from "../../../apps/app/src/auth/person.ts";
@@ -83,13 +84,13 @@ export function createApp(o) {
   }
 
   /** Pair with a server's long code the way the app's directSessionFor does: this identity's key signs for the pairing, so nobody answers at the server. @param {string} qr */
-  async function pairWithServer(qr) {
+  async function pairWithServer(qr, ctx) {
     if (!me) throw new Error("this app has no identity yet");
     /** @type {string[]} */ const words = [];
     pairing = await pairServer({
       payload: qr, owner: { id: me.id, name: plainName(me.name), vyre: me.name, pin: me.pin },
       signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: me.key.eid, sig: b64u(await me.key.sign(m)) }),
-      name: o.label, crypto: relayCrypto, keyStore, presenceKey, about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
+      name: o.label, crypto: relayCrypto, keyStore, presenceKey: await withCoreProof(presenceKey, { pageKey: ctx && ctx.pageKey, name: o.label }), about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
       onWords: w => { words.push(w); lastWords = w; },
     });
     pairing.words = words;
@@ -122,7 +123,7 @@ export function createApp(o) {
       client: /** @type {any} */ (setupClient), relay: o.relay,
       identity: async () => ({ id: me.id }),
       connect: async ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: setupClient.setupHello, webCrypto, utf8 }, { offer, key, secret }),
-      pair: async qr => { await pairWithServer(qr); },
+      pair: async (qr, ctx) => { await pairWithServer(qr, ctx); },
       pollMs: 100, ...(h.onChange ? { onChange: h.onChange } : {}),
     });
     return flow;
