@@ -137,3 +137,19 @@ test("vyre-core forward: after core restarts (its count back at 0), vyred follow
   assert.deepEqual(seen.slice(0, 2), ["a", "b"]);
   assert.deepEqual(calls.slice(0, 3), [0, 9, 0]);
 });
+
+test("vyre-core forward: the real vault module starts in a registry linked to core, and its forwarders register as vyre-core tools (it failed to start on the Mac server before)", async t => {
+  const { link } = await world(t);
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "vault");
+  coreHolder.link = /** @type {any} */ (link);
+  try {
+    await reg.start(core, { role: "local" });
+    const vault = reg.status().find(m => m.name === "vault");
+    assert.equal(vault?.state, "running", JSON.stringify(vault));
+    assert.equal(reg.tools.get("vault.put").core, true);
+  } finally { coreHolder.link = null; }
+});
