@@ -94,6 +94,18 @@ test("sidebar: the team's default is set by the person at their own surface, nev
   assert.ok(g.entries.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "the default's entry still reaches the merged list");
 });
 
+test("sidebar: set replaces a whole list (the app's drag and drop), cleaned; the team's needs the person", async t => {
+  const { c } = await world(t);
+  const r = await c("sidebar.edit", { op: "set", entries: [{ kind: "place", id: "drive" }, { kind: "place", id: "now" }, { kind: "bad" }, { kind: "place", id: "drive" }] });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual(r.data.entries.map(keyOf), ["place:drive", "place:now"]);
+  assert.deepEqual((await c("sidebar.get", {})).data.mine.map(keyOf), ["place:drive", "place:now"]);
+  assert.match(String((await c("sidebar.edit", { op: "set", entries: [] })).error?.message), /at least one/);
+  assert.ok((await c("sidebar.edit", { op: "set", scope: "team", entries: [{ kind: "place", id: "now" }] }, "mcp")).error, "an assistant cannot replace the team's list");
+  assert.equal((await c("sidebar.edit", { op: "set", scope: "team", entries: [{ kind: "place", id: "now" }] })).error, undefined);
+  assert.deepEqual((await c("sidebar.get", {})).data.default.map(keyOf), ["place:now"]);
+});
+
 test("sidebar: the hub reads and writes the two settings, and a stored list is cleaned", async t => {
   const { c } = await world(t);
   const hub = await c("settings.schema");

@@ -25,13 +25,21 @@ export function currentItem(/** @type {string} */ path, /** @type {NavItem[]} */
   return best;
 }
 
+/** @typedef {{ name: string, items: NavItem[] }} NavGroup */
+
+/** Every item of a nav definition, groups included, in drawing order. @param {{ items: NavItem[], more: NavItem[], bottom: NavItem[], groups?: NavGroup[] }} nav */
+export function allItems(nav) {
+  return [...nav.items, ...(nav.groups ?? []).flatMap((g) => g.items), ...nav.more, ...nav.bottom];
+}
+
 /**
- * A phone shows the first `tabs` items as tabs, then More. More holds the rest of `items`, then `more`, then `bottom`.
- * @param {{ items: NavItem[], more: NavItem[], bottom: NavItem[] }} nav
+ * A phone shows the first `tabs` items as tabs, then More. More holds the rest of `items`, then each named group's items (each remembers its group in `group`), then `more`, then `bottom`.
+ * @param {{ items: NavItem[], more: NavItem[], bottom: NavItem[], groups?: NavGroup[] }} nav
  * @param {number} [tabs]
  */
 export function phoneSplit(nav, tabs = 4) {
-  return { tabs: nav.items.slice(0, tabs), more: [...nav.items.slice(tabs), ...nav.more, ...nav.bottom] };
+  const grouped = (nav.groups ?? []).flatMap((g) => g.items.map((it) => ({ ...it, group: g.name })));
+  return { tabs: nav.items.slice(0, tabs), more: [...nav.items.slice(tabs), ...grouped, ...nav.more, ...nav.bottom] };
 }
 
 /**

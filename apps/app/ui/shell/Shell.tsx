@@ -13,10 +13,12 @@ import { Sheet } from "../components/Sheet";
 import { useUiTheme } from "../theme";
 import { glass } from "../lib/glass";
 import { px } from "../lib/measure";
-import { currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
+import { allItems, currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
 
 export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
-export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[] };
+export type NavGroup = { name: string; items: NavItem[] };
+/** The places the shell draws: main, then each named group, then More, then the bottom. Groups are the ones a person named in the sidebar editor (screens/shell/sidebar). */
+export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[]; groups?: NavGroup[] };
 export type ShellSpace = { id: string; name: string; sub: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
 export type ShellProps = NavDef & {
   /** The path now showing (usePathname). */
@@ -59,7 +61,7 @@ function RailItem({ it, on, onPress }: { it: NavItem; on: boolean; onPress: () =
 
 function Rail(p: ShellProps) {
   const { map } = useUiTheme();
-  const all = [...p.items, ...p.more, ...p.bottom];
+  const all = allItems(p) as NavItem[];
   const cur = currentItem(p.current, all)?.id;
   const go = (it: NavItem) => () => p.onNavigate(it.href);
   return (
@@ -67,14 +69,20 @@ function Rail(p: ShellProps) {
       <View className="px-s1 pb-s1"><SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} /></View>
       <ScrollView className="mt-s2 flex-1" contentContainerClassName="gap-s1">
         {p.items.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
-        <Menu
+        {(p.groups ?? []).map((g) => (
+          <View key={g.name} className="gap-s1 pt-s2" role="group" accessibilityLabel={g.name}>
+            <Text size="caption" medium tone="label" className="px-s3" numberOfLines={1}>{g.name}</Text>
+            {g.items.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
+          </View>
+        ))}
+        {p.more.length ? <Menu
           trigger={
             <Pressable accessibilityRole="button" accessibilityLabel="More places" style={{ minHeight: px(map, "--s-10") }} className="flex-row items-center gap-s3 rounded-row px-s3">
               <Icon name="more" tone="text-2" size={20} /><Text medium style={{ fontSize: 15, lineHeight: 20 }} tone="muted">More</Text>
             </Pressable>
           }
           items={p.more.map((it) => ({ label: it.label, onPress: () => p.onNavigate(it.href) }))}
-        />
+        /> : null}
       </ScrollView>
       <View className="gap-s1">
         {p.bottom.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
@@ -106,8 +114,8 @@ function PhoneShell(p: ShellProps) {
   const [more, setMore] = useState(false);
   const inset = useSafeAreaInsets();
   const { color } = useUiTheme();
-  const { tabs, more: rest } = phoneSplit(p, 4) as { tabs: NavItem[]; more: NavItem[] };
-  const all = [...p.items, ...p.more, ...p.bottom];
+  const { tabs, more: rest } = phoneSplit(p, 4) as { tabs: NavItem[]; more: (NavItem & { group?: string })[] };
+  const all = allItems(p) as NavItem[];
   const cur = currentItem(p.current, all)?.id;
   const inMore = rest.some((r) => r.id === cur);
   return (
@@ -126,7 +134,7 @@ function PhoneShell(p: ShellProps) {
       <Sheet open={more} onClose={() => setMore(false)} title="More">
         <View>
           {rest.map((it) => (
-            <Row key={it.id} lead={<Icon name={it.icon} tone="text-2" size={20} />} title={it.label} selected={cur === it.id}
+            <Row key={it.id} lead={<Icon name={it.icon} tone="text-2" size={20} />} title={it.label} sub={it.group} selected={cur === it.id}
               onPress={() => { setMore(false); p.onNavigate(it.href); }} />
           ))}
         </View>
