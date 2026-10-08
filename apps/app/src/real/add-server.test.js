@@ -148,3 +148,12 @@ test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Record
   assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=sqlite sh$/);
   a.stop();
 });
+
+test("a Mac server with FileVault on gets the plain warning on the card, joined after the memory note; nothing for off, unknown or a server that is not a Mac", async () => {
+  const { filevaultNote, joinNotes, memoryNote } = await import("./add-server.js");
+  assert.equal(filevaultNote("on"), "FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that.");
+  for (const v of ["off", "unknown", null, undefined, true, "On"]) assert.equal(filevaultNote(v), null, String(v));
+  assert.equal(joinNotes(null, null), null);
+  assert.equal(joinNotes(memoryNote("records", 2000), filevaultNote("on")).startsWith("This server has"), true);
+  assert.match(joinNotes(memoryNote("records", 2000), filevaultNote("on")), /FileVault is on/);
+});

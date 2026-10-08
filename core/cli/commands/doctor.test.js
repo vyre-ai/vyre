@@ -6,6 +6,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import os from "node:os";
 import { diagnose, lines, item, IDS, BUDGET_MS } from "./doctor.js";
 import { stripAnsi } from "../screen/width.js";
 import { tempHome } from "../../../test/helpers.js";
@@ -267,7 +268,7 @@ test("doctor --view: checks frames as each check answers, all waiting first, the
   const vyre = args => new Promise(res => execFile(process.execPath, [bin, ...args], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
   const c = /** @type {any} */ (await vyre(["commands", "doctor", "--json"]));
   const doc = JSON.parse(c.out).commands[0];
-  assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }]]);
+  assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }, { name: "repair" }]]);
   const r = /** @type {any} */ (await vyre(["doctor", "--view"]));
   assert.equal(r.code, 1, "vyred is not running here, which fails");
   const f = r.out.trim().split("\n").map(l => JSON.parse(l));
@@ -285,4 +286,21 @@ test("doctor --view: checks frames as each check answers, all waiting first, the
   assert.equal(last.view.items.find(it => it.id === "vyred").state, "failed");
   assert.match(last.view.items.find(it => it.id === "vyred").note, /next: vyre up/);
   assert.ok(last.view.items.every(it => it.state !== "wait"));
+});
+
+test("a Mac server: the power settings and FileVault are checked, and only there", async () => {
+  const pm = (o = {}) => ` autorestart ${o.autorestart ?? 1}\n sleep ${o.sleep ?? 0}\n disksleep 0\n womp 1\n powernap 0\n`;
+  const sysRun = (fv, p) => (cmd, args) => { if (cmd.endsWith("pmset")) return p; if (args[0] === "status") return `FileVault is ${fv}.`; return ""; };
+  const core = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-doc-")), "core.json"); fs.writeFileSync(core, "{}");
+  const ids = r => Object.fromEntries(r.checks.filter(c => ["always-on", "filevault"].includes(c.id)).map(c => [c.id, c.ok]));
+  const good = await diagnose(deps({ platform: "darwin", coreJson: core, sysRun: sysRun("Off", pm()) }));
+  assert.deepEqual(ids(good), { "always-on": true, filevault: true });
+  const bad = await diagnose(deps({ platform: "darwin", coreJson: core, sysRun: sysRun("On", pm({ autorestart: 0, sleep: 1 })) }));
+  assert.deepEqual(ids(bad), { "always-on": false, filevault: false });
+  const c = bad.checks.find(x => x.id === "always-on");
+  assert.match(c.detail, /autorestart is 0, should be 1/); assert.match(c.fix, /vyre doctor --repair/);
+  assert.match(bad.checks.find(x => x.id === "filevault").detail, /waits at the login window/);
+  // not a server (no core.json) or not a Mac: not applicable, no line at all
+  assert.deepEqual(ids(await diagnose(deps({ platform: "darwin", coreJson: core + ".none", sysRun: sysRun("On", pm()) }))), {});
+  assert.deepEqual(ids(await diagnose(deps({ platform: "linux", coreJson: core, sysRun: sysRun("On", pm()) }))), {});
 });

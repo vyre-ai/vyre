@@ -271,6 +271,19 @@ need_docker() {
   elif [ -n "$SUDO" ] && sudo docker info >/dev/null 2>&1; then DOCKER_SUDO=sudo
   else die "Docker is installed but not running. Start it (sudo systemctl start docker) and run this again."
   fi
+  docker_at_boot
+}
+
+# docker_at_boot: the box's containers carry restart: unless-stopped, but they only come back after a reboot if Docker itself starts at boot. Docker's own install script enables it; a Docker that
+# was installed another way may not be. Turn it on (and containerd, which Docker needs) so the server returns by itself after a restart or a power cut, with nobody logged in.
+docker_at_boot() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  for u in docker containerd; do
+    systemctl cat "$u" >/dev/null 2>&1 || continue
+    if [ "$(systemctl is-enabled "$u" 2>/dev/null || true)" != enabled ]; then
+      if [ "$DRY" = 1 ]; then priv systemctl enable "$u"; else priv systemctl enable "$u" >/dev/null 2>&1 || say "  note: could not make $u start at boot; run: sudo systemctl enable $u"; fi
+    fi
+  done
 }
 
 # fetch NAME DEST: a box file from BASE.

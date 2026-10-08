@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { ensurePower, fileVault, FILEVAULT_NOTICE, bootCheck, bootProblem, POWER } from "./online.js";
 import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
 export const ACCOUNT = "_vyre";
@@ -84,7 +85,7 @@ export function defaultRun(cmd, args, { input } = {}) {
  * @property {string[]} [colimaProgram]  program arguments for com.vyre.colima
  */
 
-/** @typedef {{ run?: Run, root?: string, key?: string, tar?: string, step?: (name: string) => void }} Seams */
+/** @typedef {{ run?: Run, root?: string, key?: string, tar?: string, step?: (name: string) => void, note?: (line: string) => void }} Seams */
 
 const ownerNameOk = (n) => typeof n === "string" && /^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$/.test(n) && n !== "root" && n !== ACCOUNT;
 
@@ -122,6 +123,11 @@ export function plan(opts) {
     { id: "plists", name: "write the LaunchDaemon plists", detail: labels.map((l) => `${RT.daemons}/${l}.plist root:wheel 0644`) },
     { id: "launchd", name: "bootstrap the daemons (core first)", detail: labels.map((l) => `launchctl bootstrap system ${RT.daemons}/${l}.plist`) },
     { id: "enrol-code", name: "mint the one-time enrolment code (returned, never logged or written)", detail: [`sudo -u ${ACCOUNT} node main.js code`] },
+    // A server comes back by itself after a restart or a power cut (online.js): the power settings, and the boot test of the daemons.
+    ...(opts.server ? [
+      { id: "power", name: "set the Mac to start after a power cut and never sleep (pmset)", detail: [`pmset -a ${Object.entries(POWER).map(([k, v]) => `${k} ${v}`).join(" ")}`] },
+      { id: "boot-test", name: "check the daemons start at boot and are kept running", detail: labels.filter((l) => l !== LABELS.update).map((l) => `launchctl print system/${l}: RunAtLoad and KeepAlive in ${RT.daemons}/${l}.plist`) },
+    ] : []),
   ];
 }
 
@@ -466,6 +472,17 @@ export function install(opts, seams = {}) {
   const [code, expires] = String(out).trim().split(/\s+/);
   if (!code) throw new Error("vyre-core did not print an enrolment code");
   done("enrol-code");
+
+  // 8. A server only: it must come back by itself. The power settings (power back means boot, never sleep), then the boot test of what was just loaded.
+  if (opts.server) {
+    const pw = ensurePower(run);
+    if (pw.drift.length) throw new Error(`this Mac would not take its power settings (${pw.drift.map((d) => `${d.key} is ${d.have}, wanted ${d.want}`).join("; ")}); a profile may manage them. A server that sleeps or stays off after a power cut is not online.`);
+    done("power");
+    const bad = Object.entries(plists).filter(([l]) => l !== LABELS.update).map(([l, dict]) => bootProblem(bootCheck(run, l, p.plist(l), dict))).filter(Boolean);
+    if (bad.length) throw new Error(`the boot test failed: ${bad.join("; ")}`);
+    done("boot-test");
+    if (fileVault(run) === "on" && seams.note) seams.note(FILEVAULT_NOTICE);
+  }
   return { code, expires: Number(expires) || 0 };
 }
 

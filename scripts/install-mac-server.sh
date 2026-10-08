@@ -51,6 +51,7 @@ BASE=${VYRE_BOX_URL:-${_boxurl:-https://vyre.run/box/}}
 UNAME_S=${VYRE_UNAME_S:-$(uname -s)}
 UNAME_M=${VYRE_UNAME_M:-$(uname -m)}
 LAUNCHCTL=${VYRE_LAUNCHCTL:-launchctl}
+FDESETUP=${VYRE_FDESETUP:-/usr/bin/fdesetup}
 SUDO=${VYRE_SUDO:-sudo}
 CORE_BASE=${VYRE_CORE_BASE:-/Library/Application Support/Vyre}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
@@ -176,6 +177,27 @@ fetch_node() {
 # wrapper_node: the node vyred runs on. Login-only: yours. System: yours if it is 22.5+, else the bundled one.
 wrapper_node() {
   if [ "$SYSTEM" = 0 ] || node_ok; then command -v node; else printf '%s' "$NODE_DIST/bin/node"; fi
+}
+
+# filevault_gate: a Mac with FileVault on waits at the login window after any unplanned restart (a power cut, a crash) and runs nothing until someone signs in, so a server on it is offline until a person
+# is there (a Mac mini server was offline for this reason). The installer stops and asks before it installs a server on one; it never changes FileVault itself. --yes accepts it (the words are printed either way); with no keyboard
+# to ask and no --yes it stops, and says how to go on.
+filevault_gate() {
+  [ "$SYSTEM" = 1 ] || return 0
+  fv=$("$FDESETUP" status 2>/dev/null || true)
+  case "$fv" in *"FileVault is On"*) ;; *) return 0 ;; esac
+  say ""
+  say "  FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that."
+  say "  (System Settings, Privacy & Security, FileVault. Vyre does not change it.)"
+  say ""
+  if [ "$DRY" = 1 ]; then say "would ask whether to go on"; return 0; fi
+  [ "$YES" = 1 ] && { say "  going on, because you said --yes"; return 0; }
+  if [ -r /dev/tty ]; then
+    printf 'Install Vyre here anyway? [y/N] '; read -r a </dev/tty || a=""
+    case "$a" in y|Y|yes|YES) return 0 ;; esac
+    die "stopped: turn FileVault off and run the install line again, or run it again with --yes to keep FileVault on and accept that a power cut leaves this Mac waiting at the login window"
+  fi
+  die "stopped: FileVault is on, and there is no keyboard to ask. Turn FileVault off and run the install line again, or add --yes to keep it on and accept that a power cut leaves this Mac waiting at the login window"
 }
 
 preflight() {
@@ -804,6 +826,7 @@ main() {
   say "Installing Vyre on this Mac as your server. This takes a few minutes."
   say "It asks for your Mac password once, so Vyre can start when the Mac starts."
   say "When it finishes, go back to the Vyre app."
+  filevault_gate
   preflight
   install_app
   setup_colima
@@ -817,7 +840,7 @@ main() {
     system_install
     wait_system
     finish
-    say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
+    say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. It also comes back by itself after a power cut (the Mac is set to start when power returns). Its command is $BIN/vyre"
   else
     write_plist
     start_service
