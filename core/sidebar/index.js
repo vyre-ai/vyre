@@ -17,6 +17,8 @@ import { builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const str = { type: "string" };
+/** Who may call: the person's surfaces and devices, and an assistant (a model session or the harness). The team's default is the person's alone, checked in the tool. */
+const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
 export default {
@@ -70,7 +72,7 @@ export default {
     });
 
     ctx.tool("sidebar.get", {
-      effect: "read",
+      effect: "read", callers: WHO,
       description: "The sidebar for a Space: the Space's default (null when none is stored, then the built-in places stand), this person's own list, the two merged, and the installed module screens that can be added.",
       input: { type: "object", properties: { space: str } },
       run: async (/** @type {any} */ i) => {
@@ -81,7 +83,7 @@ export default {
     });
 
     ctx.tool("sidebar.edit", {
-      effect: "write",
+      effect: "write", callers: WHO,
       description: "Change the sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index) or group (group: a name, or null). scope is me (default) or team (the Space's default: only the person at their own surface).",
       input: { type: "object", required: ["op"], properties: { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group"] }, what: str, key: str, entry: {}, scope: { type: "string", enum: ["me", "team"] }, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
