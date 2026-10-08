@@ -26,7 +26,41 @@ concurrency:
   group: capsule-win-${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
+  # web: the app's web export (apps/app, no install scripts), once for the installer and once pointed at the stand-in names directory for the proof.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app
+        working-directory: apps/app
+        run: |
+          # Exactly apps/app/package-lock.json (npm ci fails on any drift), and no install script runs, as in mac-app.yml.
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=http://127.0.0.1:8787 npx expo export -p web --clear --output-dir dist-proof
+            test -f dist-proof/index.html
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: win-web-app
+          path: apps/app/dist
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: win-web-proof
+          path: apps/app/dist-proof
+          retention-days: 2
   build:
+    needs: [web]
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
@@ -60,6 +94,18 @@ jobs:
             case "$f" in *.test.js|*/nodecrypto.js|*/testing.js) ;; *) cp "$f" app/ui/relay/ ;; esac
           done
           ls app/ui/relay
+      # The app's own web build rides inside the installer (app/app-web, served to the app's window by the shell: no server is needed to reach the first run).
+      # It is exported on Linux (the `web` job): Metro's config does not load from a Windows drive path.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: win-web-app
+          path: local/capsule/native-win/app/app-web
+      - name: the web build is whole
+        shell: bash
+        working-directory: local/capsule/native-win/app
+        run: |
+          test -f app-web/index.html
+          find app-web -type l | grep -q . && { echo "the web build holds a symlink"; exit 1; }
       - name: build the installer (NSIS, unsigned for 0.2)
         shell: bash
         working-directory: local/capsule/native-win/app
@@ -77,3 +123,71 @@ jobs:
           name: app-windows-${{ github.sha }}
           path: out/Vyre_*_x64-setup.exe
           if-no-files-found: error
+  # The Windows app's first run, proved on a real Windows machine (GitHub's windows-latest, a temporary machine): the app is built, started, and driven through its own window
+  # (WebView2 over the DevTools protocol): Get started, a reservation code from a STAND-IN names directory, Create my name, the identity bridge (has, public, sign, the TPM and
+  # agreement keys), the app log, and a restart that must keep the identity key and the relay key store. Nothing real is touched: the directory is scripts/standin-directory.mjs
+  # on loopback, in memory. Runs only when a person dispatches this workflow (a workflow file must be on the default branch to be dispatched by name, so this lives here).
+  # Output: an artifact with results.json, screenshots, app.log and the stand-in's log.
+  proof:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [web]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+        with:
+          toolchain: 1.98.1
+      - name: the shell's own tests, on Windows
+        working-directory: local/capsule/native-win
+        run: cargo test --locked
+      - name: the root packages (the stand-in directory needs them)
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: win-web-proof
+          path: ${{ runner.temp }}/web-proof
+      - name: the relay client the pairing page runs
+        shell: bash
+        working-directory: local/capsule/native-win
+        run: |
+          mkdir -p app/ui/relay
+          for f in ../../../relay/client/*.js; do
+            case "$f" in *.test.js|*/nodecrypto.js|*/testing.js) ;; *) cp "$f" app/ui/relay/ ;; esac
+          done
+      - name: build the app (no installer)
+        shell: bash
+        working-directory: local/capsule/native-win/app
+        run: |
+          cargo install tauri-cli --version "=2.12.0" --locked
+          cargo tauri build --no-bundle -- --locked
+          ls -la target/release/Vyre.exe
+      - name: playwright-core, for the DevTools protocol only (no browser is downloaded)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright-core@1.49.1
+      - name: the proof
+        shell: bash
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/x
+        run: |
+          out="$RUNNER_TEMP/win-proof-out"; mkdir -p "$out"
+          node scripts/standin-directory.mjs --port 8787 --host 127.0.0.1 --app-origins "http://vyreapp.localhost" > "$out/standin.log" 2>&1 &
+          dir=$!
+          sleep 3
+          set +e
+          node scripts/win-setup-proof.mjs --exe "$(pwd)/local/capsule/native-win/app/target/release/Vyre.exe" --web "$RUNNER_TEMP/web-proof" --names http://127.0.0.1:8787 --out "$out" --cdp 9222 | tee "$out/proof.log"
+          rc=${PIPESTATUS[0]}
+          kill "$dir" 2>/dev/null
+          exit $rc
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: windows-setup-proof-${{ github.sha }}
+          path: ${{ runner.temp }}/win-proof-out
+          if-no-files-found: warn

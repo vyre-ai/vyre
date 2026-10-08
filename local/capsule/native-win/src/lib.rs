@@ -20,3 +20,5 @@ pub mod update;
 pub mod drive;
 pub mod devicekey;
 pub mod identity;
+pub mod bundled;
+pub mod applog;

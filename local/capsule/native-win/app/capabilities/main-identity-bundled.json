@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-identity-bundled",
+  "description": "The bundled app page (its own origin, served by the shell) may use the identity key, the TPM key, the agreement key and the key's has/forget, and nothing else. Each command also refuses any page that is not the bundled origin or the pinned server (from_pinned).",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://vyreapp.localhost/*"
+    ]
+  },
+  "permissions": [
+    "allow-identity-public",
+    "allow-identity-sign",
+    "allow-identity-has",
+    "allow-identity-forget",
+    "allow-enclave-public",
+    "allow-enclave-sign",
+    "allow-agree-public",
+    "allow-agree-secret"
+  ]
+}
