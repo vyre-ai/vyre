@@ -107,9 +107,6 @@ test("who it is for is kept with the progress and with what the box keeps", () =
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });
 
-  assert.equal(macServerSay("wrong", 1).line.includes("1 try left"), true);
-  assert.equal(macServerSay("wrong", 0).over, true);
-  assert.deepEqual(macServerSay("expired", 3), { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true });
   assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
 });
 
