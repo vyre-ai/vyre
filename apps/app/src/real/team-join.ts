@@ -89,6 +89,12 @@ export async function acceptTeamInvite(link: string) {
   try { return await inv.accept(); } finally { inv.close(); open.delete(link); }
 }
 
+/** Did this device join that team space as a member (so its sidebar and the rest of its Space are reached through the team's own server, not a box of its own)? */
+export async function joinedHere(space: string): Promise<boolean> {
+  if (!/^spc_[a-z2-7]{12}$/.test(space)) return false;
+  try { return Boolean(await store.get(`member-of/${space}`)); } catch { return false; }
+}
+
 /** A call to a team space this device joined, as a member. */
 export async function teamCall(space: string, call: string, args: unknown[] = []) {
   const d = await joinDeps();

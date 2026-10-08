@@ -2,9 +2,9 @@ import { createElement, useEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Menu, Row, Segmented, Text } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
-import { MOCK, said, tool } from "../../src/real/box";
+import { MOCK, said } from "../../src/real/box";
 import { add, builtinEntries, keyOf, moveBefore, move, remove, resolve, setGroup, setHidden, REGIONS } from "../../../../lib/sidebar/model.js";
-import { catalogOf, effective, saveList, useSidebar, type Entry } from "./sidebar";
+import { catalogOf, effective, saveList, sidebarCall, useSidebar, type Entry } from "./sidebar";
 import { useSpaces } from "./state";
 
 const REGION_LABEL: Record<string, string> = { main: "Main", more: "More", bottom: "Bottom" };
@@ -24,7 +24,7 @@ function Draggable({ k, onDropOn, children }: { k: string; onDropOn: (from: stri
 /** Settings, Sidebar: the places in order, each with Up, Down, Hide or Show and a group; add the ones that are not there; for you or, if you are an admin, for the team. */
 export function SidebarEditor() {
   const space = useSpaces((s) => s.space);
-  const { base, mine, modules, load } = useSidebar();
+  const { base, mine, modules, load, canSetDefault } = useSidebar();
   const [scope, setScope] = useState<"me" | "team">("me");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -55,8 +55,8 @@ export function SidebarEditor() {
 
   return (
     <Frame title="Sidebar" sub="Arrange the places you open from the side or the tab bar.">
-      <Segmented label="Whose sidebar" value={scope} onChange={(v) => setScope(v as "me" | "team")} options={[["me", "Mine"], ["team", "The team's"]]} />
-      <Text size="secondary" tone="muted">{scope === "me" ? "Your own order, groups and hidden places, on top of the team's. The same on every device." : "What everyone in this Space starts from. Only an admin can change it; each person can still arrange their own."}</Text>
+      {canSetDefault ? <Segmented label="Whose sidebar" value={scope} onChange={(v) => setScope(v as "me" | "team")} options={[["me", "Mine"], ["team", "The team's"]]} /> : null}
+      <Text size="secondary" tone="muted">{scope === "me" ? "Your own order, groups and hidden places, on top of the team's. The same on every device." : "What everyone in this Space starts from. Only an owner or admin can change it; each person can still arrange their own."}</Text>
       {MOCK ? <Banner>The sample world cannot save a sidebar.</Banner> : null}
       {error ? <Banner tone="warn">{error}</Banner> : null}
       <Sec title="Places">
@@ -101,7 +101,7 @@ export function SidebarEditor() {
           </Card>
         </Sec>
       ) : null}
-      {scope === "me" && mine.length ? <View className="flex-row"><Button kind="ghost" label="Back to the team's order" disabled={busy} onPress={async () => { setBusy(true); try { await tool("settings.reset", { key: "sidebar.mine", level: "account" }); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); } }} /></View> : null}
+      {scope === "me" && mine.length ? <View className="flex-row"><Button kind="ghost" label="Back to the team's order" disabled={busy} onPress={async () => { setBusy(true); try { await sidebarCall(space, "sidebar.edit", { op: "reset" }); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); } }} /></View> : null}
     </Frame>
   );
 }

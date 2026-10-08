@@ -1,15 +1,17 @@
 // The sidebar the shell draws: the built-in places, laid out with the Space's default and this person's own arrangement on top (lib/sidebar/model.js has the rules, the box's sidebar tools keep
-// the lists). Without a box (the sample world) or on a box that has no sidebar tools yet, the built-in places stand: today's NAV.
+// the lists). A Space on this device's own box is read through the box's tools; a team Space this device joined is read through the team's server (the Space kernel's `sidebar` service), so a
+// member's list is kept on the team's server and follows them across devices. Without a box (the sample world) or on a box that has no sidebar tools yet, the built-in places stand: today's NAV.
 import { useMemo } from "react";
 import { create } from "zustand";
 import { ICON_NAMES } from "../../ui/components/Icon";
 import { builtinEntries, layout, merge } from "../../../../lib/sidebar/model.js";
 import { MOCK, tool } from "../../src/real/box";
+import { joinedHere, teamCall } from "../../src/real/team-join";
 import { navDef, PLACE_FLAGS } from "./nav";
 import type { NavDef } from "@vyre/ui";
 
 export type Entry = { kind: "place"; id: string; group?: string; hidden?: boolean } | { kind: "module"; module: string; screen: string; group?: string; hidden?: boolean } | { kind: "view"; id: string; label: string; href: string; icon?: string; group?: string; hidden?: boolean };
-export type ModuleScreens = { module: string; label?: string; screens: { id: string; label: string; path?: string; icon?: string }[] };
+export type ModuleScreens = { module: string; label?: string; origin?: string; screens: { id: string; label: string; path?: string; icon?: string }[] };
 
 type S = {
   loaded: boolean;
@@ -18,21 +20,30 @@ type S = {
   base: Entry[] | null;
   mine: Entry[];
   modules: ModuleScreens[];
+  /** May this person set the Space's default (its owner or admin role)? */
+  canSetDefault: boolean;
   load: (space: string) => Promise<void>;
 };
 
 /** The id the box keeps a Space's default under: a real Space's id, else "*" (the sample world, "all"). */
 export const spaceKey = (space: string) => (/^spc_[a-z2-7]{12}$/.test(space) ? space : "*");
 
+/** One sidebar call for a Space: through the team's server when this device joined it as a member, else through the box this app talks to. */
+export async function sidebarCall<T = unknown>(space: string, name: "sidebar.get" | "sidebar.edit" | "sidebar.team", input: Record<string, unknown> = {}): Promise<T> {
+  const key = spaceKey(space);
+  const body = { ...input, space: key };
+  if (key !== "*" && (await joinedHere(key))) return (await teamCall(key, name, [body])) as T;
+  return tool<T>(name, body);
+}
+
 export const useSidebar = create<S>((set) => ({
-  loaded: false, space: "*", base: null, mine: [], modules: [],
+  loaded: false, space: "*", base: null, mine: [], modules: [], canSetDefault: false,
   async load(space) {
     if (MOCK) { set({ loaded: true }); return; }
-    const key = spaceKey(space);
     try {
-      const r = await tool<{ default: Entry[] | null; mine: Entry[]; modules: ModuleScreens[] }>("sidebar.get", { space: key });
-      set({ loaded: true, space: key, base: r.default, mine: Array.isArray(r.mine) ? r.mine : [], modules: Array.isArray(r.modules) ? r.modules : [] });
-    } catch { set({ loaded: true, space: key, base: null, mine: [], modules: [] }); }   // no sidebar tools on this box: the built-in places
+      const r = await sidebarCall<{ default: Entry[] | null; mine: Entry[]; modules: ModuleScreens[]; can_set_default?: boolean }>(space, "sidebar.get");
+      set({ loaded: true, space: spaceKey(space), base: r.default, mine: Array.isArray(r.mine) ? r.mine : [], modules: Array.isArray(r.modules) ? r.modules : [], canSetDefault: r.can_set_default === true });
+    } catch { set({ loaded: true, space: spaceKey(space), base: null, mine: [], modules: [], canSetDefault: false }); }   // no sidebar tools there: the built-in places
   },
 }));
 
@@ -55,7 +66,7 @@ export function useNavDef(space: string): NavDef {
   }, [base, mine, modules, space]);
 }
 
-/** Make one change for me or for the team: the whole list, replaced. @param scope "me" or "team" */
+/** Replace a whole list, for me or (if the role allows) for the team. */
 export async function saveList(scope: "me" | "team", space: string, entries: Entry[]) {
-  await tool("sidebar.edit", { op: "set", scope, space: spaceKey(space), entries });
+  await sidebarCall(space, scope === "team" ? "sidebar.team" : "sidebar.edit", { op: "set", entries });
 }

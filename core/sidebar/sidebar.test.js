@@ -119,6 +119,17 @@ test("sidebar: set replaces a whole list (the app's drag and drop), cleaned, for
   assert.deepEqual((await c("sidebar.get", {})).data.default.map(keyOf), ["place:now"]);
 });
 
+test("sidebar: reset drops my own list and leaves the team's", async t => {
+  const { c } = await world(t);
+  await c("sidebar.team", { op: "hide", what: "Vault" });
+  await c("sidebar.edit", { op: "hide", what: "Flows" });
+  assert.deepEqual((await c("sidebar.get", {})).data.entries.filter((/** @type {any} */ e) => e.hidden).map((/** @type {any} */ e) => e.id).sort(), ["flows", "vault"]);
+  assert.equal((await c("sidebar.edit", { op: "reset" })).error, undefined);
+  const g = (await c("sidebar.get", {})).data;
+  assert.deepEqual(g.mine, []);
+  assert.deepEqual(g.entries.filter((/** @type {any} */ e) => e.hidden).map((/** @type {any} */ e) => e.id), ["vault"], "the team's choice stands");
+});
+
 test("sidebar: the hub reads and writes the two settings, and a stored list is cleaned", async t => {
   const { c } = await world(t);
   const hub = await c("settings.schema");

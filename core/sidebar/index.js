@@ -31,7 +31,7 @@ const NO_DEFAULT = "Only an owner or an admin of this Space sets the team's side
 /** The roles that set a Space's default. @param {string | null | undefined} role */
 export const roleSetsDefault = role => role === "owner" || role === "admin";
 
-const EDIT_PROPS = { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group", "set"] }, entries: { type: "array" }, what: str, key: str, entry: {}, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } };
+const EDIT_PROPS = { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group", "set", "reset"] }, entries: { type: "array" }, what: str, key: str, entry: {}, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } };
 
 export default {
   async start(ctx) {
@@ -116,6 +116,12 @@ export default {
 
     const doEdit = async (/** @type {string} */ person, /** @type {any} */ i) => {
       const sp = spaceArg(i);
+      // reset: back to the team's order (or the built-in places) — the person's own list is dropped
+      if (i && i.op === "reset") {
+        write(`mine:${person}`, null);
+        ctx.events.emit("sidebar.changed", { scope: "mine", op: "reset" });
+        return { ok: true, key: null, scope: "me", entries: defaultFor(sp) || builtinEntries() };
+      }
       const { next, key } = await apply(i, merge(defaultFor(sp) || builtinEntries(), mineOf(person)), sp, person);
       write(`mine:${person}`, next);
       ctx.events.emit("sidebar.changed", { scope: "mine", op: i.op, ...(key ? { key } : {}) });
@@ -164,7 +170,7 @@ export default {
 
     ctx.tool("sidebar.edit", {
       effect: "write", callers: WHO,
-      description: "Change the caller's OWN sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index), group (group: a name, or null) or set (entries: the whole list, from the app's drag and drop). \"Put Documents in my sidebar\" is { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
+      description: "Change the caller's OWN sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index), group (group: a name, or null), set (entries: the whole list, from the app's drag and drop) or reset (drop my own list; for sidebar.edit only). \"Put Documents in my sidebar\" is { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
       run: async (/** @type {any} */ i) => doEdit(await ownerId(), i),
     });
