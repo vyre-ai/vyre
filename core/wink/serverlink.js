@@ -22,6 +22,9 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  *   serve?: (tool: string, input: any, from: string) => Promise<any>, sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
+/** Test seam, keyed by the VYRE_HOME a vyred runs with (the same pattern as core/relay seams): a function from a paired server's id to an open peer session `{ call, close? }`, so a test world reaches a server in the same process without a relay. */
+export const peerSeams = new Map();
+
 export function createServerLinks(o) {
   const log = o.log || (() => {});
   /** @type {Map<string, { conn: any, peer: any, opening: Promise<any> | null, token: any, invitee?: { keyId: Promise<string> } }>} */
@@ -48,6 +51,8 @@ export function createServerLinks(o) {
   };
   /** The open peer session, made now when there is none. @param {string} sid */
   const openPeer = async sid => {
+    const seamed = o.peerSeam ? o.peerSeam(sid) : null;
+    if (seamed) return seamed;
     const l = linkOf(sid);
     if (l.peer && !l.peer.closed) return l.peer;
     if (l.opening) return l.opening;
@@ -96,7 +101,7 @@ export function createServerLinks(o) {
 
   /** @param {string} sid */
   const sessionFor = sid => {
-    linkOf(sid); // not_found now, not at the first call
+    if (!(o.peerSeam && o.peerSeam(sid))) linkOf(sid); // not_found now, not at the first call
     return Object.freeze({
       /** @param {string} tool @param {any} [input] @param {any} [opt] */
       async call(tool, input = {}, opt = {}) {

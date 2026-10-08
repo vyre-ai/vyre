@@ -31,7 +31,7 @@ import { verifyDevice } from "./node/peer-wire.js";
 import { verifyWith } from "../../kernel/identity/chain.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
-import { createServerLinks } from "./serverlink.js";
+import { createServerLinks, peerSeams } from "./serverlink.js";
 import { directKey } from "./directkey.js";
 import { p256 } from "@noble/curves/p256";
 import { deviceKey } from "./devicekey.js";
@@ -1675,7 +1675,7 @@ export function createPairing(o) {
   const autoPresence = o.autoPresence ?? devKindSwitch(process.env.VYRE_SEAL_SOFTWARE, o.buildRoot);
   /** @type {ReturnType<typeof createServerLinks> | null} */ let links = null;
   /** This device's open peer session to a server it paired, by the server's device id, and the kernel's remote client over it; made on first use. */
-  const serverLinks = () => links || (links = createServerLinks({ connect: relayConnect, options: pairOptions, ...(o.serve ? { serve: o.serve } : {}), name: String(ctx.config.name || "a device"), log: m => ctx.log(m), ...(o.signDevice ? { sign: o.signDevice } : ownKey ? { sign: async (/** @type {string} */ m) => ownKey.sign(m) } : {}), ...(o.presenceSigner ? { presenceSigner: o.presenceSigner } : {}), ...(o.proveTool ? { proveTool: o.proveTool } : ownKey ? { proveTool: ownKey.proveTool } : {}), autoPresence: autoPresence,
+  const serverLinks = () => links || (links = createServerLinks({ peerSeam: (/** @type {string} */ sid) => { const f = peerSeams.get(ctx.paths && ctx.paths.root); return f ? f(sid) : null; }, connect: relayConnect, options: pairOptions, ...(o.serve ? { serve: o.serve } : {}), name: String(ctx.config.name || "a device"), log: m => ctx.log(m), ...(o.signDevice ? { sign: o.signDevice } : ownKey ? { sign: async (/** @type {string} */ m) => ownKey.sign(m) } : {}), ...(o.presenceSigner ? { presenceSigner: o.presenceSigner } : {}), ...(o.proveTool ? { proveTool: o.proveTool } : ownKey ? { proveTool: ownKey.proveTool } : {}), autoPresence: autoPresence,
     channelOf: sid => { const c = meta.get(`channel:${sid}`); return c && c.route ? { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } : null; } }));
   /** The id of the server this device is paired to (the home a drive on this computer is offered to), or null. One home: the first paired server by id. */
   const homeServerId = () => {
