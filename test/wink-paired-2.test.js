@@ -1320,7 +1320,7 @@ test("join a team with no server, end to end: a second identity that has only a 
   // the app reaches the team's space as a member and calls a tool; the server's sealing process has this device's key now
   const list = await callTeam(deps, made.space, "grants.members.list", []);
   const people = (Array.isArray(list) ? list : list.members || []).map(m => m.person);
-  assert.ok(people.includes(kit.id) && people.includes(f.owner.id), JSON.stringify(list).slice(0, 300));
+  assert.deepEqual(people, [kit.id], "a member sees their own membership through the member door");
   assert.equal(await sealer.presenceCheck({ chain: hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-kit", person: kit.id, path: "direct" }), op: "grant.accept", fields: { x: 1 }, proof: kitSigner.proof(inviteeChain, "grant.accept", { x: 1 }) }) !== "unknown_key", true, "this device's presence key is enrolled on the server");
   // the invite is spent; an invite meant for someone else, a forged fingerprint and a space nobody hosts show kit nothing
   await assert.rejects(() => openInvite(deps, mine.link), e => e.code === "not_for_you");
