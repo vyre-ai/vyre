@@ -395,7 +395,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
   assert.equal((await reg.presenceChallenge("notes.nope", {}, "tty")).error.code, "no_such_tool");
 });
 
-test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
+test("modules: ctx.remote is refused to an added module (only Vyre's own reach another machine), and a listener's peer reaches run but not input", async t => {
   const src = `export default { async start(ctx) {
     ctx.tool("notes.add", { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
     ctx.route("feed", (req, res) => res.end("ok"), { readOnly: true });
@@ -406,7 +406,7 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
   assert.deepEqual(r.data.input, {});
   assert.deepEqual(r.data.peer, { stableId: "n1" });
   assert.equal(r.data.caller, "tailnet:owner@example.com");
-  assert.equal(r.data.remote.error.code, "no_link");
+  assert.equal(r.data.remote.error.code, "denied");
   assert.ok(reg.routes.has("/v1/notes/feed"));
 });
 

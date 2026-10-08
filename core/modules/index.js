@@ -1266,6 +1266,8 @@ export class Registry {
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
       // box cannot be reached, so a caller can fall back to what this machine has.
       remote: async (tool, input = {}) => {
+        // Only Vyre's own modules reach another machine. An added module gets an answer, not a forward.
+        if (!firstPartyRec()) return { error: { code: "denied", message: "only Vyre's own modules may reach another machine" } };
         const r = await this.call("link.remote", { tool, input }, `module:${m.name}`, { door: true });
         return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a box" } } : r.data && r.data.result ? r.data.result : r;
       },
