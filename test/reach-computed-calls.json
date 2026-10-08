@@ -1,6 +1,16 @@
 {
  "_comment": "Files that call a tool through ctx.call or use with a computed name. Each runs as a module caller, so the callee's reach must allow modules; the owner reviews and lowers the count or documents it. test/reach-module-calls.test.js fails on a new one.",
  "files": {
+  "core/connectors/index.js": {
+   "count": 1,
+   "owner": "connect-anything",
+   "note": "reviewed (9 Oct): the one forwarding wrapper madeConnections calls through; core/connectors/made.js names only vault.list, vault.put, vault.delete, vault.connections.register and .unregister, and vault.request, all literal, each run as the person who asked or the module"
+  },
+  "lib/views/engine.js": {
+   "count": 1,
+   "owner": "watch-restart",
+   "note": "reviewed (9 Oct, connect-anything): a view runs the tool its declaration names, as the asking person for a first-party module or as module:<name> for an added one; Registry.capsuleMayCall refuses any tool the module did not declare in that view (or list in needs.tools)"
+  },
   "core/about/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -161,12 +171,7 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
-  "local/capsule/views.js": {
-   "count": 1,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
-  },
-  "local/hands-chrome-mac/extension/caps/batch.js": {
+   "local/hands-chrome-mac/extension/caps/batch.js": {
    "count": 3,
    "owner": "capsule-sight",
    "note": "extension-side op dispatch, not a registry tool call. batch.run and batch.parallel call ops of the same extension through ctx.call, so the floor, stop and approval apply to each step. batch.parallel refuses any op outside the READING set (extension/shared/proto.js) before it runs anything, so it can never start a write; batch.run's two calls were listed before. Needs reviewer-2 on the READING guard (pending)"

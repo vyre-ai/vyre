@@ -160,6 +160,7 @@ export const PERSON_ONLY = new Map([
   ["computers.tailnet.set", "controls the person's own machine: its network and hand-back"],
   ["connectors.scope", "widens what a connector may reach"],
   ["connectors.declare", "makes a vault credential: the person's own act, with their own key"],
+  ["views.act", "a view action is the person's click; its outward acts are still held"],
   ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
   ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
   ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
@@ -300,6 +301,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "sidebar.get", "sidebar.edit", // the person's own sidebar: an assistant may arrange it ("put Documents in my sidebar"); the tool refuses the team's default to anyone but the person at their own surface
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
@@ -441,6 +443,7 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
+  ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],
   ["files.drive.offer", "leaves the Space: offers a file"],
