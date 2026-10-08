@@ -24,15 +24,15 @@ const openapi = () => ({
   components: { parameters: { Since: { name: "since", in: "query", schema: { type: "string" } } }, schemas: { NewContact: { type: "object", required: ["name"], properties: { name: { type: "string" }, tags: { type: "array" }, vip: { type: "boolean" } } } } },
 });
 
-test("names: camel case and folders become the dotted lower case words the format takes", () => {
+test("names: camel case and folders become the dotted lower case words the format takes", async () => {
   assert.equal(opName("getContactById"), "get_contact_by_id");
   assert.equal(opName("Contacts / Create"), "contacts.create");
   assert.equal(opName("  "), "operation");
   assert.equal(opName("123abc"), "abc");
 });
 
-test("OpenAPI 3: operations with their shapes, the method sets the kind later, a POST is never a read here, the server gives the host and its path prefix", () => {
-  const d = importSpec(JSON.stringify(openapi()));
+test("OpenAPI 3: operations with their shapes, the method sets the kind later, a POST is never a read here, the server gives the host and its path prefix", async () => {
+  const d = await importSpec(JSON.stringify(openapi()));
   assert.equal(d.source, "openapi"); assert.equal(d.label, "Acme CRM API"); assert.equal(d.base_url, "https://api.acme.example");
   const by = Object.fromEntries(d.operations.map(o => [o.name, o]));
   assert.deepEqual(Object.keys(by).sort(), ["create_contact", "delete_contact", "get_contact_by_id", "list_contacts", "search_contacts"]);
@@ -50,14 +50,14 @@ test("OpenAPI 3: operations with their shapes, the method sets the kind later, a
   assert.equal(m.declaration.ops.list_contacts.kind, "read");
 });
 
-test("Swagger 2 gives host, base path and https; a server with variables or http gives no address and a note", () => {
-  const s2 = importSpec({ swagger: "2.0", info: { title: "Old" }, host: "api.old.example", basePath: "/v1", schemes: ["https"], paths: { "/things": { get: { operationId: "things" } } } });
+test("Swagger 2 gives host, base path and https; a server with variables or http gives no address and a note", async () => {
+  const s2 = await importSpec({ swagger: "2.0", info: { title: "Old" }, host: "api.old.example", basePath: "/v1", schemes: ["https"], paths: { "/things": { get: { operationId: "things" } } } });
   assert.equal(s2.base_url, "https://api.old.example"); assert.equal(s2.operations[0].path, "/v1/things");
-  const none = importSpec({ openapi: "3.0.0", servers: [{ url: "http://insecure.example" }, { url: "https://{tenant}.example.com" }], paths: { "/x": { get: {} } } });
+  const none = await importSpec({ openapi: "3.0.0", servers: [{ url: "http://insecure.example" }, { url: "https://{tenant}.example.com" }], paths: { "/x": { get: {} } } });
   assert.equal(none.base_url, ""); assert.ok(none.notes.some(n => /no https server address/.test(n)));
 });
 
-test("Postman: folders name the operations, :id and {{var}} become path parameters, the host comes from a plain https address, a sample body lists its fields", () => {
+test("Postman: folders name the operations, :id and {{var}} become path parameters, the host comes from a plain https address, a sample body lists its fields", async () => {
   const c = { info: { name: "GoHighLevel" }, item: [
     { name: "Contacts", item: [
       { name: "Get contact", request: { method: "GET", url: { raw: "https://services.leadconnectorhq.com/contacts/:id", host: ["services", "leadconnectorhq", "com"], path: ["contacts", ":id"], protocol: "https" } } },
@@ -65,7 +65,7 @@ test("Postman: folders name the operations, :id and {{var}} become path paramete
     ] },
     { name: "Odd", request: { method: "TRACE", url: "https://x.example/y" } },
   ] };
-  const d = importSpec(JSON.stringify(c));
+  const d = await importSpec(JSON.stringify(c));
   assert.equal(d.source, "postman"); assert.equal(d.base_url, "https://services.leadconnectorhq.com"); assert.equal(d.skipped, 1);
   const by = Object.fromEntries(d.operations.map(o => [o.name, o]));
   assert.deepEqual(Object.keys(by), ["contacts.get_contact", "contacts.create_contact"]);
@@ -77,15 +77,81 @@ test("Postman: folders name the operations, :id and {{var}} become path paramete
   assert.deepEqual(checkDeclaration(m.declaration), []);
 });
 
-test("what is not a description is refused in words, and a file is never fetched or run here", () => {
-  assert.throws(() => importSpec(""), /give the API description/);
-  assert.throws(() => importSpec("openapi: 3.0.0\npaths: {}"), /convert it to JSON/);
-  assert.throws(() => importSpec("{ nope"), /not valid JSON/);
-  assert.throws(() => importSpec({ hello: 1 }), /neither an OpenAPI file/);
-  assert.throws(() => importSpec({ openapi: "3.0.0", paths: {} }), /lists no operations/);
-  assert.throws(() => importSpec({ info: {}, item: [] }), /lists no requests/);
+test("what is not a description is refused in words, and a file is never fetched or run here", async () => {
+  await assert.rejects(importSpec(""), /give the API description/);
+  await assert.rejects(importSpec("openapi: 3.0.0\npaths: {}"), /lists no operations/);
+  await assert.rejects(importSpec("{ nope"), /not valid JSON/);
+  await assert.rejects(importSpec("a: [unclosed"), /not valid YAML or JSON/);
+  await assert.rejects(importSpec("x".repeat(5_000_001)), /larger than 5 MB/);
+  await assert.rejects(importSpec({ hello: 1 }), /neither an OpenAPI file/);
+  await assert.rejects(importSpec({ openapi: "3.0.0", paths: {} }), /lists no operations/);
+  await assert.rejects(importSpec({ info: {}, item: [] }), /lists no requests/);
   // a path that climbs, and an example value, are not carried over
-  const d = importSpec({ openapi: "3.0.0", servers: [{ url: "https://a.example" }], paths: { "/ok": { get: { operationId: "ok", parameters: [{ name: "token", in: "query", example: "sk_live_SECRET", schema: { type: "string" } }] } }, "/../etc": { get: {} } } });
+  const d = await importSpec({ openapi: "3.0.0", servers: [{ url: "https://a.example" }], paths: { "/ok": { get: { operationId: "ok", parameters: [{ name: "token", in: "query", example: "sk_live_SECRET", schema: { type: "string" } }] } }, "/../etc": { get: {} } } });
   assert.equal(d.operations.length, 1); assert.equal(d.skipped, 1);
   assert.ok(!JSON.stringify(d).includes("sk_live_SECRET"));
+});
+
+const YAML_SPEC = `
+openapi: 3.0.3
+info:
+  title: Acme CRM API
+servers:
+  - url: https://api.acme.example/v2
+paths:
+  /contacts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: getContact
+      summary: |
+        Get one contact
+        by its id
+    delete: &del
+      operationId: deleteContact
+  /contacts:
+    post:
+      operationId: createContact
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+                vip: {type: boolean}
+`;
+
+test("OpenAPI as YAML reads like the same file as JSON, aliases within reason, and only the first document", async () => {
+  const d = await importSpec(YAML_SPEC);
+  assert.equal(d.source, "openapi"); assert.equal(d.base_url, "https://api.acme.example");
+  const by = Object.fromEntries(d.operations.map(o => [o.name, o]));
+  assert.deepEqual(Object.keys(by).sort(), ["create_contact", "delete_contact", "get_contact"]);
+  assert.deepEqual(by.create_contact.input.body, { name: { type: "string", required: true }, vip: { type: "boolean" } });
+  assert.equal(by.get_contact.label, "Get one contact\nby its id".slice(0, 80).replace("\n", "\n"));
+  const same = await importSpec(JSON.stringify(await (await import("yaml")).parse(YAML_SPEC)));
+  assert.deepEqual(same.operations, d.operations, "YAML and the same data as JSON give the same draft");
+  const two = await importSpec(`${YAML_SPEC}\n---\nopenapi: 3.0.0\npaths:\n  /evil:\n    get: {operationId: evil}\n`);
+  assert.ok(!two.operations.some(o => o.name === "evil"), "a second document is never read");
+});
+
+test("a YAML alias bomb is refused fast, and a tag is only text, never code", async () => {
+  // each level names the one before ten times: 9 levels expand to a billion strings
+  const lines = ["a: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol, lol]"];
+  for (let i = 1; i < 9; i++) lines.push(`b${i}: &a${i} [${Array(10).fill(`*a${i - 1}`).join(", ")}]`);
+  lines.push("openapi: 3.0.0", "paths: {}");
+  const t0 = Date.now();
+  await assert.rejects(importSpec(lines.join("\n")), /aliases too far|not valid YAML/);
+  assert.ok(Date.now() - t0 < 2000, `refused in ${Date.now() - t0} ms`);
+  // an unknown or js tag does not run anything and does not become code
+  globalThis.__yamlRan = false;
+  const d = await importSpec("openapi: 3.0.0\nservers: [{url: 'https://a.example'}]\npaths:\n  /x:\n    get: {operationId: !!js/function 'function(){ globalThis.__yamlRan = true }'}\n");
+  assert.equal(globalThis.__yamlRan, false);
+  assert.ok(d.operations.length >= 1);
+  // duplicate keys are refused (two different meanings in one file)
+  await assert.rejects(importSpec("openapi: 3.0.0\nopenapi: 3.1.0\npaths: {}"), /not valid YAML/);
 });

@@ -283,7 +283,7 @@ export default {
     ctx.tool("connectors.connection.import", {
       effect: "read",
       callers: READERS,
-      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file as JSON, or { url } is its public https address, which only the person may ask for (vyred fetches it, at most 5 MB, nothing of theirs sent). Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
+      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file (JSON or YAML), or { url } is its public https address; JSON or YAML, which only the person may ask for (vyred fetches it, at most 5 MB, nothing of theirs sent). Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
       input: obj({ text: str, url: str }),
       run: async ({ text, url }, meta) => {
         let body = text;
@@ -295,7 +295,7 @@ export default {
           body = r.data.body;
         }
         if (body === undefined) throw fail("give the description as text, or its address as url", "bad_input");
-        try { return importSpec(String(body)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
+        try { return await importSpec(String(body)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
       },
     });
     ctx.tool("connectors.connection.export", {

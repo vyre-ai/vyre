@@ -30,14 +30,28 @@ function deref(root, ref) {
   return cur;
 }
 
-/** @param {any} text @returns {any} */
-function parseJson(text) {
+/** The most an API description may weigh, as JSON or YAML. */
+export const MAX_SPEC_BYTES = 5_000_000;
+
+/**
+ * The description as data: JSON, or YAML (the `yaml` package, loaded only here and only when the text is not JSON). YAML is read with the core schema and no custom tags (a tag is never code here), at
+ * most 100 alias expansions (a document that folds anchors into each other to grow without end is refused before it grows), strict, and only its first document.
+ * @param {any} text @returns {Promise<any>}
+ */
+async function parseDoc(text) {
   if (isObj(text)) return text;
   const t = String(text || "").trim();
   if (!t) throw fail("give the API description (an OpenAPI or Postman file)");
-  if (t.length > 5_000_000) throw fail("that description is larger than 5 MB");
-  if (!t.startsWith("{")) throw fail("this reads OpenAPI and Postman files as JSON; if yours is YAML, convert it to JSON first");
-  try { return JSON.parse(t); } catch { throw fail("that is not valid JSON"); }
+  if (t.length > MAX_SPEC_BYTES) throw fail("that description is larger than 5 MB");
+  if (t.startsWith("{")) { try { return JSON.parse(t); } catch { throw fail("that is not valid JSON"); } }
+  const YAML = await import("yaml");
+  let docs;
+  try { docs = YAML.parseAllDocuments(t, { schema: "core", version: "1.2", strict: true, maxAliasCount: 100, customTags: [], merge: false, keepSourceTokens: false, prettyErrors: false, uniqueKeys: true }); }
+  catch { throw fail("that is not valid YAML or JSON"); }
+  const first = Array.isArray(docs) ? docs[0] : docs;
+  if (!first || (first.errors && first.errors.length)) throw fail(`that is not valid YAML or JSON${first && first.errors && first.errors[0] ? ` (${String(first.errors[0].message).split("\n")[0].slice(0, 120)})` : ""}`);
+  try { return first.toJS({ maxAliasCount: 100 }); }
+  catch (e) { throw fail(/alias/i.test(String(/** @type {Error} */ (e).message)) ? "that file expands its aliases too far to read (more than 100)" : "that is not valid YAML or JSON"); }
 }
 
 /** @param {string} u @returns {{ base_url: string, prefix: string } | null} */
@@ -51,10 +65,10 @@ function splitServer(u) {
 
 /**
  * @param {any} input the file's text, or its parsed JSON
- * @returns {{ source: "openapi" | "postman", label: string, base_url: string, operations: any[], notes: string[], skipped: number }}
+ * @returns {Promise<{ source: "openapi" | "postman", label: string, base_url: string, operations: any[], notes: string[], skipped: number }>}
  */
-export function importSpec(input) {
-  const doc = parseJson(input);
+export async function importSpec(input) {
+  const doc = await parseDoc(input);
   if (typeof doc.openapi === "string" || typeof doc.swagger === "string") return fromOpenApi(doc);
   if (Array.isArray(doc.item)) return fromPostman(doc);
   throw fail("that is neither an OpenAPI file (it has no `openapi` or `swagger`) nor a Postman collection (it has no `item`)");
