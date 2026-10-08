@@ -1,6 +1,6 @@
 // @ts-check
-// directory: the client for the hosted name directory (names/worker, plan section 3.1). A box
-// claims, points and proves its name there; the directory alone holds the vyre.run DNS credential.
+// directory: the client for the hosted name directory (names/worker, plan section 3.1). A server never holds a name: it SERVES a space's, listed by the space (the Worker's ids/server), and asks the
+// directory here to point that name at its address and to write its certificate challenge; the directory alone holds the vyre.run DNS credential.
 //
 // Every call is signed with the box's relay route key (ADR 0026): a signature over the route, the
 // time, a fresh nonce, the method, the path and the body's hash. The key never comes in here. The
@@ -58,8 +58,6 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     base: root,
     /** ok, taken, reserved, invalid or mine. @param {string} name */
     check: name => call("GET", `/v1/names/check?name=${encodeURIComponent(name)}`),
-    /** Bind the name to this box's route. `fresh` is false when this box already held it. @param {string} name @returns {Promise<{ name: string, mine: boolean, fresh: boolean }>} */
-    claim: name => call("POST", "/v1/names/claim", { name }),
     /** @param {string} name @param {string} ip */
     point: (name, ip) => call("POST", "/v1/names/point", { name, ip }),
     /** The name's A record becomes the public IPv4 this request comes from (never one the caller names): for a box that serves its own network gate. @param {string} name */
@@ -71,8 +69,6 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     /** A challenge for the person's own domain, under <routehash>.acme.vyre.run. @param {string} token */
     acmeOwn: token => call("POST", "/v1/names/acme", { own: true, token }),
     acmeOwnClear: () => call("DELETE", "/v1/names/acme", { own: true }),
-    /** @param {string} name */
-    release: name => call("POST", "/v1/names/release", { name }),
     /** This route's name, its state and the notices. */
     mine: () => call("GET", "/v1/names/mine"),
   };

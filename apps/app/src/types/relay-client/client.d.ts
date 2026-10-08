@@ -13,3 +13,5 @@ export function pair(
   o?: { name?: string; presenceKey?: { public_key: string; alg?: number; storage?: "hardware" | "software" }; about?: About; keyStore?: KeyStore; crypto?: CryptoProvider; WebSocket?: unknown; timeout?: number },
 ): Promise<{ relay: string; route: string; box: string; name: string; device: string | null; presence: { enrolled: boolean; reason?: string } | null }>;
 export type { KeyPair };
+export function openChannel(o: unknown): Promise<{ channel: unknown }>;
+export function request(ch: unknown, head: unknown, body: Uint8Array, signal?: AbortSignal): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;

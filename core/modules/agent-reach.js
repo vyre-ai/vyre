@@ -464,8 +464,4 @@ export const WEB_REACH = new Map([
  * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
  * @type {ReadonlyMap<string, string>}
  */
-export const SETUP_REACH = new Map([
-  ...SETUP_REASONS,
-  ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
-  ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
-]);
+export const SETUP_REACH = new Map([...SETUP_REASONS]);

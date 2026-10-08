@@ -38,6 +38,7 @@
 // purpose (the device displays it) and is kept as a hash.
 
 import crypto from "node:crypto";
+import { devKindSwitch } from "../wink/buildkind.js";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
@@ -603,25 +604,29 @@ export default {
     tool("spaces.identity.id", "This device's permanent identity id (and its own entry id on the list, `eid`), or null when none is claimed yet. The one place the id is kept is this module; pairing and install read it here, never keep their own. For modules.", obj(),
       async () => { const st = identity.status(); const ok = st.exists && !st.pending; return { id: ok ? st.id : null, ...(ok && st.eid ? { eid: st.eid } : {}) }; }, { internal: true });
 
-    tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
-      obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
+    tool("spaces.identity.create", "Become yourself on this device: make its key and your identity, and finish the Vyre name that a reservation code (VYRE-XXXX-XXXX-XXXX-XXXX, made at vyre.run/setup) holds. The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
+      obj({ code: str, name: str, password: str, deviceLabel: str }), async i => {
         const st = identity.status();
         if (st.exists) throw refuse(st.name ? `This device already has the name ${st.name}.vyre.run.` : "This device already has a Vyre identity.", "exists");
-        const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
-        if (!label) throw refuse("Choose a name.", "bad_name");
         const password = passwordOf(i);
-        let made;
+        let made, label, code = typeof i.code === "string" ? i.code.trim() : "";
+        // Development builds only (never a release): the walks and tests that make many people reserve each name themselves. A release build takes a code and nothing else.
+        if (!code && devKindSwitch(process.env.VYRE_TEST_SELF_RESERVE) && typeof i.name === "string") {
+          const want = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
+          try { code = String((await dir.reserve(want)).code); } catch (e) { const c = /** @type {any} */ (e).code; throw refuse(c === "taken" ? "That name is taken. Pick another." : "That name can't be used.", c === "taken" ? "name_taken" : "bad_name"); }
+        }
+        if (!code) throw refuse("Paste the reservation code from vyre.run/setup.", "code_needed");
         try {
-          const c = await dir.check(label);
-          if (c.status === "taken") throw refuse("That name is taken. Pick another.", "name_taken");
-          if (c.status !== "ok" && c.status !== "mine") throw refuse(c.status === "reserved" ? "That name is reserved. Pick another." : `That name can't be used: ${c.why}.`, "bad_name");
-          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
-        } catch (e) { const err = /** @type {any} */ (e); if (err.code === "name_taken" || err.code === "bad_name") throw err; throw idFail(err); }
+          // The code says which name it holds; the directory spends it only when the claim goes through.
+          const held = await dir.reservedFor(code);
+          label = String(held.name);
+          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined, code });
+        } catch (e) { const err = /** @type {any} */ (e); if (err.code === "bad_code") throw refuse("That reservation code is not valid. It may have expired (they last 24 hours), been used, or been replaced by a newer one: reserve the name again at vyre.run/setup.", "bad_code"); throw idFail(err); }
         emit("identity.created", { name: `${label}.vyre.run`, id: made.status.id, at: now() });
         return {
           ...publicIdentity(made.status),
           recoveryCode: made.recoveryCode, passwordSet: made.passwordSet,
-          note: "This recovery code is shown once. Write it down somewhere safe. " + (made.passwordSet ? "It works only with the recovery password you chose, so remember it. " : "Add a recovery password (four or more words) so the paper alone is not enough. ") + "Any one of your devices, this code, or two recovery contacts can bring you back, and the recovery code can only add a device, and a new sign-in cannot remove older ones for 24 hours, so none of them can take your name from you in a day.",
+          note: "This recovery code is shown once. Write it down somewhere safe. " + (made.passwordSet ? "It works only with the recovery password you chose, so remember it. " : "Add a recovery password (four or more words) so the paper alone is not enough. ")
         };
       });
 
@@ -810,6 +815,13 @@ export default {
         if ((KS || remoteServer) && view && view.status === "failed") await retireHosted(spaceId, meta);
         // The home's route goes into the space's directory record so another person's device can find the home from an invite link (the flow's own pointHome ran before the server-hosted record existed on every path).
         if (remoteServer && view && view.status !== "failed") { try { await deps.names.pointHome({ name: `${label}.vyre.run`.replace(/\.vyre\.run$/, ""), spaceId, home: { kind: "server" } }); } catch { /* the record is republished by spaces.identity.republish */ } }
+        // The server serves the space's name (a server holds no name of its own): the space lists the server's route in the directory, signed by its owner, and the server is told which name it serves.
+        if (remoteServer && view && view.status !== "failed") {
+          try {
+            const rt = await routeOf(spaceId);
+            if (rt && rt.route) { await dir.server(label, String(rt.route), await ownerSigner()); await remoteCall(remoteServer, "names.serve", { name: label }, meta); }
+          } catch (e) { ctx.log.warn(`spaces: ${label} was made, but its server could not be listed to serve the name (${/** @type {Error} */ (e).message}); run spaces.identity.republish after fixing the cause`); }
+        }
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
@@ -1143,9 +1155,9 @@ export default {
       let st = null; try { st = identity.status(); } catch { st = null; }
       return { spaces: out2, identity: st && st.exists && st.id === person ? { id: st.id, name: st.name || null } : null };
     }, { internal: true });
-    tool("spaces.identity.republish", "Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Says what it put back and what it could not.", obj(), async () => {
+    tool("spaces.identity.republish", "Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Your name is finished again with a fresh reservation code (`code`) when the directory no longer holds it. Says what it put back and what it could not.", obj({ code: str }), async i => {
       const done = { identity: false, spaces: /** @type {string[]} */ ([]), failed: /** @type {Array<{ name: string, why: string }>} */ ([]) };
-      try { await idops.republish(); done.identity = true; } catch (e) { done.failed.push({ name: "identity", why: String(/** @type {any} */ (e).message || e).slice(0, 120) }); return done; }
+      try { await idops.republish({ code: typeof i.code === "string" ? i.code : undefined }); done.identity = true; } catch (e) { done.failed.push({ name: "identity", why: String(/** @type {any} */ (e).message || e).slice(0, 120) }); return done; }
       for (const row of spaces.all()) {
         if (row.status !== "done" || !row.rootPublic) continue;
         const r = await deps.names.claimSpace({ name: row.label, rootPublic: row.rootPublic, record: { spaceId: row.id, displayName: row.displayName } });

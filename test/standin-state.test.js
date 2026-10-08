@@ -27,7 +27,7 @@ test("stand-in directory --state: an identity claimed before a restart resolves 
   const dir = idDirectory({ base: `http://127.0.0.1:${PORT}`, fetch: (u, i) => fetch(u, i), now: () => Date.now(), seen });
   const store = fileIdentityStore(path.join(home, "spaces"));
   const ops = createIdentityOps({ store, dir, seen, now: () => Date.now(), emit: () => {}, stretch: { memoryKiB: 64, passes: 1 } });
-  const made = await ops.create({ name: "statetest", deviceLabel: "t" });
+  const made = await ops.create({ name: "statetest", deviceLabel: "t", code: (await dir.reserve("statetest")).code });
   assert.equal(made.status.name, "statetest");
   await new Promise(r => setTimeout(r, 800));
   await new Promise(r => { child.on("exit", r); child.kill("SIGTERM"); });

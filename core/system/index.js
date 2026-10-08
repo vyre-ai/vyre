@@ -35,7 +35,7 @@ export default {
         // matching the relay's pairing ticket) from lib/identity.js, so this and tailnet's relay
         // can never drift apart.
         const fp = ownerFingerprints(ctx.config.owner && ctx.config.owner.id);
-        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], serverName: ctx.config.serverName || null, platform: process.platform, node: process.version,
+        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], memoryMb: Math.round(os.totalmem() / 1048576), serverName: ctx.config.serverName || null, platform: process.platform, node: process.version,
           owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null, fingerprint8: fp.person },
           // The name the user gave their assistant in onboarding, else the agent it was created as.
           assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null,

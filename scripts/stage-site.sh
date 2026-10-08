@@ -53,9 +53,9 @@ if [ -n "$relay" ] || [ -n "$install" ]; then
     if (got.relay) {
       const https = got.relay.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
       const f = out + "/_headers", h = fs.readFileSync(f, "utf8");
-      const from = "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run;";
+      const from = "connect-src \x27self\x27 https://names.vyre.run;";
       if (!h.includes(from)) { console.error("stage-site: _headers has no connect-src line to widen"); process.exit(1); }
-      fs.writeFileSync(f, h.replace(from, "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run " + https + " " + got.relay + ";"));
+      fs.writeFileSync(f, h.replace(from, "connect-src \x27self\x27 https://names.vyre.run " + https + " " + got.relay + ";"));
     }
     console.log("stage-site: wrote setup/config.json " + JSON.stringify(got));
   ' "$here" "$out" "$relay" "$install" || { rm -rf "$out"; exit 1; }

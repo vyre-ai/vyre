@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A local stand-in for the names directory (names/worker), for walks and tests that need identities and spaces without touching vyre.run or any real name.
-// It serves the Worker's REAL code and routes (names/worker/index.js: claim, resolve, append, update, alias, release, the box names) over plain HTTP on a local port,
+// It serves the Worker's REAL code and routes (names/worker/index.js: reserve, finalize, claim (spaces), resolve, append, update, alias, release, a space's servers) over plain HTTP on a local port,
 // on the fake Workers runtime the Worker's own tests use (relay/worker/fake-cf.js): in-memory Durable Object storage, a fake DNS zone (nothing is published anywhere),
 // a fake DNS-over-HTTPS (own-domain aliases read their TXT from a file you control, below), and a request clock that is the real one. State lives as long as this process.
 //
@@ -58,7 +58,7 @@ const server = http.createServer(async (req, res) => {
   // The Worker rate-limits by the address Cloudflare reports; here it is the socket's own.
   headers.set("cf-connecting-ip", req.socket.remoteAddress || "127.0.0.1");
   let restoring = false;
-  if (RESTORE_TIME && req.method === "POST" && String(req.url).startsWith("/v1/ids/claim")) {
+  if (RESTORE_TIME && req.method === "POST" && /^\/v1\/ids\/(claim|finalize)/.test(String(req.url))) {
     try { const ops = JSON.parse(body.toString("utf8")).ops; const last = Number(ops[ops.length - 1].ts); if (Number.isFinite(last) && last < Date.now() - 60_000) { restoring = true; replay = true; } } catch { /* an ordinary claim */ }
   }
   try {

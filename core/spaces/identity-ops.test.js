@@ -42,6 +42,9 @@ function world(t) {
     const events = [];
     const own = mkDir();
     const ops = createIdentityOps({ store, dir: own.dir, seen: own.seen, now: () => clock.t, emit: (type, p) => events.push([type, p]), stretch: FAST });
+    // A person's first name is finished with a reservation code (the web page's step): these tests reserve it from the same directory just before.
+    const create = ops.create.bind(ops);
+    ops.create = async o => create({ ...o, code: o.code ?? (await own.dir.reserve(o.name)).code });
     return { label, home, store, ops, events, file: path.join(home, "spaces", "identity.json") };
   };
   /** Pairing hands a new device the chain: it makes its key, the signed-in device adds it, then the new one keeps the chain. */

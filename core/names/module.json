@@ -20,7 +20,7 @@
         "reach": "anyone"
       },
       {
-        "name": "names.claim",
+        "name": "names.serve",
         "reach": "anyone",
         "effect": "write"
       },
@@ -30,7 +30,7 @@
         "effect": "read"
       },
       {
-        "name": "names.release",
+        "name": "names.unserve",
         "reach": "person",
         "effect": "write"
       },

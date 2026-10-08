@@ -812,6 +812,23 @@ export function createPairing(o) {
       },
     });
     const meta0Set = (/** @type {string} */ to) => { meta.set("pair_to", to); };
+    // An app-led install (spec 0.3.0 part 10): the server was installed with a setup code its owner's app made. The app, once the words match, opens the setup channel (it alone holds the code's key) and asks
+    // here for the pairing ticket, for ITS identity only: the same single-use ticket and the same identity proof as an install with --pair-to, so nobody is asked a yes at a terminal.
+    ctx.tool("wink.server.setup-offer", {
+      description: "Over the setup channel only: an unowned server installed with a setup code makes its pairing ticket for one identity and answers { qr, expires }. The app pairs with it and proves the identity; nothing is asked at the server.",
+      input: obj({ identity: str }, ["identity"]),
+      run: async (input, meta1 = {}) => {
+        if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
+        if (hasOwner()) throw fail("owned", "This server already belongs to someone.");
+        const to = String((input && input.identity) || "").trim();
+        if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
+        if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
+        meta0Set(to);
+        const made = await mintQr({});
+        return { qr: made.qr, expires: made.expires };
+      },
+    });
+
     const hasOwner = () => Boolean(meta.get("owner"));
     ctx.tool("wink.server.confirm", {
       description: "On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.",
