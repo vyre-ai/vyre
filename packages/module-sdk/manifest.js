@@ -209,8 +209,20 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     if (m.setupTools !== undefined) out.push(`setupTools is built in only; an added module can't put a tool on the setup channel`);
     // The per-call target of an asked tool is read by the registry as vyred: Vyre's own modules only.
     if (toolEntries(m).some(t => t.target)) out.push(`a tool's target is built in only; an added module can't name one`);
-    // The # picker's providers are Vyre's own: an added module can't put a kind in it.
-    if (m.mentions !== undefined) out.push(`mentions is built in only; an added module can't offer a kind to the # picker`);
+    // The # picker is open to an added module with three limits: its kind carries its own name (it cannot pose as Vyre's "vault" or "drive"), and its search and resolve are its own
+    // read tools. What resolve may give back is cut again by the picker (no grant, no hosts, always outside text).
+    if (Array.isArray(m.mentions)) {
+      const entries = toolEntries(m), reads = TYPES.object(m.does) && Array.isArray(m.does.reads) ? m.does.reads : [];
+      for (const e of m.mentions) {
+        if (!e || typeof e !== "object") continue;
+        if (typeof e.kind === "string" && e.kind !== m.name && !e.kind.startsWith(`${m.name}-`)) out.push(`mentions kind "${e.kind}": an added module's kind is its own name, or starts with "${m.name}-"`);
+        for (const f of ["search", "resolve"]) {
+          const t = typeof e[f] === "string" ? entries.find(x => x.name === e[f]) : null;
+          if (t && !String(t.name).startsWith(`${m.name}.`)) out.push(`mentions "${e.kind}" ${f} "${t.name}" must be a tool named ${m.name}.*`);
+          else if (t && !(reads.includes(t.name) || t.effect === "read")) out.push(`mentions "${e.kind}" ${f} "${t.name}" must be a read: list it under does.reads or give it effect "read"`);
+        }
+      }
+    } else if (m.mentions !== undefined) out.push("mentions must be a list");
     // H2: in 0.2 the allowlist of modules an added module may replace is empty.
     if (m.replaces !== undefined) out.push(`replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty`);
     if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);

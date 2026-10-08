@@ -124,7 +124,7 @@ export interface Manifest {
   replaces?: string;
   /** Built in only: this module's tools the setup channel may call before sign-in. An added module that declares it fails to load. */
   setupTools?: string[];
-  /** Built in only: what this module offers the # tag picker. `search` and `resolve` are this module's own tools; an added module that declares it fails to load. */
+  /** What this module offers the # tag picker. `search` and `resolve` are this module's own read tools. An added module's `kind` is its own name (or `<name>-...`), and what resolve returns is cut to words: no grant, no hosts, always outside text. */
   mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
   /** The screens this module serves, which the app can put in the sidebar. `path` is relative to /m/<module>/. */
   screens?: { id: string; label: string; path?: string; icon?: string }[];

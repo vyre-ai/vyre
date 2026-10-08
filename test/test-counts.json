@@ -256,7 +256,7 @@
  "core/memory/spendcap.test.js": 2,
  "core/memory/teach.test.js": 9,
  "core/memory/write.test.js": 10,
- "core/mentions/mentions.test.js": 6,
+ "core/mentions/mentions.test.js": 8,
  "core/modulelist/modulelist.test.js": 2,
  "core/modules/federate.test.js": 3,
  "core/modules/idempotency.test.js": 5,

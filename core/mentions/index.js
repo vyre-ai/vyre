@@ -46,7 +46,7 @@ export function providers(status) {
   const out = [];
   for (const m of status) {
     if (m.state !== "running" || !Array.isArray(m.mentions)) continue;
-    for (const e of m.mentions) if (e && typeof e.kind === "string") out.push({ module: m.name, kind: e.kind, label: String(e.label || e.kind), icon: e.icon ? String(e.icon) : "", search: String(e.search), resolve: String(e.resolve) });
+    for (const e of m.mentions) if (e && typeof e.kind === "string") out.push({ module: m.name, firstParty: m.firstParty !== false, kind: e.kind, label: String(e.label || e.kind), icon: e.icon ? String(e.icon) : "", search: String(e.search), resolve: String(e.resolve) });
   }
   const rank = (/** @type {string} */ k) => { const i = FIRST.indexOf(k); return i < 0 ? FIRST.length : i; };
   return out.sort((a, b) => rank(a.kind) - rank(b.kind) || a.kind.localeCompare(b.kind));
@@ -123,6 +123,11 @@ export default {
         if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
         const d = r.data !== undefined ? r.data : r;
         let context = d.context !== undefined ? d.context : d.text;
+        // A module someone added gives only its own reads: no grant, no hosts, and its words are outside text however it labels them (a note joins the context, it is not Vyre's voice).
+        if (!p.firstParty) {
+          if (typeof d.note === "string" && d.note) context = [typeof context === "string" ? context : "", d.note].filter(Boolean).join("\n\n");
+          d.grant = undefined; d.hosts = undefined; d.note = undefined; d.outside = true;
+        }
         if (context !== undefined && typeof context !== "string") { try { context = JSON.stringify(context); } catch { context = undefined; } }
         const hosts = Array.isArray(d.hosts) ? d.hosts.filter((/** @type {any} */ h) => typeof h === "string").slice(0, 20) : undefined;
         return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), ...(text(d.hint, 120) ? { hint: text(d.hint, 120) } : {}), ...(hosts && hosts.length ? { hosts } : {}),
