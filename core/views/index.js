@@ -7,7 +7,7 @@
 //
 // The same engine answers the Capsule as capsule.commands, capsule.view and capsule.act (local/capsule), from the same declaration: `views` in the manifest, with shows.capsule's `view:<id>` entries as
 // the older name for it. A module's own code never runs in the app: it describes, and the app draws the frame.
-import { registerViews } from "./engine.js";
+import { registerViews } from "../../lib/views/engine.js";
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {

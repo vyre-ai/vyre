@@ -623,6 +623,7 @@
  "lib/identity.test.js": 6,
  "lib/identity/directory.test.js": 8,
  "lib/kernel-session.test.js": 14,
+ "lib/online.test.js": 6,
  "lib/perf/meter.test.js": 44,
  "lib/project-id.test.js": 3,
  "lib/publish/deployment.test.js": 12,

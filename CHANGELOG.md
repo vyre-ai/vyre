@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- refactor: the view engine and frames live in lib/views (the Capsule and core/views both use them), the Mac server's always-online rules in lib/online.js, and the peer door asks the sidebar module's handle for its service by name: three boundary edges gone, none frozen.
 - fix(mac-app): the Mac app keeps its identity key, Secure Enclave key, key-agreement key and presence key as ONE Keychain item, read once per launch and held in memory, so a build signed ad hoc asks for the Keychain once (and Always Allow covers the rest) instead of up to four times (IR-33, item 1.10). An older install's four items move in on the first read and are taken away.
 - feat(app): Now shows "Vyre <version> is out" with an Update now button (or the command, when the box cannot update itself from the app), and Settings, About shows the version with one button: Check for updates, or Update to <version> when a release is out (item 1.9). The update is still the box's own signed one (update.apply).
 - fix(always-online): the Mac server installer checks FileVault before installing anything and stops in plain words unless the line is run with VYRE_ACCEPT_FILEVAULT=1 (--yes alone no longer accepts it); the app card and `vyre doctor` say the same.

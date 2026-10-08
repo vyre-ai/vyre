@@ -61,7 +61,7 @@ function fakeRun(state = {}) {
       if (args[1] === "-list" && args[2] === "/Groups") return "wheel 0\nstaff 20\n";
       return "";
     }
-    // a server install sets the power settings (online.js): pmset keeps its state, fdesetup and plutil answer like a Mac
+    // a server install sets the power settings (lib/online.js): pmset keeps its state, fdesetup and plutil answer like a Mac
     if (cmd.endsWith("pmset")) {
       if (args[0] === "-a") { for (let i = 1; i < args.length; i += 2) st.power[args[i]] = args[i + 1]; st.pmsetSet = (st.pmsetSet || 0) + 1; return ""; }
       return Object.entries(st.power).map(([k, v]) => ` ${k}  ${v}`).join("\n") + "\n";

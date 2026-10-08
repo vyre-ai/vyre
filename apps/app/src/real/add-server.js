@@ -60,10 +60,10 @@ export function filevaultNote(filevault) {
   return filevault === "on" ? "FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1." : null;
 }
 
-/** The notes the server card shows, in one line each: memory first, then FileVault. @param {...(string | null)} notes */
 /** The line that stays on a server card for a server whose Mac has FileVault on. */
 export const FILEVAULT_LASTING = "Stops after a restart until someone signs in.";
 
+/** The notes the server card shows, in one line each: memory first, then FileVault. @param {(string | null)[]} notes */
 export const joinNotes = (...notes) => notes.filter(Boolean).join(" ") || null;
 
 /** Plain words by code; nothing a server or the network says reaches the screen. */

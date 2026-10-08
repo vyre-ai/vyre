@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileVault } from "../vyre-core/online.js";
+import { fileVault } from "../../lib/online.js";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, save as saveConfig } from "../config/index.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";

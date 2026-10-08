@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ensurePower, fileVault, FILEVAULT_NOTICE, bootCheck, bootProblem, POWER } from "./online.js";
+import { ensurePower, fileVault, FILEVAULT_NOTICE, bootCheck, bootProblem, POWER } from "../../lib/online.js";
 import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
 export const ACCOUNT = "_vyre";
