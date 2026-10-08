@@ -246,3 +246,5 @@ export function effectOf(effect, vars, names, firstParty) {
   }
   return { effect: { [kind]: clip(value, kind === "copy" || kind === "say" || kind === "ask" ? 4000 : 2000) } };
 }
+
+export { OPERATION_TOOL, withOperations } from "../../packages/module-sdk/capsule-view.js";

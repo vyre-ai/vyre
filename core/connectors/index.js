@@ -18,6 +18,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
+import { credentialName } from "../../records/connectors/connection.js";
 import { importSpec } from "../../records/connectors/import-spec.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
@@ -233,6 +234,32 @@ export default {
       input: formShape,
       callers: PEOPLE,
       run: (input, meta) => made.save(input, { as: person(meta, "change a connection"), origin: "form", replace: true }),
+    });
+    // One operation of a Connection, for a Vyre view (a wrapped app's everyday screens). A person's surface may run any operation; a module reaches only the Connection of its own app
+    // and only the operations that Connection declares (never the generic request). A write or a delete is the vault's own outward call: held for the person's yes.
+    ctx.tool("connectors.operation.run", {
+      effect: "write",
+      callers: [...PEOPLE, "module"],
+      description: "Run one operation of a Connection: { connection, operation, input? } with input { params, query, headers, body } as the operation declares. What a view over a wrapped app calls. A module reaches only its own app's Connection and its declared operations; a send, change or delete waits for the person's yes.",
+      input: obj({ connection: str, operation: str, input: { type: "object" } }, ["connection", "operation"]),
+      run: async (input, meta) => {
+        const caller = String((meta && meta.caller) || "");
+        const id = String(input.connection || ""), op = String(input.operation || "");
+        const rec = await made.get(id);
+        if (!PEOPLE.includes(caller)) {
+          const name = caller.startsWith("module:") ? caller.slice(7) : "";
+          if (!name) throw fail("only a person's own surface or a module runs a Connection's operation", "denied");
+          if (!(meta && meta.firstParty)) {
+            if (!rec.app || rec.app !== name) throw fail(`${name} reaches only the Connection of its own app`, "denied");
+            if (op === "request" || !rec.operations.some(/** @param {any} o */ o => o.name === op)) throw fail(`${id} declares no operation ${op.slice(0, 40)}`, "not_found");
+          }
+        }
+        if (rec.light === "out_of_step") throw fail(rec.reason || "this Connection needs rebuilding", "out_of_step");
+        const opts = PEOPLE.includes(caller) ? { as: caller } : undefined;
+        const r = await ctx.call("vault.request", { credential: credentialName(id), operation: op, input: input.input && typeof input.input === "object" ? input.input : {} }, opts);
+        if (r.error) throw fail(r.error.message, r.error.code || "failed");
+        return r.data;
+      },
     });
     ctx.tool("connectors.connection.check", {
       effect: "read",
