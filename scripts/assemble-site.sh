@@ -42,9 +42,9 @@ for f in w i i.sh install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "as
 
 say "release assets $tag"
 mkdir -p "$out/box"
-gh release download "$tag" -R vyre-ai/vyre --dir "$out/box" --clobber \
-  -p SHA256SUMS -p SHA256SUMS.sig -p manifest.json -p release.json -p VERSION -p vyre -p vyre.tgz -p vyre.env.example \
-  -p compose.yml -p compose.build.yml -p Dockerfile -p dockerignore -p install-box.sh -p 'Vyre*.exe'
+# every asset of the release: SHA256SUMS names each signed file, so a fixed list here falls behind the release (0.2.9 added modules.json,
+# appbuild.json, setup.json, shell.json and install-mac-server.sh) and the check below fails on the files it did not fetch
+gh release download "$tag" -R vyre-ai/vyre --dir "$out/box" --clobber
 (cd "$out/box" && sum -c --quiet SHA256SUMS) || { echo "assemble-site: the release files do not match their SHA256SUMS" >&2; exit 1; }
 cp "$out/box/install-box.sh" "$out/install.sh"
 
@@ -61,8 +61,11 @@ mkdir -p "$out/setup/fonts"
 # A release made before the Deck moved to web/ keeps these files under deck/: take whichever the tag has.
 pick() { if git cat-file -e "$tag:web/$1" 2>/dev/null; then echo "web/$1"; else echo "deck/$1"; fi; }
 git show "$tag:$(pick css/tokens.css)" >"$out/setup/tokens.css"
+# The setup page asks for these three names. A tag from before 0.2.9 has them in the app's fonts; from 0.2.9 the fonts are one file per family under
+# web/fonts (every weight in one file), served under the same names.
 for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2; do
-  git show "$tag:apps/app/assets/fonts/$f" >"$out/setup/fonts/$(basename "$f")"
+  if git cat-file -e "$tag:apps/app/assets/fonts/$f" 2>/dev/null; then src="apps/app/assets/fonts/$f"; else src="web/fonts/${f%%/*}-latin.woff2"; fi
+  git show "$tag:$src" >"$out/setup/fonts/$(basename "$f")"
 done
 
 say "checks"
