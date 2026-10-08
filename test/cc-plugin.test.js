@@ -11,6 +11,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { call as daemonCall } from "../core/daemon/client.js";
+import { writeKey } from "../core/switchboard/sessions.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
 import { tempHome, writeModule } from "./helpers.js";
@@ -263,6 +265,10 @@ test("memory: the user's own session's remember is kept pending, not as the pers
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  // The user's own Claude Code session, bound the way its SessionStart hook binds it (harness/hooks/hook.js): to the process the MCP server's parent is, which here is this test.
+  const bound = await daemonCall("threads.bind", { session: "cc-own-session", pid: process.pid }, { root, caller: "harness" });
+  assert.ok(bound.data && bound.data.key, "the session is bound: " + JSON.stringify(bound));
+  writeKey(path.join(root, "sessions"), process.pid, bound.data);
   const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
     call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
   const names = own.get(2).result.tools.map(x => x.name);
