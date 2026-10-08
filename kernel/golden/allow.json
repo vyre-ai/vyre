@@ -1079,5 +1079,15 @@
   "tool": "files.drive.status",
   "role": "local",
   "reason": "the 0.3.0 cleanup removed the mounted-folder Drive (Taildrive) that held this tool back on a Mac; the one tool left is the Space Drive's read-only status (is it on, how many files), reach anyone, the same answer the box role already gave"
+ },
+ {
+  "tool": "wink.server.call",
+  "caller": "cli:agent:kit",
+  "reason": "user ruling 4 Oct 2026: cli:agent:kit is the person's own terminal, never a model; the tool is refused to every model, hook and added-module caller and a relayed call stays the device's own (test/remote-first-party.test.js, core/daemon/peer-door.test.js)"
+ },
+ {
+  "tool": "wink.server.home",
+  "caller": "cli:agent:kit",
+  "reason": "user ruling 4 Oct 2026: cli:agent:kit is the person's own terminal, never a model; the tool is refused to every model, hook and added-module caller and a relayed call stays the device's own (test/remote-first-party.test.js, core/daemon/peer-door.test.js)"
  }
 ]
