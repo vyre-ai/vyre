@@ -170,6 +170,7 @@ export async function openInvite(d, link) {
     catch (e) {
       const c = String(/** @type {any} */ (e).code || "");
       // the home's door refusing this person (an invite made for someone else, spent, or not admitted) is not an outage
+      if (process.env.JT_DEBUG) console.error("JTDBG", c, /** @type {any} */ (e).message);
       if (/^(denied|not_a_member|forbidden|not_allowed|not_found)$/.test(c)) throw refuse("not_for_you", "This invite cannot be used.");
       throw e;
     }
