@@ -27,7 +27,7 @@ const board = {
 };
 const manifest = {
   name: "cards", version: "0.1.0", description: "A board of cards.", roles: ["box"], requires: [],
-  does: { tools: [{ name: "cards.list", summary: "the cards" }, { name: "cards.move", summary: "move a card" }, { name: "cards.count", summary: "the counts" }, { name: "cards.nudge", summary: "message the card's owner", outward: "send" }] },
+  does: { tools: [{ name: "cards.list", summary: "the cards" }, { name: "cards.move", summary: "move a card" }, { name: "cards.count", summary: "the counts" }, { name: "cards.calls", summary: "what ran" }, { name: "cards.nudge", summary: "message the card's owner", outward: "send" }] },
   watches: {}, needs: {}, teaches: {},
   views: {
     board: { title: "Board", icon: "tray", board },
@@ -39,12 +39,13 @@ const manifest = {
 manifest.views.board.forms = { nudge: { title: "Nudge {title}", fields: [{ name: "note", label: "Note", type: "multiline", required: true }], submit: { title: "Send", tool: "cards.nudge", input: { id: "{id}", note: "{note}" }, outward: true } } };
 // the forms of a board live beside it in the declaration, as for a list
 const src = `export default { async start(ctx) {
-  globalThis.__cards = globalThis.__cards || [];
+  const log = [];
   const reg = (name, fn) => ctx.tool(name, { effect: "read", input: { type: "object" }, run: fn });
   reg("cards.list", async (i, m) => ({ cards: [{ id: "c1", name: "Write brief", who: "Dana", status: "todo" }, { id: "c2", name: "Review", who: "Lee", status: "doing" }, { id: "c3", name: "Odd one", who: "Kit", status: "parked" }] }));
-  reg("cards.move", async (i, m) => { globalThis.__cards.push({ tool: "move", input: i, caller: m.caller }); return { said: "Moved." }; });
+  reg("cards.move", async (i, m) => { log.push({ tool: "move", input: i, caller: m.caller }); return { said: "Moved." }; });
+  reg("cards.calls", async () => ({ log }));
   reg("cards.count", async () => ({ open: 2, done: 7, byDay: [{ day: "Mon", n: 3 }, { day: "Tue", n: 5 }] }));
-  reg("cards.nudge", async (i, m) => { globalThis.__cards.push({ tool: "nudge", input: i, caller: m.caller, asked: m.asked }); return { said: "Sent." }; });
+  reg("cards.nudge", async (i, m) => { log.push({ tool: "nudge", input: i, caller: m.caller, asked: m.asked }); return { said: "Sent." }; });
   return {};
 } };`;
 
@@ -88,34 +89,30 @@ test("views: a board frame groups the cards into the declared columns, puts a st
 });
 
 test("views: moving a card runs the module's own tool AS the module with the column filled in, and only a declared column", async t => {
-  globalThis.__cards = [];
-  t.after(() => { delete globalThis.__cards; });
   const { c } = await world(t);
   await c("views.get", { module: "cards", command: "board" });
   assert.equal((await c("views.act", { module: "cards", command: "board", action: "move", id: "c1", column: "doing" })).data.kind, "done");
   assert.equal((await c("views.act", { module: "cards", command: "board", action: "move", id: "c1", column: "../../etc" })).data.kind, "done");
-  assert.deepEqual(globalThis.__cards.map((/** @type {any} */ x) => [x.tool, x.input, x.caller]), [
+  assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => [x.tool, x.input, x.caller]), [
     ["move", { id: "c1", status: "doing" }, "module:cards"],
     ["move", { id: "c1", status: "" }, "module:cards"],
   ]);
 });
 
 test("views: an outward action previews the exact words first and sends only with the preview's own token, once for these words", async t => {
-  globalThis.__cards = [];
-  t.after(() => { delete globalThis.__cards; });
   const { c } = await world(t);
   await c("views.get", { module: "cards", command: "board" });
   const ask = { module: "cards", command: "board", action: "submit", form: "nudge", id: "c1", fields: { note: "Please look today" } };
   const p = (await c("views.act", ask)).data;
   assert.equal(p.kind, "preview");
   assert.deepEqual(p.words.map((/** @type {any} */ w) => [w.label, w.value]), [["id", "c1"], ["note", "Please look today"]]);
-  assert.equal(globalThis.__cards.length, 0, "nothing was sent by the preview");
+  assert.equal((await c("cards.calls")).data.log.length, 0, "nothing was sent by the preview");
   assert.equal((await c("views.act", { ...ask, asked: { hash: p.hash, token: "1.nope" } })).data.kind, "preview", "a token that is not this preview's asks again");
   assert.equal((await c("views.act", { ...ask, fields: { note: "Other words" }, asked: { hash: p.hash, token: p.token } })).data.kind, "preview", "other words need their own preview");
-  assert.equal(globalThis.__cards.length, 0);
+  assert.equal((await c("cards.calls")).data.log.length, 0);
   const done = (await c("views.act", { ...ask, asked: { hash: p.hash, token: p.token } })).data;
   assert.equal(done.kind, "done");
-  assert.deepEqual(globalThis.__cards.map((/** @type {any} */ x) => [x.tool, x.input, x.caller]), [["nudge", { id: "c1", note: "Please look today" }, "module:cards"]]);
+  assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => [x.tool, x.input, x.caller]), [["nudge", { id: "c1", note: "Please look today" }, "module:cards"]]);
   assert.equal((await c("views.act", { ...ask, fields: { note: "" } })).data.kind, "error", "a required field left empty is refused");
 });
 
