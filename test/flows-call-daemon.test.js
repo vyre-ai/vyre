@@ -22,7 +22,7 @@ const MANIFEST = { version: "0.1.0", does: { tools: [
 ] }, flow: { steps: [
   { name: "zzflow.lookup", label: "Look up a client", inputs: { q: "string" }, outputs: { found: "string" } },
   { name: "zzflow.notify", label: "Notify the client", outward: true },
-] } };
+], triggers: [{ name: "zzflow.arrived", label: "A client arrives", event: "zzflow.arrived", inputs: { who: "string" } }] }, watches: { emits: ["zzflow.arrived"] } };
 const SRC = `export default { async start(ctx) {
   const rec = (tool, meta, input) => { (globalThis.__zzflow ||= []).push({ tool, caller: meta.caller, origin: meta.origin, token: typeof meta.token === "string", input }); };
   ctx.tool("zzflow.lookup", { effect: "read", input: { type: "object" }, run: async (i, meta) => { rec("lookup", meta, i); return { found: "Acme", asked: i.q }; } });
@@ -59,6 +59,11 @@ const flowOf = (/** @type {string} */ space, /** @type {string} */ action, /** @
 test("the module offers a tool as a Flow step only by listing it in flow.steps: the registry lists exactly those", { timeout: 120_000 }, async t => {
   const { d } = await boot(t);
   assert.deepEqual(d.registry.flowTools().filter((/** @type {any} */ x) => x.name.startsWith("zzflow.")).map((/** @type {any} */ x) => [x.name, x.risk]).sort(), [["zzflow.lookup", "read"], ["zzflow.notify", "outward"]]);
+});
+
+test("a module's flow.triggers are listed by the registry as the event or watcher trigger they compile to", { timeout: 120_000 }, async t => {
+  const { d } = await boot(t);
+  assert.deepEqual(d.registry.flowTriggers().filter((/** @type {any} */ x) => x.name.startsWith("zzflow.")), [{ name: "zzflow.arrived", label: "A client arrives", trigger: { on: "event", event: "zzflow.arrived" }, inputs: { who: "string" } }]);
 });
 
 test("a read tool runs at once as the Flow's person; a tool not listed in flow.steps is refused", { timeout: 120_000 }, async t => {
