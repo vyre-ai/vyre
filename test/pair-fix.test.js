@@ -15,6 +15,12 @@ import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
+import { nobleCrypto } from "../relay/client/noble.js";
+import { webCrypto, memoryKeyStore } from "../relay/client/webcrypto.js";
+import { x25519 } from "@noble/curves/ed25519";
+import { sha256 } from "@noble/hashes/sha256";
+import { hmac } from "@noble/hashes/hmac";
+import { gcm } from "@noble/ciphers/aes";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
 import { tempHome } from "./helpers.js";
@@ -272,4 +278,42 @@ test("long code -> words -> adopt, real daemon and relay, typed code on (the rel
   t.after(() => c.close());
   await until(() => c.state === "open");
   assert.equal(c.reply.device, r.device);
+});
+
+test("the computer app and the phone app, as their clients are built: a computer (WebCrypto, a stored non-extractable key) pairs the server by the typed code, then a phone (noble crypto, a raw key in a secure store) is added by the phone's typed code", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  // the computer app: relay.web.ts / the Mac and Windows windows
+  const web = webCrypto(), webKeys = memoryKeyStore();
+  const server = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const states = [];
+  const mac = joinWithCode({ relay: w.status.url, input: server.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: web, keyStore: webKeys, about: { kind: "app" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: web, keyStore: webKeys } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: server.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const m = await mac;
+  assert.equal(m.ok, true, JSON.stringify(m));
+  // the phone app: relay.native.ts keeps 32 raw bytes in the secure store and rebuilds the pair from them on every get
+  const noble = nobleCrypto({ x25519, sha256, hmac, gcm, randomBytes: n => crypto.randomBytes(n) });
+  let secure = null;
+  const phoneKeys = { async get() { return secure ? noble.importKeyPair(secure) : null; }, async set(k) { secure = Uint8Array.from(k.privateKey); } };
+  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const pstates = [];
+  const phone = joinWithCode({ relay: w.status.url, input: open.code, name: "Vyre on Android", onState: s => pstates.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: noble, keyStore: phoneKeys, about: { kind: "app" }, presenceKey: devKey("hardware") } });
+  const pack = await until(() => pstates.find(s => s.state === "ack"));
+  await until(() => w.events.filter(e => e[0] === "wink.found").length >= 2);
+  assert.equal((await w.call("wink.code.ack", { offer: open.offer, typed: pack.code })).data.ok, true);
+  const p = await phone;
+  assert.equal(p.ok, true, JSON.stringify(p));
+  // both reconnect with the key they stored, as the devices the server enrolled
+  for (const [r, cr, ks] of [[m, web, webKeys], [p, noble, phoneKeys]]) {
+    assert.equal(rows(w, r.paired.device).length, 1);
+    const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "again", crypto: cr, keyStore: ks });
+    t.after(() => c.close());
+    await until(() => c.state === "open");
+    assert.equal(c.reply.device, r.paired.device, "the same key reaches the server as the same device");
+  }
 });
