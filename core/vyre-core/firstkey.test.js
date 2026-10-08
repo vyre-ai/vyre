@@ -106,3 +106,62 @@ test("arming a fingerprint is for 32 hex characters only", () => {
     db.close();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The Capsule key's hand-over: the setup key (software, core's only key) signs the enrolment of the app's Secure Enclave key once; core enrols it as a `capsule` key and removes the setup key.
+const handOver = (/** @type {any} */ id, /** @type {crypto.KeyObject} */ priv, /** @type {any} */ body, { ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url") } = {}) => {
+  const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\npresence.enroll\n${inputHash(body)}\n${ts}\n${nonce}`), { key: priv, dsaEncoding: "der" }).toString("base64url");
+  return `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}`;
+};
+
+test("the setup key hands its place to the Capsule key once: core ends with one key, a capsule one, and that key proves at hardware strength", async t => {
+  const page = key(), enclave = key();
+  // a release-kind core: a software proof is refused for presence acts, a capsule proof is not
+  const w = await world(t, { armed: page });
+  w.c.presence.softwareOk = () => false;
+  const first = (await w.call("presence.enroll.first", enrolBody(page.pub, { name: "setup page" }))).data;
+  const body = { kind: "capsule", name: "the test Mac", public_key: b64(enclave.pub), alg: -7 };
+  const bad = (/** @type {any} */ over, h = handOver(first.id, page.priv, { ...body, ...over })) => w.call("presence.enroll.capsule", { ...body, proof: h });
+  // a proof for other input, from another key, stale, or missing
+  assert.match((await bad({}, handOver(first.id, page.priv, { ...body, name: "other" }))).error?.message || "", /does not check out/);
+  assert.match((await bad({}, handOver(first.id, key().priv, body))).error?.message || "", /does not check out/);
+  assert.match((await bad({}, handOver(first.id, page.priv, body, { ts: String(Date.now() - 10 * 60_000) }))).error?.message || "", /too old/);
+  assert.match((await bad({}, handOver("dk_other", page.priv, body))).error?.message || "", /not from the setup key/);
+  assert.equal((await w.call("presence.enroll.capsule", body)).error?.code, "presence_required");
+  assert.equal((await w.call("presence.enroll.capsule", { ...body, kind: "device", proof: handOver(first.id, page.priv, body) })).error?.code, "bad_input");
+  assert.equal(w.c.presence.keys().length, 1, "no refusal changed anything");
+  const ok = await w.call("presence.enroll.capsule", { ...body, proof: handOver(first.id, page.priv, body) });
+  assert.ok(ok.data && ok.data.kind === "capsule", JSON.stringify(ok));
+  const keys = w.c.presence.keys();
+  assert.deepEqual(keys.map((/** @type {any} */ k) => k.kind), ["capsule"], "the setup key is gone");
+  // once
+  assert.match((await w.call("presence.enroll.capsule", { ...body, proof: handOver(first.id, page.priv, body) })).error?.message || "", /only key|already taken|no longer/);
+  // the Capsule key now proves a presence act on a release core: hardware strength, no software refusal
+  const next = enrolBody(key().pub, { name: "phone" });
+  const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+  const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\npresence.enroll\n${inputHash(next)}\n${ts}\n${nonce}`), { key: enclave.priv, dsaEncoding: "der" }).toString("base64url");
+  const later = await w.call("presence.enroll", next, `capsule key=${ok.data.id} ts=${ts} nonce=${nonce} sig=${sig}`);
+  assert.ok(later.data, "a later key is enrolled by the Capsule key's proof: " + JSON.stringify(later));
+  // and the setup key's own software proof would have been refused
+  assert.equal(w.c.presence.keys().length, 2);
+});
+
+test("the hand-over is refused outside its window: not a server, a model's process, no first key yet, an hour late, or another key present", async t => {
+  const page = key(), enclave = key();
+  const body = { kind: "capsule", name: "m", public_key: b64(enclave.pub), alg: -7 };
+  const withProof = (/** @type {any} */ id) => ({ ...body, proof: handOver(id, page.priv, body) });
+  const a = await world(t, { armed: page, server: false });
+  assert.equal((await a.call("presence.enroll.capsule", withProof("x"))).error?.code, "not_server");
+  const b = await world(t, { armed: page, notModel: false });
+  assert.equal((await b.call("presence.enroll.capsule", withProof("x"))).error?.code, "not_person_side");
+  const c = await world(t, { armed: page });
+  assert.match((await c.call("presence.enroll.capsule", withProof("x"))).error?.message || "", /no first key has been taken/);
+  let clock = Date.now();
+  const d = await world(t, { armed: page, now: () => clock });
+  const first = (await d.call("presence.enroll.first", enrolBody(page.pub))).data;
+  clock += FIRST_KEY_TTL + 60_000;
+  assert.match((await d.call("presence.enroll.capsule", { ...body, proof: handOver(first.id, page.priv, body, { ts: String(clock) }) })).error?.message || "", /hour of the first key is over/);
+  const e = await world(t, { armed: page });
+  const f1 = (await e.call("presence.enroll.first", enrolBody(page.pub))).data;
+  e.c.presence.enroll({ kind: "device", name: "extra", public_key: b64(key().pub), alg: -7 });
+  assert.match((await e.call("presence.enroll.capsule", { ...body, proof: handOver(f1.id, page.priv, body) })).error?.message || "", /no longer vyre-core's only key/);
+});

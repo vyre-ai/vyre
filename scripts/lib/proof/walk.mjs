@@ -23,7 +23,7 @@ export async function walk(w) {
   fs.mkdirSync(dir, { recursive: true });
   const pick = store === "records" ? "records" : "plain";
   const person = `walker${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`;
-  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
   /** @type {any} */ let reservation = null, flow = null, srv = null, session = null;
 
   try {

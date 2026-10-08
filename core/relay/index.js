@@ -325,7 +325,9 @@ export default {
       let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
       const pk = hello.presenceKey;
       if (pk && typeof pk.public_key === "string") {
-        const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7, ...(typeof pk.core_proof === "string" && pk.core_proof ? { core_proof: pk.core_proof } : {}) });
+        // A Mac server's core takes the app's Secure Enclave key as its Capsule key (`kind: "capsule"`), handed over by a proof the app's setup key signed over the exact name (`core_name`); both are core's to check, here they are only carried.
+        const withProof = typeof pk.core_proof === "string" && pk.core_proof && typeof pk.core_name === "string" && pk.core_name;
+        const r = await ctx.call("presence.enroll", { kind: withProof && pk.kind === "capsule" ? "capsule" : "device", name: withProof ? pk.core_name : name, public_key: pk.public_key, alg: pk.alg ?? -7, ...(withProof ? { core_proof: pk.core_proof } : {}) });
         if (r && r.data && (r.data.keyId || r.data.id)) {
           presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" };
           // kept briefly, for the module that owns the pairing when the ticket was not gated (a server's typed code); a P-256 key only, which is what a paired session binds to
