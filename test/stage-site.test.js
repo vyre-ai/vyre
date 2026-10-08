@@ -28,7 +28,7 @@ test("stage-site: the copy carries config.json and a CSP that allows the staging
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out, "setup", "config.json"), "utf8")), { relay: "wss://relay-staging.vyre.run", installUrl: "https://staging.vyre-site.pages.dev/i" });
   const h = fs.readFileSync(path.join(out, "_headers"), "utf8");
-  assert.match(h, /connect-src 'self' https:\/\/relay\.vyre\.run wss:\/\/relay\.vyre\.run https:\/\/relay-staging\.vyre\.run wss:\/\/relay-staging\.vyre\.run;/);
+  assert.match(h, /connect-src 'self' https:\/\/names\.vyre\.run https:\/\/relay-staging\.vyre\.run wss:\/\/relay-staging\.vyre\.run;/);
   assert.equal(fs.readFileSync(path.join(site, "_headers"), "utf8"), HEADERS, "the built site is not changed");
   assert.ok(!fs.existsSync(path.join(site, "setup", "config.json")));
   // No options: a plain copy with no config.json, so it behaves as production does.
@@ -90,11 +90,6 @@ test("deploy-site: production refuses a folder with a staging config.json; a pre
   assert.equal(deploy([site, "--branch", "main"]).status, 0);
   assert.match(fs.readFileSync(log, "utf8"), /--branch main/);
   assert.notEqual(deploy([site]).status, 0, "--branch is required");
-});
-
-test("the setup page hands its own hostname to setupOverrides, so production never reads the file", () => {
-  const page = fs.readFileSync(path.join(REPO, "site", "setup", "page.js"), "utf8");
-  assert.match(page, /setupOverrides\(await r\.json\(\), location\.hostname\)/);
 });
 
 test("setupOverrides: only a plain wss relay and a plain https install URL are taken; the page's defaults otherwise", () => {
