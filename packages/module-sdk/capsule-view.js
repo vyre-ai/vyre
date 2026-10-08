@@ -29,6 +29,27 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9_.-]*$/;
 const SHORTCUT = /^((cmd|shift)\+){1,2}[a-z0-9]$/;
 const isObj = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
 
+/** The tool a view's list, detail, action or submit runs when it names a Connection operation instead of a tool. */
+export const OPERATION_TOOL = "connectors.operation.run";
+
+/**
+ * A view that reads or acts through a wrapped app's Connection names `{ connection, operation, input }` where a tool would go. It is written out as the one tool that runs an operation
+ * (connectors.operation.run) before anything reads the declaration, so there is one path: the same templates, the same gate for an added module, the same outward preview.
+ * @param {any} v @returns {any}
+ */
+export function withOperations(v) {
+  if (Array.isArray(v)) return v.map(withOperations);
+  if (!v || typeof v !== "object") return v;
+  const out = /** @type {Record<string, any>} */ ({});
+  for (const [k, x] of Object.entries(v)) out[k] = withOperations(x);
+  if (typeof v.connection === "string" && typeof v.operation === "string" && v.tool === undefined) {
+    const { connection, operation, input, ...rest } = out;
+    return { ...rest, tool: OPERATION_TOOL, input: { connection, operation, ...(input !== undefined ? { input } : {}) } };
+  }
+  return out;
+}
+
+
 /** @param {any} v */
 const iconProblem = v => (typeof v === "string" && (ICONS.has(v) || /^app:[A-Za-z0-9][A-Za-z0-9.-]{2,120}$/.test(v)) ? "" : `icon ${JSON.stringify(v)} is not on the icon list (a system symbol name, or app:<bundle id>)`);
 
@@ -55,6 +76,8 @@ function checkMap(at, map, keys, out) {
  */
 function checkTool(at, tool, c, out) {
   if (typeof tool !== "string" || !TOOL.test(tool)) { out.push(`${at} must name a tool like module.verb`); return; }
+  // A Connection operation written out (withOperations): the tool itself holds a module to its own app's Connection and that Connection's declared operations.
+  if (tool === OPERATION_TOOL) return;
   // An added module reaches its own tools, and the ones it listed in needs.tools; a first party module its own.
   if (!c.tools.has(tool) && !(c.allowed.has(tool))) out.push(`${at} "${tool}" is not one of this module's tools${c.firstParty ? "" : " or its needs.tools"}`);
 }
@@ -118,6 +141,7 @@ function checkForm(at, f, c, out) {
 export function checkView(key, e, c) {
   /** @type {string[]} */ const out = [];
   const at = `shows.capsule "${key}"`;
+  e = withOperations(e);
   if (!ID.test(key.slice(5))) return [`${at}: the id after "view:" must be lowercase letters, digits and dashes`];
   if (!isObj(e)) return [`${at} must be an object`];
   if (typeof e.title !== "string" || !e.title || e.title.length > 60) out.push(`${at}.title needs up to 60 characters`);

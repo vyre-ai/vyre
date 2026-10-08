@@ -354,6 +354,8 @@ exact words first, and a second Enter sends; the preview carries a token good fo
 second call must return. Icons are system symbol names from a fixed list, or
 `app:<bundle id>`.
 
+A wrapped app's screens need no tool of their own. Where a view's `list`, `detail`, action or form `submit` names a `tool`, it may name `{ "connection": "docuseal", "operation": "list", "input": { "query": { "status": "pending" } } }` instead: the operation of a Connection (its `input` is `{ params, query, headers, body }`, with the same templates). A module reaches only the Connection of its own app and only the operations that Connection declares; a send, change or delete is held for your yes like any outward call.
+
 The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
 `capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and
 `action:<tool>` keys keep working and appear as one command.

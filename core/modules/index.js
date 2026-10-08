@@ -1809,14 +1809,17 @@ export class Registry {
       if (named ? named !== name : !fp) continue;
       const declared = new Set();
       /** @param {any} e */
+      // A view may name a Connection operation where a tool goes (withOperations in core/views/frames.js): that is the one tool connectors.operation.run.
+      const toolOf = (/** @type {any} */ x) => (x && x.tool) || (x && typeof x.connection === "string" && typeof x.operation === "string" ? "connectors.operation.run" : undefined);
+      /** @param {any} e */
       const viewTools = e => {
         for (const part of [e.list, e.board, e.summary]) {
           const l = part || {};
-          if (l.tool) declared.add(l.tool);
-          if (l.detail && l.detail.tool) declared.add(l.detail.tool);
-          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
+          if (toolOf(l)) declared.add(toolOf(l));
+          if (l.detail && toolOf(l.detail)) declared.add(toolOf(l.detail));
+          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
         }
-        for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
+        for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
       };
       for (const [key, v] of Object.entries(cap)) {
         if (key.startsWith("results:")) declared.add(key.slice(8));
@@ -1827,7 +1830,8 @@ export class Registry {
       if (!declared.has(tool)) continue;
       if (!named) return true;
       const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
-      if (tool.startsWith(name + ".") || needs.includes(tool)) return true;
+      // connectors.operation.run checks for itself that the module reaches only the Connection of its own app and only that Connection's declared operations.
+      if (tool.startsWith(name + ".") || needs.includes(tool) || tool === "connectors.operation.run") return true;
     }
     return false;
   }
