@@ -23,6 +23,7 @@
       { "name": "connectors.connection.create", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.update", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.check", "effect": "read" },
+      { "name": "connectors.operation.run", "effect": "write" },
       { "name": "connectors.connection.list", "effect": "read" },
       { "name": "connectors.connection.get", "effect": "read" },
       { "name": "connectors.connection.export", "effect": "read" },

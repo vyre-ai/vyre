@@ -154,6 +154,7 @@
  "core/config/config.test.js": 28,
  "core/config/palette.test.js": 6,
  "core/config/theme.test.js": 3,
+ "core/connectors/operation-run.test.js": 2,
  "core/connectors/made-daemon.test.js": 1,
  "core/connectors/made.test.js": 8,
  "core/connectors/module.test.js": 8,

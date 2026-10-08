@@ -1798,17 +1798,19 @@ export class Registry {
         if (key.startsWith("results:")) declared.add(key.slice(8));
         else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
         else if (key.startsWith("view:") && v && typeof v === "object") {
-          const e = /** @type {any} */ (v), l = e.list || {};
-          if (l.tool) declared.add(l.tool);
-          if (l.detail && l.detail.tool) declared.add(l.detail.tool);
-          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
-          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
+          // A view may name a Connection operation where a tool goes (local/capsule/frames.js withOperations): that is the one tool connectors.operation.run.
+          const e = /** @type {any} */ (v), l = e.list || {}, toolOf = (/** @type {any} */ x) => (x && x.tool) || (x && typeof x.connection === "string" && typeof x.operation === "string" ? "connectors.operation.run" : undefined);
+          if (toolOf(l)) declared.add(toolOf(l));
+          if (l.detail && toolOf(l.detail)) declared.add(toolOf(l.detail));
+          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
+          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
         }
       }
       if (!declared.has(tool)) continue;
       if (!named) return true;
       const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
-      if (tool.startsWith(name + ".") || needs.includes(tool)) return true;
+      // connectors.operation.run checks for itself that the module reaches only the Connection of its own app and only that Connection's declared operations.
+      if (tool.startsWith(name + ".") || needs.includes(tool) || tool === "connectors.operation.run") return true;
     }
     return false;
   }

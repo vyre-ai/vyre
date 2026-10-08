@@ -12,7 +12,7 @@
 
 import crypto from "node:crypto";
 import { SURFACE_LABELS } from "../../core/modules/index.js";
-import { allowed, fill, fillDeep, dataOf, listFrame, detailFrame, formFrame, askedHash, previewToken, previewOk, effectOf, error, clip, actionsOf, LIMITS } from "./frames.js";
+import { withOperations, allowed, fill, fillDeep, dataOf, listFrame, detailFrame, formFrame, askedHash, previewToken, previewOk, effectOf, error, clip, actionsOf, LIMITS } from "./frames.js";
 
 const PERSON = [...SURFACE_LABELS, "tailnet", "device", "space", "agent"];
 /** How long the fields of the last list's rows are kept, for the templates of an action on one. */
@@ -59,7 +59,7 @@ export function commandsOf(status) {
     for (const [key, v] of Object.entries(cap)) {
       if (key.startsWith("view:") && v && typeof v === "object") {
         const id = key.slice(5);
-        out.set(`${m.name}/${id}`, { module: m.name, id, firstParty, decl: v, needsSlots: m.needsSlots || [], needsTools: m.needsTools || [] });
+        out.set(`${m.name}/${id}`, { module: m.name, id, firstParty, decl: withOperations(v), needsSlots: m.needsSlots || [], needsTools: m.needsTools || [] });
       } else if (key.startsWith("results:") && v && typeof v === "object") {
         const tool = key.slice(8), id = commandId(tool);
         // The short form: a search that answers { rows: [{ id, name, kind, sub }] }, and the actions declared beside it.
