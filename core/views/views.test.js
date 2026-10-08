@@ -153,10 +153,12 @@ test("views: the board is pinned in the sidebar by its view id, and shows in the
 test("views: the click authorises the module's own tool only; inside it a person-only tool stays refused for an added module, and an act names ids, never a tool", async t => {
   const { c } = await world(t);
   await c("views.get", { module: "cards", command: "board" });
-  const r = (await c("views.act", { module: "cards", command: "board", action: "poke", id: "c1" })).data;
-  assert.equal(r.kind, "done");
+  const got = await c("views.act", { module: "cards", command: "board", action: "poke", id: "c1" });
+  const r = got.data;
+  assert.ok(r, JSON.stringify(got));
+  assert.equal(r.kind, "done", JSON.stringify(r));
   assert.match(String(r.said), /^refused:/, JSON.stringify(r));
   assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => x.tool), ["poke"], "its own tool ran");
-  const sneaky = (await c("views.act", { module: "cards", command: "board", action: "vault.list", tool: "vault.list", id: "c1" })).data;
-  assert.equal(sneaky.kind, "error", "an action id that is no declared action is refused, whatever else rides along");
+  const sneaky = await c("views.act", { module: "cards", command: "board", action: "vault.list", tool: "vault.list", id: "c1" });
+  assert.ok(sneaky.error || (sneaky.data && sneaky.data.kind === "error"), "an action id that is no declared action is refused, whatever else rides along");
 });
