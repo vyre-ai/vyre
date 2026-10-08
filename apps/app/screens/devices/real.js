@@ -100,14 +100,14 @@ export function wordsOf(w) {
 }
 
 /**
- * wink.phone.pairing: is a new device asking now? { asking: false } or { asking: true, name, words, until, line }.
+ * wink.phone.pairing: is a new device asking now? { asking: false } or { asking: true, name, choices, until, line } (the server's answer: no `words`, the person types the three words the new
+ * device shows, and the server checks them). `words`, when an answer carries them, are kept for a screen that shows them.
  * @param {any} r
- * @returns {{ asking: false } | { asking: true, name: string, words: [string, string, string], line: string }}
+ * @returns {{ asking: false } | { asking: true, name: string, words: [string, string, string] | null, line: string }}
  */
 export function phoneAsk(r) {
-  const w = r && r.asking ? wordsOf(r.words) : null;
-  if (!w) return { asking: false };
-  return { asking: true, name: String(r.name || "A new device"), words: w, line: String(r.line || "") };
+  if (!r || r.asking !== true) return { asking: false };
+  return { asking: true, name: String(r.name || "A new device"), words: wordsOf(r.words), line: String(r.line || "") };
 }
 
 /** wink.phone.pair.answer answered { answered, yes } : was the device added? @param {any} r */
