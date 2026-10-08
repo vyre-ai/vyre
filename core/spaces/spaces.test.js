@@ -60,6 +60,22 @@ const presence = {
   verify: async ({ proof }) => (proof ? { ok: true, method: "test" } : { ok: false, code: "presence_required", message: "needs a person", methods: ["passkey"] }),
 };
 
+
+/** The reservation a person gets at vyre.run/setup, asked of the same directory Worker the module talks to: { code } or the Worker's refusal as the tool would say it. */
+async function reserve(name, ip = "198.18.0.1") {
+  const r = await hooks.fetch("http://127.0.0.1:1/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ name }) });
+  const j = await r.json();
+  return j.data ? { code: j.data.code } : { refused: j.error };
+}
+/** Tests name the person they want; the tool takes the code that holds the name. A name the directory refuses comes back as the refusal. */
+async function withCode(tool, input) {
+  if (tool !== "spaces.identity.create" || input.code || typeof input.name !== "string") return { tool, input };
+  const { name, ...rest } = input;
+  const r = await reserve(name);
+  if (r.refused) return { refused: r.refused };
+  return { tool, input: { ...rest, code: r.code } };
+}
+
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
 async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
@@ -94,7 +110,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined,
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("spaces")?.state, "running", reg.modules.get("spaces")?.error);
   /** @param {string} tool @param {any} [input] @param {string} [caller] @param {any} [meta] */
-  const call = (tool, input = {}, caller = "cli", meta = {}) => reg.call(tool, input, caller, meta);
+  const call = async (tool, input = {}, caller = "cli", meta = {}) => { const w = await withCode(tool, input); return w.refused ? { error: { code: w.refused.code, message: w.refused.message } } : reg.call(w.tool, w.input, caller, meta); };
   const ok = async (tool, input, caller, meta) => { const r = await call(tool, input, caller, meta); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   const space = path.join(root, "spaces");
   return { reg, db, events, seen, logs, call, ok, root, space, p, types: () => seen.map(e => e.type), of: type => seen.filter(e => e.type === type).map(e => e.payload) };
@@ -115,7 +131,7 @@ async function actAs(d, label) {
   const seen = memorySeen();
   const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now(), seen });
   const ops = createIdentityOps({ store, dir, seen, now: () => hooks.now(), stretch: { memoryKiB: 64, passes: 1 } });
-  await ops.create({ name: label, deviceLabel: label });
+  await ops.create({ name: label, deviceLabel: label, code: (await reserve(label)).code });
   return { id: store.status().id, publicKey: store.status().publicKey };
 }
 const person = () => { const kp = newKeyPair(); return { ...kp, id: personIdOf(kp.publicKey) }; };
@@ -167,10 +183,14 @@ test("identity: create makes a 0600 key file, claims the name, shows the recover
   assert.equal(again.error?.code, "exists");
   const other = await device(t);
   const taken = await other.call("spaces.identity.create", { name: "alex" });
-  assert.equal(taken.error?.code, "name_taken");
+  assert.equal(taken.error?.code, "taken", "the directory will not reserve a name that is held");
   assert.equal((await other.ok("spaces.identity.status")).exists, false, "a failed claim leaves no key behind");
   const bad = await other.call("spaces.identity.create", { name: "a" });
-  assert.equal(bad.error?.code, "bad_name");
+  assert.equal(bad.error?.code, "invalid");
+  // a code that is not valid (wrong, used, replaced or expired) is one plain refusal
+  const wrong = await other.reg.call("spaces.identity.create", { code: "VYRE-AAAA-AAAA-AAAA-AAAA" }, "cli", {});
+  assert.equal(wrong.error?.code, "bad_code");
+  assert.equal((await other.ok("spaces.identity.status")).exists, false);
   void w;
 });
 
