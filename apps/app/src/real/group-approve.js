@@ -109,3 +109,45 @@ export async function readAll(item, call) {
   }
   throw Object.assign(new Error("the item is too long to read here"), { code: "too_long" });
 }
+
+/** The fields that hold who a message goes to, shown with the client's name beside the address. */
+export const ADDRESS_FIELDS = new Set(["to", "cc", "bcc", "from", "reply to", "reply_to"]);
+/** @param {string} field */
+export const isAddressField = (field) => ADDRESS_FIELDS.has(String(field).toLowerCase().replace(/_/g, " ")) || String(field).toLowerCase().replace(/_/g, " ") === "reply to";
+
+const ADDRESS = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** The email addresses in a piece of text, lower case, each once. @param {string} text */
+export const addressesIn = (text) => [...new Set((String(text).match(ADDRESS) || []).map((a) => a.toLowerCase()))];
+
+/**
+ * The client's name for each address, from the matching Contact record (main email, then a contact point). An address with no record is left out. Reads only; at most 12 addresses.
+ * @param {string[]} addresses @param {(tool: string, input: Record<string, unknown>) => Promise<any>} call @returns {Promise<Map<string, string>>}
+ */
+export async function namesFor(addresses, call) {
+  /** @type {Map<string, string>} */ const out = new Map();
+  await Promise.all(addresses.slice(0, 12).map(async (a) => {
+    try {
+      const r = await call("records.list", { type: "contact", filter: { field: "email", op: "eq", value: a }, limit: 1 });
+      const row = r && Array.isArray(r.rows) ? r.rows[0] : null;
+      const name = row && row.data && typeof row.data.name === "string" ? row.data.name.trim() : "";
+      if (name) { out.set(a, name); return; }
+      const pt = await call("records.list", { type: "contact_point", filter: { field: "address", op: "eq", value: a }, limit: 1 });
+      const p = pt && Array.isArray(pt.rows) ? pt.rows[0] : null;
+      const urn = p && p.data && p.data.contact && p.data.contact.urn;
+      if (urn) {
+        const c = await call("records.get", { urn });
+        const n = c && c.record && c.record.data && typeof c.record.data.name === "string" ? c.record.data.name.trim() : "";
+        if (n) out.set(a, n);
+      }
+    } catch { /* no record is no name */ }
+  }));
+  return out;
+}
+
+/** A recipient line with the name beside each known address: "Northwind Bakery · accounts@northwind.example". @param {string} text @param {Map<string, string>} names */
+export function withNames(text, names) {
+  return String(text).replace(ADDRESS, (a) => { const n = names.get(a.toLowerCase()); return n && !String(text).toLowerCase().includes(n.toLowerCase() + " ·") ? `${n} · ${a}` : a; });
+}
+
+/** Does a value fold to six lines? Long enough in characters or lines to need Show all. @param {string} text */
+export const needsFold = (text) => text.length > 280 || text.split("\n").length > 6;

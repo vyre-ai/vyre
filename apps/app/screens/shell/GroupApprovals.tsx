@@ -11,7 +11,7 @@ import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal } from "../../src/real/phone-approve.js";
 import { approveCard } from "../../src/real/phone-approve.js";
 import { proofHeader } from "../../src/real/approvals.js";
-import { approveGroup, closingLine, editItem, groupsFrom, readAll, wordLines, yesLabel, type Group, type Item } from "../../src/real/group-approve.js";
+import { addressesIn, approveGroup, closingLine, editItem, groupsFrom, isAddressField, namesFor, needsFold, readAll, wordLines, withNames, yesLabel, type Group, type Item } from "../../src/real/group-approve.js";
 
 const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
   const r = await call<any>(tool, input, o);
@@ -19,37 +19,45 @@ const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelPro
   return r.data;
 };
 const signer = async () => (await phoneSigner()) ?? (await shellSigner());
-/** Words past this many characters open on a tap; the rest of the card stays short. */
-const SHORT = 160;
+/** A label as a quiet small cap, a value as an email preview reads: proportional, six lines and then Show all; only addresses are monospace. */
+function Label({ children }: { children: string }) {
+  return <Text size="caption" tone="label" style={{ textTransform: "uppercase", letterSpacing: 0.6, fontSize: 11 }}>{children}</Text>;
+}
 
-function ItemRow({ item, dropped, onDrop, onEdit, onRead, onApproveOne }: { item: Item; dropped: boolean; onDrop: () => void; onEdit: (field: string, text: string) => void; onRead: () => void; onApproveOne: () => void }) {
+function ItemRow({ item, dropped, names, onDrop, onEdit, onRead, onApproveOne }: { item: Item; dropped: boolean; names: Map<string, string>; onDrop: () => void; onEdit: (field: string, text: string) => void; onRead: () => void; onApproveOne: () => void }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const lines = wordLines(item);
+  const strike = dropped ? ({ textDecorationLine: "line-through" } as const) : undefined;
   return (
-    <View className="gap-s1 px-s4 py-s2" style={dropped ? { opacity: 0.5 } : undefined}>
-      <Text size="body" strong>{item.line || item.title}</Text>
+    <View className="gap-s2 px-s4 py-s3" style={dropped ? { opacity: 0.55 } : undefined}>
+      <Text size="body" strong style={strike}>{item.line || item.title}</Text>
       {item.partial ? <Text size="caption" tone="err">{item.readAll ? "You have read all of it. Approve it on its own; it is not part of the group yes." : "Part of this is not shown here, so it cannot be approved with the others. Read all of it first."}</Text> : null}
       {lines.map((w) => {
-        const long = w.text.length > SHORT && !open;
-        return editing === w.field ? (
-          <View key={w.field} className="gap-s1">
-            <Field label={w.field} value={draft} onChangeText={setDraft} multiline lines={4} />
-            <View className="flex-row gap-s2">
-              <Button kind="primary" size="sm" label="Save" onPress={() => { onEdit(w.field, draft); setEditing(null); }} />
-              <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
+        if (editing === w.field) {
+          return (
+            <View key={w.field} className="gap-s1">
+              <Field label={w.field} value={draft} onChangeText={setDraft} multiline lines={6} />
+              <View className="flex-row gap-s2">
+                <Button kind="primary" size="sm" label="Save" onPress={() => { onEdit(w.field, draft); setEditing(null); }} />
+                <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
+              </View>
             </View>
-          </View>
-        ) : (
-          <View key={w.field}>
-            <Text size="caption" strong tone="label">{w.field}</Text>
-            <Text size="caption" tone="label" mono>{long ? `${w.text.slice(0, SHORT)}…` : w.text}{w.cut ? " (cut for length)" : ""}</Text>
+          );
+        }
+        const address = isAddressField(w.field);
+        const shown = address ? withNames(w.text, names) : w.text;
+        const fold = !address && needsFold(w.text) && !open;
+        return (
+          <View key={w.field} className="gap-s1">
+            <Label>{w.field}</Label>
+            <Text size="body" mono={address} numberOfLines={fold ? 6 : undefined} style={strike}>{shown}{w.cut ? " (cut for length)" : ""}</Text>
+            {fold ? <Text size="caption" tone="label" onPress={() => (item.partial && !item.readAll ? onRead() : setOpen(true))}>Show all</Text> : null}
           </View>
         );
       })}
-      <View className="flex-row gap-s2 pt-s1">
-        {lines.some((w) => w.text.length > SHORT) ? <Button kind="ghost" size="sm" label={open ? "Show less" : "Show more"} onPress={() => setOpen(!open)} /> : null}
+      <View className="flex-row flex-wrap gap-s2 pt-s1">
         {item.partial && !item.readAll ? <Button kind="secondary" size="sm" label="Read all" onPress={onRead} /> : null}
         {item.partial && item.readAll && !dropped ? <Button kind="primary" size="sm" icon="faceid" label="Approve this one" onPress={onApproveOne} /> : null}
         {!item.partial && !dropped && lines.length ? <Button kind="ghost" size="sm" label="Edit" onPress={() => { const w = lines[lines.length - 1]; setDraft(w.text); setEditing(w.field); }} /> : null}
@@ -65,6 +73,7 @@ export function GroupApprovals() {
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
   const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setGroups(groupsFrom(a))).catch(() => setGroups([])); }, []);
   useEffect(() => {
     if (Platform.OS === "web" && !shellIdentity()) return;
@@ -74,6 +83,13 @@ export function GroupApprovals() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") load(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [load]);
+  useEffect(() => {
+    const wanted = groups.flatMap((g) => g.items.flatMap((i) => wordLines(i).filter((w) => isAddressField(w.field)).flatMap((w) => addressesIn(w.text)))).filter((a) => !names.has(a));
+    if (!wanted.length) return;
+    let live = true;
+    void namesFor([...new Set(wanted)], ask).then((m) => { if (live && m.size) setNames((old) => new Map([...old, ...m])); });
+    return () => { live = false; };
+  }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
   if (Platform.OS === "web" && !shellIdentity()) return null;
   if (done) return <View className="px-s4 pb-s3"><Text size="body">{done}</Text></View>;
   if (!groups.length) return null;
@@ -119,7 +135,7 @@ export function GroupApprovals() {
           <Card flush>
             {g.items.map((item, i) => (
               <View key={item.id}>{i ? <Divider /> : null}
-                <ItemRow item={item} dropped={dropped.has(item.id)} onDrop={() => setDropped((d) => { const n = new Set(d); if (!n.delete(item.id)) n.add(item.id); return n; })} onEdit={(f, t) => void edit(g, item, f, t)} onRead={() => void read(g, item)} onApproveOne={() => void approveOne(item)} />
+                <ItemRow item={item} names={names} dropped={dropped.has(item.id)} onDrop={() => setDropped((d) => { const n = new Set(d); if (!n.delete(item.id)) n.add(item.id); return n; })} onEdit={(f, t) => void edit(g, item, f, t)} onRead={() => void read(g, item)} onApproveOne={() => void approveOne(item)} />
               </View>
             ))}
             <View className="flex-row gap-s2 px-s4 py-s3">

@@ -103,3 +103,22 @@ test("the closing line says what went out, and the log line only where the sent 
   assert.equal(closingLine([{ id: "a1", answered: "dropped" }], g), "Nothing was sent.");
   assert.equal(closingLine([{ id: "a1", answered: "waiting" }], g), "1 still waits for you.");
 });
+
+test("recipients show the client's name beside the address, from the matching record", async () => {
+  const { addressesIn, namesFor, withNames, isAddressField, needsFold } = await import("./group-approve.js");
+  assert.deepEqual(addressesIn("Accounts <Accounts@Northwind.example>, dana@oakline.example; accounts@northwind.example"), ["accounts@northwind.example", "dana@oakline.example"]);
+  const calls = [];
+  const call = async (/** @type {string} */ t, /** @type {any} */ i) => {
+    calls.push([t, i.filter && i.filter.value]);
+    if (t === "records.list" && i.type === "contact") return { rows: i.filter.value === "accounts@northwind.example" ? [{ data: { name: "Northwind Bakery" } }] : [] };
+    if (t === "records.list") return { rows: i.filter.value === "dana@oakline.example" ? [{ data: { contact: { urn: "vyre://s/contact/c1" } } }] : [] };
+    return { record: { data: { name: "Dana Oakline" } } };
+  };
+  const names = await namesFor(["accounts@northwind.example", "dana@oakline.example", "stranger@x.example"], call);
+  assert.deepEqual([...names], [["accounts@northwind.example", "Northwind Bakery"], ["dana@oakline.example", "Dana Oakline"]]);
+  assert.equal(withNames("accounts@northwind.example, stranger@x.example", names), "Northwind Bakery · accounts@northwind.example, stranger@x.example");
+  assert.equal(withNames("Northwind Bakery · accounts@northwind.example", names), "Northwind Bakery · accounts@northwind.example", "not named twice");
+  assert.deepEqual(["to", "Reply to", "cc", "subject", "body"].map(isAddressField), [true, true, true, false, false]);
+  assert.deepEqual([needsFold("short"), needsFold("x".repeat(300)), needsFold("a\n\n\n\n\n\n\nb")], [false, true, true]);
+  await assert.doesNotReject(namesFor(["a@b.example"], async () => { throw new Error("away"); }));
+});
