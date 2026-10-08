@@ -13,7 +13,7 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
 /** The calls that cross, by gateway group. Anything not here is refused (`no_such_call`); a call is only ever looked up, never built from a name. */
 export const CALLS = Object.freeze({
-  grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
+  grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "invites.list", "invites.revoke", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
   // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
   moves: ["out", "outMany"],
   records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"],
