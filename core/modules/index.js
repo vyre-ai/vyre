@@ -78,6 +78,7 @@ export function checkAgentsRelay(tool, as) {
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
+  views: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
@@ -1219,7 +1220,7 @@ export class Registry {
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
-        if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        if ((m.name === "capsule" || m.name === "views") && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
@@ -1776,22 +1777,30 @@ export class Registry {
     if (!named && ["mcp.servers", "mcp.tools", "mcp.call"].includes(tool)) return true;
     for (const [name, r] of this.modules.entries()) {
       if (r.state !== "running" || !r.manifest) continue;
-      const cap = r.manifest.shows && r.manifest.shows.capsule;
-      if (!cap || typeof cap !== "object" || Array.isArray(cap)) continue;
+      const sc = r.manifest.shows && r.manifest.shows.capsule;
+      const cap = sc && typeof sc === "object" && !Array.isArray(sc) ? sc : {};
+      // `views` is the key (the app and the Capsule draw the same declaration); shows.capsule's `view:<id>` entries are the older name for it.
+      const vs = r.manifest.views && typeof r.manifest.views === "object" && !Array.isArray(r.manifest.views) ? r.manifest.views : {};
+      if (!Object.keys(cap).length && !Object.keys(vs).length) continue;
       const fp = this.isFirstParty(r.dir);
       if (named ? named !== name : !fp) continue;
       const declared = new Set();
-      for (const [key, v] of Object.entries(cap)) {
-        if (key.startsWith("results:")) declared.add(key.slice(8));
-        else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
-        else if (key.startsWith("view:") && v && typeof v === "object") {
-          const e = /** @type {any} */ (v), l = e.list || {};
+      /** @param {any} e */
+      const viewTools = e => {
+        for (const part of [e.list, e.board, e.summary]) {
+          const l = part || {};
           if (l.tool) declared.add(l.tool);
           if (l.detail && l.detail.tool) declared.add(l.detail.tool);
           for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
-          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
         }
+        for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
+      };
+      for (const [key, v] of Object.entries(cap)) {
+        if (key.startsWith("results:")) declared.add(key.slice(8));
+        else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
+        else if (key.startsWith("view:") && v && typeof v === "object") viewTools(/** @type {any} */ (v));
       }
+      for (const v of Object.values(vs)) if (v && typeof v === "object") viewTools(/** @type {any} */ (v));
       if (!declared.has(tool)) continue;
       if (!named) return true;
       const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
@@ -1838,6 +1847,12 @@ export class Registry {
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
         ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
         ...(Array.isArray(m.screens) ? { screens: m.screens } : {}),
+        ...(() => {
+          // One declaration for the app and the Capsule: `views`, with shows.capsule's `view:<id>` entries (the older name) folded in; `views` wins on an id.
+          const sc = m.shows && m.shows.capsule && typeof m.shows.capsule === "object" && !Array.isArray(m.shows.capsule) ? m.shows.capsule : {};
+          const merged = { ...Object.fromEntries(Object.entries(sc).filter(([k, v]) => k.startsWith("view:") && v && typeof v === "object").map(([k, v]) => [k.slice(5), v])), ...(m.views && typeof m.views === "object" && !Array.isArray(m.views) ? m.views : {}) };
+          return Object.keys(merged).length ? { views: merged } : {};
+        })(),
         firstParty: this.isFirstParty(r.dir),
         ...(m.needs && Array.isArray(m.needs.tools) ? { needsTools: m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
         ...(m.needs && Array.isArray(m.needs.slots) ? { needsSlots: m.needs.slots.filter((/** @type {any} */ t) => typeof t === "string") } : {}),

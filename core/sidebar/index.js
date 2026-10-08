@@ -57,11 +57,15 @@ export default {
     const modules = async () => {
       /** @type {any[]} */ const out = [];
       for (const m of ctx.modules.status()) {
-        if (m.state !== "running" || !Array.isArray(m.screens)) continue;
-        const screens = m.screens.filter((/** @type {any} */ s) => s && typeof s.id === "string" && typeof s.label === "string").slice(0, 40).map((/** @type {any} */ s) => ({ id: s.id, label: String(s.label).slice(0, 40), ...(s.icon ? { icon: String(s.icon) } : {}), ...(s.path ? { path: String(s.path) } : {}) }));
+        if (m.state !== "running") continue;
+        const own = (Array.isArray(m.screens) ? m.screens : []).filter((/** @type {any} */ s) => s && typeof s.id === "string" && typeof s.label === "string").slice(0, 40).map((/** @type {any} */ s) => ({ id: s.id, label: String(s.label).slice(0, 40), ...(s.icon ? { icon: String(s.icon) } : {}), ...(s.path ? { path: String(s.path) } : {}) }));
+        // The module's `views` are screens too, drawn by Vyre itself (core/views): `view: true` says so, and they need no origin.
+        const drawn = Object.entries(m.views && typeof m.views === "object" ? m.views : {}).filter(([id, v]) => /^[a-z0-9][a-z0-9._-]{0,63}$/.test(id) && v && typeof v === "object" && /** @type {any} */ (v).title).slice(0, 60)
+          .map(([id, v]) => ({ id, label: String(/** @type {any} */ (v).title).slice(0, 40), view: true, ...(/** @type {any} */ (v).icon ? { icon: String(/** @type {any} */ (v).icon).slice(0, 40) } : {}) }));
+        const screens = [...own.filter((/** @type {any} */ s) => !drawn.some(d => d.id === s.id)), ...drawn];
         if (!screens.length) continue;
         let origin = null;
-        try { const o = /** @type {any} */ (await ctx.call("appmods.origin", { module: m.name })); if (o && !o.error && o.data && typeof o.data.origin === "string" && /^https:\/\//.test(o.data.origin)) origin = o.data.origin; } catch { /* no app-module host on this box */ }
+        if (own.length) try { const o = /** @type {any} */ (await ctx.call("appmods.origin", { module: m.name })); if (o && !o.error && o.data && typeof o.data.origin === "string" && /^https:\/\//.test(o.data.origin)) origin = o.data.origin; } catch { /* no app-module host on this box */ }
         out.push({ module: m.name, label: m.name, screens, ...(origin ? { origin } : {}) });
       }
       return out;

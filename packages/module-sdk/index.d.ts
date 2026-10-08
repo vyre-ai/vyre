@@ -128,6 +128,8 @@ export interface Manifest {
   mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
   /** The screens this module serves, which the app can put in the sidebar. `path` is relative to /m/<module>/. */
   screens?: { id: string; label: string; path?: string; icon?: string }[];
+  /** The screens this module describes and Vyre draws (list, board, summary, form), by id; no module code runs in the app. */
+  views?: Record<string, { title: string; icon?: string; keywords?: string[]; root?: boolean; arg?: Record<string, unknown>; list?: Record<string, unknown>; board?: Record<string, unknown>; summary?: Record<string, unknown>; forms?: Record<string, unknown> }>;
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];

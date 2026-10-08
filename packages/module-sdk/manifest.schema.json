@@ -39,6 +39,18 @@
         "path": { "type": "string", "pattern": "^[A-Za-z0-9/_.-]{0,120}$", "x-message": "is a path relative to /m/<module>/" },
         "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,24}$" }
       } }, "description": "The screens this module serves, which the app can put in the sidebar: { id, label, path?, icon? }, path relative to /m/<module>/. A sidebar entry for one is { kind: \"module\", module, screen }." },
+    "views": { "type": "object", "maxProperties": 60, "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" }, "additionalProperties": { "type": "object", "x-unknown": "warn",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "icon": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+        "root": { "type": "boolean" },
+        "arg": { "type": "object" },
+        "list": { "type": "object" },
+        "board": { "type": "object", "description": "Rows in columns: { tool, input?, columns: [id | { id, title }], map: { rows, id, title, subtitle?, column }, actions? }. An action with `column` in its input moves a card." },
+        "summary": { "type": "object", "description": "Counts and one small chart: { tool, input?, map: { cards: [{ label, path }], chart?: { kind: bar | line, rows, label, value } } }." },
+        "forms": { "type": "object" }
+      } }, "description": "The screens this module describes, drawn by Vyre in its own components on the app and the Capsule (never module code in Vyre's window): a list (with detail and actions), a board, a summary or a form, by id. Maps name fields in a tool's JSON by dotted path. A sidebar entry for one is { kind: \"module\", module, screen: <view id> }. shows.capsule's `view:<id>` entries are the older name for the same thing." },
     "setupTools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$" }, "x-message": "must be a list of tool names like \"relay.setup\"", "description": "Tools of this module the setup channel may call before the person has signed in. Built in only: an added module that declares it fails to load. The relay reads it to build the setup-channel allowlist." },
     "does": {
       "type": "object",

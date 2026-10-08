@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(views): a module's screens drawn by Vyre in the app. `views` in the manifest (list, detail, form, and the new `board` and `summary`) is the Capsule's `view:` language promoted to the whole app; shows.capsule's `view:<id>` entries are the older name for the same declaration and the status folds them together. New core module `views` (views.list, views.get, views.act) shares one engine with capsule.* (core/views/engine.js, frames.js); the app draws the frames with its own components (ViewHost) and no module code runs in its window. An outward action previews its exact words and sends only with the preview's token. A view is a sidebar screen (`view: true` in sidebar.get's modules), so a pin is { kind: "module", module, screen: <view id> }. The Capsule lists only the views it can draw.
 - feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
 - fix(release): the Android release-notes line no longer ends the release job with an apostrophe inside a single-quoted printf; every bash run step in the workflows is now checked with bash -n (test/workflows-yaml.test.js).
