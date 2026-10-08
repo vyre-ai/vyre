@@ -162,7 +162,8 @@ jobs:
         with:
           name: win-web-app
           path: local/capsule/native-win/app/app-web
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rustcache
         with:
           path: |
             ~/.cargo/bin/cargo-tauri.exe
@@ -172,10 +173,22 @@ jobs:
       - name: build the app (no installer)
         shell: bash
         working-directory: local/capsule/native-win/app
+        env:
+          # The app checks for a newer release and installs it, then exits: a 0.1.0 test build would replace itself with the latest published installer three seconds after it opened (that was the exit-on-start bug).
+          # A build that claims a version no release has is never "newer-than-it-is", so the proof stays the build under test.
+          VYRE_APP_VERSION: 99.0.0
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "=2.12.0" --locked
           cargo tauri build --no-bundle -- --locked
           ls -la target/release/Vyre.exe
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: always() && steps.rustcache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/bin/cargo-tauri.exe
+            ~/.cargo/registry
+            local/capsule/native-win/app/target
+          key: win-proof-${{ runner.os }}-${{ hashFiles('local/capsule/native-win/app/Cargo.lock', 'local/capsule/native-win/Cargo.lock') }}
       - name: the Windows-only checks the app runs on itself (DPAPI round trip, tray icons, update check)
         shell: bash
         run: |
