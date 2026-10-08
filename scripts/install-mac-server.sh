@@ -799,7 +799,8 @@ main() {
   setup_gh
   setup_wink_net
   write_env
-  write_machine
+  # only the full install is a server; the light --login-only install is My Home and stays local
+  [ "$SYSTEM" = 0 ] || write_machine
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then
     system_install

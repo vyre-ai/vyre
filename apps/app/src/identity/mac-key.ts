@@ -19,13 +19,18 @@ const unb64u = (s: string): Uint8Array => {
 /** What a store keeps for this key: only that it is the Mac's own (the seed is not here and never was). */
 export const MAC_KEPT = { kind: "mac-keychain" } as const;
 
+let keyFailure = "";
+/** The shell's own words for why the last key call failed ("" when it did not): shown with the failure, so a person and the log see the real reason, not a generic one. */
+export const lastKeyFailure = (): string => keyFailure;
+const reasonOf = (e: unknown): string => String((e as { message?: string } | null)?.message ?? e ?? "").slice(0, 300);
+
 /** This Mac's identity key. `create` makes it when it is missing (a claim or a recovery); without it a missing key is null. */
 export async function macDeviceKey(create = false): Promise<DeviceKey | null> {
   const id = shellIdentity();
   if (!id) return null;
   let pub: string;
-  // A create that fails says why (the shell's own words), so the screen never shows one generic line for every cause (IR-31).
-  try { pub = await id.public(create); } catch (e) { if (create) throw Object.assign(new Error(`This Mac would not keep your key: ${(e as Error)?.message || String(e)}`), { code: "cannot_keep" }); return null; }
+  // A create that fails says why (the shell's own words), so the screen never shows one generic line for every cause (IR-31); the reason is also kept for lastKeyFailure.
+  try { pub = await id.public(create); keyFailure = ""; } catch (e) { keyFailure = reasonOf(e); if (create) throw Object.assign(new Error(`This Mac would not keep your key: ${keyFailure}`), { code: "cannot_keep" }); return null; }
   const raw = unb64u(pub);
   return {
     publicKey: pub,

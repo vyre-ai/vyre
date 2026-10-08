@@ -18,7 +18,7 @@ export async function startMacServer(o) {
   fs.writeFileSync(script, fs.readFileSync(path.join(o.repo, "scripts/install-mac-server.sh"), "utf8").replace(/^RELEASE_KEY=.*/m, `RELEASE_KEY=${key}`));
   const vhome = path.join(process.env.HOME || "/tmp", ".vyre-proof"), sdir = path.join(process.env.HOME || "/tmp", ".vyre-server");
   fs.mkdirSync(vhome, { recursive: true, mode: 0o700 });
-  // the relay and names stand-ins only; the installer itself sets machine server (write_machine), which is what the walk proves
+  // no role seeded: the full Mac install sets machine server itself (install-mac-server.sh write_machine), which is what the walk proves
   fs.writeFileSync(path.join(vhome, "config.json"), JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } }));
   // The test release carries a signed module list made with a throwaway key (mac-release.mjs), so its modules are first party and run with no development switch; a packaged daemon ignores the path rule.
   const env = { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", VYRE_BOX_URL: `file://${work}/site/`, VYRE_HOME: vhome, VYRE_SERVER_DIR: sdir, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_NO_DIALOGS: "1", VYRE_STORE: o.store === "plain" ? "sqlite" : "auto" };

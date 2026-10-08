@@ -214,6 +214,11 @@
         "effect": "write"
       },
       {
+        "name": "wink.phone.enrolled",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "wink.phone.wait",
         "reach": "person",
         "effect": "write"
@@ -348,6 +353,8 @@
       "wink.pair-asked",
       "wink.pair-confirm",
       "wink.pair-answered",
+      "wink.enrol-asked",
+      "wink.enrolled",
       "wink.pair-failed",
       "wink.server-adopted",
       "wink.server-paired",

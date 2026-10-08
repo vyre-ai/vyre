@@ -135,51 +135,6 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
-test("install-mac-server.sh: the Mac comes up as a server: config.json says machine server, and a choice already made is kept", t => {
-  const m = mac(t);
-  const f = path.join(m.env.VYRE_HOME, "config.json");
-  let r = run({ ...m.env }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { machine: "server" });
-  assert.equal(fs.statSync(f).mode & 0o777, 0o600);
-  // the rest of an existing file is kept, a machine the person set stays, and so does the old role word
-  fs.writeFileSync(f, JSON.stringify({ name: "mini", relay: { enabled: true } }));
-  r = run({ ...m.env }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { name: "mini", relay: { enabled: true }, machine: "server" });
-  fs.writeFileSync(f, JSON.stringify({ machine: "device" }));
-  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
-  assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).machine, "device");
-  fs.writeFileSync(f, JSON.stringify({ role: "box" }));
-  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
-  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { role: "box" });
-  fs.writeFileSync(f, "{ not json");
-  r = run({ ...m.env }, ["--yes", "--from", m.src]);
-  assert.notEqual(r.status, 0); assert.match(r.stderr, /not valid JSON/);
-});
-
-test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
-  const m = mac(t);
-  let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /Check words: come pilot company release/);
-  assert.match(r.stdout, /They should match the four on your screen\./);
-  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
-  assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
-  assert.ok(!(r.stdout + r.stderr).includes(CODE));
-  r = run({ ...m.env }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
-  assert.match(r.stdout, /wink\.server\.code/);
-  // words that cannot be read are said so, with the command that shows them
-  fs.writeFileSync(path.join(m.env.VYRE_SERVER_DIR, "app", "bin", "vyre"), "process.exit(1)\n");
-  fs.rmSync(path.join(m.src, "bin"), { recursive: true });
-  r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
-  assert.match(r.stdout, /Back in the Vyre app/);
-});
-
 test("install-mac-server.sh: the Records choice from the install line lands in vyre.env: auto by default, sqlite when asked, a later choice replaces an older one, anything else refuses", t => {
   const m = mac(t);
   const f = path.join(m.env.VYRE_HOME, "vyre.env");
@@ -376,6 +331,7 @@ function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail
   // The fake root installer.
   const pkg = path.join(m.base, "pkg", "vyre"); fs.mkdirSync(path.join(pkg, "core", "daemon"), { recursive: true }); fs.mkdirSync(path.join(pkg, "core", "vyre-core"), { recursive: true });
   fs.copyFileSync(path.join(m.src, "core", "daemon", "main.js"), path.join(pkg, "core", "daemon", "main.js"));
+  fs.mkdirSync(path.join(pkg, "bin")); fs.copyFileSync(path.join(m.src, "bin", "vyre"), path.join(pkg, "bin", "vyre"));
   fs.writeFileSync(path.join(pkg, "core", "vyre-core", "install-main.js"), `import fs from "node:fs"; import path from "node:path"; import { spawn } from "node:child_process";
 const a = process.argv.slice(2), cmd = a[0];
 const flag = k => a[a.indexOf(k) + 1];
@@ -437,6 +393,59 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
   assert.ok(!fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes(ENROL));
   assert.ok(!(r.stdout + r.stderr).includes(CODE), "the setup code is never shown either");
+});
+
+test("install-mac-server.sh: the full install is a server (config.json says machine server, a choice already made is kept); the light --login-only install is My Home and writes none", t => {
+  const login = mac(t);
+  assert.equal(run({ ...login.env }, ["--yes", "--from", login.src]).status, 0);
+  assert.ok(!fs.existsSync(path.join(login.env.VYRE_HOME, "config.json")), "a login-only install stays a Home: nothing says server");
+  const full = (pre, extra = {}) => {
+    const m = sys(t);
+    const f = path.join(m.env.VYRE_HOME, "config.json");
+    if (pre !== undefined) { fs.mkdirSync(m.env.VYRE_HOME, { recursive: true }); fs.writeFileSync(f, pre); }
+    const r = run({ ...m.env, ...extra }, ["--yes", "--system"]);
+    return { r, f, m };
+  };
+  let x = full();
+  assert.equal(x.r.status, 0, x.r.stderr + x.r.stdout);
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { machine: "server" });
+  assert.equal(fs.statSync(x.f).mode & 0o777, 0o600);
+  x = full(JSON.stringify({ name: "mini", relay: { enabled: true } }));
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { name: "mini", relay: { enabled: true }, machine: "server" });
+  x = full(JSON.stringify({ machine: "device" }));
+  assert.equal(JSON.parse(fs.readFileSync(x.f, "utf8")).machine, "device");
+  x = full(JSON.stringify({ role: "box" }));
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { role: "box" });
+  x = full("{ not json");
+  assert.notEqual(x.r.status, 0); assert.match(x.r.stderr, /not valid JSON/);
+});
+
+test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
+  let m = sys(t);
+  let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /Check words: come pilot company release/);
+  assert.match(r.stdout, /They should match the four on your screen\./);
+  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
+  assert.ok(!(r.stdout + r.stderr).includes(CODE));
+  m = sys(t);
+  r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
+  assert.match(r.stdout, /wink\.server\.code/);
+  // words that cannot be read are said so, with the command that shows them
+  m = sys(t);
+  fs.rmSync(path.join(m.src, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(m.base, "pkg", "vyre", "bin", "vyre"), "process.exit(1)\n");
+  execFileSync("tar", ["-czf", path.join(m.site, "vyre.tgz"), "-C", path.join(m.base, "pkg"), "vyre"]);
+  // the manifest and signature name the old tarball; the words case only needs the final lines, so use a login-only run for it
+  const l = mac(t);
+  fs.writeFileSync(path.join(l.src, "bin", "vyre"), "process.exit(1)\n");
+  r = run({ ...l.env, VYRE_CODE: CODE }, ["--yes", "--from", l.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
+  assert.match(r.stdout, /Back in the Vyre app/);
 });
 
 test("install-mac-server.sh: a failing root installer stops the script, says so, and shows no code", t => {
