@@ -311,6 +311,9 @@ export function load(root = home(), platform = process.platform) {
   // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
   if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "solo" : c.machine;
   if (!["solo", "server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not solo, server or device; using ${d.machine}`); c.machine = d.machine; }
+  // A machine chosen as a server does the box's work whatever the OS guess said: the box-only modules (wink, the relay's server side) read `role`, so a Mac set up as a server (machine "server",
+  // no role named) is role box too. A role named in the file is the person's and stays.
+  if (user.role === undefined && c.machine === "server") c.role = "box";
   // On a box with a work folder, projects live there so VyreDrive can share them, but only where
   // nothing has to move: a new box (no homes in ~/Vyre/projects), or one whose homes the owner
   // already moved with projects.move (the record is there). An existing box keeps
