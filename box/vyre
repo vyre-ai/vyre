@@ -1650,7 +1650,7 @@ sp_listen_ports() {
   done | sort -un
 }
 # sp_app_record: the catalog out of the recorded vyre image, checked field by field, written to private/app-modules. Names must be unique, hook ports must be unique and must not be a port the vyre
-# container listens on now, and every app image is pulled (it is pinned by digest, so what is pulled is what the line names). A catalog that fails any of that records NO app: a failure here never
+# container listens on now. The images are NOT pulled here (a server that never installs an app should not carry 800 MB of one); `app-up` pulls the pinned digest when it is not there. A catalog that fails any of that records NO app: a failure here never
 # stops the Space helper's install or an update (Twenty does not wait on an app), and `app-up` says the app is not recorded.
 sp_app_record() {
   t=$(mktemp "$SP_PRIV/applist.XXXXXX") || return 0
@@ -1663,11 +1663,10 @@ sp_app_record() {
         [ -n "$l" ] || continue
         sp_app_line_ok "$l" || { why="a catalog line was refused: $(printf '%s' "$l" | cut -c1-30)"; break; }
         set -f; set -- $l; set +f
-        nm=$1; im=$2; hk=$7
+        nm=$1; hk=$7
         if awk -v n="$nm" '$1 == n { f = 1 } END { exit !f }' "$new"; then why="the app name $nm is listed twice"; break; fi
         if awk -v h="$hk" '$7 == h { f = 1 } END { exit !f }' "$new"; then why="the hook port $hk is used by two apps"; break; fi
         if printf '%s\n' "$used" | grep -qx "$hk"; then why="the hook port $hk is a port the vyre container already uses"; break; fi
-        if ! timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$im" >/dev/null 2>&1; then why="the image of $nm could not be pulled"; break; fi
         printf '%s\n' "$l" >>"$new"
       done <"$t"
     fi
@@ -1841,8 +1840,10 @@ sp_app_handoff() {
   t=$(mktemp "$SP_STATE/.app-$1.XXXXXX") || return 1
   printf '%s' "$2" >"$t" && chmod 400 "$t" && chown "$DAEMON_UID:$DAEMON_UID" "$t" 2>/dev/null; rename_over "$t" "$SP_STATE/app-$1-secrets" || { rm -f "$t"; return 1; }
 }
-# sp_app_bootstrap MODULE: the one-time setup, on the first `up` only. The script is read out of the recorded image (a file name root checked), copied into the app, and run with the command the
-# catalog line names; its environment travels in a root-only file (docker exec --env-file), never on a command line. What it prints is read for the names the line lists, each value from a short alphabet.
+# sp_app_bootstrap MODULE: the one-time setup, on the first `up` only. The script is read out of the recorded image (a file name root checked) and run with the command the catalog line names, given on
+# the command's STDIN (`<command> -`, which ruby, python, node and sh all read as "the program is on stdin"): root never writes into the app's filesystem, so a third-party container cannot
+# turn a copy into a symlink race (the docker cp class of bug). Its environment travels in a root-only file (docker exec --env-file), never on a command line. What it prints is read for the
+# names the line lists, each value from a short alphabet.
 sp_app_bootstrap() {
   m=$1; d=$SP_APPS/$m
   [ ! -f "$d/bootstrapped" ] || return 0
@@ -1854,13 +1855,9 @@ sp_app_bootstrap() {
       --entrypoint cat "$img" "/opt/vyre/core/appmods/catalog/$A_SCRIPT" 2>/dev/null | head -c 262145 >"$sc"; } || [ ! -s "$sc" ] || [ "$(wc -c <"$sc")" -gt 262144 ]; then
     rm -f "$sc"; MSG="the setup script could not be read"; return 1
   fi
-  chmod 644 "$sc"
-  hdock cp "$sc" "vyre-app-$m:/tmp/$A_SCRIPT" >/dev/null 2>&1; cprc=$?
-  rm -f "$sc"
-  [ "$cprc" = 0 ] || { MSG="the setup script could not be copied into the app"; return 1; }
   hook=$(sp_rnd)
   vip=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"vyre-app-${m}_net\"}}{{.IPAddress}}{{end}}" "$CTR_NAME" 2>/dev/null || true)
-  sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$vip" || { MSG="the vyre container has no address on the app's network"; return 1; }
+  sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$vip" || { rm -f "$sc"; MSG="the vyre container has no address on the app's network"; return 1; }
   ev=$d/setup.env
   ( umask 077; printf 'APP_URL=http://vyre-app-%s:%s\nVYRE_LOGIN_EMAIL=vyre+%s@vyre.invalid\nVYRE_HOOK_URL=http://%s:%s/hook\nVYRE_HOOK_TOKEN=%s\n' "$m" "$A_PORT" "$m" "$vip" "$A_HOOK" "$hook" >"$ev" ) || { MSG="the setup environment could not be written"; return 1; }
   of=$d/setup.out
@@ -1869,9 +1866,8 @@ sp_app_bootstrap() {
   oldifs=$IFS; IFS=+; set -- $A_EXEC; IFS=$oldifs
   set +f
   brc=0
-  timeout 600 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker exec --env-file "$ev" -w /app "vyre-app-$m" "$@" "/tmp/$A_SCRIPT" 2>/dev/null | head -c 16384 >"$of" || brc=1
-  rm -f "$ev"
-  hdock exec "vyre-app-$m" rm -f "/tmp/$A_SCRIPT" >/dev/null 2>&1 || true
+  timeout 600 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker exec -i --env-file "$ev" -w /app "vyre-app-$m" "$@" - <"$sc" 2>/dev/null | head -c 16384 >"$of" || brc=1
+  rm -f "$ev" "$sc"
   if [ "$brc" != 0 ] || [ ! -s "$of" ]; then rm -f "$of"; MSG="setting the app up failed"; return 1; fi
   body="hook_token=$hook
 "
@@ -1895,6 +1891,10 @@ sp_app_up() {
   sp_app_image_ok || return 1
   [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
   mkdir -p "$SP_APPS/$m" && chmod 700 "$SP_APPS/$m" || { MSG="could not make the app's folder"; return 1; }
+  # The pinned image, by digest, if it is not here yet: what is pulled is exactly what the recorded line names. Root pulls; the app's container never does.
+  if ! hdock image inspect "$A_IMAGE" >/dev/null 2>&1; then
+    timeout 1800 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$A_IMAGE" >/dev/null 2>&1 || { MSG="the app's image could not be pulled"; return 1; }
+  fi
   sp_app_gen "$m" || return 1
   sp_secrets_app "$m" || { MSG="could not make the app's secrets"; return 1; }
   sp_app_dc "$m" create >/dev/null 2>&1 || { MSG="the app's container could not be created"; return 1; }
@@ -2309,6 +2309,12 @@ admin() {
       word="purge-space $tgt"
       echo "This destroys the Space $tgt's records store: its database and files are deleted, and the keys that opened them. It cannot be undone."
       ;;
+    purge-app)
+      sp_app_name_ok "$tgt" || die "vyre admin purge-app APP"
+      [ -d "$SP_APPS/$tgt" ] || die "this server has no app named $tgt"
+      word="purge-app $tgt"
+      echo "This destroys the app $tgt: its container, its data and the keys it was started with. It cannot be undone."
+      ;;
     fscrypt-enable)
       word="fscrypt"
       echo "This turns on file encryption for this server's disk. It cannot be undone, and it changes nothing else."
@@ -2321,7 +2327,7 @@ admin() {
       word="anchor-reset"
       echo "This lets Vyre start after a restore from backup. The server keeps a note, outside its database, of how far its record log had got; a database put back from an older copy is shorter than that note, and Vyre refuses to start rather than run on a log that may have been rewritten. Resetting the note accepts the restored log as it is: entries made after the copy you restored are gone for good, and from now on nothing checks them. Your phone is asked to approve it, and the reset is written into the log."
       ;;
-    *) die "vyre admin wipe | purge-space SPACE | fscrypt-enable | anchor-reset" ;;
+    *) die "vyre admin wipe | purge-space SPACE | purge-app APP | fscrypt-enable | anchor-reset" ;;
   esac
   printf 'To go on, type exactly: %s\n> ' "$word"
   IFS= read -r typed || die "nothing was typed; nothing was done"
@@ -2342,6 +2348,12 @@ admin() {
         sp_dc "$nm" down -v --remove-orphans >/dev/null 2>&1 || die "the store of the Space $nm could not be removed; the daemon is stopped and nothing else was destroyed. Fix that and run this again."
         MSG=""; sp_fw_del "$nm" >/dev/null 2>&1 || true
         rm -rf -- "${d:?}"
+      done
+      for ad in "$SP_APPS"/*/; do
+        nm=$(basename "$ad"); sp_app_name_ok "$nm" || continue
+        MSG=""; sp_app_fw_del "$nm" >/dev/null 2>&1 || true
+        if [ -f "${ad}compose.yml" ]; then sp_app_dc "$nm" down -v --remove-orphans >/dev/null 2>&1 || die "the app $nm could not be removed; the daemon is stopped and nothing else was destroyed. Fix that and run this again."; fi
+        rm -rf -- "${ad:?}"
       done
       compose run --rm --no-deps -T -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
       # What the host kept: database backups (they hold keys) and the releases set aside for a rollback.
@@ -2374,6 +2386,15 @@ admin() {
       sp_fw_del "$tgt" || echo "vyre: the firewall rule for $tgt was left: ${MSG:-}" >&2
       rm -rf -- "${SP_PRIV:?}/spaces/$tgt"
       say "the Space $tgt is purged"
+      ;;
+    purge-app)
+      set_root_run
+      # The rules first (they name an interface of the vyre container), then the app, its network and its volumes, then root's folder for it.
+      MSG=""; sp_app_fw_del "$tgt" || echo "vyre: a firewall rule for $tgt was left: ${MSG:-}" >&2
+      hdock network disconnect -f "vyre-app-${tgt}_net" "$CTR_NAME" >/dev/null 2>&1 || true
+      if [ -f "$SP_APPS/$tgt/compose.yml" ]; then sp_app_dc "$tgt" down -v --remove-orphans >/dev/null 2>&1 || die "the app's container and volumes could not be removed; nothing else was deleted"; fi
+      rm -rf -- "${SP_APPS:?}/$tgt"
+      say "the app $tgt is purged"
       ;;
     fscrypt-enable)
       base=$(sp_lend_base) || die "root could not find the folder Vyre keeps lent workspaces in (the vyre container is not running, or its home is not a mounted folder), so there is nothing to encrypt"

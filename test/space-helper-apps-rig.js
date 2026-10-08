@@ -49,14 +49,19 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
   if (sub === "down") { fs.rmSync(F + "/app-running-" + m, { force: true }); fs.rmSync(F + "/app-net-" + m, { force: true }); process.exit(0); }
   process.exit(0);
 }
-if (a[0] === "pull" && has("pull-fails-app") && a[a.length - 1].includes("docuseal")) { process.stderr.write("pull access denied\\n"); process.exit(1); }
-if (a[0] === "cp" && a[2] && a[2].includes(":")) { fs.writeFileSync(F + "/copied-" + a[2].split("/").pop(), fs.readFileSync(a[1])); if (has("cp-into-fails")) process.exit(1); process.exit(0); }
+if (a[0] === "pull" && a[a.length - 1].includes("docuseal")) {
+  if (has("pull-fails-app")) { process.stderr.write("pull access denied\\n"); process.exit(1); }
+  fs.appendFileSync(F + "/pulled", a[a.length - 1] + "\\n"); fs.writeFileSync(F + "/app-image-have", "1"); process.exit(0);
+}
+// the app's image is on this machine only after a pull (or when a test says it already is)
+if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("docuseal")) process.exit(has("app-image-have") ? 0 : 1);
 if (a[0] === "exec") {
   const ei = a.indexOf("--env-file");
   if (ei >= 0) {
     fs.writeFileSync(F + "/exec-env", fs.readFileSync(a[ei + 1]));
     fs.writeFileSync(F + "/exec-env-mode", (fs.statSync(a[ei + 1]).mode & 0o777).toString(8));
     fs.writeFileSync(F + "/exec-args", a.join(" "));
+    fs.writeFileSync(F + "/exec-stdin", a.includes("-i") ? fs.readFileSync(0) : "");
     if (has("exec-fails")) process.exit(1);
     out(rd("setup-out", "boot noise\\napi_token=tok_" + "a".repeat(40) + "\\nlogin_password=pw_" + "b".repeat(24)));
   }
