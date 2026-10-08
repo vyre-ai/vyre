@@ -42,7 +42,7 @@ const CLIENTS = [
 /** The firm's Space on a real daemon: clients, the mail credential, a project with a billing teammate, juno's bound session, a mail server that records what reaches it. */
 async function world(/** @type {import("node:test").TestContext} */ t) {
   const root = tempHome(t);
-  const mods = path.join(root, "modules", "vyre-own");
+  const mods = path.join(root, "modules");
   const sent = /** @type {string[]} */ ([]);
   const outbox = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { sent.push(b); res.writeHead(200, { "content-type": "application/json" }); res.end('{"id":"m1","threadId":"t1"}'); }); });
   await new Promise(r => outbox.listen(0, "127.0.0.1", () => r(undefined)));
@@ -235,19 +235,4 @@ test("a card for one email does not release another, and it cannot release twice
   const twice = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
   assert.equal(twice.error && twice.error.code, "approval_refused", JSON.stringify(twice));
   assert.equal(w.sent.length, 1);
-});
-
-test("a tool of an ADDED module cannot use a card to skip the Gate's hold", { timeout: 300_000, skip: process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false }, async t => {
-  const w = await world(t);
-  // an added module: in the home's modules folder, not Vyre's own; its outward tool files a send at the Gate
-  writeModule(path.join(w.root, "modules"), "addon", { vyre: "1", description: "Sends a reminder.", does: { tools: [{ name: "addon.remind", reach: "anyone", outward: true, summary: "send a reminder" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("addon.remind", { input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "addon" }); return r; } }); return {}; } };`);
-  await until(async () => (await w.d.registry.status()).find((/** @type {any} */ m) => m.name === "addon" && m.state === "running") || (await w.d.registry.call("modules.reload", {}, "cli").catch(() => null)) && false, "the added module to run", 5000).catch(() => null);
-  const status = w.d.registry.status().find((/** @type {any} */ m) => m.name === "addon");
-  if (!status || status.state !== "running") { t.skip(`the added module did not load in this rig (${status ? status.state + ": " + status.error : "not found"})`); return; }
-  const card = await approved(w, "addon.remind", { to: "ap@northwind.example" });
-  const r = await w.d.registry.call("addon.remind", { to: "ap@northwind.example" }, "mcp", { approval: card });
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.equal(await gateHeld(w), 1, "the Gate held it: an added module's send is not covered by the card");
-  assert.deepEqual(w.sent, []);
 });

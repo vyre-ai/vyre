@@ -818,7 +818,7 @@
  "test/federation-reads.test.js": 8,
  "test/fixtures.test.js": 1,
  "test/flows-daemon.test.js": 2,
- "test/gif-story.test.js": 2,
+ "test/gif-story.test.js": 4,
  "test/guests.test.js": 9,
  "test/harness.test.js": 15,
  "test/held-approve-retry.test.js": 1,
