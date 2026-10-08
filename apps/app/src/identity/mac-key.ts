@@ -19,6 +19,11 @@ const unb64u = (s: string): Uint8Array => {
 /** What a store keeps for this key: only that it is the Mac's own (the seed is not here and never was). */
 export const MAC_KEPT = { kind: "mac-keychain" } as const;
 
+let keyFailure = "";
+/** The shell's own words for why the last key call failed ("" when it did not): shown with the failure, so a person and the log see the real reason, not a generic one. */
+export const lastKeyFailure = (): string => keyFailure;
+const reasonOf = (e: unknown): string => String((e as { message?: string } | null)?.message ?? e ?? "").slice(0, 300);
+
 /** This Mac's identity key. `create` makes it when it is missing (a claim or a recovery); without it a missing key is null. */
 export async function macDeviceKey(create = false): Promise<DeviceKey | null> {
   const id = shellIdentity();
