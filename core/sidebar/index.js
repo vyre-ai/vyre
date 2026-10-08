@@ -21,6 +21,8 @@ import { createSidebarService } from "./service.js";
 import { builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES } from "../../lib/sidebar/model.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
+/** The caller the daemon's own sidebar service arrives as. */
+const DOOR = "module:vyred";
 const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const str = { type: "string" };
@@ -53,7 +55,7 @@ export default {
     const defaultFor = (/** @type {string} */ space) => { const d = defaults(); return d[space] || d["*"] || null; };
     const mineOf = (/** @type {string} */ who) => cleanList(read(`mine:${who}`));
     /** The box's own person: the identity that owns this box, or "self" before there is one. */
-    const ownerId = async () => { try { const r = /** @type {any} */ (await ctx.call("spaces.identity.status", {})); const st = r && !r.error ? r.data : null; return st && st.exists && typeof st.id === "string" && PERSON.test(st.id) ? st.id : "self"; } catch { return "self"; } };
+    const ownerId = async () => { const id = ctx.config && ctx.config.owner && ctx.config.owner.id; return typeof id === "string" && PERSON.test(id) ? id : "self"; };
     /** The module screens installed here, from their manifests, each with the origin it is served on (appmods.origin) when that is known. */
     const modules = async () => {
       /** @type {any[]} */ const out = [];
@@ -195,7 +197,7 @@ export default {
       input: { type: "object", required: ["call", "person", "role", "space", "input"], properties: { call: { type: "string", enum: ["get", "edit", "team"] }, person: str, role: str, space: str, input: { type: "object" } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         // Not for any module: the person and the role are taken on trust here, so only the daemon's own door, running the Space kernel's sidebar service, may say them.
-        if (String(meta.caller || "") !== "module:vyred") throw refuse("Only the home's own sidebar service calls this.", "denied");
+        if (String(meta.caller || "") !== DOOR) throw refuse("Only the home's own sidebar service calls this.", "denied");
         const person = String(i.person);
         if (!PERSON.test(person)) throw refuse("That is not a person.", "bad_input");
         const input = { ...(i.input || {}), space: i.space };

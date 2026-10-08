@@ -154,7 +154,7 @@ test("appearance: settings.set runs the check, refuses a bad value whole, and a 
   const { c, hub, root } = await world(t);
   if (!hub) return t.skip(NO_HUB);
   const keys = (await c("settings.schema")).data.keys.filter((/** @type {any} */ k) => k.group === "appearance").map((/** @type {any} */ k) => k.key);
-  assert.deepEqual(keys, ["appearance.theme", "appearance.scheme", "appearance.tokens"]);
+  assert.deepEqual(keys, ["appearance.theme", "appearance.scheme", "appearance.tokens", "sidebar.default", "sidebar.mine"]); // the sidebar module files its two settings under Appearance
 
   let r = await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 }, control: { touch: 30 } } });
   assert.equal(r.error.code, "bad_input");

@@ -28,7 +28,9 @@ test("the name step on a blocked browser offers only scan, and Sites is hidden f
   // A browser holds no key: its first screen is "Open Vyre on your phone" (scan or paste), never the claim.
   const blocked = screen.slice(screen.indexOf('step === "browser" ||'), screen.indexOf('} else if (step === "nosetup")'));
   assert.ok(blocked.includes("BROWSER.title") && blocked.includes("PairEntry") && !/createIdentity/.test(blocked));
-  assert.match(read("../../screens/shell/nav.ts"), /RC\.sites \? \[/);
+  // the places are lib/sidebar/model.js (Sites is `optional`), and the app shows it only where the build has it (PLACE_FLAGS in nav.ts)
+  assert.match(read("../../../../lib/sidebar/model.js"), /id: "sites"[^}]*optional: "sites"/);
+  assert.match(read("../../screens/shell/nav.ts"), /sites: Boolean\(RC\.sites\)/);
   assert.match(read("../../app/u/sites.tsx"), /RC\.sites \? SitesScreen : HiddenSites/);
 });
 

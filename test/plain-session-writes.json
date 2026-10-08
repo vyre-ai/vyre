@@ -349,6 +349,14 @@
    "class": "held",
    "why": "held for the person's own words in the conversation"
   },
+  "sidebar.edit": {
+   "class": "own",
+   "why": "the caller's own sidebar list only; an assistant arranges the person's own layer, which the person can undo"
+  },
+  "sidebar.team": {
+   "class": "held",
+   "why": "the Space default needs the owner or admin role, and an assistant's request is held for the person's yes (ASK_FIRST)"
+  },
   "team.add": {
    "class": "refused",
    "why": "refused in the body for a plain session: team.add runs for an agent only when your own words asked for it; tell the perso"
