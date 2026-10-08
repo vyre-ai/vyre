@@ -51,7 +51,7 @@ export function checkAppModule(m) {
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
-    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "tmp"];
+    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "tmp", "hookPort"];
     for (const k of Object.keys(a)) if (!ak.includes(k)) bad(`app.${k}`, `${k} is not part of app`);
     if (typeof a.image !== "string" || !PINNED_RE.test(a.image)) bad("app.image", "the image is pinned by digest: name:tag@sha256:<64 hex>");
     if (!(Number.isInteger(a.port) && a.port >= 1 && a.port <= 65535)) bad("app.port", "port is a whole number from 1 to 65535");
@@ -92,6 +92,8 @@ export function checkAppModule(m) {
     }
     // Static files a browser fetches without its cookies (a web app manifest): served to anyone who reaches the app's origin, GET only, nothing else.
     if (a.public !== undefined && !(Array.isArray(a.public) && a.public.length <= 8 && a.public.every((/** @type {any} */ p) => typeof p === "string" && /^\/[A-Za-z0-9_.\/-]{1,80}$/.test(p) && !p.includes("..")))) bad("app.public", "public lists the static paths served without a session");
+    // The webhook door's port on a box where the host helper starts the app: fixed here, unique across the catalog, checked again by root when it records the catalog.
+    if (a.hookPort !== undefined && !(Number.isInteger(a.hookPort) && a.hookPort >= 43000 && a.hookPort <= 43999)) bad("app.hookPort", "hookPort is a whole number from 43000 to 43999");
     if (a.egress !== undefined) {
       if (!Array.isArray(a.egress) || !a.egress.every((/** @type {any} */ e) => EGRESS_TARGETS.includes(e))) bad("app.egress", `egress lists what the app may reach, from: ${EGRESS_TARGETS.join(", ")}; nothing else is reachable`);
     }

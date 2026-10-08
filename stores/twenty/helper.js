@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 export const SPOOL_DIR = "/run/vyre-spaces";
 export const STATE_DIR = "/run/vyre-spaces-state";
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
-const VERBS = new Set(["up", "stop", "down"]);
+const VERBS = new Set(["up", "stop", "down", "app-up", "app-stop", "app-down"]);
 
 /** @typedef {{ spool?: string, state?: string }} HelperDirs */
 
@@ -26,8 +26,8 @@ export function helperPresent(d = {}) {
 
 /**
  * Ask the helper for one verb and wait for its answer. Resolves `{ state: "ok", message }`; a refusal or a failure rejects with the helper's own short message.
- * @param {"up" | "stop" | "down"} verb @param {string} name the Space's compose name (`spc-abc...`)
- * @param {HelperDirs & { timeoutMs?: number, pollMs?: number, sleep?: (ms: number) => Promise<void>, now?: () => number, log?: (m: string) => void }} [o]
+ * @param {"up" | "stop" | "down" | "app-up" | "app-stop" | "app-down"} verb @param {string} name the Space's compose name (`spc-abc...`), or an app module's name for the app verbs
+ * @param {HelperDirs & { what?: string, timeoutMs?: number, pollMs?: number, sleep?: (ms: number) => Promise<void>, now?: () => number, log?: (m: string) => void }} [o]
  */
 export async function askHelper(verb, name, o = {}) {
   if (!VERBS.has(verb) || !NAME.test(name)) throw Object.assign(new Error("not a request the helper knows"), { code: "invalid" });
@@ -45,10 +45,10 @@ export async function askHelper(verb, name, o = {}) {
     try { st = JSON.parse(fs.readFileSync(path.join(state, `status-${id}`), "utf8")); } catch { st = null; }
     if (st && st.id === id) {
       if (st.state === "ok") return { state: "ok", message: String(st.message || "") };
-      if (st.state === "failed" || st.state === "busy") throw Object.assign(new Error(`the server could not ${verb} this space's store: ${String(st.message || st.state)}`), { code: st.state === "busy" ? "unavailable" : "failed" });
+      if (st.state === "failed" || st.state === "busy") throw Object.assign(new Error(`the server could not ${verb} ${o.what ?? "this space's store"}: ${String(st.message || st.state)}`), { code: st.state === "busy" ? "unavailable" : "failed" });
       if (st.state === "running" && st.message !== last) { last = String(st.message || ""); if (o.log) o.log(`helper ${verb}: ${last}`); }
     }
-    if (now() > deadline) throw Object.assign(new Error(`the server did not answer a request to ${verb} this space's store in time`), { code: "unavailable" });
+    if (now() > deadline) throw Object.assign(new Error(`the server did not answer a request to ${verb} ${o.what ?? "this space's store"} in time`), { code: "unavailable" });
     await sleep(o.pollMs ?? 1000);
   }
 }
