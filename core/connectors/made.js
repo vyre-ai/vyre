@@ -59,7 +59,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?)").run(...values);
     try { await materialize(row(made.id), o.as); }
     catch (e) { if (!had) db.prepare("DELETE FROM connectors_made WHERE id = ?").run(made.id); throw e; }
-    emit(had ? "connection.updated" : "connection.created", { id: made.id });
+    emit(had ? "connectors.connection-updated" : "connectors.connection-created", { id: made.id });
     return { id: made.id, credential: credentialName(made.id) };
   }
 
@@ -76,7 +76,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       out = res.error ? outcomeOf({ error: res.error }) : outcomeOf({ reply: res.data });
     }
     db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(out.light, out.words, now(), id);
-    emit("connection.checked", { id, light: out.light });
+    emit("connectors.connection-checked", { id, light: out.light });
     return { id, light: out.light, words: out.words };
   }
 
@@ -97,7 +97,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       if (had) { const r = await call("vault.delete", { name: credentialName(id) }, { as }); if (r.error) throw fail(`could not remove the credential: ${r.error.message}`, r.error.code || "vault"); }
       db.prepare("DELETE FROM connectors_made WHERE id = ?").run(id);
       await call("vault.connections.unregister", { ref: `made:${id}` });
-      emit("connection.deleted", { id });
+      emit("connectors.connection-deleted", { id });
       return { id, removed: true };
     },
   };

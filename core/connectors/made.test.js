@@ -43,7 +43,7 @@ test("saving writes the row and one derived credential, with no key in it", asyn
   assert.deepEqual(cfg.hosts, ["services.leadconnectorhq.com"]);
   assert.deepEqual(cfg.auth, { type: "bearer", item: "ghl-pat" });
   assert.equal(put.input.fields.secret, undefined, "the key stays in its own Vault item");
-  assert.deepEqual(w.events, ["connection.created"]);
+  assert.deepEqual(w.events, ["connectors.connection-created"]);
   await assert.rejects(() => w.m.save(form(), { as: "deck" }), /already a connection/);
   const l = (await w.m.list()).connections;
   assert.equal(l.length, 1); assert.equal(l[0].light, "unknown"); assert.equal(l[0].host, "services.leadconnectorhq.com");

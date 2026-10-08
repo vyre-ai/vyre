@@ -21,29 +21,29 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   const model = (tool, input = {}) => d.registry.call(tool, input, "mcp", { thread: "t-1" });
 
   assert.equal(d.registry.status().find(m => m.name === "connectors")?.state, "running");
-  assert.equal((await cli("connections.create", FORM)).error?.code, "not_found", "the key must already be in the Vault");
+  assert.equal((await cli("connectors.connection.create", FORM)).error?.code, "not_found", "the key must already be in the Vault");
   const KEY = "acme-secret-value-123456";
   assert.ok(!(await cli("vault.put", { name: "acme-key", kind: "secret", value: KEY })).error);
 
-  assert.equal((await model("connections.create", FORM)).error?.code, "denied", "a model never connects an app");
-  const made = await cli("connections.create", FORM);
+  assert.equal((await model("connectors.connection.create", FORM)).error?.code, "denied", "a model never connects an app");
+  const made = await cli("connectors.connection.create", FORM);
   assert.deepEqual(made.data, { id: "acme-crm", credential: "conn-acme-crm" }, JSON.stringify(made));
 
   const item = (await cli("vault.list", {})).data.items.find(x => x.name === "conn-acme-crm");
   assert.equal(item.kind, "api-credential");
   assert.deepEqual(item.hosts, []);
-  const listed = (await model("connections.list")).data.connections;
+  const listed = (await model("connectors.connection.list")).data.connections;
   assert.equal(listed.length, 1); assert.equal(listed[0].host, "api.acme-crm.invalid"); assert.equal(listed[0].light, "unknown");
-  assert.ok(!JSON.stringify([made, listed, (await model("connections.get", { id: "acme-crm" }))]).includes(KEY));
+  assert.ok(!JSON.stringify([made, listed, (await model("connectors.connection.get", { id: "acme-crm" }))]).includes(KEY));
 
-  const chk = await model("connections.check", { id: "acme-crm" });
+  const chk = await model("connectors.connection.check", { id: "acme-crm" });
   assert.equal(chk.data.light, "red", JSON.stringify(chk));
   assert.match(chk.data.words, /does not resolve|could not run|no answer/);
-  assert.equal((await model("connections.list")).data.connections[0].light, "red");
+  assert.equal((await model("connectors.connection.list")).data.connections[0].light, "red");
 
-  assert.equal((await model("connections.delete", { id: "acme-crm" })).error?.code, "denied");
-  assert.equal((await model("connections.update", FORM)).error?.code, "denied");
-  assert.deepEqual((await cli("connections.delete", { id: "acme-crm" })).data, { id: "acme-crm", removed: true });
+  assert.equal((await model("connectors.connection.delete", { id: "acme-crm" })).error?.code, "denied");
+  assert.equal((await model("connectors.connection.update", FORM)).error?.code, "denied");
+  assert.deepEqual((await cli("connectors.connection.delete", { id: "acme-crm" })).data, { id: "acme-crm", removed: true });
   assert.ok(!(await cli("vault.list", {})).data.items.some(x => x.name === "conn-acme-crm"));
   assert.ok((await cli("vault.list", {})).data.items.some(x => x.name === "acme-key"), "the key's own item stays");
 });
