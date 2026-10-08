@@ -11,10 +11,15 @@ struct DirectView: View {
     /// assistant's creature when the agent is the assistant).
     var who = Identities()
     var assistant: String? = nil
+    /// ⌘O: this conversation in Vyre chat on the box.
+    var openInChat: (() -> Void)? = nil
 
     var body: some View {
         if let d = direct.dm {
             VStack(alignment: .leading, spacing: 0) {
+                if !direct.activity.feed.rows.isEmpty {
+                    DirectActivity(link: direct.activity, title: d.agent, who: who, assistant: assistant, openInApp: d.thread == nil ? nil : openInChat)
+                } else {
                 HStack(spacing: 8) {
                     Text("Direct").font(Theme.label).foregroundColor(Theme.signal)
                     Text(d.agent).font(Theme.title).foregroundColor(Theme.stone)
@@ -36,6 +41,7 @@ struct DirectView: View {
                     .frame(height: DirectView.listHeight(d))
                     .onChange(of: d.messages.last?.text) { if let id = d.messages.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
                     .onAppear { if let id = d.messages.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
+                }
                 }
                 ForEach(d.asks, id: \.key) { w in
                     WaitingRow(w: w, selected: false).contentShape(Rectangle()).onTapGesture { desk.openCard(w) }
@@ -83,4 +89,24 @@ struct DirectView: View {
         return min(280, CGFloat(lines) * 19 + 12)
     }
 
+}
+
+/// The conversation drawn from its activity feed: header, thinking line, steps, hand-offs. Scrolls when it runs past its room, following the end.
+struct DirectActivity: View {
+    @ObservedObject var link: ActivityLink
+    var title: String
+    var who: Identities
+    var assistant: String?
+    var openInApp: (() -> Void)?
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                ActivityView(feed: link.feed, title: title, project: nil, mark: DirectView.mark(title, who: who, assistant: assistant), who: who, openInApp: openInApp).id("feed")
+                Color.clear.frame(height: 1).id("end")
+            }
+            .frame(height: ActivityView.height(link.feed))
+            .onChange(of: link.feed.cursor) { proxy.scrollTo("end", anchor: .bottom) }
+        }
+    }
 }
