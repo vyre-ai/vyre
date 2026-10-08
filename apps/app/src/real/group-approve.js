@@ -77,8 +77,10 @@ const NOUN = [[/mail\.send|email/i, "email", "emails"], [/message|sms|text/i, "m
 /** @param {{ id: string, answered: string }[]} results @param {Group} group @param {{ logged?: boolean }} [o] */
 export function closingLine(results, group, o = {}) {
   const sent = results.filter((r) => r.answered === "approved").length, dropped = results.filter((r) => r.answered === "dropped").length, waiting = results.filter((r) => r.answered === "waiting").length;
-  const op = group.items[0] && group.items[0].op ? group.items[0].op : "";
-  const same = group.items.every((i) => i.op === op);
+  // The tool a card is for is `request.op`: a card's own `op` is the act the key signs (task.outward_act for every outward call), the same for emails, posts and payments.
+  const toolOf = (/** @type {Item} */ i) => (i.request && i.request.op) || i.op || "";
+  const op = group.items[0] ? toolOf(group.items[0]) : "";
+  const same = group.items.every((i) => toolOf(i) === op);
   const n = NOUN.find(([re]) => same && /** @type {RegExp} */ (re).test(op));
   const noun = n ? (sent === 1 ? n[1] : n[2]) : sent === 1 ? "thing" : "things";
   if (!sent) return dropped && !waiting ? "Nothing was sent." : waiting ? `${waiting} still ${waiting === 1 ? "waits" : "wait"} for you.` : "Nothing was sent.";

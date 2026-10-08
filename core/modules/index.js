@@ -1476,6 +1476,7 @@ export class Registry {
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; // set below, by the registry relay alone
+    delete meta.covered; // set below, only by a card this call just spent
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1720,6 +1721,9 @@ export class Registry {
         }
         const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
         if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
+        // This call is the one the person approved on their phone (the card was bound to exactly this input and spent just now). A first-party module this call files a send through the Gate for is told so, once,
+        // so the Gate does not ask the same person for the same yes a second time (see the Gate's request).
+        meta = { ...meta, covered: { tool, card: approval, used: false } };
       } else {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
@@ -1759,7 +1763,9 @@ export class Registry {
           toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots, bound: r.bound };
         } catch (e) { return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } }; }
       }
-      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
+      // a card the running turn spent covers one send a module files for it; the nested call is handed that, by reference, so it can be used once
+      const cur = currentCall();
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur.covered ? { covered: cur.covered } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
