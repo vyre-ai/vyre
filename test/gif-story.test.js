@@ -165,7 +165,8 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
 
   // 8: the closing line, from the app's own code
   const S8 = step(8, "the closing line");
-  assert.equal(closingLine(answered.results, group, { logged: comms.length >= 3 }), "Sent 3 emails. Each is logged on its client.", S8("the line is not the gif's"));
+  const line = closingLine(answered.results, group, { logged: comms.length >= 3 });
+  assert.equal(line, "Sent 3 emails. Each is logged on its client.", S8(`the line is "${line}"; ops ${JSON.stringify(group.items.map((/** @type {any} */ i) => i.op))}`));
 }
 
 test("the README gif's story: handed to kit, its steps nested, three emails held as one group, one yes, sent, logged on the clients", { timeout: 300_000 }, async t => {
