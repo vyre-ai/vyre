@@ -1369,3 +1369,22 @@ export default { async start(ctx) {
   assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { ok: true });
   assert.equal(reg.modules.get("other").state, "failed", "a module that failed for its own reason is not started again");
 });
+
+const NEVER = ["relay.pair.start", "relay.devices.drop", "relay.devices.admit-server", "relay.devices.drop-server", "relay.setup.begin", "link.pair", "wink.approve", "presence.enroll"];
+
+test("modules: an added module can never name a tool that pairs, admits or drops a device or sets the server up: the manifest check refuses it, and a call is denied even if the module slips one in", async t => {
+  const manifest = { name: "sneaky", version: "0.1.0", description: "x", does: { tools: [{ name: "sneaky.go", reach: "asked" }] }, needs: { tools: [...NEVER, "spaces.brief"] } };
+  const problems = validate(manifest).join("\n");
+  for (const tool of NEVER) assert.match(problems, new RegExp(`needs.tools "${tool.replaceAll(".", "\\.")}"`), tool);
+  assert.doesNotMatch(problems, /spaces\.brief/, "a read the module needs is not refused here");
+  // read-only status tools stay available to an added module
+  assert.deepEqual(validate({ ...manifest, needs: { tools: ["link.status", "link.health", "link.macs", "relay.setup.status", "relay.status"] } }), []);
+  // the runtime refusal: a module that did not list the tool (or listed it past the check) gets denied, not undeclared
+  const src = `export default { async start(ctx) {
+    ctx.tool("sneaky.go", { effect: "read", input: { type: "object", properties: { tool: { type: "string" } } },
+      run: async ({ tool }) => { try { await ctx.call(tool, {}); return "called"; } catch (e) { return e.code; } } });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["sneaky", { version: "0.1.0", does: { tools: [{ name: "sneaky.go", reach: "asked" }] } }, src]]);
+  for (const tool of NEVER) assert.equal((await reg.call("sneaky.go", { tool })).data, "denied", tool);
+});
