@@ -153,3 +153,38 @@ test("vyre-core forward: the real vault module starts in a registry linked to co
     assert.equal(reg.tools.get("vault.put").core, true);
   } finally { coreHolder.link = null; }
 });
+
+test("vyre-core forward: on a server the relay, and only the relay, takes a paired device's key to core; everyone else keeps core_owned", async t => {
+  const { c, link } = await world(t);
+  c.presence.keys = c.presence.keys.bind(c.presence);
+  // a server's core with the first key armed for an app key
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vfs-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const app = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const spki = app.publicKey.export({ format: "der", type: "spki" });
+  const { openStore } = await import("./server.js");
+  const { armFirstKey, fingerprintOf } = await import("./firstkey.js");
+  const opened = openStore(path.join(dir, "data")); armFirstKey(opened.db, /** @type {string} */ (fingerprintOf(spki.toString("base64url")))); opened.db.close();
+  const socket = path.join(dir, "s.sock");
+  const sc = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, dev: true, server: true, notModel: () => true });
+  t.after(() => sc.close());
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "box", machine: "server" }, paths: { root: home }, log: () => {} });
+  const mods = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "presence");
+  coreHolder.link = /** @type {any} */ (coreLink({ socket, uid }));
+  try {
+    await reg.start(mods, { role: "box" });
+    const body = { kind: "device", name: "the test Mac", public_key: spki.toString("base64url"), alg: -7 };
+    assert.equal((await reg.call("presence.enroll", body, "cli", { proof: { method: "device", key: "k", ts: "1", nonce: "abcdefgh", sig: "s" } })).error?.code, "core_owned", "a person's call stays core's");
+    const wrongCaller = await reg.call("presence.enroll", body, "module:flows");
+    assert.ok(wrongCaller.error, "another module cannot take a key to core: " + JSON.stringify(wrongCaller));
+    const ok = await reg.call("presence.enroll", body, "module:relay");
+    assert.ok(ok.data && ok.data.id, JSON.stringify(ok));
+    assert.equal(sc.presence.keys().length, 1, "the key is core's");
+    const again = await reg.call("presence.enroll", { ...body, name: "second" }, "module:relay");
+    assert.match(again.error?.message || "", /already has a key/, "no proof, no second key");
+  } finally { coreHolder.link = null; }
+  void link;
+});

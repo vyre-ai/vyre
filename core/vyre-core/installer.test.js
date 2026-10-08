@@ -133,6 +133,21 @@ test("install: minting the enrolment code is tried again when core is still maki
   assert.throws(() => install(f2.opts(f2.rel), { run: always, root: f2.root, key: f2.kp.key, step: () => {} }), /still colliding/);
 });
 
+test("a server install: core's plist says so, the code mint names the first key's fingerprint, and the options are checked", (t) => {
+  const f = fixture(t);
+  assert.equal(buildPlists(f.opts(f.rel))[LABELS.core].EnvironmentVariables.VYRE_CORE_SERVER, undefined, "a Home Mac is not a server");
+  assert.equal(buildPlists(f.opts(f.rel, { server: true }))[LABELS.core].EnvironmentVariables.VYRE_CORE_SERVER, "1");
+  const fp = "ab".repeat(16);
+  const r = fakeRun();
+  const res = install(f.opts(f.rel, { server: true, firstKeyFp: fp }), { run: r.run, root: f.root, key: f.kp.key, step: () => {} });
+  assert.equal(res.code, "SEKRET-CODE-42");
+  const last = r.calls.filter((c) => c.cmd.endsWith("sudo")).at(-1);
+  assert.deepEqual(last.args.slice(-4), ["main.js", "code", "--first-key-fp", fp].map((x, i) => (i === 0 ? last.args.at(-4) : x)));
+  assert.ok(last.args.includes("VYRE_CORE_SERVER=1"));
+  assert.throws(() => buildPlists(f.opts(f.rel, { firstKeyFp: fp })), /only for a server/);
+  assert.throws(() => buildPlists(f.opts(f.rel, { server: true, firstKeyFp: "xyz" })), /32 hex/);
+});
+
 test("install runs in order: verify, account, tree, node, dirs, plists, launchd core first, code last", (t) => {
   const f = fixture(t);
   const r = fakeRun();
