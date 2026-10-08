@@ -172,7 +172,7 @@
  "core/daemon/main.test.js": 1,
  "core/daemon/peer-identity.test.js": 2,
  "core/daemon/web.test.js": 5,
- "core/daemon/sent-mail-log.test.js": 4,
+ "core/daemon/sent-mail-log.test.js": 5,
  "core/dockerproxy/proxy.test.js": 21,
  "core/event-catalog/event-catalog.test.js": 3,
  "core/files/dirs.test.js": 8,
