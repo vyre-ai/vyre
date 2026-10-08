@@ -14,7 +14,7 @@ import { start } from "../core/daemon/index.js";
 import { call as daemonCall } from "../core/daemon/client.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, present } from "./helpers.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "harness");
@@ -229,7 +229,8 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
         run: async () => ({ tz: "UTC", from: 0, to: 0, entries: items.filter(i => i.at != null).map(i => ({ source: "planner", item: i.id, kind: i.kind, title: i.title, at: i.at })),
           todos: [] }) });
       return {}; } };`);
-  const d = await start({ root, log: () => {} });
+  process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
+  const d = await start({ root, log: () => {}, kernel: true, presence: present, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   // What /vyre remind, todo and agenda send (harness/commands/vyre.md).
