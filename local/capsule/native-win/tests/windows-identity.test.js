@@ -107,7 +107,7 @@ test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_C
 test("the bundled app page (its own origin, served by the shell) gets the identity commands too, and only from itself", () => {
   const cap = JSON.parse(read("../app/capabilities/main-identity-bundled.json"));
   assert.deepEqual(cap.windows, ["main"]);
-  assert.deepEqual(cap.remote.urls, ["http://vyreapp.localhost/*"]);
+  assert.deepEqual(cap.remote.urls, ["https://vyreapp.localhost/*"]);
   assert.deepEqual(cap.permissions, [...FOUR.slice(0, 2), "identity_has", "identity_forget", ...FOUR.slice(2)].map((c) => "allow-" + c.replace(/_/g, "-")));
   assert.ok(!cap.permissions.some((p) => /core:|shell|fs|opener|notification|pair|drive|autostart|link/.test(p)), "no other permission");
   const rs = read("../app/src/main.rs");
@@ -120,7 +120,7 @@ test("the bundled app page (its own origin, served by the shell) gets the identi
   }
   // both the top-level page and the calling frame must be exactly the bundled origin
   assert.match(rs, /bundled::is_page\(u\.as_str\(\)\)\) && bundled::is_origin\(frame\)/);
-  assert.match(read("../src/bundled.rs"), /pub const ORIGIN: &str = "http:\/\/vyreapp\.localhost";/);
+  assert.match(read("../src/bundled.rs"), /pub const ORIGIN: &str = "https:\/\/vyreapp\.localhost";/);
 });
 
 test("every key failure is written to the app log with its real reason, and the page is given the same words", () => {

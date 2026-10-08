@@ -177,7 +177,7 @@ jobs:
           PW_FROM: ${{ runner.temp }}/pw/x
         run: |
           out="$RUNNER_TEMP/win-proof-out"; mkdir -p "$out"
-          node scripts/standin-directory.mjs --port 8787 --host 127.0.0.1 --app-origins "http://vyreapp.localhost" > "$out/standin.log" 2>&1 &
+          node scripts/standin-directory.mjs --port 8787 --host 127.0.0.1 --app-origins "https://vyreapp.localhost" > "$out/standin.log" 2>&1 &
           dir=$!
           sleep 3
           set +e

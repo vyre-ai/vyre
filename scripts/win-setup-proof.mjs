@@ -65,7 +65,7 @@ async function attach() {
   }
   if (!browser) throw new Error("the app's window never listened for the DevTools protocol");
   for (let i = 0; i < 60; i++) {
-    for (const c of browser.contexts()) for (const p of c.pages()) if (p.url().startsWith("http://vyreapp.localhost/")) return { browser, page: p };
+    for (const c of browser.contexts()) for (const p of c.pages()) if (p.url().startsWith("https://vyreapp.localhost/")) return { browser, page: p };
     await sleep(500);
   }
   throw new Error("no window of the app's own origin opened; pages: " + browser.contexts().flatMap((c) => c.pages().map((p) => p.url())).join(", "));
@@ -81,7 +81,7 @@ try {
   page.on("pageerror", (e) => note("  pageerror: " + String(e).slice(0, 200)));
 
   let origin = "";
-  await check("origin: the window runs at one fixed origin (the string APP_ORIGINS must list)", async () => { origin = await call(() => location.origin); if (origin !== "http://vyreapp.localhost") throw new Error("origin is " + origin); return origin; });
+  await check("origin: the window runs at one fixed origin (the string APP_ORIGINS must list)", async () => { origin = await call(() => location.origin); if (origin !== "https://vyreapp.localhost") throw new Error("origin is " + origin); return origin; });
   await check("the shell is the Windows app's, boxless, with the identity calls", async () => {
     const s = await call(() => { const x = window.__vyreShell; return x ? { kind: x.kind, boxless: x.boxless, calls: Object.keys(x.identity || {}).sort() } : null; });
     if (!s || s.kind !== "windows" || s.boxless !== true) throw new Error(JSON.stringify(s));

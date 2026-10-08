@@ -9,18 +9,18 @@ use std::path::{Component, Path, PathBuf};
 /// The scheme the window's pages are served under (registered by the app).
 pub const SCHEME: &str = "vyreapp";
 
-/// The origin the page runs at on Windows. WebView2 has no custom schemes of its own: a registered scheme `vyreapp` is served at http://vyreapp.localhost, and this is the string the page sends
+/// The origin the page runs at on Windows. WebView2 has no custom schemes of its own: a registered scheme `vyreapp` is served at https://vyreapp.localhost, and this is the string the page sends
 /// as its Origin header and the one the names directory's APP_ORIGINS must list.
-pub const ORIGIN: &str = "http://vyreapp.localhost";
+pub const ORIGIN: &str = "https://vyreapp.localhost";
 
 /// Where the window opens.
-pub const START: &str = "http://vyreapp.localhost/app/";
+pub const START: &str = "https://vyreapp.localhost/app/";
 
 /// Is this the Origin header of a call made by the bundled page itself? Exactly the one origin, nothing else.
 pub fn is_origin(header: Option<&str>) -> bool { header == Some(ORIGIN) }
 
 /// Is this URL a page of the bundled app?
-pub fn is_page(url: &str) -> bool { url == ORIGIN || url.starts_with("http://vyreapp.localhost/") }
+pub fn is_page(url: &str) -> bool { url == ORIGIN || url.starts_with("https://vyreapp.localhost/") }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Answer {
@@ -130,12 +130,12 @@ mod tests {
 
     #[test]
     fn the_origin_is_exact() {
-        assert!(is_origin(Some("http://vyreapp.localhost")));
-        for bad in ["http://vyreapp.localhost/", "https://vyreapp.localhost", "http://vyreapp.localhost.evil.example", "null", ""] { assert!(!is_origin(Some(bad)), "{bad}"); }
+        assert!(is_origin(Some("https://vyreapp.localhost")));
+        for bad in ["https://vyreapp.localhost/", "http://vyreapp.localhost", "https://vyreapp.localhost.evil.example", "null", ""] { assert!(!is_origin(Some(bad)), "{bad}"); }
         assert!(!is_origin(None));
-        assert!(is_page("http://vyreapp.localhost/app/u/now"));
-        assert!(!is_page("http://vyreapp.localhost.evil.example/app/"));
-        assert!(!is_page("https://vyreapp.localhost/app/"));
+        assert!(is_page("https://vyreapp.localhost/app/u/now"));
+        assert!(!is_page("https://vyreapp.localhost.evil.example/app/"));
+        assert!(!is_page("http://vyreapp.localhost/app/"));
     }
 
     #[test]

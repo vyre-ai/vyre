@@ -148,6 +148,8 @@ fn bundled_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 /// Open (or reveal) the app's own window: the bundled web build at its own origin, with this computer's keys behind it and no server needed. This is the first run on Windows (paste the
 /// reservation code, become yourself, then Join a team or Add a server) and every run after.
+static SETUP_WINDOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn show_app(app: &AppHandle, path: &str) {
     let url = format!("{}{}", bundled::START, path.trim_start_matches('/'));
     if let Some(w) = app.get_webview_window("main") {
@@ -161,6 +163,8 @@ fn show_app(app: &AppHandle, path: &str) {
     let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")))
         .title(APP_NAME)
         .inner_size(560.0, 760.0)
+        // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
+        .use_https_scheme(true)
         .initialization_script(shell_signal(&app.package_info().version.to_string(), true))
         .on_navigation(move |url| {
             if bundled::is_page(url.as_str()) { return true; }
@@ -174,6 +178,7 @@ fn show_app(app: &AppHandle, path: &str) {
         .build();
     match built {
         Ok(w) => {
+            SETUP_WINDOW.store(true, std::sync::atomic::Ordering::SeqCst);
             let w2 = w.clone();
             w.on_window_event(move |e| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = e {
@@ -202,8 +207,11 @@ fn show_first_run(app: &AppHandle) {
 
 /// Open (or reveal) the main panel at `path` on the pinned origin.
 fn show_panel(app: &AppHandle, path: &str) {
-    if bundled_dir(app).is_some() { return show_app(app, path); }
     let Some(pin) = pinned(app) else { return show_first_run(app) };
+    // Paired: the main window loads the person's server. A window that was the setup window (the bundled app) is closed first and built again, so nothing of it (its page, its boxless signal) carries over.
+    if SETUP_WINDOW.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        if let Some(w) = app.get_webview_window("main") { let _ = w.destroy(); }
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.navigate(pin.url_for(path).parse().expect("pinned url"));
         let _ = w.show();
@@ -734,9 +742,8 @@ fn main() {
             });
 
             // Start in the tray; show the panel only when first-run is needed.
-            // With the bundled app, a computer with no identity key yet opens the app (reserve, become yourself); one that has a key stays in the tray.
-            let first_run = if bundled_dir(&handle).is_some() { !identity_path(&handle).map(|p| p.exists()).unwrap_or(false) } else { pinned(&handle).is_none() };
-            if first_run { show_first_run(&handle); }
+            // Not paired yet: the first run (the bundled app when this build has it: reserve, become yourself, Join or Add a server). Paired: the tray.
+            if pinned(&handle).is_none() { show_first_run(&handle); }
             ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
 

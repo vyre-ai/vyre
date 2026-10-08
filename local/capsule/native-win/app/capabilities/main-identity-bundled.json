@@ -7,7 +7,7 @@
   ],
   "remote": {
     "urls": [
-      "http://vyreapp.localhost/*"
+      "https://vyreapp.localhost/*"
     ]
   },
   "permissions": [
