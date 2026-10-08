@@ -39,7 +39,8 @@ const CLIENTS = [
   { name: "Brightwell Law", email: "accounts@brightwell.example", invoice: "1060" },
 ];
 
-async function story(/** @type {import("node:test").TestContext} */ t, /** @type {{ approveGate: boolean }} */ o) {
+/** The firm's Space on a real daemon: clients, the mail credential, a project with a billing teammate, juno's bound session, a mail server that records what reaches it. */
+async function world(/** @type {import("node:test").TestContext} */ t) {
   const root = tempHome(t);
   const mods = path.join(root, "modules");
   const sent = /** @type {string[]} */ ([]);
@@ -53,8 +54,8 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
   // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
-  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); return {}; } };`);
+  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
@@ -77,7 +78,11 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
   const junoSession = { id: started.id, key: bound.key };
   const framesOf = (/** @type {string} */ session) => { const db = openStore(paths(root).db); try { return db.prepare("SELECT json FROM stream_frames WHERE session = ? ORDER BY cur").all(session).map((/** @type {any} */ r) => JSON.parse(r.json)); } finally { db.close(); } };
+  return { root, d, owner, chain, meta, tool, asPerson, step, record, junoSession, started, framesOf, sent };
+}
 
+async function story(/** @type {import("node:test").TestContext} */ t) {
+  const { root, d, owner, chain, asPerson, step, record, junoSession, started, framesOf, sent, tool } = await world(t);
   // 1: the person's words reach juno's session
   const S1 = step(1, "the person's words reach juno");
   const words = "@juno get the overdue invoices chased this week";
@@ -141,17 +146,8 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   // the Gate now has the three messages. They must be on their way, not held again.
   const gateItems = await until(async () => { const h = await asPerson("gate.held", {}); const items = Array.isArray(h) ? h : h.items || []; return items; }, S6("the Gate has no answer")).catch(() => []);
   const heldAgain = Array.isArray(gateItems) ? gateItems.length : 0;
-  if (!o.approveGate) {
-    assert.equal(heldAgain, 0, S6(`the group yes did not send them: ${heldAgain} email(s) are held AGAIN at the Gate and wait for a second yes (gate.approve). The outward card's yes and the Gate's hold are two separate approvals for one send.`));
-    await until(() => sent.length >= 3, S6(`only ${sent.length} of 3 emails reached the mail server`));
-  } else {
-    // with the Gate items approved too (what the person is asked for today), the story carries on
-    const h = await asPerson("gate.held", {});
-    const items = Array.isArray(h) ? h : h.items || [];
-    assert.equal(items.length, 3, S6(`the Gate holds ${items.length} items, not 3`));
-    for (const it of items) await asPerson("gate.approve", { id: it.id });
-    await until(() => sent.length >= 3, S6(`only ${sent.length} of 3 emails reached the mail server after gate.approve`));
-  }
+  assert.equal(heldAgain, 0, S6(`the group yes did not send them: ${heldAgain} email(s) are held AGAIN at the Gate and wait for a second yes (gate.approve). The outward card's yes and the Gate's hold are two separate approvals for one send.`));
+  await until(() => sent.length >= 3, S6(`only ${sent.length} of 3 emails reached the mail server`));
 
   // 7: each email is logged on its client
   const S7 = step(7, "each email is logged on its client");
@@ -170,9 +166,27 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
 }
 
 test("the README gif's story: handed to kit, its steps nested, three emails held as one group, one yes, sent, logged on the clients", { timeout: 300_000 }, async t => {
-  await story(t, { approveGate: false });
+  await story(t);
 });
 
-test("the same story with the Gate's own approval given too: what follows the sends works", { timeout: 300_000 }, async t => {
-  await story(t, { approveGate: true });
+test("one card covers one send: a call that files two sends gets the first sent and the second held, and a call with no card gets nothing sent", { timeout: 300_000 }, async t => {
+  const { d, asPerson, sent, root } = await world(t);
+  const call2 = (/** @type {any} */ input, /** @type {any} */ extra = {}) => call("billing.twice", input, { root, caller: "mcp:agent:billing-test", timeout: 30_000, ...extra });
+  const input = { to: "ap@northwind.example", to2: "billing@oakline.example" };
+  // no card: held as a card, nothing reaches the Gate or the mail server
+  const first = await call2(input);
+  assert.equal(first.error && first.error.code, "held_for_approval", JSON.stringify(first));
+  assert.deepEqual((await asPerson("gate.held", {})).items ?? [], []);
+  // the person says yes to the card; the retry sends the first and holds the second
+  const p = await asPerson("approvals.pending", {});
+  const item = groupsFrom(p)[0].items[0];
+  const signer = { signPresence: async (/** @type {any} */ req) => ({ op: req.op, fields: req.fields, n: `n${Math.random()}`, payload_hash: req.payload_hash, key_id: "k1" }) };
+  const res = await approveGroup({ group: { id: groupsFrom(p)[0].id, line: "", items: [item] }, signer, call: asPerson, person: d.kernel.id.owner });
+  assert.equal(res.results[0].answered, "approved");
+  const retry = await call2(input, { approval: first.error.approval });
+  assert.equal(retry.error, undefined, JSON.stringify(retry.error));
+  await until(() => sent.length >= 1, "the first send reached the mail server");
+  const held = await asPerson("gate.held", {});
+  assert.equal((held.items ?? held).length, 1, "the second send is held at the Gate: one card covers one send");
+  assert.equal(sent.length, 1);
 });

@@ -142,7 +142,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"],
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
-      run: async (input, { caller, thread, agent }) => {
+      run: async (input, { caller, thread, agent, covered, firstParty }) => {
         const filing = await filed(input, caller, thread);
         const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
         // Asking is approving (P17): what the person's own words covered goes out now, with no
@@ -160,6 +160,12 @@ export default {
           }
           const { asked: _drop, ...rest } = input;
           return gate.request({ ...rest, ...filing }, by);
+        }
+        // The person already said yes to this send on their phone: the registry spent a card bound to the very call a first-party module (mail) is filing this send for. One card covers one send, and nothing
+        // else: a card for another tool, a second send in the same call, a send from a module that is not Vyre's own, or a kind other than send is held as ever.
+        if (covered && covered.used === false && firstParty === true && String(caller || "").startsWith("module:") && input.kind === "send") {
+          covered.used = true;
+          return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         const intent = await said(input, filing.thread, by.agent);
         if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });

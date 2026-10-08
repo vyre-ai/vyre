@@ -458,6 +458,8 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
   // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
   const outer = callStore.getStore();
   let inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  // a card this turn spent covers one send a module files for it; the nested call inherits that, by reference, so it can be used once
+  if (outer && outer.live && outer.meta.covered && !inherited.covered) inherited = { ...inherited, covered: outer.meta.covered };
   // a module a cross-space call reaches (ctx.call) is still in that Space: the registry sets these only from callInSpace, so inheriting them from the running turn is as trusted as the turn
   if (outer && outer.live && typeof outer.meta.in_space === "string" && typeof inherited.in_space !== "string") inherited = { ...inherited, in_space: outer.meta.in_space, in_space_chain: outer.meta.in_space_chain };
   const box = { meta: inherited, live: true };
@@ -1476,6 +1478,7 @@ export class Registry {
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; // set below, by the registry relay alone
+    delete meta.covered; // set below, only by a card this call just spent
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1720,6 +1723,9 @@ export class Registry {
         }
         const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
         if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
+        // This call is the one the person approved on their phone (the card was bound to exactly this input and spent just now). A first-party module this call files a send through the Gate for is told so, once,
+        // so the Gate does not ask the same person for the same yes a second time (see the Gate's request).
+        meta = { ...meta, covered: { tool, card: approval, used: false } };
       } else {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
