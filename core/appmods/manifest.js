@@ -36,7 +36,7 @@ export function checkAppModule(m) {
   /** @type {{ path: string, message: string }[]} */ const out = [];
   const bad = (/** @type {string} */ path, /** @type {string} */ message) => out.push({ path, message });
   if (!isObj(m)) return [{ path: "", message: "a manifest is an object" }];
-  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "license", "source", "$schema"];
+  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "drive", "license", "source", "$schema"];
   for (const k of Object.keys(m)) if (!known.includes(k) && !k.startsWith("x-")) bad(k, `${k} is not part of an app module manifest`);
   if (typeof m.name !== "string" || !NAME_RE.test(m.name)) bad("name", "a name is lowercase letters, digits and dashes, 2 to 31 characters");
   if (typeof m.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(m.version)) bad("version", "version is semver");
@@ -45,6 +45,8 @@ export function checkAppModule(m) {
   if (m.license !== undefined && typeof m.license !== "string") bad("license", "license is a string");
   if (m.source !== undefined && !(typeof m.source === "string" && /^https:\/\//.test(m.source))) bad("source", "source is an https address");
 
+  // The Drive folders the app's files may be put in (the owner agrees at install; the module is granted these and no others).
+  if (m.drive !== undefined && !(Array.isArray(m.drive) && m.drive.length > 0 && m.drive.length <= 4 && m.drive.every((/** @type {any} */ d) => typeof d === "string" && /^[A-Z][A-Za-z0-9 _-]{0,40}$/.test(d)))) bad("drive", "drive lists the top Drive folders the app's files go in, each starting with a capital letter");
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
@@ -130,12 +132,23 @@ export function checkAppModule(m) {
       const seen = new Set();
       m.events.forEach((/** @type {any} */ e, /** @type {number} */ i) => {
         if (!isObj(e)) { bad(`events[${i}]`, "an event is an object"); return; }
-        for (const k of Object.keys(e)) if (!["webhook", "event", "flow", "data"].includes(k)) bad(`events[${i}].${k}`, `${k} is not part of an event`);
+        for (const k of Object.keys(e)) if (!["webhook", "event", "flow", "data", "files"].includes(k)) bad(`events[${i}].${k}`, `${k} is not part of an event`);
         if (typeof e.webhook !== "string" || !/^[a-z][a-z0-9._-]{0,60}$/.test(e.webhook)) bad(`events[${i}].webhook`, "webhook names the app's own event");
         if (typeof e.event !== "string" || !EVENT_RE.test(e.event)) bad(`events[${i}].event`, "event is the Vyre event it becomes: noun.verb");
         else if (typeof m.name === "string" && !e.event.startsWith(`${m.name}.`)) bad(`events[${i}].event`, `an event of this module starts with ${m.name}.`);
         if (e.flow !== undefined && (typeof e.flow !== "string" || !FLOW_PATH_RE.test(e.flow))) bad(`events[${i}].flow`, "flow is the path of a Flow's web trigger");
         if (e.data !== undefined && !(isObj(e.data) && Object.values(e.data).every(v => typeof v === "string" && /^[A-Za-z0-9_.[\]]+$/.test(v)))) bad(`events[${i}].data`, "data maps a name to a dotted path in the webhook body");
+        if (e.files !== undefined) {
+          const f = e.files;
+          if (!isObj(f)) bad(`events[${i}].files`, "files is an object");
+          else {
+            for (const k of Object.keys(f)) if (!["list", "url", "name", "saveTo"].includes(k)) bad(`events[${i}].files.${k}`, `${k} is not part of files`);
+            for (const k of ["list", "url", "name"]) if (typeof f[k] !== "string" || !/^[A-Za-z0-9_.[\]]+$/.test(f[k])) bad(`events[${i}].files.${k}`, `${k} is a dotted path in the webhook body`);
+            if (typeof f.saveTo !== "string" || !f.saveTo.includes("{name}") || f.saveTo.includes("..") || f.saveTo.startsWith("/") || /[^A-Za-z0-9 _{}./-]/.test(f.saveTo)) bad(`events[${i}].files.saveTo`, "saveTo is a Drive path with {name}, no leading slash and no dot segments");
+            else if (!Array.isArray(m.drive) || !m.drive.some((/** @type {string} */ d) => f.saveTo.startsWith(`${d}/`))) bad(`events[${i}].files.saveTo`, "saveTo is inside a folder the manifest lists under drive");
+            for (const p of [...String(f.saveTo).matchAll(/\{([a-z_]+)\}/g)].map(x => x[1])) if (p !== "name" && !(isObj(e.data) && p in e.data)) bad(`events[${i}].files.saveTo`, `{${p}} is neither {name} nor a name in data`);
+          }
+        }
         if (seen.has(e.webhook)) bad(`events[${i}].webhook`, `${e.webhook} is mapped twice`);
         seen.add(e.webhook);
       });
@@ -180,6 +193,7 @@ export function cardOf(m) {
     pinned: String(a.image).split("@")[1],
     uses: [`up to ${a.limits.memoryMb} MB of memory`, `${a.limits.cpus} CPU`, ...(a.volumes || []).map((/** @type {any} */ v) => `a folder of its own for ${v.path}`), ...(a.secrets || []).length ? ["its own keys, made now and kept in your Vault"] : []],
     reaches: (a.egress || []).length ? (a.egress || []).map((/** @type {string} */ e) => e === "vyred" ? "your Vyre, to tell it a document was signed" : e) : ["nothing outside this server"],
+    saves: (m.drive || []).length ? `the files it gets back, in ${(m.drive || []).map((/** @type {string} */ d) => `${d}/`).join(" and ")} in your Drive` : null,
     shows: (m.screens || []).map((/** @type {any} */ s) => s.label),
     tells: (m.events || []).map((/** @type {any} */ e) => e.event),
     connection: m.connection ? m.connection.label : null,

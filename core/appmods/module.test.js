@@ -16,7 +16,8 @@ import { seam, handleWebhook, pick } from "./index.js";
 const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.json", import.meta.url), "utf8"));
 
 async function world(t) {
-  const app = http.createServer((q, r) => { r.writeHead(302, { location: "/sign_in" }).end(); });
+  const PDF = Buffer.from("%PDF-1.4 signed bytes");
+  const app = http.createServer((q, r) => { if (q.url === "/file/abc/nda.pdf") r.writeHead(200, { "content-type": "application/pdf" }).end(PDF); else r.writeHead(302, { location: "/sign_in" }).end(); });
   await new Promise(r => app.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   const log = [];
@@ -83,7 +84,7 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   const w = await world(t);
   await w.cli("appmods.install", { name: "docuseal" });
   const token = w.boot().env.VYRE_HOOK_TOKEN;
-  const body = { event_type: "submission.completed", timestamp: "2026-10-08T00:00:00Z", data: { id: 7, template: { name: "NDA" }, submitters: [{ email: "a@example.com" }], documents: [{ name: "nda", url: "http://x/file/y.pdf" }] } };
+  const body = { event_type: "submission.completed", timestamp: "2026-10-08T00:00:00Z", data: { id: 7, template: { name: "NDA" }, submitters: [{ email: "a@example.com" }], documents: [{ name: "nda", url: "http://localhost:3000/file/abc/nda.pdf" }] } };
   const bad = await w.d.registry.call("appmods.hook", { name: "docuseal", token: "wrong", body }, "hook");
   assert.equal(bad.error.code, "denied");
   const ok = await w.d.registry.call("appmods.hook", { name: "docuseal", token, body }, "hook");
@@ -91,7 +92,11 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   assert.equal(ok.data.event, "docuseal.signed", JSON.stringify(ok));
   const ev = w.d.registry.deps.events.since(0, { type: "docuseal.signed" });
   assert.equal(ev.length, 1);
-  assert.deepEqual([ev[0].payload.submission, ev[0].payload.email, ev[0].payload.template, ev[0].payload.documents[0].name], [7, "a@example.com", "NDA", "nda"]);
+  assert.deepEqual([ev[0].payload.submission, ev[0].payload.email, ev[0].payload.template], [7, "a@example.com", "NDA"]);
+  // the signed document was fetched from the app (never from the host its address names) and put in the Drive folder the owner agreed to
+  assert.deepEqual(ev[0].payload.files, [{ path: "Signed/7-nda.pdf", size: 21 }]);
+  const read = await w.cli("files.drive.space.read", { path: "Signed/7-nda.pdf" });
+  assert.equal(Buffer.from(read.data.base64, "base64").toString(), "%PDF-1.4 signed bytes", JSON.stringify(read).slice(0, 300));
   // the same through the app's own door, a listener on the app network's gateway: found in the install's log as the hook url
   const url = w.boot().env.VYRE_HOOK_URL;
   const res = await fetch(url, { method: "POST", headers: { "x-vyre-token": token, "content-type": "application/json" }, body: JSON.stringify({ ...body, data: { ...body.data, id: 8 } }) });
