@@ -39,15 +39,14 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", mcwords: "mycloud", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
-  srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
+  welcome: null, mycloud: null, adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
-/** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
-export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
+/** Where Back goes from a step. */
+export function backOf(/** @type {string} */ step, /** @type {{ have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
-  if (ctx.welcome && step === "name") return "question";
+  if (ctx.welcome && step === "name") return "welcome";
   if (ctx.welcome && step === "have") return "welcome";
   if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
   // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
@@ -57,8 +56,6 @@ export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, h
   }
   // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
   if (step === "scan" && ctx.have) return "have";
-  if (step === "srv2") return "srv1";
-  if (step === "srv1") return ctx.vps ? "vps" : "cmd";
   return BACK[step] ?? null;
 }
 
@@ -75,14 +72,12 @@ export const nextSetup = (/** @type {string} */ step, /** @type {string} */ who 
 };
 
 /** Steps worth coming back to: a closed app reopens on one of these. Everything before "where" is quick and starts again. */
-const RESUMABLE = ["where", "cmd", "srv1", "here", ...SETUP_STEPS];
+const RESUMABLE = ["where", "cmd", "here", ...SETUP_STEPS];
 export const isResumable = (/** @type {string} */ step) => RESUMABLE.includes(step);
-/** srv2 shows the words of a pairing that does not survive a restart, so it resumes at the code. */
-export const resumeStep = (/** @type {string} */ step) => (step === "srv2" ? "srv1" : step);
 
 /** What is kept so a closed app resumes: the step and what the person entered. No secret, no code, no key. */
 export function packProgress(/** @type {{ step: string, name: string, spaceName: string, addr: string | null, look: string, where: string, pairTo: string, device: string, who?: string, picks?: { members?: string[], connectors?: string[], kit?: string | null } }} */ s) {
-  return JSON.stringify({ v: 1, step: resumeStep(s.step), name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, who: s.who ?? "team", picks: s.picks ?? {} });
+  return JSON.stringify({ v: 1, step: s.step, name: s.name, spaceName: s.spaceName, addr: s.addr, look: s.look, where: s.where, pairTo: s.pairTo, device: s.device, who: s.who ?? "team", picks: s.picks ?? {} });
 }
 /** Reads it back; anything unreadable or from another version is nothing. */
 export function unpackProgress(/** @type {string | null | undefined} */ raw) {
@@ -106,29 +101,12 @@ export function startStep(/** @type {string|undefined} */ start) {
 }
 
 /** Where "Where will it live?" sends each choice. */
-export const WHERE_STEP = { server: "cmd", vps: "vps", here: "here" };
-
-/** The "Pair to:" choices: the person's own name, or the space being made (DESIGN-wink.md section 4). */
-export function pairToOptions(/** @type {string} */ person, /** @type {string} */ spaceAddress) {
-  return /** @type {[string, string][]} */ ([["me", `${person || "alex"}.vyre.run`], ["space", spaceAddress]]);
-}
+export const WHERE_STEP = { server: "cmd", here: "here" };
 
 /** The line shown under a made space. */
-export function homeLine(/** @type {"server"|"vps"|"here"} */ where) {
+export function homeLine(/** @type {"server"|"here"} */ where) {
   if (where === "here") return "Lives on this computer. Unreachable while it sleeps.";
-  if (where === "vps") return "Lives on northwind, a new server.";
   return "Lives on your server.";
-}
-
-/**
- * The lines a server prints. The code screen adds the QR note and the long code; the words screen adds who is asking, the three words and the wait for yes.
- * @param {boolean} vps @param {string} spaceName @param {"code"|"words"} stage @param {{ code?: string, to?: string, who?: string, words?: string }} [o]
- */
-export function serverLines(vps, spaceName, stage, o = {}) {
-  const base = [vps ? "Created northwind on DigitalOcean" : "$ curl -fsSL vyre.run/i | sh", "Installing Vyre ... done", `Setting up ${spaceName} ... done`];
-  const code = [...base, "", "Scan the QR above with your phone, or paste this long code into Vyre:", o.code ?? SERVER_LONG_CODE];
-  if (stage === "code") return code;
-  return [...code, "", `${o.who ?? "A phone"} is asking to pair this server to ${o.to ?? "you"}.`, `The words are: ${o.words ?? ""}`, "Waiting for yes."];
 }
 
 /** What the person reads when the server step does not finish. Both sides say the same thing; nothing is created and nothing is listed. */

@@ -12,6 +12,8 @@
 // (the home's server door, status read only), and when the block is lifted the link prefers the direct path again. The server's relay row (kind server) is checked to exist and to be hidden from the device list.
 // What it does NOT prove: a NAT between the boxes (both are on public addresses), a name with a TLS gate (controlUrl is plain http to the box's address), IPv6.
 // Firewall: comment-tagged ufw rules for the other box's address only, removed at the end (and on failure). Pids are recorded; nothing is killed by pattern.
+// A development build lets the home reserve each walk name itself (a release build takes a code from vyre.run/setup).
+process.env.VYRE_TEST_SELF_RESERVE ??= "1";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -14,7 +14,7 @@
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
 #   box/*                          the release's box files, checked against its SHA256SUMS
 #   box/install-mac-server.sh      the Mac server installer; install-box.sh fetches it from the same site on a Mac (not in the release assets)
-#   setup/relay, deck, fonts, tokens.css, signin-hosts.json   the files the setup page loads, copied from the tag
+#   setup/fonts, tokens.css   the files the reserve page loads, copied from the tag
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 tag=v0.2.0; out=""; check=""
@@ -57,21 +57,10 @@ if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
   ipath=/i.sh
 else ipath=/install.sh; fi
 printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
-mkdir -p "$out/setup/relay" "$out/setup/deck/js" "$out/setup/deck/vendor/vyrecode" "$out/setup/lib/wink-code" "$out/setup/fonts"
-for f in $(git ls-tree --name-only "$tag" relay/client/ | grep '\.js$' | grep -v '\.test\.js$'); do git show "$tag:$f" >"$out/setup/relay/$(basename "$f")"; done
+mkdir -p "$out/setup/fonts"
 # A release made before the Deck moved to web/ keeps these files under deck/: take whichever the tag has.
 pick() { if git cat-file -e "$tag:web/$1" 2>/dev/null; then echo "web/$1"; else echo "deck/$1"; fi; }
 git show "$tag:$(pick css/tokens.css)" >"$out/setup/tokens.css"
-git show "$tag:$(pick js/phone-code.js)" >"$out/setup/deck/js/phone-code.js"
-# A release made before the marks moved to lib/wink-code carries them under vendor/vyrecode: take whichever the tag has.
-if git cat-file -e "$tag:lib/wink-code/vyrecode2.js" 2>/dev/null && git show "$tag:$(pick js/phone-code.js)" | grep -q "../../lib/wink-code/"; then
-  for f in vyrecode2 geometry identity payload rs; do git show "$tag:lib/wink-code/$f.js" >"$out/setup/lib/wink-code/$f.js"; done
-else
-  vdir=$(dirname "$(pick vendor/qrcode.js)")/vyrecode
-  for f in $(git ls-tree --name-only "$tag" "$vdir/" | grep '\.js$'); do git show "$tag:$f" >"$out/setup/deck/vendor/vyrecode/$(basename "$f")"; done
-fi
-git show "$tag:$(pick vendor/qrcode.js)" >"$out/setup/deck/vendor/qrcode.js"
-git cat-file -e "$tag:lib/providers/signin-hosts.json" 2>/dev/null && git show "$tag:lib/providers/signin-hosts.json" >"$out/setup/signin-hosts.json" || true
 for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2; do
   git show "$tag:apps/app/assets/fonts/$f" >"$out/setup/fonts/$(basename "$f")"
 done
@@ -79,7 +68,7 @@ done
 say "checks"
 cmp -s "$out/install.sh" "$out/box/install-box.sh" || { echo "assemble-site: install.sh is not install-box.sh" >&2; exit 1; }
 [ "$(cat "$out/box/VERSION")" = "${tag#v}" ] || echo "assemble-site: note: box/VERSION is $(cat "$out/box/VERSION"), the tag is $tag" >&2
-for f in site/setup/index.html site/setup/page.js site/setup/flow.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
+for f in site/setup/index.html site/setup/page.js site/setup/reserve.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
 echo "ok: $(find "$out" -type f | wc -l | tr -d ' ') files in $out; box version $(cat "$out/box/VERSION")"
 
 if [ -n "$check" ]; then

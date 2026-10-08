@@ -73,7 +73,9 @@ test("a directory that lost its claims gets the identity and the spaces' names b
   assert.equal(await resolves("alex"), 200);
   await down(); await up(); // the directory restarts and forgets everything
   assert.equal(await resolves("alex"), 404);
-  const r = await deck("spaces.identity.republish");
+  // the person's name is held again by a fresh reservation (the directory has no other way in), then the chain goes back
+  const fresh = (await (await fetch(`http://127.0.0.1:${port}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "alex" }) })).json()).data.code;
+  const r = await deck("spaces.identity.republish", { code: fresh });
   assert.ok(!r.error, JSON.stringify(r.error));
   assert.deepEqual([r.data.identity, r.data.spaces, r.data.failed], [true, ["harlowrep.vyre.run"], []], JSON.stringify(r.data));
   assert.equal(await resolves("alex"), 200);

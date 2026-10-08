@@ -134,6 +134,11 @@
         "effect": "write"
       },
       {
+        "name": "wink.server.setup-offer",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "wink.server.confirm",
         "reach": "person",
         "effect": "write"

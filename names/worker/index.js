@@ -182,13 +182,13 @@ function unb64url(s) {
 }
 const enc = new TextEncoder();
 const hex = /** @param {ArrayBuffer} b */ b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
-const sha256 = /** @param {string} s */ async s => hex(await crypto.subtle.digest("SHA-256", enc.encode(s)));
+export const sha256 = /** @param {string} s */ async s => hex(await crypto.subtle.digest("SHA-256", enc.encode(s)));
 /** The route id: the first 26 base32 characters of sha256 of the route key. @param {Uint8Array} pub */
 export async function routeId(pub) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", pub))).slice(0, 26); }
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export async function routeHash(route) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${ZONE_TAG}\n${route}`)))).slice(0, 26); }
 /** Equal strings, in time that depends only on length. */
-function same(a, b) {
+export function same(a, b) {
   const x = enc.encode(a), y = enc.encode(b);
   if (x.length !== y.length || x.length === 0) return false;
   let d = 0;
@@ -211,12 +211,15 @@ const reply = (status, body) => new Response(JSON.stringify(body), { status, hea
 const fail = e => reply(e.status, { error: { code: e.code, message: e.message } });
 
 /** The routes a browser page of the Vyre app may call: signed by the identity's own key, so the Origin check adds nothing. */
-const APP_OPS = new Set(["idClaim", "idAppend", "idUpdate"]);
+const APP_OPS = new Set(["idClaim", "idFinalize", "idReservedFor", "idAppend", "idUpdate"]);
+/** Reserving a name takes no key and returns a code only to its asker: the web page (any origin) may call it, with no credentials. */
+const OPEN_OPS = new Set(["idReserve"]);
 const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
 /** The CORS headers for this request on this route, or null. resolve: any origin, never credentials. App routes: the exact allowed origin only. */
 function corsHeaders(request, env, op) {
   const origin = request.headers.get("origin");
   if (op === "idResolve" || op === "check") return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+  if (OPEN_OPS.has(op)) return { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   if (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin)) return { "access-control-allow-origin": origin, "vary": "origin", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   return null;
 }
@@ -226,10 +229,9 @@ function corsHeaders(request, env, op) {
 import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 
 const ROUTES = {
-  "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
-  "POST /v1/names/release": "release",
+  "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
-  "POST /v1/names/admin/rebind": "adminRebind", "POST /v1/names/admin/drop": "adminDrop",
+  "POST /v1/names/admin/drop": "adminDrop",
   ...ID_ROUTES,
 };
 
@@ -271,7 +273,7 @@ async function route(request, env, url) {
       // request the browser marks cross-site.
       const origin = request.headers.get("origin");
       // The Vyre app's origins may call the routes that carry their own proof (APP_OPS): the identity's signature authenticates, and the Origin must match one exactly.
-      const fromApp = APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin);
+      const fromApp = OPEN_OPS.has(op) || (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin));
       if (!fromApp) {
         if (origin !== null && origin !== (env.ORIGIN || "https://names.vyre.run")) return fail(err(403, "origin", "not for browsers"));
         if (request.headers.get("sec-fetch-site") === "cross-site") return fail(err(403, "origin", "not for browsers"));
@@ -292,7 +294,7 @@ async function route(request, env, url) {
     }
     const query = Object.fromEntries(url.searchParams);
     let auth = null;
-    if (op === "adminRebind" || op === "adminDrop") {
+    if (op === "adminDrop") {
       // Support only. Not signed with a route key: the Worker secret is the authority. With no secret set the
       // operation does not exist; a missing and a wrong header answer the same.
       const given = request.headers.get("x-vyre-admin") || "";
@@ -474,8 +476,10 @@ export class Directory {
   note(rec, kind, extra) {
     rec.notices = [...(rec.notices || []), { id: crypto.randomUUID(), kind, at: this.now(), ...extra }].slice(-NOTICES);
   }
-  /** The name this route holds, if it does. @param {string} route */
+  /** The space (or, for a name an older setup gave a server, the name) this route serves, if it does. @param {string} route */
   async held(route) {
+    const served = await this.store.get(`sv/${route}`);
+    if (Array.isArray(served) && served.length) { const s = await this.idLiveRecord(served[0]); if (s) return s; }
     const name = await this.store.get(`r/${route}`);
     return name ? this.load(name) : null;
   }
@@ -484,13 +488,19 @@ export class Directory {
     if (rec.pending) await this.store.delete(`p/${rec.pending.route}`);
     rec.pending = null;
   }
-  /** The caller's own live record for a name, or a refusal that says the same for missing and not yours. @param {any} b @param {{route: string}} a */
+  /** The record of the name a server asks about: a space it serves, or (until support moves them) a name an older setup gave this server. One refusal for missing and not yours. @param {any} b @param {{route: string}} a */
   async owned(b, a) {
     const v = verdict(b.name);
-    const rec = v.status === "invalid" ? null : await this.load(v.name);
-    if (!rec || rec.route !== a.route || rec.state === "tombstone") throw err(403, "not_yours", "that name is not held by this server");
+    const refuse = () => err(403, "not_yours", "that name is not served by this server");
+    if (v.status === "invalid") throw refuse();
+    const space = await this.idLiveRecord(v.name);
+    if (space) { if (space.kind === "space" && Array.isArray(space.servers) && space.servers.includes(a.route)) return space; throw refuse(); }
+    const rec = await this.load(v.name);
+    if (!rec || rec.route !== a.route || rec.state === "tombstone") throw refuse();
     return rec;
   }
+  /** Save a record of either kind. @param {any} rec */
+  async saveAny(rec) { if (rec.kind) await this.idSave(rec); else await this.save(rec); }
 
   // -- operations --
 
@@ -509,30 +519,6 @@ export class Directory {
     return { name: v.name, status: "taken", why: "someone else has that name" };
   }
 
-  async op_claim(b, a, ip) {
-    const v = verdict(b.name);
-    if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
-    if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
-    const held = await this.held(a.route);
-    if (held) {
-      if (held.name === v.name) return { name: v.name, mine: true, fresh: false };
-      throw err(409, "one_per_route", `this server already holds ${held.name}`);
-    }
-    await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || LIMITS.claimsPerIp, "too many names claimed from this address today");
-    const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || LIMITS.claimsGlobal;
-    const total = await this.count("all", "all", max, "the directory is busy today; try again tomorrow").catch(e => {
-      console.warn(`names: ALERT the daily claim ceiling (${max}) is reached`);
-      throw e;
-    });
-    if (total === max) console.warn(`names: ALERT the daily claim ceiling (${max}) is now reached`);
-    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
-    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] };
-    await this.save(rec);
-    await this.store.put(`r/${a.route}`, v.name);
-    await this.store.delete(`m/${a.route}`); // the route holds a name again: the old "moved" note no longer applies
-    return { name: v.name, mine: true, fresh: true };
-  }
-
   async op_point(b, a) {
     const rec = await this.owned(b, a);
     const t = tailnetIp(b.ip);
@@ -548,7 +534,7 @@ export class Directory {
     // and the own-zone availability check never reads a stale AAAA as someone else's. Best effort: the sweep clears it too.
     await dns.clear(fq, "AAAA").catch(() => {});
     rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { [t.type]: t.ip };
-    await this.save(rec);
+    await this.saveAny(rec);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, type: t.type, ip: t.ip };
   }
 
@@ -563,7 +549,7 @@ export class Directory {
     await dns.point(fq, "A", addr);
     await dns.clear(fq, "AAAA").catch(() => {});
     rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { A: addr };
-    await this.save(rec);
+    await this.saveAny(rec);
     return { name: rec.name, fqdn: fq, type: "A", ip: addr };
   }
 
@@ -590,19 +576,6 @@ export class Directory {
     return { fqdn };
   }
 
-  async op_release(b, a) {
-    const rec = await this.owned(b, a);
-    await this.store.delete(`r/${a.route}`);
-    if (!rec.everPointed) { await this.drop(rec); return { name: rec.name, tombstone: false }; }
-    // Ever live: it can never be anyone else's (support's admin rebind moves it).
-    await this.unpend(rec);
-    Object.assign(rec, { state: "tombstone", route: null, ips: {} });
-    this.note(rec, "released", {});
-    await this.save(rec);
-    await this.wipeDns(rec);
-    return { name: rec.name, tombstone: true };
-  }
-
   async op_mine(_b, a) {
     const rec = await this.held(a.route);
     if (!rec) {
@@ -610,37 +583,8 @@ export class Directory {
       return moved ? { name: null, moved } : { name: null };
     }
     const dns = dnsFor(this.env);
-    return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: rec.everPointed, ips: rec.ips,
+    return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: Boolean(rec.everPointed), ips: rec.ips || {},
       notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
-  }
-
-  /**
-   * Support only (the ADMIN_SECRET header, checked by the Worker): move a name to another route at once, for a person whose old server is gone. It writes an admin-rebind notice to the name's log, keeps
-   * the recovery code as it is, leaves a note for the old route (so its devices are told if the server is still
-   * reachable), and wipes the old DNS records so the new box publishes its own address.
-   * @param {any} b @param {{admin?: boolean}} a
-   */
-  async op_adminRebind(b, a) {
-    if (!a || !a.admin) throw err(401, "unauthorized", "not authorised");
-    const v = verdict(String(b.name || ""));
-    if (v.status === "invalid") throw err(400, "bad_request", "not a name");
-    const route = String(b.route || "");
-    if (!ROUTE_RE.test(route)) throw err(400, "bad_request", "not a route");
-    const rec = await this.load(v.name);
-    if (!rec) throw err(404, "no_such_name", "nobody holds that name");
-    if (rec.route === route) throw err(409, "already_yours", "that route already holds the name");
-    if (await this.store.get(`r/${route}`)) throw err(409, "one_per_route", "that route already holds a name");
-    const old = rec.route;
-    await this.unpend(rec);
-    if (old && await this.store.get(`r/${old}`) === rec.name) await this.store.delete(`r/${old}`);
-    if (old) await this.store.put(`m/${old}`, { name: rec.name, at: this.now() });
-    await this.store.put(`r/${route}`, rec.name);
-    await this.store.delete(`m/${route}`); // the route holds a name again: the old "moved" note no longer applies
-    Object.assign(rec, { route, state: rec.everPointed ? "live" : "claimed", claimedAt: this.now(), ips: {} });
-    this.note(rec, "admin-rebind", { from: old ? old.slice(0, 8) : null, to: route.slice(0, 8) });
-    await this.save(rec);
-    await this.wipeDns(rec);
-    return { name: rec.name, route: route.slice(0, 8), state: rec.state };
   }
 
   /**
@@ -670,6 +614,7 @@ export class Directory {
       await this.wipeDns({ name });
       await this.store.delete(key);
     }
+    for (const [key, r] of await this.store.list({ prefix: "rsv/" })) if (this.now() >= r.exp) { await this.store.delete(key); if (r.by) await this.store.delete(`rsc/${r.by}`); }
     const stale = [...(await this.store.list({ prefix: "c/" })).keys()].filter(k => Number(k.split("/")[2]) < this.day() - 1);
     for (let i = 0; i < stale.length; i += 100) await this.store.delete(stale.slice(i, i + 100));
   }

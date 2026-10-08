@@ -72,14 +72,14 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
   };
 
   return {
-    /** Make this device's key and chain with a recovery code (and an optional recovery password), and claim the name. The code is returned ONCE. */
-    async create({ name, password = "", deviceLabel }) {
+    /** Make this device's key and chain with a recovery code (and an optional recovery password), and finish the name that a reservation code holds. The recovery code is returned ONCE. */
+    async create({ name, password = "", deviceLabel, code: reservation }) {
       const code = newCode();
       const ck = codeKey(code, password, stretch);
       await store.generate({ code: { eid: ck.eid, pub: ck.publicKey }, label: deviceLabel, ts: now() });
       try {
         const state = await stateNow();
-        await dir.claim(name, state, store.ops(), signer(), { v: 1 });
+        await dir.finalize(name, state, store.ops(), signer(), { v: 1 }, reservation);
         store.setChain(store.ops(), C.pinOf(state));
       } catch (e) { store.clear(); throw e; }
       const status = store.setName(name);
@@ -105,11 +105,12 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       return { done: true, agree: point };
     },
     /** Put this identity's chain in the directory again (a fresh directory lost its claims): the same claim as at creation. The name must still be free or already this identity's. */
-    async republish() {
+    async republish({ code: reservation } = /** @type {{ code?: string }} */ ({})) {
       const st = store.status();
       if (!st.exists || !st.name) throw refuse("Choose your Vyre name first.", "no_identity");
       const state = await stateNow();
-      const r = await dir.claim(st.name, state, store.ops(), signer(), { v: 1 });
+      // A person's name is finished with a reservation code like the first time (the directory has no other way in); a name it still holds is the same identity's, so repeating is harmless.
+      const r = await dir.finalize(st.name, state, store.ops(), signer(), { v: 1 }, reservation);
       return { name: st.name, claimed: true, mine: r && r.mine === true };
     },
     entries: async () => view(await stateNow()),

@@ -19,7 +19,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 
 | Key | Type | Default | What it is for |
 | --- | --- | --- | --- |
-| `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
+| `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set when the Vyre app adds this server to a space. |
 | `role` | `'box'\|'local'` | none | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
 | `machine` | `'solo'\|'server'\|'device'` | none | Not described yet. |
 | `projectsDir` | `string` | none | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |

@@ -110,7 +110,7 @@ export function uninstallPlan({ purge = false, home, etc = ETC, wall = [] }) {
   if (!SAFE_PATH.test(String(home)) || home === "/") throw new Error(`home "${home}" is not a home folder`);
   /** @type {Step[]} */
   const steps = [
-    { do: "note", text: "DNS records for your vyre.run name are released with `vyre name release`, run before uninstalling; this does not release them." },
+    { do: "note", text: "The names of your spaces stay yours in the name directory: removing Vyre from this server releases none of them." },
     { do: "run", argv: ["systemctl", "disable", "--now", "vyre.service"], why: "stop vyred", optional: true },
     { do: "remove", path: path.join(etc, "vyre.service") },
     { do: "run", argv: ["systemctl", "daemon-reload"], why: "forget the removed units", optional: true },
