@@ -171,7 +171,9 @@ test("Get started goes to the reservation code; there is no question, and My Clo
 test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
   assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
   for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
-  assert.match(FIRST.windows, /Windows is coming/);
+  assert.match(FIRST.windows, /alone is coming/);
+  assert.equal(FIRST.server.upgrades.mac, "This upgrades My Home to My Cloud.");
+  assert.equal(FIRST.server.upgrades.windows, "This sets up My Cloud.");
 });
 
 test("the paste check accepts every character the directory can put in a code", async () => {
