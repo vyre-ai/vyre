@@ -291,7 +291,7 @@ export class Sealer {
   }
 
   async handle(req) {
-    await this.presence.preverify(req); // a passkey's assertion is checked once here, with the identity chain's verifier (proof.js refuse reads the result)
+    { const pv = this.presence.preverify(req); if (pv) await pv; } // a passkey's assertion is checked once here, with the identity chain's verifier (proof.js refuse reads the result)
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
       case "reseal": return this.reseal(req); case "wrap.pub": return { key: this.wrapKey(this.ctxOf(req.ctx)).pub }; case "export": return this.export(req); case "export.approve": return this.exportApprove(req); case "import": return this.import(req); case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);

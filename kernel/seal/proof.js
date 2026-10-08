@@ -235,17 +235,18 @@ export class Presence {
    * request is looked through once, first, and each proof-shaped object a webauthn_platform key made is checked HERE with the chain's own verifier and remembered by identity (a WeakSet: nothing a
    * request says can put an object in it). `refuse` then asks the set. @param {any} req
    */
-  async preverify(req, depth = 0) {
-    if (!req || typeof req !== "object" || depth > 4) return;
+  preverify(req, depth = 0, found = []) {
+    if (!req || typeof req !== "object" || depth > 4) return found.length ? Promise.all(found).then(() => {}) : undefined;
     if (typeof req.signature === "string" && req.signer === "webauthn_platform" && typeof req.key_id === "string") {
       const k = this.keys.get(req.key_id);
       if (k && k.signer === "webauthn_platform" && k.rp) {
-        let ok = false; try { const raw = Buffer.from(k.spki, "base64").subarray(-65); ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; }
-        if (ok) this.waOk.add(req);
+        const raw = Buffer.from(k.spki, "base64").subarray(-65);
+        found.push((async () => { let ok = false; try { ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; } if (ok) this.waOk.add(req); })());
       }
-      return;
+      return depth === 0 && found.length ? Promise.all(found).then(() => {}) : undefined;
     }
-    for (const v of Array.isArray(req) ? req : Object.values(req)) if (v && typeof v === "object") await this.preverify(v, depth + 1);
+    for (const v of Array.isArray(req) ? req : Object.values(req)) if (v && typeof v === "object") this.preverify(v, depth + 1, found);
+    return depth === 0 && found.length ? Promise.all(found).then(() => {}) : undefined;
   }
   refuse(proof, { op, space, fields, ctx, dry = false }) {
     if (!proof || typeof proof !== "object") return "no_proof";

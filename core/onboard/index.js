@@ -367,10 +367,12 @@ export default {
     ctx.tool("onboard.name", {
       effect: "write", callers: ONBOARD_CALLERS,
       description: "Checks <name>.vyre.run, or reads which space's name this server serves. A server holds no name: a space is named in the app, and the app tells the server to serve it (names.serve).",
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "status"] } }),
+      input: obj({ name: { type: "string" }, action: { type: "string" } }),
       run: async ({ name, action = "check" }, { caller, ...meta }) => {
         boxOnly();
         ownerWrite(caller, meta, "reading the name", await isOwned(), false);
+        // checked here, after the caller: a model is refused for being a model whatever it asks (check, status)
+        if (action !== "check" && action !== "status") throw joinFail("bad_input", "input.action must be one of check, status");
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           return call("names.check", { name });

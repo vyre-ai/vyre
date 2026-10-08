@@ -258,7 +258,7 @@ need_docker() {
   fi
   if ! compose_ok; then
     if docker compose version >/dev/null 2>&1; then
-      say "This server needs a newer Docker (Compose 2.24 or newer; it has $(docker compose version --short))."
+      say "This server needs a newer Docker (Compose 2.24 or newer; this server has $(docker compose version --short))."
     else
       say "This server needs a newer Docker (the \`docker compose\` plugin, version 2)."
     fi
