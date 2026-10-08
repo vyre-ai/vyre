@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Get started with Vyre: set up your server, Mac, phone and Windows PC</title>
-  <meta name="description" content="The steps to put Vyre on your own server, in order: the Vyre app and its one line, pairing with a code and three words, then your Mac with Vyre Lumen, your phone and Windows.">
+  <title>Get started with Vyre: reserve your name, install the app, add a server</title>
+  <meta name="description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
   <link rel="canonical" href="https://vyre.run/start/">
   <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
@@ -17,15 +17,15 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/start/">
-  <meta property="og:title" content="Get started with Vyre: set up your server, Mac, phone and Windows PC">
-  <meta property="og:description" content="The steps to put Vyre on your own server, in order: the Vyre app and its one line, pairing with a code and three words, then your Mac with Vyre Lumen, your phone and Windows.">
+  <meta property="og:title" content="Get started with Vyre: reserve your name, install the app, add a server">
+  <meta property="og:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
   <meta property="og:image" content="https://vyre.run/og/start.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Put Vyre on your server.">
+  <meta property="og:image:alt" content="Start with your name.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Get started with Vyre: set up your server, Mac, phone and Windows PC">
-  <meta name="twitter:description" content="The steps to put Vyre on your own server, in order: the Vyre app and its one line, pairing with a code and three words, then your Mac with Vyre Lumen, your phone and Windows.">
+  <meta name="twitter:title" content="Get started with Vyre: reserve your name, install the app, add a server">
+  <meta name="twitter:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
   <meta name="twitter:image" content="https://vyre.run/og/start.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Get started","item":"https://vyre.run/start/"}]}]}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -56,33 +56,30 @@
   <div class="wrap">
     <p class="crumbs"><a href="/">Vyre</a> / Get started</p>
     <p class="eyebrow">Getting started</p>
-    <h1 class="display">Put Vyre <b>on your server.</b></h1>
-    <p class="lead">The steps, in order. The Vyre app does most of them for you.</p>
-    <p class="sm" style="max-width:42em">Vyre is not on npm yet, so your Mac installs the command line from a tarball on vyre.run, and the Mac app, Vyre Lumen, is built on your Mac rather than downloaded. The server install is checked against a published signature.</p>
+    <h1 class="display">Start with <b>your name.</b></h1>
+    <p class="lead">Reserve your name, put the Vyre app on your computer, and the app does the rest.</p>
+    <p class="sm" style="max-width:42em">The Mac and Android apps are not signed with a store or Apple identity yet, so you install them from the file (sideload). Every file in a release is checked against a published signature.</p>
   </div>
 </section>
 <section class="sec" style="padding-top:48px"><div class="wrap">
 <section class="part rv" id="need" aria-labelledby="need-h"><span class="n">00</span><div><h2 id="need-h">What you need</h2><ul>
-<li>A server: a Linux machine you can <code>ssh</code> into with sudo (Docker is installed for you if it is missing, after you say yes), or a Mac that stays on.</li>
+<li>A Mac or a Windows PC for the app.</li>
 <li>An account with at least one of Claude, Codex, Grok or OpenRouter.</li>
-<li>For Vyre Lumen on your Mac: Node 22.5 or newer (<code>node --version</code>).</li></ul></div></section>
-<section class="part rv" id="server" aria-labelledby="server-h"><span class="n">01</span><div><h2 id="server-h">Open the Vyre app</h2><p>Open the Vyre app on your phone or Mac and choose <strong>Get started</strong>. Choose your Vyre name, save your recovery code, then create a space. For a space on a server you own, the app shows one line to run on it.</p>
-<p>Open a terminal on your server as yourself, not as root, and paste the line. It looks like this:</p>
-<div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL vyre.run/i | sh</code><button type="button" data-copy="curl -fsSL vyre.run/i | sh" aria-label="Copy the command">Copy</button></div>
-<p>The installer asks before it installs anything, including Docker if the server has none. It sets Vyre up in <code>/srv/vyre</code>, checks what it downloads against a published signature, and starts it. On a Mac that stays on, the same line installs Vyre as a service that starts at boot. When it is done the terminal prints a QR and a long code.</p></div></section>
-<section class="part rv" id="onboarding" aria-labelledby="onboarding-h"><span class="n">02</span><div><h2 id="onboarding-h">Pair it from the app</h2><ol>
-<li><strong>Scan or paste the code.</strong> On a phone, scan the QR your server printed; on a computer, paste the long code into the app.</li>
-<li><strong>Check the three words.</strong> Your server’s terminal shows three words for each way in and asks you to pick the ones the app shows. Confirm only if they match.</li>
-<li><strong>Finish setting up the space.</strong> Give it a look, connect your AI account and your tools, and pick a Kit or start empty. Each step has a Later.</li>
-</ol>
-<p>Your server, your computers and your phone find each other through Vyre’s own network. There is nothing to install and nothing to sign in to.</p></div></section>
-<section class="part rv" id="mac" aria-labelledby="mac-h"><span class="n">03</span><div><h2 id="mac-h">Your Mac</h2><p>Install the command line from the tarball, pair it with your server, then build Vyre Lumen:</p>
-<div class="term"><span class="pr" aria-hidden="true">$</span><code>npm i -g https://vyre.run/box/vyre.tgz</code><button type="button" data-copy="npm i -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command">Copy</button></div><div class="term"><span class="pr" aria-hidden="true">$</span><code>vyre up</code><button type="button" data-copy="vyre up" aria-label="Copy the command">Copy</button></div><div class="term"><span class="pr" aria-hidden="true">$</span><code>vyre capsule install</code><button type="button" data-copy="vyre capsule install" aria-label="Copy the command">Copy</button></div>
-<p><code>vyre up</code> starts Vyre on this Mac and asks for your server’s pairing code. It shows three words; confirm they match the server’s screen, and approve with your passkey. <code>vyre link</code> on the Mac says when it is paired.</p>
-<p><code>vyre capsule install</code> builds Vyre Lumen on this Mac from the package; nothing is downloaded for it. If it says the Command Line Tools are not installed, run <code>xcode-select --install</code>, then run it again. Then open it with <code>vyre capsule</code>.</p>
-<p>Option-Space opens Vyre Lumen from any app by default, with no extra permission. If you turn on Control twice instead from the menu-bar mark, grant Input Monitoring when it asks: macOS needs that permission to see the key. Contacts is optional, for contact results. More on the <a href="/mac/">Mac page</a>.</p></div></section>
-<section class="part rv" id="phone" aria-labelledby="phone-h"><span class="n">04</span><div><h2 id="phone-h">Your phone</h2><p>Open the Vyre app and scan the code your server shows, or the one the Vyre app shows on a device you already use, or paste the long code. Both screens show the same three words, and the phone pairs only after you confirm them. Open Vyre from your Home Screen from then on. More on the <a href="/phone/">phone page</a>.</p></div></section>
-<section class="part rv" id="windows" aria-labelledby="windows-h"><span class="n">05</span><div><h2 id="windows-h">Windows</h2><p>There is a Windows app for your Windows PC: a tray icon and an Alt+Space panel, and it updates itself. Its installer, <code>VyreSetup.exe</code>, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The app is not signed yet, so Windows may warn that the publisher is unknown: choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p></div></section>
+<li>To add a server: a Linux machine (a cloud machine is fine) or a Mac that stays on. With Records, which is recommended, it needs 8 GB of memory (4 GB at the least); without Records, 2 GB.</li>
+<li>To join a team: the invite your team sent you.</li></ul></div></section>
+<section class="part rv" id="name" aria-labelledby="name-h"><span class="n">01</span><div><h2 id="name-h">Reserve your name</h2><p>Open <a href="/setup/">vyre.run/setup</a>, type the name you want and press <strong>Reserve this name</strong>. The page shows a code that starts with VYRE. Copy it. It is held for you for 24 hours and works once.</p></div></section>
+<section class="part rv" id="app" aria-labelledby="app-h"><span class="n">02</span><div><h2 id="app-h">Install the app</h2><p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-Lumen-aarch64.dmg</a> (Apple silicon) or Vyre-Lumen-x86_64.dmg (Intel), open it and drag Vyre Lumen to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
+<p><strong>Windows:</strong> download VyreSetup.exe from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> and run it. If Windows warns that the publisher is unknown, choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p></div></section>
+<section class="part rv" id="code" aria-labelledby="code-h"><span class="n">03</span><div><h2 id="code-h">Paste the code</h2><p>Open the app, choose <strong>Start</strong> and paste the code. The app makes your key on this computer and shows a recovery code once. Keep it somewhere only you can reach.</p></div></section>
+<section class="part rv" id="choose" aria-labelledby="choose-h"><span class="n">04</span><div><h2 id="choose-h">Choose how you will use Vyre</h2><ul>
+<li><strong>Join a team.</strong> Paste your team’s invite. You run on their server and need none of your own.</li>
+<li><strong>Add a server.</strong> A machine of your own that stays on: a Linux server, or a Mac. Choose <em>With Records</em> (recommended) or <em>Without Records</em> (a small server).</li>
+<li><strong>Use My Home</strong> (Mac only). Vyre runs on this Mac while it is awake. Add a server later and everything moves across.</li></ul></div></section>
+<section class="part rv" id="server" aria-labelledby="server-h"><span class="n">05</span><div><h2 id="server-h">Add a server</h2><p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
+<div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh</code><button type="button" data-copy="curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh" aria-label="Copy the command">Copy</button></div>
+<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line is good for one hour and works once.</p>
+<p>The installer checks the release’s signature, sets Vyre up, and prints four words. The app finds your server by itself and shows four words too. If they match, choose <strong>They match</strong>. Nothing is connected until you do.</p></div></section>
+<section class="part rv" id="phone" aria-labelledby="phone-h"><span class="n">06</span><div><h2 id="phone-h">Add your phone</h2><p>From the app, choose <strong>Add your phone</strong>. On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Scan the code from your computer and check that both screens show the same words. More on the <a href="/phone/">phone page</a>.</p></div></section>
 <section class="part rv" id="not-finished" aria-labelledby="not-finished-h"><span class="n">!</span><div><h2 id="not-finished-h">What is not in 0.2.9</h2><ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
 <li><strong>Screen Share.</strong> Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.</li>
@@ -93,12 +90,13 @@
 <li><strong>Chrome.</strong> Parallel tabs read within one Chrome; a tab for each agent is not built.</li>
 <li><strong>Scale.</strong> Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler.</li>
 <li><strong>Windows.</strong> The Windows app is not code-signed, and the first Windows install is not signature-checked.</li>
-<li><strong>The Mac app is built, not downloaded.</strong> There is no signed Mac download yet; <code>vyre capsule install</code> builds it on your Mac.</li>
+<li><strong>Sideloaded apps.</strong> The Mac app has no Apple Developer ID signature yet and the Android app is not on a store, so you install both from the file.</li>
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li>
 </ul>
 <p>More detail: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a>. Where this is going: <a href="/direction/">Direction</a>.</p></div></section>
 <section class="part rv" id="trouble" aria-labelledby="trouble-h"><span class="n">?</span><div><h2 id="trouble-h">If something goes wrong</h2><ul>
-<li>The page says the code expired, or two servers used it: press <em>Start again</em> for a new line.</li>
+<li>The app says the reservation code is not valid: it lasts 24 hours and works once. Reserve the name again on vyre.run/setup.</li>
+<li>The app says the line expired, or two servers used it: press <em>Start again</em> for a new line.</li>
 <li>The words do not match: press <em>They don’t match</em>, then start again. It means the line was not run on your server.</li>
 <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
 <li>Start over on a Linux server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then set up again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li></ul></div></section>

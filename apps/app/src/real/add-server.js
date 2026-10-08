@@ -70,7 +70,7 @@ export const MESSAGES = Object.freeze({
 
 /**
  * @param {{ client: SetupClient, relay: string, identity: () => Promise<{ id: string }>, connect: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<{ call: (tool: string, input?: object) => Promise<any>, close: () => void }>,
- *   pair: (qr: string) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
+ *   pair: (qr: string, opts?: { pageKey?: any }) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
  */
 export function createAddServer(o) {
   const now = o.now || Date.now;
@@ -167,7 +167,7 @@ export function createAddServer(o) {
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }
     try { chan.close(); } catch { /* gone */ }
     if (mine !== run) return;
-    try { await o.pair(qr); } catch { if (mine === run) stop("pair"); return; }
+    try { await o.pair(qr, { pageKey: p.key }); } catch { if (mine === run) stop("pair"); return; }
     if (mine !== run) return;
     set({ stage: "done" });
   }

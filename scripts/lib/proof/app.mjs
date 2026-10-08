@@ -14,6 +14,7 @@ import { claimIdentity } from "../../../apps/app/src/identity/claim.js";
 import { claimServerSpace } from "../../../apps/app/src/identity/claim-space.js";
 import { generateDeviceKey } from "../../../apps/app/src/identity/keys.js";
 import { createAddServer } from "../../../apps/app/src/real/add-server.js";
+import { withCoreProof } from "../../../apps/app/src/real/core-proof.js";
 import { installLine } from "../../../apps/app/screens/install/first-run.js";
 import { startPaired } from "../../../apps/app/src/auth/paired.ts";
 import { proofWith, devicePresence, keyIdFromXY } from "../../../apps/app/src/auth/person.ts";
@@ -44,7 +45,7 @@ const until = async (/** @type {() => any} */ fn, ms = 30_000, what = "the app")
 const plainName = (/** @type {string} */ n) => String(n).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/ {2,}/g, " ").trim().slice(0, 64);
 
 /**
- * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number }, about?: { kind: "app" | "web" } }} o
+ * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number }, about?: { kind: "app" | "web" }, capsule?: boolean }} o
  * `directory` is the names directory's base (a stand-in), `relay` the relay's ws address, `dir` this app's own folder for its relay keys.
  */
 export function createApp(o) {
@@ -67,6 +68,8 @@ export function createApp(o) {
     keyId: async () => keyIdFromXY(String(jwk.x), String(jwk.y)),
     sign: async (/** @type {string} */ message) => crypto.sign("sha256", Buffer.from(message), { key: personKey.privateKey }).toString("base64url"),
     nonce: () => crypto.randomBytes(16).toString("base64url"),
+    // a Mac server holds this Mac's key as its Capsule key (stand-in for the Secure Enclave: a release core counts the METHOD, and cannot tell the chip), so it proves as one
+    ...(o.capsule ? { method: /** @type {const} */ ("capsule") } : {}),
   });
   const signPerson = async (/** @type {Uint8Array} */ m) => new Uint8Array(crypto.sign("sha256", Buffer.from(m), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" }));
 
@@ -89,13 +92,13 @@ export function createApp(o) {
   }
 
   /** Pair with a server's long code the way the app's directSessionFor does: this identity's key signs for the pairing, so nobody answers at the server. @param {string} qr */
-  async function pairWithServer(qr) {
+  async function pairWithServer(qr, ctx) {
     if (!me) throw new Error("this app has no identity yet");
     /** @type {string[]} */ const words = [];
     pairing = await pairServer({
       payload: qr, owner: { id: me.id, name: plainName(me.name), vyre: me.name, pin: me.pin },
       signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: me.key.eid, sig: b64u(await me.key.sign(m)) }),
-      name: o.label, crypto: relayCrypto, keyStore, presenceKey, about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
+      name: o.label, crypto: relayCrypto, keyStore, presenceKey: await withCoreProof(presenceKey, { pageKey: ctx && ctx.pageKey, name: o.label, enclave: o.capsule ? presenceKey.public_key : null }), about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
       onWords: w => { words.push(w); lastWords = w; },
     });
     pairing.words = words;
@@ -128,7 +131,7 @@ export function createApp(o) {
       client: /** @type {any} */ (setupClient), relay: o.relay,
       identity: async () => ({ id: me.id }),
       connect: async ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: setupClient.setupHello, webCrypto, utf8 }, { offer, key, secret }),
-      pair: async qr => { await pairWithServer(qr); },
+      pair: async (qr, ctx) => { await pairWithServer(qr, ctx); },
       pollMs: 100, ...(h.onChange ? { onChange: h.onChange } : {}),
     });
     return flow;

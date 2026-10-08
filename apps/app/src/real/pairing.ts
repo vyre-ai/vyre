@@ -6,7 +6,11 @@
 // The box is imported on first use so the pure parts stay runnable in Node.
 
 import type { PairingSession } from "../api/pairing-session";
-import { macKeyAvailable } from "../identity/mac-key.ts";
+import { macKeyAvailable, macEnclavePublic } from "../identity/mac-key.ts";
+// A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
+import { withCoreProof, spkiOfPoint } from "./core-proof.js";
+/** This Mac's Secure Enclave key as an SPKI, or null where there is none (a phone, a browser, a Mac with no Secure Enclave). */
+const macEnclaveSpki = async (): Promise<string | null> => { if (!macKeyAvailable()) return null; const p = await macEnclavePublic(false); return p ? spkiOfPoint(p) : null; };
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
@@ -17,7 +21,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
-export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target): PairingSession {
+export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: { pageKey?: unknown }): PairingSession {
   // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
   let direct: PairingSession | null = null;
   let stopped = false;
@@ -41,7 +45,7 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     async ready() {
       const { tool, BoxError } = await box();
       if (!direct && code.kind === "ticket" && !(await boxReachable(tool, BoxError))) {
-        const mine = await directSessionFor(code);
+        const mine = await directSessionFor(code, extra);
         if (mine) { direct = mine; await mine.ready!(); return; }
       }
       if (direct) return direct.ready!();
@@ -120,7 +124,7 @@ async function staleSavedPairing(): Promise<boolean> {
 
 /**
  * What pairing a server needs from this device's own name: who will own it (with the head and length of the chain the server checks the proof against), the signature that proves this device speaks for
- * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (MacServer, relay/client/join.js `server`) both take it.
+ * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (relay/client/join.js `server`) both take it.
  */
 export async function serverPairInputs() {
   const { loadIdentity } = await import("../identity/store");
@@ -152,7 +156,7 @@ export async function serverPairInputs() {
  * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
  * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
  */
-async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>): Promise<PairingSession | null> {
+async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: { pageKey?: unknown }): Promise<PairingSession | null> {
   // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
   const { pairServer } = await import("@vyre/relay-client/serverpair.js");
   const inputs = await serverPairInputs();
@@ -171,7 +175,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: inputs.presenceKey, signal: abort.signal,
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macEnclaveSpki() }), signal: abort.signal,
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });

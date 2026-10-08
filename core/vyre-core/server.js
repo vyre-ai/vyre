@@ -18,6 +18,7 @@
 //     presence.verify {tool, input, proof} read: does this proof (a header string) prove that call?
 //     presence.enroll / presence.remove    write: needs a proof over this exact input
 //     presence.session.open                write: after a capsule, device or passkey proof only
+//     presence.enroll.capsule              write: a SERVER's Capsule key (firstkey.js): the setup key signs the hand-over once, in the first key's hour, and is removed
 //     presence.enroll.first                write: a SERVER's first key only (firstkey.js): the key the install line named, within the hour, from outside every Claude session
 //     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign, keys.device.exists/ensure/pub/dh   the relay's keys (phase 5), never a private half
 
@@ -31,7 +32,7 @@ import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
 import { openVault } from "./vault.js";
 import { openKeys } from "./keys.js";
-import { enrollFirst, migrateFirstKey } from "./firstkey.js";
+import { enrollFirst, enrollCapsule, migrateFirstKey } from "./firstkey.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -329,6 +330,15 @@ export async function startCore(o) {
         const k = enrollFirst({ db, presence, now: o.now }, input);
         log(`vyre-core: the first key (${k.kind} ${k.id}) enrolled for this server by pid ${c.pid}`);
         emit("presence.first-key", { id: k.id });
+        return send(res, 200, { data: k });
+      }
+      // The server's Capsule key (firstkey.js enrollCapsule): the setup key hands the Secure Enclave key its place and leaves, once, in the first key's hour.
+      if (tool === "presence.enroll.capsule") {
+        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its Capsule comes from the Capsule" } });
+        if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "a server's Capsule key is enrolled only by a process outside every Claude session" } });
+        const k = enrollCapsule({ db, presence, now: o.now }, input);
+        log(`vyre-core: the server's Capsule key (${k.id}) took the setup key's place, by pid ${c.pid}`);
+        emit("presence.capsule-key", { id: k.id });
         return send(res, 200, { data: k });
       }
       if (!WRITE[tool]) return send(res, 404, { error: { code: "unknown_tool", message: `vyre-core has no tool ${tool}` } });

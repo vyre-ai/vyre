@@ -260,23 +260,6 @@ jobs:
         if: always()
         with: { name: results-data, path: results, retention-days: 14 }
 
-  j1:
-    needs: build
-    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j1')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci --no-audit --no-fund
-      - run: sh scripts/build-site.sh
-      - name: J1, install and onboarding through the setup page
-        run: sh scripts/matrix/j1.sh results
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: results-j1, path: results, retention-days: 14 }
-
   j6:
     name: j6-${{ matrix.os }}
     if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j6')
@@ -402,7 +385,7 @@ jobs:
         with: { name: results-cosign-refusals, path: results, retention-days: 14 }
 
   report:
-    needs: [j5, cosign, j1b, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
+    needs: [j5, cosign, j1b, linux, android, windows, mac, upgrade, data, j6, j7, refusals]
     if: always()
     runs-on: ubuntu-24.04
     steps:

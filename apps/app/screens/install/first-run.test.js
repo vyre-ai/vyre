@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FIRST, firstChoices, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, codeRoute, installLine, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -84,7 +84,6 @@ test("a browser that cannot reach the Vyre says This browser, a phone says Your 
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {
   for (const s of [BROWSER.title, BROWSER.line, BROWSER.notSetTitle, BROWSER.notSetLine, NO_VYRE.line, NO_VYRE.share]) assert.doesNotMatch(s, /curl|\| sh/);
-  assert.match(MAC_WHERE.serverLine, /one line/);
   assert.equal(ADD_PHONE.skip, "Skip");
 });
 
@@ -108,18 +107,6 @@ test("who it is for is kept with the progress and with what the box keeps", () =
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });
 
-test("the Mac's boxless window types the server's code: the words follow the prototype, three wrong tries end it", () => {
-  assert.ok(isBoxlessMac({ boxless: true }) && !isBoxlessMac({}) && !isBoxlessMac(null));
-  assert.equal(MAC_SERVER.title, "Type the code your server shows");
-  assert.equal(MAC_SERVER.ackTitle, "Type this on your server");
-  assert.equal(MAC_SERVER.doneTitle, "Connected to your server");
-  assert.deepEqual(macServerSay("wrong", 2), { title: "That code is not right", line: "Check the code on your server and type it again. 2 tries left.", over: false });
-  assert.equal(macServerSay("wrong", 1).line.includes("1 try left"), true);
-  assert.equal(macServerSay("wrong", 0).over, true);
-  assert.deepEqual(macServerSay("expired", 3), { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true });
-  assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
-});
-
 test("the install line is the release candidate's own only for a hyphenated version; a plain release and an unknown version get the stable one", () => {
   const STABLE = "curl -fsSL vyre.run/i | sh";
   const rc = (v) => `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v${v}/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v${v}/ sh`;
@@ -127,7 +114,6 @@ test("the install line is the release candidate's own only for a hyphenated vers
   assert.equal(installLine(" 0.3.0-rc1 "), rc("0.3.0-rc1"));
   assert.equal(installLine("0.3.0"), STABLE);
   for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /", "0.3.0-rc.1; ls", "-rc1"]) assert.equal(installLine(v), STABLE, String(v));
-  assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
 });
 
 test("whose a server is: a browser reads it as the server said it, a phone as this Vyre", () => {
@@ -155,7 +141,6 @@ test("the short typed code is on in release and gated on RC.typedCode, so the ki
     assert.match(src, /export function TypeCode\(p: TypeCodeProps\) \{ return RC\.typedCode \?/, "the typed field renders nothing only while the kill switch is set");
     assert.match(src, /export function AckCode\(p: \{ offer: string; onDone: \(\) => void \}\) \{ return RC\.typedCode \?/, "so does the ack box");
   }
-  assert.match(readFileSync(new URL("./MacServer.tsx", import.meta.url), "utf8"), /if \(!RC\.typedCode\)/, "and the Mac's typed-code window");
 });
 
 test("the words step after a long code uses the session's own kind: a real (watch) session shows the words and waits for the yes, never the typed-words form", async () => {

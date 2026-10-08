@@ -23,7 +23,7 @@ export async function walk(w) {
   fs.mkdirSync(dir, { recursive: true });
   const pick = store === "records" ? "records" : "plain";
   const person = `walker${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`;
-  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
   /** @type {any} */ let reservation = null, flow = null, srv = null, session = null;
 
   try {
@@ -209,7 +209,7 @@ export async function walkTerminal(w) {
     const S = (/** @type {string} */ n) => `${tag}: ${n}`;
     const dir = path.join(w.out, tag.replace(/ /g, "-"));
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
-    const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+    const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
     /** @type {any} */ let srv = null, made = null;
     try {
       await run.step(S("the app has an identity"), async () => {

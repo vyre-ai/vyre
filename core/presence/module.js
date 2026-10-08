@@ -62,9 +62,12 @@ export default {
         // On a Mac server the keys are vyre-core's. The relay, and only the relay, takes a paired device's key to core: with a device proof from a key core already has (`core_proof`, over this exact
         // input) as any later key needs, or with none for a server's first key, which core takes only for the key the install line named, within the hour (core/vyre-core/firstkey.js). People, the
         // CLI and every other caller keep core_owned, from Presence.enroll below. Nothing here proves anything: core decides.
-        if (presence.coreLink && meta.caller === "module:relay" && input.kind === "device" && input.device == null) {
-          const body = { kind: "device", name: input.name, public_key: input.public_key, alg: input.alg ?? -7 };
-          const r = input.core_proof ? await presence.coreLink.call("presence.enroll", body, String(input.core_proof)) : await presence.coreLink.call("presence.enroll.first", body);
+        if (presence.coreLink && meta.caller === "module:relay" && (input.kind === "device" || (input.kind === "capsule" && input.core_proof)) && input.device == null) {
+          const body = { kind: input.kind, name: input.name, public_key: input.public_key, alg: input.alg ?? -7 };
+          // the server's Capsule key (the app's Secure Enclave key) takes the setup key's place, signed by the setup key; a later device key comes with a proof from a key core has; the first key comes with none
+          const r = input.kind === "capsule" ? await presence.coreLink.call("presence.enroll.capsule", { ...body, proof: String(input.core_proof) })
+            : input.core_proof ? await presence.coreLink.call("presence.enroll", body, String(input.core_proof))
+            : await presence.coreLink.call("presence.enroll.first", body);
           if (r.error || !r.data) throw Object.assign(new Error((r.error && r.error.message) || "vyre-core gave no answer"), { code: (r.error && r.error.code) || "failed" });
           ctx.events.emit("presence.enrolled", { id: r.data.id, kind: r.data.kind, name: r.data.name });
           return r.data;

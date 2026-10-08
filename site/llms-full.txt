@@ -2,7 +2,7 @@
 
 Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
 
-Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.2.9. Updated 2026-10-08. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - One session runs Claude, Codex, Grok or OpenRouter. Each reply shows which model wrote it. You can switch model mid-session (the new model gets a summary of the conversation) or address one model for a single message with an @, such as @codex.
@@ -23,11 +23,12 @@ Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Lice
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
-1. Open the Vyre app, choose your name, create a space and choose a server. The steps are at https://vyre.run/start/.
-2. On the server, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh`
-3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
-4. Mac: `npm i -g https://vyre.run/box/vyre.tgz`, then `vyre up`, then `vyre capsule install`.
-5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
+1. Reserve your name at https://vyre.run/setup/ and copy the code it shows.
+2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-Lumen-aarch64.dmg or Vyre-Lumen-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
+3. Open the app, paste the code and save the recovery code.
+4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
+5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. Confirm the four words in the app.
+6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
 
 ## What it costs
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.

@@ -18,7 +18,7 @@ test("typed code: unset, empty, 1, true and anything else leave it on; only an e
 test("typed code: rc.ts reads the variable by its exact name (so Expo inlines it) and everything typed is gated on RC.typedCode", () => {
   const rc = read("./rc.ts");
   assert.match(rc, /typedCode: flagNotOff\(process\.env\.EXPO_PUBLIC_VYRE_TYPED_CODE\)/);
-  for (const f of ["../devices/TypeCode.tsx", "../install/MacServer.tsx"]) assert.match(read(f), /RC\.typedCode/, `${f} is gated on RC.typedCode`);
+  for (const f of ["../devices/TypeCode.tsx"]) assert.match(read(f), /RC\.typedCode/, `${f} is gated on RC.typedCode`);
 });
 
 test("typed code: nothing that builds a release export switches it off (the CI workflows, the app's export scripts)", () => {
