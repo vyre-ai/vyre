@@ -165,6 +165,7 @@ fn show_app(app: &AppHandle, path: &str) {
         .inner_size(560.0, 760.0)
         // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
         .use_https_scheme(true)
+        .on_page_load(|w, p| log("note", "page", &format!("{:?} {}", p.event(), p.url())))
         .initialization_script(shell_signal(&app.package_info().version.to_string(), true))
         .on_navigation(move |url| {
             if bundled::is_page(url.as_str()) { return true; }
@@ -178,6 +179,7 @@ fn show_app(app: &AppHandle, path: &str) {
         .build();
     match built {
         Ok(w) => {
+            log("note", "show_app", "the window was built");
             SETUP_WINDOW.store(true, std::sync::atomic::Ordering::SeqCst);
             let w2 = w.clone();
             w.on_window_event(move |e| {
@@ -765,6 +767,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("vyre app")
         .run(|_app, event| {
+            { // every event but the idle ones, so a window that closes or an exit that nobody asked for has a line
+                let name = format!("{event:?}");
+                if !name.starts_with("MainEventsCleared") && !name.starts_with("Resumed") { log("event", "run", &name.chars().take(160).collect::<String>()); }
+            }
             // A tray app keeps running with no window open: closing the last window (finishing pairing closes
             // the first-run page before the panel exists) asks to exit with no code, and that is refused.
             // Quit from the tray exits with a code and goes through.
