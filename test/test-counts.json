@@ -543,6 +543,7 @@
  "kernel/door/sinks.test.js": 2,
  "kernel/flows/canvas.test.js": 6,
  "kernel/flows/compile.test.js": 11,
+ "kernel/flows/connection-step.test.js": 5,
  "kernel/flows/e2e/estate.e2e.test.js": 1,
  "kernel/flows/expr.test.js": 6,
  "kernel/flows/index.test.js": 5,
