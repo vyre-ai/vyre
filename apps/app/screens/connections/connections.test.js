@@ -287,3 +287,16 @@ test("any app: an assistant's proposal is shown as the card the person is asked,
   await s.madeApprove("prop_1"); await s.madeDecline("prop_2");
   assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["connectors.connection.approve", { proposal: "prop_1" }], ["connectors.connection.decline", { proposal: "prop_2" }]]);
 });
+
+test("one list of what is connected: apps and MCP servers together, each with a plain word, sorted, each opening its own tab", { skip: !strip }, async () => {
+  const { unifyConnected, pickMade } = await import("./any-app.ts");
+  const made = pickMade({ connections: [{ id: "ghl", label: "GoHighLevel Sales", host: "services.leadconnectorhq.com", light: "green", reason: "connected" }, { id: "x", label: "Acme", host: "api.acme.example", light: "red", reason: "the key was refused (401)" }] });
+  const servers = [{ name: "tracker", state: "running", error: "", tools: 4, url: "https://tracker.example.com/mcp", command: "" }, { name: "docs", state: "failed", error: "it would not start", tools: null, url: "", command: "npx" }];
+  const all = unifyConnected(made, servers);
+  assert.deepEqual(all.map((c) => [c.label, c.kind, c.status]), [["Acme", "api", "bad"], ["docs", "mcp", "bad"], ["GoHighLevel Sales", "api", "ok"], ["tracker", "mcp", "ok"]]);
+  assert.equal(all.find((c) => c.label === "tracker")?.words, "Running, 4 tools");
+  assert.equal(all.find((c) => c.label === "tracker")?.where, "tracker.example.com");
+  assert.equal(all.find((c) => c.label === "docs")?.words, "it would not start");
+  assert.equal(all.find((c) => c.label === "Acme")?.words, "the key was refused (401)");
+  assert.deepEqual(unifyConnected([], []), []);
+});

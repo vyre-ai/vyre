@@ -84,3 +84,19 @@ export function pickProposals(raw: unknown): Proposal[] {
     return [{ id: p.proposal, by: String(p.by ?? ""), why: typeof p.why === "string" ? p.why : "", title: card.title, lines: (card.lines as unknown[]).map(String) }];
   });
 }
+
+export type Connected = { key: string; kind: "api" | "mcp"; label: string; where: string; status: "ok" | "bad" | "idle"; words: string };
+
+/**
+ * One list of what is connected over HTTP APIs and MCP servers: the person does not need to know which is which to see that it works. Each row says where to open it (its own tab). MCP servers stay
+ * the hub's rows (one mechanism); this only reads them beside the Connections.
+ */
+export function unifyConnected(made: MadeConnection[], servers: { name: string; state: string; error: string; tools: number | null; url: string; command: string }[]): Connected[] {
+  const apis: Connected[] = made.map((c) => ({ key: `api:${c.id}`, kind: "api", label: c.label, where: c.host, status: c.light === "green" ? "ok" : c.light === "unknown" ? "idle" : "bad", words: lightWords(c) }));
+  const mcp: Connected[] = servers.map((s) => ({
+    key: `mcp:${s.name}`, kind: "mcp", label: s.name, where: s.url ? (() => { try { return new URL(s.url).hostname; } catch { return s.url; } })() : s.command,
+    status: s.state === "running" ? "ok" : s.state === "stopped" || s.state === "idle" || !s.state ? "idle" : "bad",
+    words: s.state === "running" ? (s.tools != null ? `Running, ${s.tools} ${s.tools === 1 ? "tool" : "tools"}` : "Running") : s.error || (s.state ? s.state[0].toUpperCase() + s.state.slice(1) : "Not started"),
+  }));
+  return [...apis, ...mcp].sort((a, b) => a.label.localeCompare(b.label));
+}
