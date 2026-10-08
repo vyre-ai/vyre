@@ -5,7 +5,7 @@ import "../src/identity/restore-wire";
 import { useEffect } from "react";
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { connect } from "../src/api/box";
@@ -33,7 +33,7 @@ function Shell() {
     if (RC.glass) startGlass();
   }, []);
   // Notices for what waits for your yes and for a turn that finished while you were away, made by the app from what its server says (no push service).
-  useEffect(() => (Platform.OS === "ios" || Platform.OS === "android" ? startNotices() : undefined), []);
+  useEffect(() => startNotices(), []);
   // The installed web app: its service worker, a tapped notification's route, push.seen.
   useEffect(() => startPwa((path) => router.push(path as never)), []);
   // In the Mac app's window the menu bar's places and Back and Forward come in as commands (src/shell).
