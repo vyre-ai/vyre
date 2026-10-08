@@ -71,7 +71,7 @@ try {
     if (dry) {
       for (const s of plan(opts)) { process.stdout.write(`would  ${s.name}\n`); for (const d of s.detail) process.stdout.write(`         ${d}\n`); }
     } else {
-      const { code } = install(opts, { step: say });
+      const { code } = install(opts, { step: say, note: (m) => process.stdout.write(`  note  ${m}\n`) });
       process.stdout.write(`VYRE_CORE_ENROL=${code}\n`);
     }
   } else if (cmd === "uninstall") {
