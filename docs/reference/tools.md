@@ -9768,12 +9768,13 @@ Add a teammate to a project: a role (how sessions address it, e.g. "design"), a 
 
 ### `team.ask`
 
-Send work to a project's teammate by role ("design", "backend", ...): {to, text, refs?, priority?, wait?, project?}. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.
+Send work to a project's teammate by role ("design", "backend", ...): {to, text, refs?, priority?, wait?, project?, model?}. model (a provider such as codex or grok, provider/model, or a Claude model name) runs this request in a session of its own on that model, through the same Gate and spend as any teammate session. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.
 
 - Input:
   - `text` string, required
   - `to` string, required
   - `key` string
+  - `model` string
   - `priority` one of "urgent", "normal", "low"
   - `project` string
   - `refs` list of string

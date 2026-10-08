@@ -707,7 +707,7 @@ vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]
 
 vyre team                     this project's teammates, states and queues
 vyre team add <role>          add a teammate
-vyre team ask <role> <text>   send it work; --urgent, --wait
+vyre team ask <role> <text>   send it work; --urgent, --wait, --model codex|grok|provider/model
 vyre team status <request>    one request's state and result
 vyre team cancel <request>    cancel a queued request
 vyre team notes <agent>       read its notes
