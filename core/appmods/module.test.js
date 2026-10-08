@@ -117,7 +117,9 @@ test("install: keys in the Vault, the app started with them, set up by its boots
   // what the Connections module reads: the record the manifest declares, and the Vault item that holds the key (never the key)
   const conn = (await w.cli("appmods.connection", { name: "docuseal" })).data;
   assert.deepEqual([conn.app, conn.label, conn.auth, conn.credential, conn.check], ["docuseal", "DocuSeal", { kind: "header", name: "X-Auth-Token" }, { item: "app-docuseal-api-token", field: "value" }, { method: "GET", path: "/api/user" }]);
-  assert.equal(conn.operations[2].name, "submissions.get");
+  assert.deepEqual(conn.operations.map(o => o.name), ["templates.list", "submissions.list", "submissions.create", "submissions.get", "submissions.documents"]);
+  assert.equal(conn.operations[2].input.body.template_id.required, true, "the send operation says what it takes: a view draws its form from this");
+  assert.deepEqual(conn.operations[1].input.query.status.enum, ["pending", "completed", "declined", "expired"]);
   assert.ok(!JSON.stringify(conn).includes("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
   assert.ok((await w.cli("appmods.origin", { name: "docuseal" })).error, "the origin is for Vyre's own modules, not a person at the terminal");
   assert.match((await w.d.registry.call("appmods.origin", { name: "docuseal" }, "module:connectors", { door: true })).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -242,7 +244,7 @@ test("the Connection form for an app is the Connections module's create form wit
   assert.deepEqual(form.credential, { item: "app-docuseal-api-token", field: "value" });
   assert.deepEqual(form.check, { path: "/api/user" });
   assert.ok(!("base_url" in form) && !("host" in form));
-  assert.deepEqual(form.operations.map(o => o.name), ["templates.list", "submissions.create", "submissions.get", "submissions.documents"]);
+  assert.deepEqual(form.operations.map(o => o.name), ["templates.list", "submissions.list", "submissions.create", "submissions.get", "submissions.documents"]);
   m.connection.auth = { kind: "bearer" }; assert.deepEqual(connectionForm(m, "x").send, { how: "bearer" });
 });
 
