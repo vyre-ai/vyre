@@ -148,7 +148,7 @@ export function ChatComposer(p: ComposerProps) {
         </Pressable>
       )) : p.models?.length ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip>{current ? `${current.label}${current.fit != null ? `, fit ${current.fit}` : ""}` : "Model"}</Chip>
+          <Chip>{current ? current.label : "Model"}</Chip>
         </Pressable>
       ) : null}
       {assistants > 1 ? (
@@ -193,7 +193,7 @@ export function ChatComposer(p: ComposerProps) {
           {(p.models ?? []).map((m) => (
             <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id, slotSel); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
               <Text strong style={{ flex: 1 }}>{m.label}</Text>
-              {m.fit != null ? <Text size="caption" tone="label">{`fit ${m.fit}`}</Text> : null}
+              {m.fit != null ? <Text size="caption" tone="label">{`${m.fit} percent match`}</Text> : null}
               {m.id === p.model ? <Icon name="check" /> : null}
             </Pressable>
           ))}
