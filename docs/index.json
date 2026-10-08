@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1337,"event":453,"config":271,"env":253,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1338,"event":455,"config":271,"env":254,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2521,6 +2521,7 @@
     {"kind":"env","name":"VYRE_WINK_NET","definedIn":"core/wink/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_WINK_REAL","definedIn":"core/wink/control/headscale.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_WINK_TYPED_CODE","definedIn":"core/wink/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_WORDS_TRIES","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_WORK","definedIn":"core/spawner/main.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_WORK_DIR","definedIn":"core/config/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_WORK_GID","definedIn":"bin/vyre","page":"reference/config.md#environment-variables","mentions":[]},
@@ -2587,6 +2588,8 @@
     {"kind":"tool","name":"wink.device.key","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdevicekey","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicepaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.record","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicerecord","module":"wink","mentions":[]},
+    {"kind":"event","name":"wink.enrol-asked","definedIn":"core/wink/pairing.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
+    {"kind":"event","name":"wink.enrolled","definedIn":"core/wink/pairing.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.expired","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.found","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"config","name":"wink.gatePort","definedIn":"core/wink/index.js","page":null,"mentions":[]},
@@ -2616,6 +2619,7 @@
     {"kind":"tool","name":"wink.pair.status","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkpairstatus","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.pair.targets","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkpairtargets","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.peer.allow","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkpeerallow","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.phone.enrolled","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkphoneenrolled","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.phone.open","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkphoneopen","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.phone.pair.answer","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkphonepairanswer","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.phone.pairing","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkphonepairing","module":"wink","mentions":[]},

@@ -112,7 +112,7 @@ from, and the command to act on it.
 Start vyred and print the onboarding link, or this box's address.
 
 ```
-vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]
+vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--quiet] [--dry-run] [--json]
 ```
 
 ### vyre down
