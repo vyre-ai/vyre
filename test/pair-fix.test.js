@@ -187,6 +187,7 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
   const r = await joining;
   assert.equal(r.ok, true, JSON.stringify(r));
+  console.error("DBG", JSON.stringify(r.paired), rows(w, r.paired.device));
   assert.ok(r.done.owner, "the adopt returned the owner");
   assert.equal(r.done.session, true);
   assert.equal(rows(w, r.paired.device).length, 1, "the device exists after the typed ack");
