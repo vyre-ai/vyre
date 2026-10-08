@@ -16,7 +16,7 @@ import { AckCode } from "./TypeCode";
 import { leftOf } from "./typed-model.js";
 
 type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
-type Ask = { name: string; line: string; words: [string, string, string] };
+type Ask = { name: string; line: string; words: [string, string, string] | null };
 
 /**
  * Adding a device against the real box: only the side this device is. A server: scan or paste what it printed, see the three words, say yes

@@ -15,7 +15,7 @@ const source = pairingSource(callT);
  * no request is asking or the box has no pairing. It redraws on the wink.* events; nothing polls.
  */
 export function PairingCards({ onPaired }: { onPaired?: (name: string) => void }) {
-  const [wink, setWink] = useState<{ name: string; words: [string, string, string] } | null>(null);
+  const [wink, setWink] = useState<{ name: string; words: [string, string, string] | null } | null>(null);
   const [note, setNote] = useState("");
   const live = useRef(true);
   const load = useCallback(async () => {
