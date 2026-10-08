@@ -40,6 +40,7 @@ jobs:
           node scripts/shots.mjs "$RUNNER_TEMP/chat-shots" \
             "chat-demo?scenario=activity&at=4300&hold=1&note=0" \
             "chat-demo?scenario=activity&at=9500&hold=1&note=0" \
+            "chat-demo?scenario=activity&at=9500&hold=1&note=0&actions=1" \
             "chat-demo?scenario=group&at=12000&hold=1&note=0&about=0" \
             "chat-demo?at=6000&hold=1&note=0&composer=1" \
             --dist dist --w 390,1280 --theme dark,paper --h 860 --fixed 1 | tee -a "$GITHUB_STEP_SUMMARY"

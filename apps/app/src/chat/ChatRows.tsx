@@ -72,6 +72,8 @@ type Dress = { flash?: boolean; mentioned?: boolean; divider?: number | null; pi
 
 /** The actions under a message (Copy, Highlight, Reply, Edit...) show on hover on a desktop and on a long press on a phone: one quiet row, its room kept so nothing jumps. */
 const ActionsOn = createContext(false);
+/** Screenshots of the sample world can show the actions row without a pointer (?actions=1). */
+const showActions = () => allowsMock() && typeof location !== "undefined" && /[?&]actions=1/.test(location.search);
 function ActionRow({ children }: { children: React.ReactNode }) {
   const on = useContext(ActionsOn);
   return (
@@ -89,7 +91,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
-      <ActionsOn.Provider value={hover || held}>
+      <ActionsOn.Provider value={hover || held || showActions()}>
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
         <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
