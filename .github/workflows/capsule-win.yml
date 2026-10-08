@@ -177,6 +177,8 @@ jobs:
           # The app checks for a newer release and installs it, then exits: a 0.1.0 test build would replace itself with the latest published installer three seconds after it opened (that was the exit-on-start bug).
           # A build that claims a version no release has is never "newer-than-it-is", so the proof stays the build under test.
           VYRE_APP_VERSION: 99.0.0
+          # The test driver reads the page over the DevTools protocol on this port; compiled in, so no release has it.
+          VYRE_PROOF_DEVTOOLS_PORT: 9222
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "=2.12.0" --locked
           cargo tauri build --no-bundle -- --locked

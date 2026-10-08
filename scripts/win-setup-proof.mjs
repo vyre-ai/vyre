@@ -86,7 +86,7 @@ const logFile = path.join(process.env.LOCALAPPDATA || os.tmpdir(), "Vyre", "logs
 
 let proc = null;
 function launch() {
-  const env = { ...process.env, VYRE_APP_WEB_DIR: WEB, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP}` };
+  const env = { ...process.env, VYRE_APP_WEB_DIR: WEB };
   proc = spawn(EXE, [], { env, stdio: "ignore", windowsHide: false });
   proc.on("exit", (c) => note(`  (app exited ${c})`));
 }
@@ -116,7 +116,9 @@ async function attach() {
   }
   let log = "(no app.log)";
   try { log = fs.readFileSync(logFile, "utf8").slice(-1500); } catch { /* none */ }
-  throw new Error(`no window of the app's own origin on the DevTools port; targets: ${seen}; app alive: ${proc ? proc.exitCode === null : "stopped"}, exit code ${proc ? proc.exitCode : "?"}; app.log: ${log}`);
+  let ports = "";
+  try { ports = String(spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8" }).stdout).split("\n").filter((l) => /LISTENING/.test(l)).join(" ; ").replace(/\s+/g, " ").slice(0, 700); } catch { /* none */ }
+  throw new Error(`no window of the app's own origin on the DevTools port (listening: ${ports}); targets: ${seen}; app alive: ${proc ? proc.exitCode === null : "stopped"}, exit code ${proc ? proc.exitCode : "?"}; app.log: ${log}`);
 }
 const call = (fn, arg) => page.evaluate(fn, arg);
 

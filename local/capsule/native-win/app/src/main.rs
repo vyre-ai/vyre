@@ -159,7 +159,15 @@ fn show_app(app: &AppHandle, path: &str) {
     }
     let nav_app = app.clone();
     let popup_app = app.clone();
-    let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")));
+    // A build made for the Windows proof (VYRE_PROOF_DEVTOOLS_PORT set when it was COMPILED, never at run time) lets the test driver read the page over the DevTools protocol. A release is not built with it.
+    // (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not open the port: wry passes its own arguments, which win.)
+    #[cfg(windows)]
+    let builder = match option_env!("VYRE_PROOF_DEVTOOLS_PORT") {
+        Some(port) => builder.additional_browser_args(&format!("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}")),
+        None => builder,
+    };
+    let built = builder
         .title(APP_NAME)
         .inner_size(560.0, 760.0)
         // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
