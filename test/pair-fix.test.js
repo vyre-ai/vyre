@@ -347,7 +347,9 @@ test("Add a device: the phone redeems the computer's typed code, the server hold
   typedOn(t);
   const { ident, w } = await setup(t);
   // the name's chain is in the stand-in directory and in the OWNER'S APP (here: ident); the server below never made an identity
-  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const opened = await w.call("wink.phone.open", { typed: true });
+  assert.equal(opened.error, undefined, JSON.stringify(opened.error));
+  const open = opened.data;
   const key = crypto.generateKeyPairSync("ed25519");
   const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
   let ack = "";
@@ -375,7 +377,9 @@ test("Add a device: the phone redeems the computer's typed code, the server hold
 test("Add a device: when the owner's app never answers, the phone is told its key was not added and stays paired", async t => {
   typedOn(t);
   const { w } = await setup(t);
-  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const opened = await w.call("wink.phone.open", { typed: true });
+  assert.equal(opened.error, undefined, JSON.stringify(opened.error));
+  const open = opened.data;
   const key = crypto.generateKeyPairSync("ed25519");
   const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
   let ack = "";
