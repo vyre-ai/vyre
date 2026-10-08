@@ -132,7 +132,7 @@ test("OpenAPI as YAML reads like the same file as JSON, aliases within reason, a
   const by = Object.fromEntries(d.operations.map(o => [o.name, o]));
   assert.deepEqual(Object.keys(by).sort(), ["create_contact", "delete_contact", "get_contact"]);
   assert.deepEqual(by.create_contact.input.body, { name: { type: "string", required: true }, vip: { type: "boolean" } });
-  assert.equal(by.get_contact.label, "Get one contact\nby its id".slice(0, 80).replace("\n", "\n"));
+  assert.equal(by.get_contact.label, "Get one contact by its id", "a label is one line");
   const same = await importSpec(JSON.stringify(await (await import("yaml")).parse(YAML_SPEC)));
   assert.deepEqual(same.operations, d.operations, "YAML and the same data as JSON give the same draft");
   const two = await importSpec(`${YAML_SPEC}\n---\nopenapi: 3.0.0\npaths:\n  /evil:\n    get: {operationId: evil}\n`);
