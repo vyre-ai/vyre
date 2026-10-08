@@ -18,12 +18,12 @@ const strip = (/** @type {string} */ s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, 
 
 /**
  * Run a command on the server over ssh. With `pty` it gets a terminal like a person's, and answers yes to the installer's [y/N] questions the way the person would.
- * @param {string} host @param {string} cmd @param {{ pty?: boolean, timeoutMs?: number, log?: (s: string) => void, input?: string }} [o]
+ * @param {string} host @param {string} cmd @param {{ pty?: boolean, timeoutMs?: number, log?: (s: string) => void, input?: string, user?: string }} [o]
  * @returns {Promise<{ code: number, out: string }>}
  */
 export function ssh(host, cmd, o = {}) {
   return new Promise(resolve => {
-    const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", o.pty ? "-tt" : "-T", host, cmd];
+    const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", ...(o.user ? ["-l", o.user] : []), o.pty ? "-tt" : "-T", host, cmd];
     const child = spawn("ssh", args, { stdio: ["pipe", "pipe", "pipe"] });
     let out = "", asked = 0;
     const onData = (/** @type {Buffer} */ d) => {
@@ -39,12 +39,12 @@ export function ssh(host, cmd, o = {}) {
 
 /** The user a person would install as: not root, with sudo. @param {string} host */
 export async function ensureWalker(host) {
-  const r = await ssh(host, `id walker >/dev/null 2>&1 || (adduser --disabled-password --gecos '' walker >/dev/null && echo 'walker ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/walker && chmod 440 /etc/sudoers.d/walker); id walker`);
+  const r = await ssh(host, `id walker >/dev/null 2>&1 || (adduser --disabled-password --gecos '' walker >/dev/null && echo 'walker ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/walker && chmod 440 /etc/sudoers.d/walker); install -d -m 700 -o walker -g walker /home/walker/.ssh && cp /root/.ssh/authorized_keys /home/walker/.ssh/authorized_keys && chown walker:walker /home/walker/.ssh/authorized_keys && chmod 600 /home/walker/.ssh/authorized_keys; id walker`);
   if (r.code !== 0) throw new Error(`could not make the install user on ${host}: ${r.out.slice(-200)}`);
 }
 
-/** Run `cmd` as walker with a login shell, so PATH holds /usr/local/bin the way it does for a person. @param {string} host @param {string} cmd @param {any} [o] */
-export const asWalker = (host, cmd, o = {}) => ssh(host, `runuser -l walker -c ${JSON.stringify(cmd)}`, o);
+/** Run `cmd` as walker over its own ssh login, so it has a real terminal (the installer reads /dev/tty to ask its questions) and the PATH a person has. @param {string} host @param {string} cmd @param {any} [o] */
+export const asWalker = (host, cmd, o = {}) => ssh(host, cmd, { ...o, user: "walker" });
 
 /** Take everything off the server: Vyre, its containers and volumes, its folders. Safe on a server that has nothing. @param {string} host */
 export async function wipeServer(host) {
@@ -58,16 +58,8 @@ export async function wipeServer(host) {
  */
 export async function installFromLine(host, line, out) {
   fs.mkdirSync(out, { recursive: true });
-  let r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
-  // A fresh server has no Docker. The installer says so and gives one line; a person runs it and then runs the install line again, and so does the walk.
-  const dockerLine = (r.out.match(/Install it with:\s*\n?\s*(curl -fsSL https:\/\/get\.docker\.com \| sh)/) || [])[1];
-  if (r.code !== 0 && dockerLine) {
-    const d = await asWalker(host, dockerLine, { pty: true, timeoutMs: 15 * 60_000 });
-    fs.writeFileSync(path.join(out, `docker-${Date.now()}.log`), d.out);
-    if (d.code !== 0) return { code: d.code, words: "", tail: `Docker did not install: ${d.out.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 300)}`, dockerFirst: true };
-    r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
-    r.out = `[a fresh server: the installer asked for Docker first and the walk ran ${dockerLine}]\n${r.out}`;
-  }
+  // The installer asks for Docker itself on a fresh server ([y/N]); the walk answers y the way a person would.
+  const r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
   fs.writeFileSync(path.join(out, `install-${Date.now()}.log`), r.out.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
   const m = r.out.match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/);
   return { code: r.code, words: m ? m[1] : "", tail: r.out.split("\n").filter(Boolean).slice(-6).join(" | ").slice(0, 500) };
