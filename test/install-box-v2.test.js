@@ -114,7 +114,7 @@ test("install-box.sh v2: with a code the terminal ends on the plain line", t => 
   const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.match(r.stdout, /Go back to the Vyre app to finish\./);
 });
 
 test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {

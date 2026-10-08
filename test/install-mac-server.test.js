@@ -430,8 +430,8 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /Your four words: come pilot company release/);
-  assert.match(r.stdout, /They should match the four on your screen\./);
-  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.match(r.stdout, /If it shows the same four, choose Same\./);
+  assert.match(r.stdout, /Go back to the Vyre app to finish\./);
   assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
   assert.ok(!(r.stdout + r.stderr).includes(CODE));
   m = sys(t);
@@ -450,7 +450,7 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   r = run({ ...l.env, VYRE_CODE: CODE }, ["--yes", "--from", l.src]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /four words did not show yet\. To see them, run: .*\/vyre words/);
-  assert.match(r.stdout, /Back in the Vyre app/);
+  assert.match(r.stdout, /Go back to the Vyre app/);
 });
 
 test("install-mac-server.sh: a failing root installer stops the script, says so, and shows no code", t => {

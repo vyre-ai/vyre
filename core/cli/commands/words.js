@@ -5,7 +5,6 @@
 import { call } from "../../daemon/client.js";
 import { out, bold, dim } from "../style.js";
 import { json, emit, failTool, usage } from "../kit.js";
-import { up } from "./projects.js";
 
 export default {
   name: "words", order: 40, usage: "vyre words [--json]",
@@ -19,7 +18,6 @@ export default {
   async run(args) {
     const extra = args.filter(a => a !== "--json");
     if (extra.length) return usage(`vyre words takes no arguments (got ${extra[0]})`, "vyre words, or vyre words --json");
-    if (!(await up())) return 5;
     const r = await call("relay.setup.status", {});
     if (r.error) return failTool(r.error);
     const words = typeof r.data?.words === "string" ? r.data.words : "";
