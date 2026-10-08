@@ -10,7 +10,7 @@ import { canonical } from "../kernel/core/canonical.js";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 25_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
-const presence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? { ok: true, method: "passkey", keyId: "k1" } : { ok: false, message: "needs a person" }; }, required: () => false, summary: async () => "", covered: () => false, coverage: () => ({ covered: false }) }; };
+const presence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => { return q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof"; } }; };
 
 test("estate-planning then law-firm: both install, and the shared attorney role is one role with both Kits' grants", { timeout: 240_000 }, async t => {
   const root = tempHome(t);
