@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -35,14 +35,6 @@ test("a browser's pairing goes back to its own screen, and the not-set-up screen
   assert.equal(backOf("scanwords", { browser: true }), "browser");
   assert.equal(backOf("nosetup"), "browser");
   assert.equal(backOf("browser"), null);
-});
-
-test("a Mac chooses where Vyre runs before the space, and goes on without asking again", () => {
-  assert.equal(backOf("create", { macFlow: true }), "macwhere");
-  assert.equal(backOf("cmd", { macFlow: true }), "create");
-  assert.equal(backOf("here", { macFlow: true }), "create");
-  assert.equal(backOf("create"), "spaces");
-  assert.equal(backOf("here"), "where");
 });
 
 test("the empty-state actions open the routes that exist", () => {
@@ -191,10 +183,26 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
 
+test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
+  assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
+  for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
+  assert.match(FIRST.windows, /Windows is coming/);
+});
+
 test("the paste check accepts every character the directory can put in a code", async () => {
   await import("../../../../names/worker/index.js"); // the Worker module first: ids.js and index.js import each other
   const { ALPHA32 } = await import("../../../../names/worker/ids.js");
   const { codeLooksRight } = await import("./first-run.js");
   for (const ch of ALPHA32) assert.equal(codeLooksRight(`vyre-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), true, ch);
   assert.equal(codeLooksRight("VYRE-IIII-OOOO-0000-1111"), false);
+});
+
+test("a Mac server's line runs the Mac installer with the same code and Records choice; the others are unchanged", () => {
+  const code = "A".repeat(43);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "sqlite", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=sqlite sh`);
+  const base = "https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/";
+  assert.equal(installLine("0.3.0-rc.1", { code, store: "auto", os: "mac" }), `curl -fsSL ${base}install-mac-server.sh | VYRE_BOX_URL=${base} VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
 });

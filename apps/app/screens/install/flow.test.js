@@ -30,10 +30,11 @@ test("the note says what happened", () => {
   assert.equal(nameNote(nameStatus(""), true), "");
 });
 
-test("back from the add-a-server step goes to where the space lives", () => {
-  assert.equal(backOf("cmd"), "where");
+test("back from the add-a-server step goes to the space's name; there is no server-less step", () => {
+  assert.equal(backOf("cmd"), "create");
   assert.equal(backOf("scanwords"), "scan");
-  assert.equal(backOf("where"), "create");
+  assert.equal(backOf("where"), null, "no where step");
+  assert.equal(backOf("here"), null, "no on-this-computer step");
   assert.equal(backOf("recovery"), null);
 });
 
@@ -43,8 +44,8 @@ test("each route starts at its step", () => {
   assert.equal(startStep(undefined), "name");
 });
 
-test("a space made on this computer says it sleeps", () => {
-  assert.match(homeLine("here"), /Unreachable while it sleeps/);
+test("a space made says it lives on a server", () => {
+  assert.equal(homeLine("server"), "Lives on your server.");
 });
 
 test("setup carries on after the home: look, members, connectors, kit, done", () => {
@@ -134,4 +135,10 @@ test("a refusal coded owned_by_other says the server is someone else's, with or 
   const { serverSay } = await import("./flow.js");
   assert.equal(serverSay({ code: "owned_by_other", message: "The pairing did not finish." }), "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.");
   assert.match(serverSay({ code: "owned_by_other", message: "This server belongs to walkeroo.vyre.run. Ask them to add you to a space." }), /^This server belongs to walkeroo\.vyre\.run\./);
+});
+
+test("on the first run, Join a team and Add a server go back to the three choices", () => {
+  assert.equal(backOf("join", { first: true }), "choose");
+  assert.equal(backOf("mycloud", { first: true }), "choose");
+  assert.equal(backOf("join", {}), "spaces");
 });

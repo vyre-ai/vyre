@@ -67,15 +67,28 @@ export function macServerSay(reason, left) {
 /**
  * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
  * `code` is the one-time setup code the app made for this server and `store` the Records choice (auto, or sqlite for a small server); both ride as variables on sh, the reader of the script.
- * @param {string | null | undefined} version @param {{ code?: string, store?: string }} [vars]
+ * @param {string | null | undefined} version @param {{ code?: string, store?: string, os?: string }} [vars]
  */
 export function installLine(version, vars = {}) {
   const v = String(version ?? "").trim();
   const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
   const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? `VYRE_STORE=${vars.store === "sqlite" ? "sqlite" : "auto"}` : ""].filter(Boolean).join(" ");
+  // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice and prints the same four words.
+  if (vars.os === "mac") return `curl -fsSL ${rc ? `${base}install-mac-server.sh` : "vyre.run/box/install-mac-server.sh"} | ${env ? `${env} ` : ""}sh`;
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
+
+/** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */
+export const FIRST = {
+  title: "How will you use Vyre?",
+  join: { title: "Join a team", line: "Paste the invite you were sent. You run on your team's server." },
+  server: { title: "Add a server", line: "A machine that stays on. This becomes your own Cloud." },
+  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. A server can be added later." },
+  windows: "Home on Windows is coming.",
+};
+/** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
+export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
 
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());
