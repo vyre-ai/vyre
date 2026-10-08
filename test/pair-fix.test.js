@@ -25,6 +25,7 @@ import { peerDoor, composeWinkHome } from "../core/wink/index.js";
 import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
+import { joinWithCode } from "../relay/client/join.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
 import { openServerPeer } from "../relay/client/peerclient.js";
 import { deviceKey } from "../core/wink/devicekey.js";
@@ -136,7 +137,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  process.env.VYRE_WINK_TYPED_CODE = process.env.PF_TYPED ?? "0";
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -154,7 +155,90 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   return { w, dk, ks, ident, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 }
 
-test("repro: a fresh server, long code, typed code on (the release default)", async t => {
-  const f = await pairFreshServer(t, { kind: "computer", about: { kind: "web" }, presenceStorage: "software" });
-  assert.ok(f.done.paired);
+
+// ---- gated pairings finish: the typed code, the QR, a --pair-to server and a phone (the Mac and Windows apps, the iPhone and Android app all use these client calls) ----
+
+/** The release defaults: the typed code is on. */
+const typedOn = t => { const saved = process.env.VYRE_WINK_TYPED_CODE; process.env.VYRE_WINK_TYPED_CODE = "1"; t.after(() => { if (saved === undefined) delete process.env.VYRE_WINK_TYPED_CODE; else process.env.VYRE_WINK_TYPED_CODE = saved; }); };
+const devKey = (storage = "software") => { const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }); return { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage }; };
+const setup = async (t, kernel = true) => {
+  const ident = await standinIdentity(t);
+  const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
+  delete process.env.VYRE_TEST_PAIR_NO_PROOF;
+  t.after(() => { if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; });
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  return { ident, w: await world(t, { kernel }) };
+};
+const rows = (w, device) => w.d.registry.deps.db.prepare("SELECT id, kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").all(device);
+
+test("typed code -> ack -> adopt, real daemon and relay: the app finishes the server's pairing, the server is owned, and the device is enrolled under the key the app reconnects with", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  assert.match(made.code, /^WINK-/);
+  const ks = keystore(t);
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: nodeCrypto(), keyStore: ks } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.ok(r.done.owner, "the adopt returned the owner");
+  assert.equal(r.done.session, true);
+  assert.equal(rows(w, r.paired.device).length, 1, "the device exists after the typed ack");
+  // the same key store reconnects as a paired device (the app's later calls)
+  const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Alex's Mac", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const got = await c.fetch("/v1/tools/wink.access", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  assert.notEqual(got.status, 0);
+  assert.ok(c.reply && c.reply.device === r.paired.device, `the reconnect is the paired device: ${JSON.stringify(c.reply)}`);
+});
+
+test("typed code -> adopt: a wrong ack finishes nothing and a server without a name to own it says so", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const ks = keystore(t);
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, "needs_identity", "a server's pairing cannot finish without the name that will own it");
+});
+
+test("--pair-to server: the long code finishes at once with the identity's proof, and a wrong identity is refused", async t => {
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true, pairTo: ident.id }, "cli", PROOF)).data;
+  const ks = keystore(t);
+  const r = await pairServer({ payload: made.qr, owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", about: { kind: "web" }, name: "Alex's Mac",
+    crypto: nodeCrypto(), keyStore: ks, presenceKey: devKey(), pollMs: 100 });
+  assert.ok(r.paired && r.owner);
+  assert.equal(rows(w, r.device).length, 1);
+});
+
+test("a phone's typed code -> ack -> wait, real daemon and relay: the phone app finishes and is enrolled", async t => {
+  typedOn(t);
+  const w = await world(t);
+  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const code = open.code;
+  assert.match(code, /^WINK-/);
+  const ks = keystore(t);
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: code, name: "Sam's phone", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "app" }, presenceKey: devKey("hardware") } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.offer, typed: ack.code })).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(rows(w, r.paired.device).length, 1, "the phone is a device after the ack");
 });
