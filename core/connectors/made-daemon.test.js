@@ -41,6 +41,19 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   assert.match(chk.data.words, /does not resolve|could not run|no answer/);
   assert.equal((await model("connectors.connection.list")).data.connections[0].light, "red");
 
+  // an assistant proposes another app; only the person sees the proposals and approves
+  const prop = await model("connectors.connection.propose", { ...FORM, label: "Acme Billing", why: "from their docs" });
+  assert.ok(prop.data && prop.data.proposal, JSON.stringify(prop));
+  assert.equal((await model("connectors.connection.proposals")).error?.code, "denied");
+  assert.equal((await model("connectors.connection.approve", { proposal: prop.data.proposal })).error?.code, "denied");
+  assert.equal((await model("connectors.connection.decline", { proposal: prop.data.proposal })).error?.code, "denied");
+  assert.equal((await model("connectors.connection.list")).data.connections.length, 1, "proposing made nothing");
+  const mine = await cli("connectors.connection.proposals");
+  assert.equal(mine.data.proposals.length, 1); assert.equal(mine.data.proposals[0].card.title, "Connect Acme Billing?");
+  assert.deepEqual((await cli("connectors.connection.approve", { proposal: prop.data.proposal })).data, { id: "acme-billing", credential: "conn-acme-billing" });
+  assert.equal((await model("connectors.connection.list")).data.connections.length, 2);
+  assert.ok(!JSON.stringify([prop, mine]).includes(KEY));
+  assert.ok((await cli("connectors.connection.delete", { id: "acme-billing" })).data);
   // an inbound delivery on this Connection's route is told to its listeners; another route is not
   const heard = () => d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type === "connectors.connection-received");
   d.registry.deps.events.emit("hooks", "hook.received", { route: "conn-acme-crm", id: "dlv_1", bytes: 42 });

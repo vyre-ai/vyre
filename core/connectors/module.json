@@ -27,6 +27,10 @@
       { "name": "connectors.connection.get", "effect": "read" },
       { "name": "connectors.connection.export", "effect": "read" },
       { "name": "connectors.connection.import", "effect": "read" },
+      { "name": "connectors.connection.propose", "effect": "write" },
+      { "name": "connectors.connection.proposals", "reach": "person", "effect": "read" },
+      { "name": "connectors.connection.approve", "reach": "person", "effect": "write" },
+      { "name": "connectors.connection.decline", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.rebuild", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.delete", "reach": "person", "effect": "write" },
       "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },
@@ -46,7 +50,8 @@
       "connectors.connection-updated",
       "connectors.connection-checked",
       "connectors.connection-deleted",
-      "connectors.connection-received"
+      "connectors.connection-received",
+      "connectors.connection-proposed"
     ]
   },
   "shows": {

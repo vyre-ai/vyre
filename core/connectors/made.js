@@ -3,8 +3,9 @@
 // its light) and nothing else is the truth: the vault credential `conn-<id>` is derived from the row and written only by `materialize`. The vault lets an api-credential be written only from a
 // person's own surface, so a row is made, changed and rebuilt in a person's act; a credential found changed behind the row's back shows as out of step until that act rebuilds it.
 
+import crypto from "node:crypto";
 import { defineConnector } from "../../records/connectors/format.js";
-import { fromForm, toConfig, credentialName, outcomeOf, operationsOf } from "../../records/connectors/connection.js";
+import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
@@ -98,6 +99,37 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");
       return { ...shape(r, await isStale(r)), declaration: JSON.parse(r.declaration) };
     },
+    /**
+     * An assistant's proposal for a Connection. It is checked like any form, but what only the person may say is taken out first: a relabeled operation, and any kind but the method's. Nothing is made
+     * and nothing is called; the proposal waits for the person, who approves it from their own screen (approve), which is the person-only create.
+     */
+    propose: async (/** @type {any} */ form, /** @type {string} */ by, /** @type {string} */ why) => {
+      const clean = { ...form, operations: Array.isArray(form && form.operations) ? form.operations.map((/** @type {any} */ o) => { const { relabeled: _r, kind: _k, ...rest } = o || {}; return rest; }) : undefined };
+      if (clean.operations === undefined) delete clean.operations;
+      const made = fromForm(clean);
+      if (row(made.id)) throw fail(`there is already a connection ${made.id}; the person changes it from their own screen`, "exists");
+      const item = (await items()).get(clean.credential.item);
+      if (!item) throw fail(`the Vault has no item named ${String(clean.credential.item).slice(0, 60)}: ask the person to save the key there first, then propose the connection`, "not_found");
+      if (item.kind === "api-credential") throw fail(`${clean.credential.item} is itself an api credential, which never hands out a key`, "bad_input");
+      const id = `prop_${crypto.randomBytes(5).toString("base64url")}`;
+      db.prepare("DELETE FROM connectors_proposals WHERE json_extract(form, '$.label') = ? AND proposed_by = ?").run(String(clean.label), by);
+      db.prepare("INSERT INTO connectors_proposals (id, form, proposed_by, why, created) VALUES (?,?,?,?,?)").run(id, JSON.stringify(clean), by, why ? String(why).slice(0, 300) : null, now());
+      emit("connectors.connection-proposed", { proposal: id, label: made.declaration.label });
+      return { proposal: id, card: cardOf(made, clean.credential.item) };
+    },
+    proposals: () => /** @type {any[]} */ (db.prepare("SELECT * FROM connectors_proposals ORDER BY created DESC").all()).map(r => {
+      const form = JSON.parse(r.form);
+      return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form, card: cardOf(fromForm(form), form.credential.item) };
+    }),
+    /** The person's yes: the same create as the form's, as that person. */
+    approve: async (/** @type {string} */ proposal, /** @type {string} */ as) => {
+      const r = /** @type {any} */ (db.prepare("SELECT * FROM connectors_proposals WHERE id = ?").get(proposal));
+      if (!r) throw fail(`no proposal ${String(proposal).slice(0, 40)}`, "not_found");
+      const out = await save(JSON.parse(r.form), { as, origin: "assistant" });
+      db.prepare("DELETE FROM connectors_proposals WHERE id = ?").run(proposal);
+      return out;
+    },
+    decline: (/** @type {string} */ proposal) => { const n = Number(db.prepare("DELETE FROM connectors_proposals WHERE id = ?").run(proposal).changes); if (!n) throw fail(`no proposal ${String(proposal).slice(0, 40)}`, "not_found"); return { declined: proposal }; },
     /** A Connection as a template: what is the app's (host, how a key is sent, operations, polls, the names of fixed headers) and nothing that is the person's (the key's item, the values typed, the dates). */
     exportTemplate: async (/** @type {string} */ id) => {
       const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");

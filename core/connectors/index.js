@@ -217,7 +217,7 @@ export default {
       if (!PEOPLE.includes(who)) throw fail(`only you ${what}, from your own screen`, "denied");
       return who;
     };
-    const formShape = obj({ label: str, id: str, base_url: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
+    const formShape = obj({ why: str, label: str, id: str, base_url: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
       headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]), operations: { type: "array" } }, ["label", "base_url", "send", "credential", "check"]);
     const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
     ctx.tool("connectors.connection.create", {
@@ -254,6 +254,31 @@ export default {
       description: "One Connection with its declaration (no key): { id }.",
       input: obj({ id: str }, ["id"]),
       run: ({ id }) => made.get(String(id)),
+    });
+    ctx.tool("connectors.connection.propose", {
+      effect: "write",
+      callers: ["cli", "local", "deck", "capsule", "module", "mcp", "harness"],
+      description: "Propose a Connection for the person to approve, with the same fields as connectors.connection.create. This is how an assistant connects an app after reading its documentation: it names the Vault item that holds the key (it never sees the key), the host, how the key is sent and the operations. Nothing is made or called until the person approves it on their own screen. Operations get the kind their method gives (GET reads, POST PUT PATCH change, DELETE deletes); only the person can relabel one.",
+      input: formShape,
+      run: (input, meta) => made.propose(input, String(meta && meta.caller || "unknown"), input && input.why),
+    });
+    ctx.tool("connectors.connection.proposals", {
+      effect: "read", callers: PEOPLE,
+      description: "The Connections an assistant proposed that the person has not yet approved or declined: { proposals: [{ proposal, by, form, card }] }, the card being the plain words the person is asked.",
+      input: obj({}),
+      run: () => ({ proposals: made.proposals() }),
+    });
+    ctx.tool("connectors.connection.approve", {
+      effect: "write", callers: PEOPLE,
+      description: "The person says yes to a proposal: { proposal }. Makes the Connection exactly as proposed (the same as connectors.connection.create from the form).",
+      input: obj({ proposal: str }, ["proposal"]),
+      run: ({ proposal }, meta) => made.approve(String(proposal), person(meta, "approve a connection")),
+    });
+    ctx.tool("connectors.connection.decline", {
+      effect: "write", callers: PEOPLE,
+      description: "The person says no to a proposal: { proposal }. It is dropped.",
+      input: obj({ proposal: str }, ["proposal"]),
+      run: ({ proposal }, meta) => { person(meta, "decline a connection"); return made.decline(String(proposal)); },
     });
     ctx.tool("connectors.connection.import", {
       effect: "read",
