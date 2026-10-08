@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(app): a team space is made in the order name, add a server (the same add-a-server step), invites with Skip; the Where will it live, On this computer and Mac server-code steps are removed, so no space is made without a server.
 - feat(mac-app): the bundled setup passes --login-only (My Home: a LaunchAgent as the person, no admin password); a Mac that stays on as a server is added with the install line.
 - feat(app): adding a server asks whether it is a Linux machine or a Mac that stays on; a Mac gets the Mac installer's line, and install-mac-server.sh takes VYRE_STORE, shows the four check words and ends with "Back in the Vyre app" when the app made the code.
 - feat(app): after a name the first run offers Join a team, Add a server (your own Cloud) and, on a Mac, My Home; Windows says Home is coming.
