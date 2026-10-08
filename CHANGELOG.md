@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(always-online): the Mac server installer checks FileVault before installing anything and stops in plain words unless the line is run with VYRE_ACCEPT_FILEVAULT=1 (--yes alone no longer accepts it); the app card and `vyre doctor` say the same.
 - feat(always-online): a Mac server says whether FileVault is on (system.info filevault), and the Add a server card warns when it is: "FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that."
 - feat(always-online): the app says "Your server has been offline since 14:02" with what to check (a Mac server that restarted may be waiting at its login window) when it cannot reach its server for a minute or more, instead of a screen that hangs; a Linux box's installer makes Docker start at boot so the restart policy brings the server back; install.md says how a server comes back by itself.
 - feat(always-online): a Mac server comes back by itself. The server install sets the power settings (pmset: start after a power cut, never sleep, wake on network, no Power Nap) and boot-tests the LaunchDaemons (loaded, RunAtLoad, KeepAlive); install-mac-server.sh stops and asks before installing on a Mac with FileVault on (it never changes FileVault); `vyre doctor` checks both and `vyre doctor --repair` fixes the power settings; core/vyre-core/online.js holds the rules (and the authrestart choice for a planned restart).

@@ -470,7 +470,7 @@ test("a server install sets the power settings, tests the boot, and says plainly
   assert.deepEqual(r.st.power, { autorestart: "1", sleep: "0", disksleep: "0", womp: "1", powernap: "0" });
   assert.equal(r.st.pmsetSet, 1);
   assert.ok(seen.some((n) => /power cut/.test(n)) && seen.some((n) => /start at boot/.test(n)));
-  assert.deepEqual(notes, ["FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that."]);
+  assert.deepEqual(notes, ["FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1."]);
   const g = fixture(t); const r2 = fakeRun({ filevault: "On" }); const notes2 = [];
   install(g.opts(g.rel), { run: r2.run, root: g.root, key: g.kp.key, note: (m) => notes2.push(m) });
   assert.equal(r2.st.pmsetSet, undefined, "no pmset call on a light install");
