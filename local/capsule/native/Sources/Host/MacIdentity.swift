@@ -39,6 +39,7 @@ struct KeychainSeedStore: IdentitySeedStore {
         q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(q as CFDictionary, nil)
         if status == errSecSuccess { return true }
+        VyreAppWindow.log("identity seed save: OSStatus \(status)")
         // An app signed ad hoc (no Developer ID yet) carries no keychain entitlement, so macOS refuses the "this device only" class (errSecMissingEntitlement).
         // The login Keychain still keeps the seed on this Mac, readable only while it is unlocked; a signed build takes the first path.
         guard status == errSecMissingEntitlement else { return false }
