@@ -205,10 +205,6 @@
       }
     ]
   },
-  "setupTools": [
-    "sessions.accounts.signin",
-    "sessions.accounts.key"
-  ],
   "watches": {
     "emits": [
       "prompt.changed",

@@ -82,14 +82,15 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "wink.server.setup-offer", "link.health", "system.info"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
-  for (const name of ["network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
+  // what the old setup page called is gone from the channel: names, the network step, the passkey claim, the machine step
+  for (const name of ["network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "onboard.machine", "network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
   for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.wink.statusx", "network.wink.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "relay.setup.status", "system.info", "wink.server.setup-offer"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
@@ -123,11 +124,11 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(s.ticket, "none");
   let r;
   // the router's policy is a second layer: only the allowlist by name, and a fixed set of paths
-  await call("POST", "/v1/tools/names.check");
+  await call("POST", "/v1/tools/link.health");
   const p = seen.at(-1);
-  assert.equal(p.tool("names.check"), true);
+  assert.equal(p.tool("link.health"), true);
   assert.equal(p.tool("relay.devices.list"), false);
-  assert.equal(p.path("POST", "/v1/tools/names.check"), true);
+  assert.equal(p.path("POST", "/v1/tools/link.health"), true);
   assert.equal(p.path("GET", "/v1/tools"), true);
   for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
 
@@ -149,7 +150,7 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(s2.ticket, "none");
   s2.end("claimed");
   const over = res();
-  await gate2(request("POST", "/v1/tools/names.check"), over, "device:x", {});
+  await gate2(request("POST", "/v1/tools/link.health"), over, "device:x", {});
   assert.equal(over.status, 401, "an ended session answers nothing");
   assert.equal(over.body.error.code, "setup_over");
 });
@@ -476,7 +477,7 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
 test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {
   assert.equal(WEB_DENY.test("relay.setup.claim"), true);
   assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
-  for (const ok of ["network.wink.status", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+  for (const ok of ["network.wink.status", "link.health", "system.info"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
 // ---- the setup channel, one session, end to end ----
@@ -514,35 +515,23 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
-test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in and a second call", async t => {
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call and a second call", async t => {
   const dirFake = await fakeDirectory(t);
   const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
   ] });
-  // the registry's list: the tool the module owns and declared
+  // the registry's list: the tool the module owns and declared (no shipped module declares any now)
   const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
-  assert.deepEqual([...listed].sort(), ["sessions.accounts.key", "sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field (sign-in, and an API key instead), and the fixture's");
+  assert.deepEqual([...listed].sort(), ["sessionsfx.accounts.signin"], "only the fixture's own field");
 
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
-  const claim = async () => (await a.call("names.claim", { name: "alex" }));
-  const c1 = await claim();
-  assert.equal(c1.status, 200, JSON.stringify(c1));
-  assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
-  await settle(200);
-  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
-  // The real sessions tool: its askedOnly gate lets the setup device through as the person (device:<id>)
-  // and refuses on a bad flow, not on "nothing asked for this".
-  const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
-  assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
-  assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
-  const c2 = await claim();
-  assert.equal(c2.status, 200, JSON.stringify(c2));
-  assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
-  assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
+  assert.equal((await a.call("system.info")).status, 200, "and a tool of the fixed list is");
+  assert.notEqual((await a.call("names.claim", { name: "alex" })).status, 200, "the old page's name step is not on the channel any more");
+  assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true);
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");
   assert.notEqual((await a.call("relay.setup.end")).status, 200, "and the channel cannot end it, even though the module listed the tool");
 });
@@ -553,7 +542,7 @@ test("setup: an added module carrying setupTools is refused at load, so its fiel
   assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "invalid", "setupTools is built in only (the platform's added-module rules)");
   const declared = w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools();
   assert.ok(!declared.some(x => x.startsWith("sneaky.")), "and its field counts for nothing");
-  assert.ok(declared.includes("sessions.accounts.signin"), "while a shipped module's does");
+  assert.ok(!declared.includes("sessions.accounts.signin"), "no shipped module declares one now");
   const { validate } = await import("../modules/index.js");
   for (const bad of [["relay.setup.end"], ["sessionsfx.accounts.missing"], "sessionsfx.accounts.signin", [5]]) {
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
