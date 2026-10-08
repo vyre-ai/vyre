@@ -202,7 +202,7 @@ test("request checks: a foreign Origin, cross-site, content type, size, methods,
   assert.equal((await claim({ "content-type": "text/plain" })).status, 415);
   assert.equal((await claim({ "content-type": "application/x-www-form-urlencoded" })).status, 415);
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.size, 0, "nothing was written by any refused request");
-  assert.equal((await a.post("/v1/names/claim", { name: "alex", ip: "100.101.1.2", pad: "x".repeat(5000) })).status, 413);
+  assert.equal((await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2", pad: "x".repeat(5000) })).status, 413);
   const ok = await claim({ origin: "https://names.vyre.run" });
   assert.equal(code(ok), "not_yours", "its own origin is exact-matched: it gets past the Origin check to the ownership one");
   assert.equal((await worker.fetch(new Request(BASE + "/v1/names/point", { method: "PUT" }), w.env)).status, 405);
@@ -301,9 +301,7 @@ test("a space's servers: only a route the space listed may point, publish or wri
   // another route is still a stranger, and a person's own name is no space
   assert.equal(code(await b.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
   assert.equal(code(await a.post("/v1/names/point", { name: x.owner.state.id, ip: "100.101.1.2" })), "not_yours");
-  // a second server is one more change to the list, so it needs a device older than a day
-  assert.equal(code(await x.addServer(b.route)), "newcomer");
-  w.clock.t += 25 * HOUR;
+  // a second server (the founding device signs; a device added later needs a day of age, as for every change to the space)
   assert.equal(data(await x.addServer(b.route)).servers, 2);
   assert.equal(data(await b.post("/v1/names/publish", { name: "harlow" }, { ip: "93.184.216.34" })).ip, "93.184.216.34");
   // removing the first stops it; the second goes on
