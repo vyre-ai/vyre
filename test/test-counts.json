@@ -912,6 +912,6 @@
  "core/sidebar/sidebar.test.js": 9,
  "core/sidebar/service.test.js": 5,
  "apps/app/screens/shell/module-screen.test.js": 4,
- "core/views/views.test.js": 9,
+ "core/views/views.test.js": 10,
  "apps/app/screens/shell/module-view.test.js": 5
 }

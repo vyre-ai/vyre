@@ -605,6 +605,8 @@ const inRepo = (dir, paths) => {
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
 const IN_SPACE = Symbol("vyre.in_space");
+/** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
+const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
 const RELAY = Symbol("vyre.relay");
 /**
@@ -1231,9 +1233,10 @@ export class Registry {
         // relay without them would be refused for every person who asks an agent from a device.
         const cur = m.name === "agents" && agentsMayRelay(tool) ? currentCall() : null;
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
-        // A view the person opened calls the module's own tool FOR that person (the call it relays came from one), so a tool with no declared reach is judged as acting for the person and not as a timer (RG-2).
-        const viewOrigin = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
-        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewOrigin ? { origin: viewOrigin } : {}), ...relayed, ...asked });
+        // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
+        // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
+        const viewFor = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
+        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -1493,8 +1496,10 @@ export class Registry {
     delete meta.standalone;
     // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
+    const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
+    delete meta[VIEW_FOR];
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
-    const gateCaller = hop ? (meta.origin || "module-without-origin") : caller;
+    const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.

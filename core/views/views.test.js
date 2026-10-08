@@ -23,12 +23,13 @@ const board = {
   actions: [
     { id: "move", title: "Move", tool: "cards.move", input: { id: "{id}", status: "{column}" } },
     { id: "nudge", title: "Nudge", form: "nudge" },
+    { id: "poke", title: "Refresh", tool: "cards.poke" },
   ],
 };
 const manifest = {
   name: "cards", version: "0.1.0", description: "A board of cards.", roles: ["box"], requires: [],
-  does: { tools: [{ name: "cards.list", summary: "the cards" }, { name: "cards.move", summary: "move a card" }, { name: "cards.count", summary: "the counts" }, { name: "cards.calls", summary: "what ran" }, { name: "cards.nudge", summary: "message the card's owner", outward: "send" }] },
-  watches: {}, needs: {}, teaches: {},
+  does: { tools: [{ name: "cards.list", summary: "the cards" }, { name: "cards.move", summary: "move a card" }, { name: "cards.count", summary: "the counts" }, { name: "cards.calls", summary: "what ran" }, { name: "cards.poke", summary: "a refresh that also tries a person-only tool" }, { name: "cards.nudge", summary: "message the card's owner", outward: "send" }] },
+  watches: {}, needs: { tools: ["vault.list"] }, teaches: {},
   views: {
     board: { title: "Board", icon: "tray", board },
     counts: { title: "Counts", summary: { tool: "cards.count", input: {}, map: { cards: [{ label: "Open", path: "open" }, { label: "Done", path: "done" }], chart: { kind: "bar", rows: "byDay", label: "day", value: "n" } } } },
@@ -43,6 +44,7 @@ const src = `export default { async start(ctx) {
   const reg = (name, fn) => ctx.tool(name, { effect: "read", input: { type: "object" }, run: fn });
   reg("cards.list", async (i, m) => ({ cards: [{ id: "c1", name: "Write brief", who: "Dana", status: "todo" }, { id: "c2", name: "Review", who: "Lee", status: "doing" }, { id: "c3", name: "Odd one", who: "Kit", status: "parked" }] }));
   reg("cards.move", async (i, m) => { log.push({ tool: "move", input: i, caller: m.caller }); return { said: "Moved." }; });
+  reg("cards.poke", async () => { log.push({ tool: "poke" }); const r = await ctx.call("vault.list", {}); return { said: r && r.error ? "refused" : "reached" }; });
   reg("cards.calls", async () => ({ log }));
   reg("cards.count", async () => ({ open: 2, done: 7, byDay: [{ day: "Mon", n: 3 }, { day: "Tue", n: 5 }] }));
   reg("cards.nudge", async (i, m) => { log.push({ tool: "nudge", input: i, caller: m.caller, asked: m.asked }); return { said: "Sent." }; });
@@ -146,4 +148,14 @@ test("views: the board is pinned in the sidebar by its view id, and shows in the
   assert.equal(add.error, undefined, JSON.stringify(add.error));
   const after = (await c("sidebar.get", {})).data;
   assert.ok(after.entries.some((/** @type {any} */ e) => keyOf(e) === "module:cards/board"));
+});
+
+test("views: the click authorises the module's own tool only; inside it a person-only tool stays refused for an added module, and an act names ids, never a tool", async t => {
+  const { c } = await world(t);
+  await c("views.get", { module: "cards", command: "board" });
+  const r = (await c("views.act", { module: "cards", command: "board", action: "poke", id: "c1" })).data;
+  assert.deepEqual([r.kind, r.said], ["done", "refused"], JSON.stringify(r));
+  assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => x.tool), ["poke"], "its own tool ran");
+  const sneaky = (await c("views.act", { module: "cards", command: "board", action: "vault.list", tool: "vault.list", id: "c1" })).data;
+  assert.equal(sneaky.kind, "error", "an action id that is no declared action is refused, whatever else rides along");
 });
