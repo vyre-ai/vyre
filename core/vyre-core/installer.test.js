@@ -120,6 +120,19 @@ test("a manifest for another version than asked is refused", (t) => {
   assert.equal(r.calls.length, 0);
 });
 
+test("install: minting the enrolment code is tried again when core is still making its database (the migrations collided on the Mac runner), and gives up after a few tries", (t) => {
+  const f = fixture(t);
+  const r = fakeRun();
+  let n = 0;
+  const flaky = (cmd, args) => { if (cmd.endsWith("sudo") && [...args].pop() === "code" && ++n <= 2) throw new Error("migration presence v9 failed: UNIQUE constraint failed: _migrations.module, _migrations.version"); return r.run(cmd, args); };
+  const res = install(f.opts(f.rel), { run: flaky, root: f.root, key: f.kp.key, step: () => {} });
+  assert.equal(res.code, "SEKRET-CODE-42");
+  assert.equal(n, 3, "failed twice, then minted");
+  const f2 = fixture(t), r2 = fakeRun();
+  const always = (cmd, args) => { if (cmd.endsWith("sudo") && [...args].pop() === "code") throw new Error("still colliding"); return r2.run(cmd, args); };
+  assert.throws(() => install(f2.opts(f2.rel), { run: always, root: f2.root, key: f2.kp.key, step: () => {} }), /still colliding/);
+});
+
 test("install runs in order: verify, account, tree, node, dirs, plists, launchd core first, code last", (t) => {
   const f = fixture(t);
   const r = fakeRun();

@@ -1,0 +1,66 @@
+# The install and pairing walk, end to end (scripts/proof-install.mjs): reserve a name, become yourself in the app, Add a server with the app's install line, the real installer, the four words
+# in the app, adopt, a tool call, Add a device, both store choices. The app side is the app's own modules driven headless; the names directory and the relay are local stand-ins
+# (nothing reaches vyre.run). One line per step in the log; the run is red when any step fails, and the logs are uploaded either way.
+# Jobs: the Linux installer (install-box.sh with docker) and the Mac mini server (install-mac-server.sh on the hosted macOS runner).
+name: install-proof
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/install-proof"]
+    paths: ["scripts/proof-install.mjs", "scripts/lib/proof/**", ".github/workflows/install-proof.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: install-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The walk, With and Without Records, on the real installer (from this checkout, signed with a throwaway key)
+        run: node scripts/proof-install.mjs --server installer --store both --out proof-out
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs --tail 80 vyre-vyre-1 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: install-proof-linux, path: proof-out, retention-days: 14 }
+
+  mac-server:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      # Without Records only: a Mac server's Records need Colima's VM, which a hosted runner has no nested virtualization for (see scripts/mac-proof/run.sh)
+      - name: The walk against a Mac mini server
+        run: node scripts/proof-install.mjs --server mac --store plain --out proof-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: install-proof-mac, path: proof-out, retention-days: 14 }
+
+  live-relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      # the real relay as transport only; names stay on the stand-in. Reported apart from the stand-in walks.
+      - name: The walk over the live relay (a server in this process)
+        run: node scripts/proof-install.mjs --server daemon --store plain --live-relay --out proof-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: install-proof-live-relay, path: proof-out, retention-days: 14 }

@@ -825,7 +825,7 @@ export class Registry {
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
+      this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
 
@@ -1340,7 +1340,7 @@ export class Registry {
         // "hook"), and left out of every listing. The tool checks its own secret.
         // core: vyre-core answers it on this Mac and checks its proof itself (ADR 0040 phase 2);
         // only a first-party module may say so, since it turns vyred's own presence check off.
-        if (def.core && !firstParty(m.dir)) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
+        if (def.core && !(this.modules.get(m.name)?.dir && this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)))) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
         // A declared reach (ADR 0047) sets the same checks: modules is internal, hook is the webhook
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).
