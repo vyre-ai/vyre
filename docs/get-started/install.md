@@ -101,6 +101,21 @@ Open the app on the phone, scan the code from your computer, and check that both
 A Windows PC is a device, not a home: Join a team, or add a server that runs elsewhere. The app and the command line are in
 [Windows](../using/windows.md).
 
+## Your server comes back by itself
+
+A server must be online with nobody at the keyboard: after a restart, a power cut or a logout. Vyre needs no VPN and no login to any other network
+product, on the server or on your computers, so there is no sign-in that can be lost on a restart. The server rejoins the Vyre network on its own.
+
+- **Linux server.** The containers carry a restart policy (`unless-stopped`), and the installer makes sure Docker itself starts at boot.
+  After `sudo reboot` the server is back with no one signed in.
+- **Mac server (a Mac mini that stays on).** The installer sets the Mac to start when power returns and never to sleep
+  (`pmset autorestart 1`, `sleep 0`, `disksleep 0`, `womp 1`, `powernap 0`), and checks that Vyre's system services start at boot and are kept running.
+  `vyre doctor` checks the same settings and `vyre doctor --repair` puts them right (it asks for your Mac password once).
+- **FileVault.** If FileVault is on, a Mac waits at the login window after any unplanned restart, and nothing runs until someone signs in. No service can start before that.
+  The installer stops and asks before it installs a server on such a Mac, and says: "FileVault is on: after a power cut this Mac waits for someone to sign in.
+  For a server, turn FileVault off, or keep it and accept that." Vyre never changes FileVault itself. For a planned restart (an update) with FileVault on,
+  Vyre uses `fdesetup authrestart` where the Mac supports it, so the Mac comes back to the desktop without a person.
+
 ## Looking after the server
 
 Updates, logs, moving to a new server and removing Vyre are in [Box care](../using/box-care.md).
