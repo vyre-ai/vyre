@@ -63,7 +63,7 @@ export function SidebarEditor() {
         <Card flush>
           {list.map((e, i) => (
             <View key={key(e)}>
-              {i ? <Divider inset={16} /> : null}
+              {i ? <Divider inset={0} /> : null}
               <Draggable k={key(e)} onDropOn={(from, to) => void apply(moveBefore(list as never, from, to) as Entry[])}>
                 <Row dense title={labelOf(e)} sub={`${e.hidden ? "Hidden. " : ""}${present(e) ? groupLabel(e.group, "") : "Not available here"}`.trim() || undefined}
                   end={
@@ -96,7 +96,7 @@ export function SidebarEditor() {
         <Sec title="Add">
           <Card flush>
             {addable.map((a, i) => (
-              <View key={key(a.entry)}>{i ? <Divider inset={16} /> : null}<Row dense title={a.label} end={<Button size="sm" label="Add" disabled={busy} onPress={() => void apply(add(list as never, a.entry as never, {}) as Entry[])} />} /></View>
+              <View key={key(a.entry)}>{i ? <Divider inset={0} /> : null}<Row dense title={a.label} end={<Button size="sm" label="Add" disabled={busy} onPress={() => void apply(add(list as never, a.entry as never, {}) as Entry[])} />} /></View>
             ))}
           </Card>
         </Sec>
