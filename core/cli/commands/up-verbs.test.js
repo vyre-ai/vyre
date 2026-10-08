@@ -168,7 +168,7 @@ test("name: status, check, claim and release reach the names tools; usage mistak
 
   const noName = await run(root, ["name", "claim"]);
   assert.equal(noName.code, 2, noName.out);
-  assert.match(noName.out, /next: vyre name claim alex/);
+  assert.match(noName.out, /next: vyre name check alex/);
   assert.equal((await run(root, ["name", "frobnicate"])).code, 2);
 
   assert.deepEqual(calls.map(c => [c.tool, c.input]), [

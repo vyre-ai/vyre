@@ -30,11 +30,11 @@ test("the stand-in directory: a real process on loopback; claim, resolve and a t
     return { dir, store, ops: createIdentityOps({ store, dir, seen, now: Date.now, stretch: { memoryKiB: 64, passes: 1 } }) };
   };
   const alex = make(), other = make();
-  const made = await alex.ops.create({ name: "alex", deviceLabel: "walk" });
+  const made = await alex.ops.create({ name: "alex", deviceLabel: "walk", code: (await alex.dir.reserve("alex")).code });
   assert.match(made.recoveryCode, /^[a-z2-7-]{32}$/);
   const r = await other.dir.resolve("alex");
   assert.equal(r.ok, true);
   assert.equal(r.id, alex.store.status().id);
-  await assert.rejects(other.ops.create({ name: "alex" }), e => /** @type {any} */ (e).code === "taken");
+  await assert.rejects(other.dir.reserve("alex"), e => /** @type {any} */ (e).code === "taken");
   assert.equal((await other.dir.check("alex")).status, "taken");
 });
