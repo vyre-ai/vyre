@@ -17,6 +17,7 @@ import { Events } from "../kernel/bus.js";
 import { tempHome, writeModule } from "./helpers.js";
 
 const KINDS = ["mail", "calendar", "repo", "slack", "feed"];
+const PROJECT_ID = "9d1f0c52-0000-4000-8000-00000000a001", OTHER_ID = "9d1f0c52-0000-4000-8000-00000000a002";
 
 // The gated tools, as first-party modules with their own target tools (the registry accepts a target only from those).
 const WATCHERS = `export default { async start(ctx) {
@@ -75,7 +76,9 @@ async function world(t) {
     const call = async (tool, input) => {
       calls.push(tool);
       if (tool === "watchers.shown") return shown ? { data: shown } : { error: { code: "no_such_tool" } };
-      if (tool === "team.roster") return roster ? { data: roster } : { error: { code: "no_such_tool" } };
+      // the team's rows are keyed by the Project record's id; the thread names the project by its short name (cleanup-team d45d3b8df)
+      if (tool === "work.project.ref") return { data: { id: PROJECT_ID } };
+      if (tool === "team.roster") return roster && input.project === PROJECT_ID ? { data: roster } : { error: { code: "no_such_tool" } };
       if (tool === "settings.schema") return schema ? { data: { keys: schema } } : { error: { code: "no_such_tool" } };
       if (tool === "agents.list") return { data: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }] };
       return { error: { code: "no_such_tool" } };
@@ -130,14 +133,14 @@ test("'add a researcher teammate' lets one team.add happen, in that project and 
   const w = await world(t);
   const roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [] };
   const h = await w.hear("t1", "Add a researcher teammate to this project.", { roster });
-  assert.deepEqual(h.intents.map(i => i.to[0]), ["team.add:harlow-legal/researcher"]);
-  assert.equal((await w.agent("team.add", { project: "northwind-bakery", role: "researcher" })).error?.code, "not_asked", "another project");
-  assert.equal((await w.agent("team.add", { project: "harlow-legal", role: "designer" })).error?.code, "not_asked", "another role");
-  assert.equal((await w.agent("team.add", { project: "harlow-legal", role: "researcher" }, "t2")).error?.code, "not_asked", "another thread");
+  assert.deepEqual(h.intents.map(i => i.to[0]), [`team.add:${PROJECT_ID}/researcher`]);
+  assert.equal((await w.agent("team.add", { project: OTHER_ID, role: "researcher" })).error?.code, "not_asked", "another project");
+  assert.equal((await w.agent("team.add", { project: PROJECT_ID, role: "designer" })).error?.code, "not_asked", "another role");
+  assert.equal((await w.agent("team.add", { project: PROJECT_ID, role: "researcher" }, "t2")).error?.code, "not_asked", "another thread");
   assert.equal(globalThis.__made, undefined);
-  const ok = await w.agent("team.add", { project: "harlow-legal", role: "researcher" });
+  const ok = await w.agent("team.add", { project: PROJECT_ID, role: "researcher" });
   assert.equal(ok.error, undefined, JSON.stringify(ok));
-  assert.equal((await w.agent("team.add", { project: "harlow-legal", role: "researcher" })).error?.code, "not_asked", "one yes, one add");
+  assert.equal((await w.agent("team.add", { project: PROJECT_ID, role: "researcher" })).error?.code, "not_asked", "one yes, one add");
   // A role that is live already, no roster (a box without team), or pasted words record nothing.
   assert.equal((await w.hear("t3", "Add a design teammate.", { roster })).intents.length, 0);
   assert.equal((await w.hear("t4", "Add a researcher teammate.", { roster: null })).intents.length, 0);
