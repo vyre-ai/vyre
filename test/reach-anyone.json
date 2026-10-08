@@ -333,6 +333,34 @@
    "module": "computers",
    "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
   },
+  "connectors.connection.check": {
+   "module": "connectors",
+   "reason": "read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
+  },
+  "connectors.connection.export": {
+   "module": "connectors",
+   "reason": "read-only: the app's template without the person's key item or values (callers list)"
+  },
+  "connectors.connection.get": {
+   "module": "connectors",
+   "reason": "read-only: one Connection's declaration, never the key (callers list)"
+  },
+  "connectors.connection.import": {
+   "module": "connectors",
+   "reason": "callers list and scope: text becomes a draft that is never saved or called; by address is the person's act, refused for a model before anything is fetched"
+  },
+  "connectors.connection.list": {
+   "module": "connectors",
+   "reason": "read-only: id, label, host, light and operations, never the key (callers list)"
+  },
+  "connectors.connection.propose": {
+   "module": "connectors",
+   "reason": "held: only a proposal for the person to approve, nothing is made and nothing is called; the person's yes creates it (callers list)"
+  },
+  "connectors.operation.run": {
+   "module": "connectors",
+   "reason": "callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"

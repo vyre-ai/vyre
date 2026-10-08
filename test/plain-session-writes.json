@@ -93,6 +93,10 @@
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
   },
+  "connectors.connection.propose": {
+   "class": "held",
+   "why": "only a proposal for the person to approve: nothing is made and nothing is called until the person says yes from their own screen"
+  },
   "files.fetch": {
    "class": "review",
    "why": "brings a box file to the Mac: files owner to confirm a plain session may not name any path"

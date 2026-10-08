@@ -18,6 +18,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
+import { isPerson } from "../../lib/caller.js";
 import { credentialName } from "../../records/connectors/connection.js";
 import { importSpec } from "../../records/connectors/import-spec.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
@@ -213,9 +214,9 @@ export default {
     // Connections a person made from any app's API (records/connectors/connection.js, made.js): a row, a derived vault credential and a check. Making, changing, rebuilding and deleting one are
     // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
     const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x) });
-    const person = (/** @type {any} */ meta, /** @type {string} */ what) => {
+    const yours = (/** @type {any} */ meta, /** @type {string} */ what) => {
       const who = String(meta && meta.caller || "");
-      if (!PEOPLE.includes(who)) throw fail(`only you ${what}, from your own screen`, "denied");
+      if (!isPerson(who)) throw fail(`only you ${what}, from your own screen`, "denied");
       return who;
     };
     const formShape = obj({ why: str, label: str, id: str, base_url: str, app: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
@@ -226,14 +227,14 @@ export default {
       description: "Connect any app that has an API, from a key already in the Vault: { label, base_url (one https host), send: { how: bearer | header | basic | query, name? (the header or query parameter) }, credential: { item, field? }, headers? (fixed, such as an API version), vars? (fixed values a {name} in headers or the check path takes), check: { path } }. Makes the Connection and its vault credential; run connectors.connection.check next.",
       input: formShape,
       callers: PEOPLE,
-      run: (input, meta) => made.save(input, { as: person(meta, "connect an app"), origin: "form" }),
+      run: (input, meta) => made.save(input, { as: yours(meta, "connect an app"), origin: "form" }),
     });
     ctx.tool("connectors.connection.update", {
       effect: "write",
       description: "Change a Connection (same fields as connectors.connection.create). Changing what it reaches is the person's act; the vault credential is rebuilt from the record.",
       input: formShape,
       callers: PEOPLE,
-      run: (input, meta) => made.save(input, { as: person(meta, "change a connection"), origin: "form", replace: true }),
+      run: (input, meta) => made.save(input, { as: yours(meta, "change a connection"), origin: "form", replace: true }),
     });
     // One operation of a Connection, for a Vyre view (a wrapped app's everyday screens). A person's surface may run any operation; a module reaches only the Connection of its own app
     // and only the operations that Connection declares (never the generic request). A write or a delete is the vault's own outward call: held for the person's yes.
@@ -303,13 +304,13 @@ export default {
       effect: "write", callers: PEOPLE,
       description: "The person says yes to a proposal: { proposal }. Makes the Connection exactly as proposed (the same as connectors.connection.create from the form).",
       input: obj({ proposal: str }, ["proposal"]),
-      run: ({ proposal }, meta) => made.approve(String(proposal), person(meta, "approve a connection")),
+      run: ({ proposal }, meta) => made.approve(String(proposal), yours(meta, "approve a connection")),
     });
     ctx.tool("connectors.connection.decline", {
       effect: "write", callers: PEOPLE,
       description: "The person says no to a proposal: { proposal }. It is dropped.",
       input: obj({ proposal: str }, ["proposal"]),
-      run: ({ proposal }, meta) => { person(meta, "decline a connection"); return made.decline(String(proposal)); },
+      run: ({ proposal }, meta) => { yours(meta, "decline a connection"); return made.decline(String(proposal)); },
     });
     ctx.tool("connectors.connection.import", {
       effect: "read",
@@ -320,7 +321,7 @@ export default {
         let body = text;
         if (url !== undefined) {
           // by address: the person's act, never an agent's say alone (an address in a model's hands is a request for vyred to go and read something)
-          person(meta, "import a description from an address");
+          yours(meta, "import a description from an address");
           const r = /** @type {any} */ (await ctx.call("vault.fetch.public", { url: String(url) }));
           if (r.error) throw fail(`could not read that address: ${r.error.message}`, r.error.code === "denied" ? "failed" : r.error.code || "failed");
           body = r.data.body;
@@ -341,14 +342,14 @@ export default {
       description: "Write a Connection's vault credential again from its record (after it shows out of step): { id }.",
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
-      run: ({ id }, meta) => made.rebuild(String(id), person(meta, "rebuild a connection")),
+      run: ({ id }, meta) => made.rebuild(String(id), yours(meta, "rebuild a connection")),
     });
     ctx.tool("connectors.connection.delete", {
       effect: "write",
       description: "Delete a Connection and its vault credential (the key's own Vault item stays): { id }.",
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
-      run: ({ id }, meta) => made.remove(String(id), person(meta, "delete a connection")),
+      run: ({ id }, meta) => made.remove(String(id), yours(meta, "delete a connection")),
     });
 
     ctx.tool("connectors.disconnect", {
