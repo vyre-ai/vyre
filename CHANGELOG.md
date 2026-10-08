@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- docs: Install and the vyre.run start page now walk the new first run (reserve your name, install the Mac or Windows app, paste the code, join a team or add a server or use My Home, check four words, add your phone); the old browser setup, terminal QR and web-app-on-your-phone steps are gone from them.
 - feat(release): a release now carries the Mac app (Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, on every channel, ad hoc signed until a Developer ID is in place) and the Android APK (Vyre-android.apk, signed with Expo's fixed debug key); both are listed in the signed SHA256SUMS, required by check-release-dist, and the release notes say plainly that both are sideloaded.
 - refactor(app): the Mac window's "type your server's code" screen (MacServer) and the where-Vyre-runs copy are removed; a Mac adds a server with the install line.
 - refactor: the setup claim is gone (relay.setup.claim and claim-token, the session's mint/take, the claim message and TTL, the page's claim link, callWithGrant), with the old browser-setup CI journey (matrix J1) and the staging override for the setup page; the first-owner grant stays for a device's own enrol.
