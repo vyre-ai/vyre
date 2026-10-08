@@ -412,8 +412,8 @@ test("CO-1: the live config pins APP_ORIGINS to exactly one https origin, and no
   const toml = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "wrangler.toml"), "utf8");
   const m = /^APP_ORIGINS\s*=\s*"([^"]*)"/m.exec(toml);
   assert.ok(m, "APP_ORIGINS is set in [vars]");
-  assert.ok(!/localhost|127\.0\.0\.1|\*|http:/.test(m[1]), m[1]);
-  assert.equal(m[1], "https://app.vyre.run,vyreapp://box", "the hosted app and the Mac app's window, nothing else");
+  assert.ok(!/127\.0\.0\.1|\*|http:/.test(m[1].replace("https://vyreapp.localhost", "")) && !/localhost/.test(m[1].replace("https://vyreapp.localhost", "")), m[1]);
+  assert.equal(m[1], "https://app.vyre.run,vyreapp://box,https://vyreapp.localhost", "the hosted app, the Mac app's window and the Windows app's window, nothing else");
 });
 
 test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, the directory writes the TXT and one CAA that pins the ACME account; nobody else can", async t => {
