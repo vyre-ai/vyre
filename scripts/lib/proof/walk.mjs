@@ -309,7 +309,7 @@ export async function walkUpdate(w) {
     await run.step(S(`the old release (${update.oldVersion}) installs with its own installer and shows its code`), async () => {
       const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
       srv = await startInstallerServer(a);
-      for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 30 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) throw e; await new Promise(r => setTimeout(r, 2000)); } }
+      for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 200 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) { let st = ""; try { st = JSON.stringify(await srv.operator("relay.connected", {})); } catch (x) { st = String(/** @type {Error} */ (x).message); } throw new Error(`${/** @type {Error} */ (e).message} (relay.connected: ${st.slice(0, 200)})`); } await new Promise(r => setTimeout(r, 2000)); } }
       assert.ok(made && /^vyre:\/\/wink\/2\?/.test(made.qr), "the server showed a long code");
       return "a long code";
     }, { needs: [S("the app has an identity")] });
