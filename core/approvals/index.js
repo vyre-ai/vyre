@@ -128,7 +128,7 @@ export default {
         const payload_hash = payloadHash(sg.op, space, sg.fields);
         const id = `ap_${newId()}`;
         const line = lineOfOp(request.op, request.fields, `An assistant (${from.replace(/^[a-z]+:/, "").slice(0, 40) || "unknown"})`);
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment: "outward", request, line });
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line });
         return { id, line };
       },
     });
