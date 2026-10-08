@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { idDirectory, memorySeen } from "../../../../lib/identity/directory.js";
 import { claimIdentity } from "./claim.js";
 import { claimServerSpace } from "./claim-space.js";
+/** The code the web page hands a person for a free name (the directory's reserve, no key). */
+const reserveAt = async (base, name) => (await (await fetch(`${base}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json()).data.code;
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const FAST = { memoryKiB: 64, passes: 2 };
@@ -24,7 +26,7 @@ async function standIn(t) {
 
 test("a device with no box makes a space on a server: the server hosts it, the device signs the chain and the record, and the Node client reads both back", { timeout: 60_000 }, async t => {
   const base = await standIn(t);
-  const me = await claimIdentity({ name: "boxless", password: "four words in a row", deviceLabel: "Alex's phone", base, params: FAST });
+  const me = await claimIdentity({ name: "boxless", code: await reserveAt(base, "boxless"), password: "four words in a row", deviceLabel: "Alex's phone", base, params: FAST });
   const identity = { id: me.id, name: "boxless", eid: me.eid, ops: me.ops, key: me.key };
   const ROOT = Buffer.alloc(32, 7).toString("base64url");
   const ROUTE = { relay: "https://relay.example", route: "rt-srv", box: "bx-srv" };

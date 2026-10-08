@@ -5,14 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { STEPS, setupSteps, viewOf, stepLabel, youInput, historyLines, computersOf, safeHttps, endingOf } from "./model.ts";
 import { onboardSource } from "./source.ts";
-import { STEPS as PAGE_STEPS } from "../../../../site/setup/flow.js";
 
 const status = (over = {}) => ({ person: null, assistant: null, finished: false, steps: { devices: "todo", history: "todo" },
   detail: { devices: { mac: { connected: false, name: null }, macDownload: "https://vyre.run/box/Vyre-Lumen-aarch64.dmg" }, history: { state: "todo", sessions: 0, machines: [] } }, ...over });
-
-test("the app's step list is the setup page's step list", () => {
-  assert.deepEqual(STEPS, PAGE_STEPS);
-});
 
 test("steps 1 to 7 are done at the address, and 8 to 10 follow the box's record", () => {
   let v = setupSteps(status());

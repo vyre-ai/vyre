@@ -1,6 +1,6 @@
 // @ts-check
 // The name directory against a fake Workers runtime (relay/worker/fake-cf.js) and a fake Cloudflare
-// DNS API (fake-dns.js): claim, point, ACME, tombstones, limits, and the request checks.
+// DNS API (fake-dns.js): a server serving a space's name (point, publish, ACME), the names an older setup gave a server, and the request checks.
 
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
@@ -11,6 +11,7 @@ import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "./fake-dns.js";
 import * as wire from "../../core/relay/wire.js";
 import * as rules from "../../core/names/rules.js";
+import { serve } from "./testing.js";
 
 const BASE = "https://names.test";
 const HOUR = 3_600_000, DAY = 24 * HOUR;
@@ -20,7 +21,7 @@ function world(t, env = {}) {
   const dns = fakeDns();
   const clock = { t: Date.UTC(2026, 8, 30, 12, 0, 0) };
   const rt = createRuntime({ worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
-    env: { CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, NOW: () => clock.t, ZONE: "vyre.run", ...env } });
+    env: { CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, NOW: () => clock.t, ZONE: "vyre.run", CLAIMS_PER_IP_PER_DAY: "100", ...env } });
   t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
   return { rt, dns, clock, env: rt.env };
 }
@@ -42,6 +43,14 @@ function boxOf(w, key = wire.newRouteKey()) {
   };
   return { key, route, send, post: (p, b, o) => send("POST", p, b, o), get: (p, o) => send("GET", p, undefined, o), del: (p, b, o) => send("DELETE", p, b, o) };
 }
+/** A space named `name` that this box serves: the person, the space, and the space's signed note that the box's route is its server. */
+const sv = async (w, box, name) => { const x = await serve(w, box, name); data(await x.addServer()); return x; };
+/** A name an older setup gave a server, as the directory still holds it until support moves it: the record and the route's index. */
+const legacy = (w, box, name, over = {}) => {
+  const map = w.rt.object("v1", "DIRECTORY").ctx.storage.map;
+  map.set(`n/${name}`, { name, route: box.route, state: "claimed", claimedAt: w.clock.t, everPointed: false, pointedAt: null, ips: {}, notices: [], log: [], ...over });
+  map.set(`r/${box.route}`, name);
+};
 const data = r => { assert.ok(r.json && r.json.data, JSON.stringify(r.json)); return r.json.data; };
 const code = r => r.json && r.json.error && r.json.error.code;
 const TOKEN = "x".repeat(43);
@@ -77,66 +86,22 @@ test("tailnet addresses only", () => {
   for (const ip of refuse) assert.equal(W.tailnetIp(ip), null, JSON.stringify(ip));
 });
 
-test("check: ok, taken, reserved, invalid, mine; no signature needed", async t => {
+test("check: ok, taken, reserved, invalid; no signature needed", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
   assert.equal(data(await a.get("/v1/names/check?name=alex", { unsigned: true })).status, "ok");
   assert.equal(data(await a.get("/v1/names/check?name=vyre", { unsigned: true })).status, "reserved");
   assert.equal(data(await a.get("/v1/names/check?name=x", { unsigned: true })).status, "invalid");
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   assert.equal(data(await b.get("/v1/names/check?name=alex")).status, "taken");
   assert.equal(data(await b.get("/v1/names/check?name=alex", { unsigned: true })).status, "taken");
-  assert.equal(data(await a.get("/v1/names/check?name=alex")).status, "mine");
+  assert.equal(data(await a.get("/v1/names/check?name=alex")).status, "taken", "a server holds no name: even the one that serves it is told it is a space's");
   // a signed check with a bad signature is refused, not silently anonymous
   assert.equal((await a.get("/v1/names/check?name=alex", { sig: "AAAA" })).status, 401);
 });
 
-test("claim binds a name for good and says so; there is no recovery code (instant recovery through the identity is the way back)", async t => {
-  const w = world(t), a = boxOf(w);
-  const r = data(await a.post("/v1/names/claim", { name: "Alex" }));
-  assert.deepEqual(r, { name: "alex", mine: true, fresh: true });
-  const stored = JSON.stringify([...w.rt.object("v1", "DIRECTORY").ctx.storage.map]);
-  assert.ok(!/codeHash/.test(stored), "no recovery code hash is kept");
-  // the same route asking again learns it is theirs
-  assert.deepEqual(data(await a.post("/v1/names/claim", { name: "alex" })), { name: "alex", mine: true, fresh: false });
-  assert.equal((await a.post("/v1/names/code", { name: "alex", next: "x" })).status, 405, "the old recovery-code route is gone");
-  const mine = data(await a.get("/v1/names/mine"));
-  assert.equal(mine.name, "alex");
-  assert.equal(mine.state, "claimed");
-  assert.equal(mine.fqdn, "alex.vyre.run");
-  assert.match(mine.acmeZone, /^[a-z2-7]{26}\.acme\.vyre\.run$/);
-  assert.equal(w.dns.records.length, 0, "a claim writes no DNS");
-});
-
-test("claim refuses reserved, lookalike, invalid and taken names, and a second name for a route", async t => {
-  const w = world(t), a = boxOf(w), b = boxOf(w);
-  assert.equal(code(await a.post("/v1/names/claim", { name: "vyre" })), "reserved");
-  assert.equal(code(await a.post("/v1/names/claim", { name: "g00gle" })), "reserved");
-  assert.equal(code(await a.post("/v1/names/claim", { name: "xn--abc" })), "invalid");
-  assert.equal(code(await a.post("/v1/names/claim", { name: "ab" })), "invalid");
-  data(await a.post("/v1/names/claim", { name: "alex" }));
-  assert.equal(code(await b.post("/v1/names/claim", { name: "alex" })), "taken");
-  assert.equal(code(await a.post("/v1/names/claim", { name: "alexa" })), "one_per_route");
-  assert.equal((await b.post("/v1/names/claim", { name: "alexa" })).status, 200);
-});
-
-test("limits: 5 claims per address a day, then a global ceiling", async t => {
-  const w = world(t, { GLOBAL_CLAIMS_PER_DAY: "7" });
-  for (let i = 0; i < 5; i++) assert.equal((await boxOf(w).post("/v1/names/claim", { name: `name-${"abcde"[i]}x` }, { ip: "192.0.2.1" })).status, 200);
-  const sixth = await boxOf(w).post("/v1/names/claim", { name: "name-fx" }, { ip: "192.0.2.1" });
-  assert.equal(sixth.status, 429);
-  assert.equal((await boxOf(w).post("/v1/names/claim", { name: "name-fx" }, { ip: "192.0.2.2" })).status, 200);
-  assert.equal((await boxOf(w).post("/v1/names/claim", { name: "name-gx" }, { ip: "192.0.2.3" })).status, 200);
-  const over = await boxOf(w).post("/v1/names/claim", { name: "name-hx" }, { ip: "192.0.2.4" });
-  assert.equal(over.status, 429);
-  assert.match(over.json.error.message, /busy/);
-  // tomorrow the counters start again
-  w.clock.t += DAY;
-  assert.equal((await boxOf(w).post("/v1/names/claim", { name: "name-hx" }, { ip: "192.0.2.1" })).status, 200);
-});
-
 test("point: a tailnet A record, never an AAAA, and never anything else", async t => {
   const w = world(t), a = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   const p = data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
   assert.deepEqual([p.type, p.ip, p.fqdn], ["A", "100.101.1.2", "alex.vyre.run"]);
   const rec = w.dns.at("alex.vyre.run", "A");
@@ -163,7 +128,7 @@ test("point: a tailnet A record, never an AAAA, and never anything else", async 
 
 test("point: only the owner, never a name nobody holds, and a DNS failure changes nothing", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   assert.equal(code(await b.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" })), "not_yours");
   assert.equal(code(await a.post("/v1/names/point", { name: "nobody", ip: "100.101.1.2" })), "not_yours");
   assert.equal(w.dns.records.length, 0);
@@ -177,7 +142,7 @@ test("point: only the owner, never a name nobody holds, and a DNS failure change
 
 test("acme: TXT only for a name the route owns; 10 a day; clear", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   assert.equal(code(await b.post("/v1/names/acme", { name: "alex", token: TOKEN })), "not_yours");
   assert.equal(code(await a.post("/v1/names/acme", { name: "other", token: TOKEN })), "not_yours");
   assert.equal(code(await a.post("/v1/names/acme", { name: "alex", token: "short" })), "bad_token");
@@ -202,7 +167,7 @@ test("acme: TXT only for a name the route owns; 10 a day; clear", async t => {
 test("acme for the person's own domain writes only under <routehash>.acme.vyre.run", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
   assert.equal(code(await b.post("/v1/names/acme", { own: true, token: TOKEN })), "not_yours", "a route with no name has no zone");
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   const r = data(await a.post("/v1/names/acme", { own: true, token: TOKEN, name: "victim" }));
   assert.equal(r.fqdn, `${await W.routeHash(a.route)}.acme.vyre.run`);
   assert.equal(w.dns.records.length, 1);
@@ -215,10 +180,9 @@ test("acme for the person's own domain writes only under <routehash>.acme.vyre.r
 
 test("the directory only ever touches A, AAAA and TXT inside its own zone", async t => {
   const w = world(t, { ZONE: "vyre.run" }), a = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
+  await sv(w, a, "alex");
   data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
   data(await a.post("/v1/names/acme", { name: "alex", token: TOKEN }));
-  data(await a.post("/v1/names/release", { name: "alex" }));
   for (const c of w.dns.calls) assert.ok(!/CNAME|MX|NS/.test(c.path + JSON.stringify(c.body)), c.path);
   for (const r of w.dns.records) assert.ok(r.name.endsWith(".vyre.run"));
   // a name in the store cannot reach outside the zone either
@@ -227,21 +191,21 @@ test("the directory only ever touches A, AAAA and TXT inside its own zone", asyn
 
 test("request checks: a foreign Origin, cross-site, content type, size, methods, cookies", async t => {
   const w = world(t), a = boxOf(w);
-  const claim = (headers, body = { name: "alex" }) => a.post("/v1/names/claim", body, { headers });
+  const claim = (headers, body = { name: "alex", ip: "100.101.1.2" }) => a.post("/v1/names/point", body, { headers });
   assert.equal((await claim({ origin: "https://evil.example" })).status, 403);
   assert.equal((await claim({ origin: "https://vyre.run" })).status, 403);
   assert.equal((await claim({ origin: "null" })).status, 403);
   assert.equal((await claim({ origin: "https://names.vyre.run.evil.example" })).status, 403);
   assert.equal((await claim({ "sec-fetch-site": "cross-site" })).status, 403);
   assert.equal((await a.del("/v1/names/acme", { own: true }, { headers: { origin: "https://evil.example" } })).status, 403);
-  assert.equal((await a.post("/v1/names/release", { name: "x" }, { headers: { origin: "https://evil.example" } })).status, 403);
+  assert.equal((await a.post("/v1/names/acme", { name: "x", token: TOKEN }, { headers: { origin: "https://evil.example" } })).status, 403);
   assert.equal((await claim({ "content-type": "text/plain" })).status, 415);
   assert.equal((await claim({ "content-type": "application/x-www-form-urlencoded" })).status, 415);
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.size, 0, "nothing was written by any refused request");
-  assert.equal((await a.post("/v1/names/claim", { name: "alex", pad: "x".repeat(5000) })).status, 413);
+  assert.equal((await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2", pad: "x".repeat(5000) })).status, 413);
   const ok = await claim({ origin: "https://names.vyre.run" });
-  assert.equal(ok.status, 200, "its own origin is exact-matched");
-  assert.equal((await worker.fetch(new Request(BASE + "/v1/names/claim", { method: "PUT" }), w.env)).status, 405);
+  assert.equal(code(ok), "not_yours", "its own origin is exact-matched: it gets past the Origin check to the ownership one");
+  assert.equal((await worker.fetch(new Request(BASE + "/v1/names/point", { method: "PUT" }), w.env)).status, 405);
   assert.equal((await worker.fetch(new Request(BASE + "/nope"), w.env)).status, 404);
   assert.equal((await worker.fetch(new Request(BASE + "/health"), w.env)).status, 200);
   // no cookies, in or out; no CORS; no caching; JSON only
@@ -250,16 +214,16 @@ test("request checks: a foreign Origin, cross-site, content type, size, methods,
   assert.equal(res.headers.get("cache-control"), "no-store");
   assert.equal(res.headers.get("content-type"), "application/json");
   assert.equal(res.headers.get("x-content-type-options"), "nosniff");
-  const opts = await worker.fetch(new Request(BASE + "/v1/names/claim", { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), w.env);
+  const opts = await worker.fetch(new Request(BASE + "/v1/names/point", { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), w.env);
   assert.equal(opts.status, 405);
   assert.equal(opts.headers.get("access-control-allow-origin"), null);
 });
 
 test("signatures: unsigned, forged, wrong key for the route, stale, replayed and tampered requests are refused", async t => {
   const w = world(t), a = boxOf(w), evil = boxOf(w);
-  assert.equal((await a.post("/v1/names/claim", { name: "alex" }, { unsigned: true })).status, 401);
+  assert.equal((await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }, { unsigned: true })).status, 401);
   assert.equal((await a.get("/v1/names/mine", { unsigned: true })).status, 401);
-  assert.equal((await a.post("/v1/names/claim", { name: "alex" }, { sig: crypto.randomBytes(64).toString("base64url") })).status, 401);
+  assert.equal((await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }, { sig: crypto.randomBytes(64).toString("base64url") })).status, 401);
   // someone else's key claiming this route id
   const forged = await worker.fetch(new Request(BASE + "/v1/names/mine", { headers: { "x-vyre-route": a.route, "x-vyre-pub": evil.key.pub.toString("base64url"), "x-vyre-ts": String(w.clock.t), "x-vyre-nonce": "n".repeat(20), "x-vyre-sig": "A".repeat(86) } }), w.env);
   assert.equal(forged.status, 401);
@@ -271,137 +235,18 @@ test("signatures: unsigned, forged, wrong key for the route, stale, replayed and
   assert.equal((await a.get("/v1/names/mine", { nonce })).status, 401, "a replay is refused");
   // a signature over one body does not cover another
   const key = a.key, text = JSON.stringify({ name: "alex" });
-  const msg = W.authMessage({ route: a.route, ts: w.clock.t, nonce: "t".repeat(22), method: "POST", target: "/v1/names/claim", bodyHash: crypto.createHash("sha256").update(text).digest("hex") });
+  const msg = W.authMessage({ route: a.route, ts: w.clock.t, nonce: "t".repeat(22), method: "POST", target: "/v1/names/point", bodyHash: crypto.createHash("sha256").update(text).digest("hex") });
   const sig = wire.signRoute(key.priv, Buffer.from(msg)).toString("base64url");
-  const tampered = await worker.fetch(new Request(BASE + "/v1/names/claim", { method: "POST", body: JSON.stringify({ name: "mallory" }),
+  const tampered = await worker.fetch(new Request(BASE + "/v1/names/point", { method: "POST", body: JSON.stringify({ name: "mallory" }),
     headers: { "content-type": "application/json", "x-vyre-route": a.route, "x-vyre-pub": key.pub.toString("base64url"), "x-vyre-ts": String(w.clock.t), "x-vyre-nonce": "t".repeat(22), "x-vyre-sig": sig } }), w.env);
   assert.equal(tampered.status, 401);
   // the signature covers the path: a signed check cannot be replayed as a different call
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.has("n/alex"), false);
 });
 
-test("release: a never-pointed name is free again; a pointed name becomes a tombstone forever", async t => {
-  const w = world(t), a = boxOf(w), b = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
-  assert.deepEqual(data(await a.post("/v1/names/release", { name: "alex" })), { name: "alex", tombstone: false });
-  assert.equal(data(await b.post("/v1/names/claim", { name: "alex" })).mine, true, "free to anyone");
-  data(await b.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
-  data(await b.post("/v1/names/acme", { name: "alex", token: TOKEN }));
-  assert.deepEqual(data(await b.post("/v1/names/release", { name: "alex" })), { name: "alex", tombstone: true });
-  assert.equal(w.dns.records.length, 0, "its records are gone");
-  // never anyone else's, and its owner's route is free to hold another name
-  assert.equal(code(await a.post("/v1/names/claim", { name: "alex" })), "taken");
-  assert.equal(data(await a.get("/v1/names/check?name=alex")).status, "taken");
-  assert.equal(code(await b.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" })), "not_yours");
-  w.clock.t += 400 * DAY;
-  await w.env.DIRECTORY.get(w.env.DIRECTORY.idFromName("v1")).fetch("https://directory/op", { method: "POST", body: JSON.stringify({ op: "sweep" }) });
-  assert.equal(data(await a.get("/v1/names/check?name=alex")).status, "taken", "a year later, still");
-  assert.equal(data(await b.post("/v1/names/claim", { name: "bobby" })).name, "bobby");
-});
-
-test("a claimed name never pointed lapses after 7 days; a pointed one does not", async t => {
-  const w = world(t), a = boxOf(w), b = boxOf(w), c = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
-  data(await b.post("/v1/names/claim", { name: "bobby" }));
-  data(await b.post("/v1/names/point", { name: "bobby", ip: "100.101.1.2" }));
-  w.clock.t += 6 * DAY;
-  assert.equal(data(await c.get("/v1/names/check?name=alex")).status, "taken");
-  w.clock.t += 2 * DAY;
-  assert.equal(data(await c.get("/v1/names/check?name=alex")).status, "ok", "lapsed, checked lazily");
-  assert.equal(data(await a.get("/v1/names/mine")).name, null, "and its route is free");
-  assert.equal(data(await c.post("/v1/names/claim", { name: "alex" })).mine, true);
-  w.clock.t += 365 * DAY;
-  assert.equal(data(await c.get("/v1/names/check?name=bobby")).status, "taken");
-});
-
-test("the sweep lapses names with nobody looking", async t => {
-  const w = world(t), a = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "alex" }));
-  data(await a.post("/v1/names/acme", { name: "alex", token: TOKEN }));
-  w.clock.t += 8 * DAY;
-  await worker.scheduled({}, w.env);
-  const store = w.rt.object("v1", "DIRECTORY").ctx.storage.map;
-  assert.equal(store.has("n/alex"), false);
-  assert.equal(store.has(`r/${a.route}`), false);
-  assert.equal([...store.keys()].some(k => k.startsWith("c/")), false, "old counters are dropped");
-});
-
-async function claimed(w, name = "alex") {
-  const a = boxOf(w);
-  const { code: c } = data(await a.post("/v1/names/claim", { name }));
-  data(await a.post("/v1/names/point", { name, ip: "100.101.1.2" }));
-  return { a, code: c };
-}
-
-test("a DNS failure while wiping is retried by the sweep", async t => {
-  const w = world(t), { a } = await claimed(w);
-  w.dns.state.failNext = 1;
-  await a.post("/v1/names/release", { name: "alex" });
-  assert.equal(w.dns.records.length, 1, "the wipe failed once");
-  await worker.scheduled({}, w.env);
-  assert.equal(w.dns.records.length, 0);
-});
-
-// ---- the operator rebind (support only) ----
-
-const ADMIN = "s".repeat(48);
-const admin = (w, body, secret = ADMIN, extra = {}) => worker.fetch(new Request(BASE + "/v1/names/admin/rebind", {
-  method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }), ...extra }, body: JSON.stringify(body),
-}), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
-
-test("admin rebind: a name moves at once, is logged, and tells the old route", async t => {
-  const w = world(t, { ADMIN_SECRET: ADMIN }), { a, code: c } = await claimed(w);
-  data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.1" }));
-  const n = boxOf(w);
-  const r = await admin(w, { name: "alex", route: n.route });
-  assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.deepEqual([r.json.data.name, r.json.data.state], ["alex", "live"]);
-  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "mine");
-  const m = data(await n.get("/v1/names/mine"));
-  assert.ok(m.notices.some(x => x.kind === "admin-rebind" && x.from === a.route.slice(0, 8) && x.to === n.route.slice(0, 8)), "the log has an admin-rebind entry");
-  assert.equal(w.dns.records.length, 0, "the old address is unpublished");
-  const old = data(await a.get("/v1/names/mine"));
-  assert.equal(old.name, null);
-  assert.equal(old.moved.name, "alex", "the old route is told where its name went");
-  data(await n.post("/v1/names/point", { name: "alex", ip: "100.101.9.9" }));
-});
-
-test("admin rebind: refused with no secret configured, no header, a wrong header, an unknown name, a malformed route, a taken route", async t => {
-  const none = world(t);
-  const x = boxOf(none);
-  assert.equal((await admin(none, { name: "alex", route: x.route })).status, 404, "no ADMIN_SECRET on the Worker: the operation does not exist");
-  assert.equal((await admin(none, { name: "alex", route: x.route }, "short")).status, 404);
-  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
-  const n = boxOf(w);
-  assert.equal((await admin(w, { name: "alex", route: n.route }, null)).status, 401, "no header");
-  assert.equal((await admin(w, { name: "alex", route: n.route }, "w".repeat(48))).status, 401, "a wrong secret");
-  assert.equal((await admin(w, { name: "alex", route: n.route }, ADMIN.slice(0, -1))).status, 401, "a near miss");
-  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "taken", "nothing moved");
-  assert.equal(code(await admin(w, { name: "nobody-here", route: n.route })), "no_such_name");
-  assert.equal(code(await admin(w, { name: "alex", route: "NOT-A-ROUTE" })), "bad_request");
-  assert.equal(code(await admin(w, { name: "alex", route: "a".repeat(25) })), "bad_request");
-  assert.equal(code(await admin(w, { name: "!!", route: n.route })), "bad_request");
-  assert.equal(code(await admin(w, { name: "alex", route: a.route })), "already_yours");
-  // a route-key signature is not the secret
-  assert.equal((await n.post("/v1/names/admin/rebind", { name: "alex", route: n.route })).status, 401);
-  // a route that already holds a name
-  const other = boxOf(w); data(await other.post("/v1/names/claim", { name: "blake" }));
-  assert.equal(code(await admin(w, { name: "alex", route: other.route })), "one_per_route");
-  assert.equal(data(await a.get("/v1/names/mine")).name, "alex", "the owner still holds it after every refusal");
-});
-
-test("admin rebind: the old route's moved note goes when that route holds a name again", async t => {
-  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
-  const n = boxOf(w);
-  assert.equal((await admin(w, { name: "alex", route: n.route })).status, 200);
-  assert.equal(data(await a.get("/v1/names/mine")).moved.name, "alex");
-  data(await a.post("/v1/names/claim", { name: "blake" }));
-  assert.equal(data(await a.get("/v1/names/mine")).moved, undefined, "claiming again clears the note");
-});
-
 test("publish: the name's A record is the public IPv4 the request came from, and nothing the caller names", async t => {
   const w = world(t), a = boxOf(w);
-  data(await a.post("/v1/names/claim", { name: "pubby" }, { ip: "93.184.216.34" }));
+  await sv(w, a, "pubby");
   const p = data(await a.post("/v1/names/publish", { name: "pubby", ip: "8.8.8.8" }, { ip: "93.184.216.34" }));
   assert.deepEqual([p.type, p.ip, p.fqdn], ["A", "93.184.216.34", "pubby.vyre.run"], "the observed address, not the body's");
   assert.deepEqual(w.dns.at("pubby.vyre.run", "A").map(r => r.content), ["93.184.216.34"]);
@@ -418,12 +263,14 @@ test("publish: the name's A record is the public IPv4 the request came from, and
   assert.ok(code(await b.post("/v1/names/publish", { name: "pubby" }, { ip: "93.184.216.34" })), "another route cannot publish a name it does not hold");
 });
 
+const ADMIN = "s".repeat(48);
 const adminDrop = (w, body, secret = ADMIN) => worker.fetch(new Request(BASE + "/v1/names/admin/drop", {
   method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }) }, body: JSON.stringify(body),
 }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
 
 test("admin drop: a server's name is taken back, its address unpublished, and the name is free to claim again", async t => {
-  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
+  const w = world(t, { ADMIN_SECRET: ADMIN }), a = boxOf(w);
+  legacy(w, a, "alex");
   data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.1" }));
   assert.equal((await adminDrop(w, { name: "alex" }, null)).status, 401, "no header");
   assert.equal((await adminDrop(w, { name: "alex" }, "w".repeat(48))).status, 401, "a wrong secret");
@@ -434,4 +281,41 @@ test("admin drop: a server's name is taken back, its address unpublished, and th
   const n = boxOf(w);
   assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "ok", "free again");
   assert.equal(code(await adminDrop(w, { name: "alex" })), "no_such_name");
+});
+
+test("a space's servers: only a route the space listed may point, publish or write a challenge for its name; the space adds and removes them with a signed act", async t => {
+  const w = world(t), a = boxOf(w), b = boxOf(w);
+  const x = await serve(w, a, "harlow");
+  // before the space says so, the route serves nothing
+  assert.equal(code(await a.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
+  assert.equal(data(await a.get("/v1/names/mine")).name, null);
+  // the FIRST server needs no older sign-in (a person upgrading on their first day); a forged act does not pass
+  assert.equal(code(await x.space.post("/v1/ids/server", { name: "harlow", route: a.route, act: { ...(await x.signed("server-add", a.route)), sig: "AAAA" } })), "bad_signature");
+  assert.equal(code(await x.space.post("/v1/ids/server", { name: "harlow", route: "nope", act: await x.signed("server-add", a.route) })), "bad_route");
+  assert.equal(data(await x.addServer()).servers, 1);
+  assert.equal(data(await x.addServer()).servers, 1, "adding twice is one");
+  assert.equal(data(await a.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })).fqdn, "harlow.vyre.run");
+  assert.equal(data(await a.post("/v1/names/acme", { name: "harlow", token: TOKEN })).fqdn, "_acme-challenge.harlow.vyre.run");
+  const mine = data(await a.get("/v1/names/mine"));
+  assert.deepEqual([mine.name, mine.state, mine.pointed], ["harlow", "live", true]);
+  // another route is still a stranger, and a person's own name is no space
+  assert.equal(code(await b.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
+  assert.equal(code(await a.post("/v1/names/point", { name: x.owner.state.id, ip: "100.101.1.2" })), "not_yours");
+  // a second server (the founding device signs; a device added later needs a day of age, as for every change to the space)
+  assert.equal(data(await x.addServer(b.route)).servers, 2);
+  assert.equal(data(await b.post("/v1/names/publish", { name: "harlow" }, { ip: "93.184.216.34" })).ip, "93.184.216.34");
+  // removing the first stops it; the second goes on
+  assert.equal(data(await x.removeServer(a.route)).servers, 1);
+  assert.equal(code(await a.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
+  assert.equal(data(await a.get("/v1/names/mine")).name, null);
+  assert.equal(data(await b.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })).ip, "100.101.1.2");
+});
+
+test("a space has at most eight servers", async t => {
+  const w = world(t), a = boxOf(w);
+  const x = await serve(w, a, "harlow");
+  data(await x.addServer());
+  w.clock.t += 25 * HOUR;
+  for (let i = 0; i < 7; i++) data(await x.addServer(boxOf(w).route));
+  assert.equal(code(await x.addServer(boxOf(w).route)), "too_many_servers");
 });

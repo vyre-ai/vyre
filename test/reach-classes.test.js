@@ -46,7 +46,7 @@ test("a browser reaches only WEB_REACH and a setup page only SETUP_REACH, whatev
   assert.equal(classReach(WEB, "wink.phone.wait"), true);
   assert.equal(classReach(WEB, "names.claim"), false);
   assert.equal(classReach(WEB, undefined), false);
-  assert.equal(classReach(SETUP, "names.claim"), true);
+  assert.equal(classReach(SETUP, "wink.server.setup-offer"), true);
   assert.equal(classReach(SETUP, "wink.phone.wait"), false);
   assert.equal(classReach(SETUP, "vault.get"), false);
   assert.equal(callerAllowed(null, WEB, "memory.search"), false, "a tool open to anyone is still not open to a browser");

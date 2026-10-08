@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { identityFrom, nameAnswer, nameStatusReal, nameNoteReal, createInput, createdFrom, setupFrom, savesAt, setupElsewhere, applyClaim, inviteFrom, directoryAnswer } from "./real.js";
+import { identityFrom, nameAnswerChecked, nameStatusReal, nameNoteReal, createInput, createdFrom, setupFrom, savesAt, setupElsewhere, applyClaim, inviteFrom } from "./real.js";
 
 // Shapes captured from a real kernel-on vyred (spaces.identity.status, spaces.list, spaces.setup.*).
 const STATUS = { exists: true, name: "devbox.vyre.run", label: "devbox", id: "per_pbiglgp6ji6jzrnbskpuzw77np", eid: "e", keyId: "e", pending: false, seq: 0, store: "file" };
@@ -14,9 +14,9 @@ test("identity: a claimed name is read, none is null", () => {
 });
 
 test("a name that resolves is taken, not_found is free, an outage is unknown", () => {
-  assert.equal(nameAnswer({ ok: true }), "taken");
-  assert.equal(nameAnswer({ ok: false, code: "not_found" }), "free");
-  assert.equal(nameAnswer({ ok: false, code: "offline" }), "unknown");
+  assert.equal(nameAnswerChecked(200, { data: { status: "taken" } }), "taken");
+  assert.equal(nameAnswerChecked(200, { data: { status: "ok" } }), "free");
+  assert.equal(nameAnswerChecked(0, null), "unknown");
 });
 
 test("name status follows the directory, and a free 'alex' is ok", () => {
@@ -62,7 +62,7 @@ test("setup elsewhere lists other devices' unfinished setups, not this one's", (
 
 test("a claim puts the saved state back on the screen", () => {
   const a = applyClaim({ space: "spc_b", moved: true, setup: { step: "members", name: "Northwind Bakery", address: "northwind.vyre.run", look: "sky", where: "vps", picks: { connectors: ["gmail"], kit: "estate" } } });
-  assert.deepEqual(a, { space: "spc_b", step: "members", name: "Northwind Bakery", addr: "northwind", look: "sky", where: "vps", connectors: ["gmail"], kit: "estate", who: "team" });
+  assert.deepEqual(a, { space: "spc_b", step: "members", name: "Northwind Bakery", addr: "northwind", look: "sky", where: "server", connectors: ["gmail"], kit: "estate", who: "team" });
   assert.equal(applyClaim({ space: "x", setup: null }), null);
 });
 
@@ -80,12 +80,14 @@ test("the real invite card: the display name, the address, the role label, what 
   assert.equal(t.sees, "Doe estate plan, until 2026-10-14");
 });
 
-test("the directory's answer: a chain is taken, not_found is free, a limit or garbage is unknown", () => {
-  assert.equal(nameAnswer(directoryAnswer(200, { data: { name: "devbox", kind: "person", ops: [] } })), "taken");
-  assert.equal(nameAnswer(directoryAnswer(404, { error: { code: "not_found", message: "no such name" } })), "free");
-  assert.equal(nameAnswer(directoryAnswer(429, { error: { code: "rate_limited" } })), "unknown");
-  assert.equal(nameAnswer(directoryAnswer(200, null)), "unknown");
-  assert.equal(nameAnswer(directoryAnswer(500, undefined)), "unknown");
+test("the directory's check: ok is free, taken and reserved are not, a limit or garbage is unknown (people, spaces and names an older setup gave a server are one namespace)", () => {
+  assert.equal(nameAnswerChecked(200, { data: { name: "devbox", status: "taken", why: "someone else has that name" } }), "taken");
+  assert.equal(nameAnswerChecked(200, { data: { name: "devbox", status: "reserved" } }), "taken");
+  assert.equal(nameAnswerChecked(200, { data: { name: "devbox", status: "ok" } }), "free");
+  assert.equal(nameAnswerChecked(200, { data: { name: "devbox", status: "mine" } }), "free");
+  assert.equal(nameAnswerChecked(429, { error: { code: "rate_limited" } }), "unknown");
+  assert.equal(nameAnswerChecked(200, null), "unknown");
+  assert.equal(nameAnswerChecked(500, undefined), "unknown");
 });
 
 test("the done page says what is still pending: a Kit waiting in Now, a Kit not asked for, connectors never connected", async () => {

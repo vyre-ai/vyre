@@ -1,8 +1,8 @@
-/* Self-hosted: the setup page loads nothing from another origin. build-site.sh copies the files into ./fonts. */
+/* Self-hosted: the page loads nothing from another origin. build-site.sh copies the files into ./fonts. */
 @font-face { font-family: 'Instrument Sans'; font-weight: 400; font-style: normal; font-display: swap; src: url("/setup/fonts/InstrumentSans-Regular.woff2") format("woff2"); }
 @font-face { font-family: 'Instrument Sans'; font-weight: 600; font-style: normal; font-display: swap; src: url("/setup/fonts/InstrumentSans-SemiBold.woff2") format("woff2"); }
 @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url("/setup/fonts/JetBrainsMono-Regular.woff2") format("woff2"); }
-/* The setup page. Every colour, size and radius is a token from tokens.css (generated from lib/theme/tokens.json):
+/* The reserve page. Every colour, size and radius is a token from tokens.css (generated from lib/theme/tokens.json):
    the call-to-action colour is --primary-bg, so changing it there changes it here. */
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--bg); }
@@ -25,18 +25,7 @@ h1:focus { outline: none; }
 .btn.primary:hover { background: var(--primary-hover); }
 .btn.secondary { background: var(--hover); color: var(--text); border-color: var(--rule-strong); }
 .btn.quiet { background: transparent; color: var(--text-2); border-color: var(--rule-strong); }
-.cmd { margin-top: 28px; display: flex; align-items: stretch; gap: 8px; }
-.cmd pre { flex: 1; min-width: 0; margin: 0; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: var(--radius-field); overflow-x: auto; }
-.cmd code { font-family: var(--mono); font-size: 12px; line-height: 20px; color: var(--text); white-space: pre; }
-.status { margin: 24px 0 0; display: flex; align-items: center; gap: 10px; color: var(--text-2); }
-.ring { width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--focus); border-right-color: transparent; animation: spin 1.1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ring { animation: none; border-right-color: var(--focus); } }
-.words { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.words li { padding: 10px 16px; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-field); font-family: var(--mono); font-size: 15px; line-height: 20px; }
-.log { list-style: none; margin: 0; padding: 12px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: var(--radius-field); max-height: 320px; overflow-y: auto; }
-.log li { font-family: var(--mono); font-size: 12px; line-height: 20px; color: var(--text-2); overflow-wrap: anywhere; }
-@media (max-width: 719px) { .col { padding: 40px 16px 48px; } .cmd { flex-direction: column; } h1 { font-size: 22px; line-height: 28px; } }
+@media (max-width: 719px) { .col { padding: 40px 16px 48px; } h1 { font-size: 22px; line-height: 28px; } }
 .field { margin-top: 20px; display: flex; align-items: stretch; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-field); }
 .field:focus-within { border-color: var(--focus); }
 .field .name { flex: 1; min-width: 0; min-height: 44px; padding: 0 0 0 14px; background: transparent; border: 0; color: var(--text); font-family: var(--mono); font-size: 15px; outline: none; }
@@ -44,55 +33,8 @@ h1:focus { outline: none; }
 .hint { margin: 10px 0 0; min-height: 22px; color: var(--text-2); font-size: 13px; line-height: 18px; }
 .btn[disabled] { opacity: 0.45; cursor: default; }
 .warn { margin: 16px 0 0; padding: 10px 14px; border: 1px solid var(--rule-strong); border-left: 3px solid var(--beacon-ink); border-radius: var(--radius-field); color: var(--text); font-size: 13px; line-height: 18px; max-width: 540px; }
-.providers { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
-.account { margin-top: 20px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card); }
-.row-title { margin: 0 0 6px; font-weight: 600; }
 .code-line { margin: 12px 0 0; font-family: var(--mono); font-size: 20px; line-height: 28px; letter-spacing: 0.08em; }
 a { color: var(--text); text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
 a:hover { text-decoration-color: var(--focus); }
-.ring-slot { margin: 24px 0 0; width: 280px; max-width: 100%; }
-.ring-slot svg { width: 100%; height: auto; display: block; }
-.qr-slot { margin: 12px 0 0; width: 220px; max-width: 100%; border-radius: var(--radius-field); overflow: hidden; }
-.qr-slot svg { width: 100%; height: auto; display: block; }
-a.btn { display: inline-flex; align-items: center; text-decoration: none; }
-
-/* The step timeline: a rail beside the step at 900px and wider, a segmented bar with the list one tap away below that. One list drawn twice; the other is display:none, so a screen reader hears it once. */
+[hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-[data-region="timeline"] { margin: 0 0 32px; }
-[data-region="timeline"]:empty { margin: 0; }
-.tl-rail { display: none; list-style: none; margin: 0; padding: 0; }
-.tl-list { list-style: none; margin: 12px 0 0; padding: 0; }
-.tl-group { margin: 16px 0 6px; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); text-transform: uppercase; letter-spacing: 0.08em; }
-.tl-group:first-child { margin-top: 0; }
-.tl-step { display: flex; align-items: center; gap: 10px; min-height: 28px; color: var(--label); font-size: 14px; line-height: 20px; }
-.tl-dot { flex: none; width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid var(--rule-strong); display: grid; place-items: center; font-size: 11px; line-height: 1; color: var(--primary-ink); }
-.tl-step.done { color: var(--text-2); }
-.tl-step.done .tl-dot { background: var(--text-2); border-color: var(--text-2); }
-.tl-step.skipped { color: var(--label); }
-.tl-step.skipped .tl-dot { color: var(--label); }
-.tl-step.current { color: var(--text); font-weight: 600; }
-.tl-step.current .tl-dot { border-color: var(--focus); background: var(--focus); box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 22%, transparent); }
-.tl-step.failed { color: var(--text); font-weight: 600; }
-.tl-step.failed .tl-dot { border-color: var(--beacon-ink); }
-.tl-opt { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); }
-.tl-segs { display: flex; gap: 3px; }
-.tl-segs .seg { flex: 1; height: 4px; border-radius: 2px; background: var(--rule-strong); }
-.tl-segs .seg.done { background: var(--text-2); }
-.tl-segs .seg.skipped { background: var(--rule); }
-.tl-segs .seg.current { background: var(--focus); }
-.tl-segs .seg.failed { background: var(--beacon-ink); }
-.tl-more { margin-top: 10px; }
-.tl-more summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 20px; color: var(--text-2); min-height: 28px; }
-.tl-more summary::-webkit-details-marker { display: none; }
-.tl-more summary b { color: var(--text); font-weight: 600; }
-.tl-all { color: var(--label); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
-.tl-more summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-@media (min-width: 900px) {
-  .col { max-width: 950px; display: grid; grid-template-columns: 220px minmax(0, 640px); column-gap: 48px; align-content: start; }
-  .col > section { grid-column: 2; }
-  .col > [data-region="timeline"] { grid-column: 1; grid-row: 1 / span 12; align-self: start; position: sticky; top: 24px; margin: 6px 0 0; }
-  .tl-rail { display: block; }
-  .tl-bar { display: none; }
-}
-@media (max-width: 899px) { [data-region="timeline"]:not(:empty) ~ [data-region="head"] .lbl { display: none; } }
-.log li.mine { color: var(--text); }

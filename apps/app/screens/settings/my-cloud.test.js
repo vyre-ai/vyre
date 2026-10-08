@@ -40,7 +40,7 @@ test("my cloud: the report says what moved, what did not by name, and what Perso
 test("my cloud: the offer follows the rows: setup, then move, then done", () => {
   const personal = { id: "spc_p", tier: "basic" }, cloud = { id: "spc_c", tier: "cloud", who: "personal" };
   assert.equal(offerFor(cloudState([personal]), true), "setup");
-  assert.equal(offerFor(cloudState([personal]), false), "none", "no paired server, no button");
+  assert.equal(offerFor(cloudState([personal]), false), "add", "no paired server: the card offers to add one");
   assert.equal(offerFor(cloudState([personal, cloud]), false), "move");
   assert.equal(offerFor(cloudState([{ ...personal, upgraded_to: "spc_c" }, cloud]), true), "moved");
   assert.equal(offerFor(cloudState([{ id: "spc_t", tier: "cloud", displayName: "Northwind" }]), true), "none", "a team space is not My Cloud and there is no Personal row");

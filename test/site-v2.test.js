@@ -25,7 +25,7 @@ function exists(href) {
   return fs.existsSync(path.join(p, "index.html"));
 }
 // Served by the build (scripts/build-site.sh) or a redirect, not committed: the install lines and the box files.
-const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|setup\/relay\/.*|setup\/tokens\.css)$/;
+const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|setup\/tokens\.css)$/;
 
 for (const slug of PAGES) {
   test(`site v2: /${slug} metadata, structured data, links and words`, () => {
@@ -73,7 +73,7 @@ test("site v2: llms.txt, llms-full.txt, agents.md and the agent file exist and a
 });
 
 test("site v2: the pages leave the installers and the setup page alone", () => {
-  for (const f of ["setup/index.html", "setup/page.js", "setup/flow.js"]) assert.ok(fs.existsSync(path.join(SITE, f)), f);
+  for (const f of ["setup/index.html", "setup/page.js", "setup/reserve.js"]) assert.ok(fs.existsSync(path.join(SITE, f)), f);
   const gen = fs.readFileSync(path.join(SITE, "..", "scripts", "gen-site.mjs"), "utf8");
   assert.ok(!/writeFileSync\(join\(site, ['"`](setup|box|install|i|w)\b/.test(gen), "the generator never writes the installers or setup");
 });

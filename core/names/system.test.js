@@ -76,7 +76,7 @@ test("system: uninstall keeps ~/.vyre unless purged", () => {
     "remove /etc/systemd/system/vyre.service",
     "run systemctl daemon-reload",
   ]);
-  assert.match(lines(plain).join("\n"), /vyre name release/);
+  assert.match(lines(plain).join("\n"), /stay yours in the name directory/);
   assert.match(lines(plain).join("\n"), /npm rm -g vyre/);
   assert.ok(!plain.some(s => s.do === "remove" && s.path === "/home/alex/.vyre"));
 

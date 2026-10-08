@@ -114,10 +114,12 @@ async function standIn(t) {
   await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   return `http://127.0.0.1:${port}`;
 }
+/** The code the web page hands a person for a free name (the directory's reserve, no key). */
+const reserveAt = async (base, name) => (await (await fetch(`${base}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json()).data.code;
 
 test("a claim made in the app is accepted by the real directory code and verifies with the Node client", { timeout: 60_000 }, async t => {
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "appalex", password: "four words in a row", deviceLabel: "Vyre on Mac", base, params: FAST });
+  const made = await claimIdentity({ name: "appalex", code: await reserveAt(base, "appalex"), password: "four words in a row", deviceLabel: "Vyre on Mac", base, params: FAST });
   assert.match(made.id, /^per_[a-z2-7]{26}$/);
   assert.equal(made.ops.length, 1);
   assert.match(made.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
@@ -132,7 +134,9 @@ test("a claim made in the app is accepted by the real directory code and verifie
   const code = r.state.entries.find(e => e.kind === "code");
   assert.equal(code.eid, nodeCodeKey(made.recoveryCode, "four words in a row", FAST).eid);
   // the name is now taken
-  await assert.rejects(claimIdentity({ name: "appalex", base, params: FAST }), e => e.code !== undefined);
+  await assert.rejects(claimIdentity({ name: "appalex", code: "VYRE-AAAA-AAAA-AAAA-AAAA", base, params: FAST }), e => e.code === "bad_code");
+  // and nobody can reserve it again
+  assert.equal((await fetch(`${base}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "appalex" }) })).status, 409);
 });
 
 test("a claim made by the Node client is read by the app's code: the chain verifies and the sealed record opens", { timeout: 60_000 }, async t => {
@@ -142,7 +146,7 @@ test("a claim made by the Node client is read by the app's code: the chain verif
   const g = await C.makeGenesis({ kind: "person", entry: { eid: signer.eid, kind: "device", pub: signer.publicKey }, nonce: "nodenonce123", ts: Date.now(), sign: signer.sign });
   const state = await C.verifyChain([g], { now: Date.now() + 1 });
   const dir = idDirectory({ base, seen: memorySeen() });
-  await dir.claim("nodebob", state, [g], signer, { v: 1, from: "node" });
+  await dir.finalize("nodebob", state, [g], signer, { v: 1, from: "node" }, (await dir.reserve("nodebob")).code);
   const raw = await (await fetch(`${base}/v1/ids/resolve?name=nodebob`)).json();
   const got = await C.verifyChain(raw.data.ops, { now: Date.now() + C.SKEW_MS, seenAt: () => 0 });
   assert.equal(got.id, g.id);

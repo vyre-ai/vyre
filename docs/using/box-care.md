@@ -420,7 +420,7 @@ then run `vyre up`. What the proxy allows is in
 
 ## Remove it
 
-If you claimed a `vyre.run` name, run `vyre name release` on the box first to give it up. A name that was pointed at a server stays reserved afterwards, so nobody, you included, can claim it again.
+A server holds no name of its own: the name belongs to your space. Removing the server does not free the name; take the server off the space in the Vyre app if you want it to stop serving the name.
 
 ::: tabs
 ::: tab On this Mac
