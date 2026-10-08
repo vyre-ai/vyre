@@ -186,3 +186,28 @@ test("release dist --modules: shell.json must carry modules.json and appbuild.js
   fs.writeFileSync(path.join(dir, "shell.json"), JSON.stringify({ v: 1, files: [], modulesJson: modules, appbuildJson: app })); seal();
   assert.deepEqual(check(dir, { pulled: true, modules: true }), []);
 });
+
+test("release dist: a publish refuses an APK signed by anything but the pinned release certificate, and refuses while no certificate is pinned", t => {
+  const d = dist(t);
+  for (const f of ["Vyre_0.2.0_android.apk", "Vyre-android.apk"]) {
+    fs.writeFileSync(path.join(d, f), "apk");
+  }
+  const sums = fs.readdirSync(d).filter(f => !/^SHA256SUMS|notes\.md/.test(f)).sort().map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(d, f))).digest("hex")}  ${f}\n`).join("");
+  fs.writeFileSync(path.join(d, "SHA256SUMS"), sums);
+  const RELEASE = "a".repeat(64), DEBUG = "d".repeat(64);
+  const ok = { android: true, androidRelease: true, certPin: RELEASE, signers: () => [RELEASE] };
+  assert.deepEqual(check(d, ok), []);
+  // the debug key (Expo's template, public) is refused, and the message says so
+  const bad = check(d, { ...ok, signers: () => [DEBUG] });
+  assert.ok(bad.some(p => /is signed by d{64}, not the Android release key/.test(p) && /Vyre-android\.apk/.test(p)), bad.join("\n"));
+  assert.equal(bad.filter(p => /signed by/.test(p)).length, 2, "both names are checked");
+  // a second signer that is not the release key is refused too
+  assert.ok(check(d, { ...ok, signers: () => [RELEASE, DEBUG] }).some(p => /signed by/.test(p)));
+  // no certificate pinned yet: nothing may be released
+  assert.ok(check(d, { ...ok, certPin: "" }).some(p => /not pinned/.test(p)));
+  // an unreadable or unsigned APK is a problem, not a pass
+  assert.ok(check(d, { ...ok, signers: () => { throw new Error("DOES NOT VERIFY"); } }).some(p => /could not read its signing certificate/.test(p)));
+  assert.ok(check(d, { ...ok, signers: () => [] }).some(p => /no signing certificate/.test(p)));
+  // a dry run (no --android-release) accepts a debug-signed APK
+  assert.deepEqual(check(d, { android: true, signers: () => [DEBUG] }), []);
+});

@@ -16,7 +16,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --android --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --android --android-release --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -131,7 +131,13 @@ test("mac-app-package.sh: skip lines per missing secret, the dmg container signe
 
 test("release.yml: no step needs a secret or a file that does not exist: the only secret is the Ed25519 release key, and minisign is gone", () => {
   const secrets = [...new Set([...yml.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
-  assert.deepEqual(secrets, ["VYRE_RELEASE_SIGNING_KEY"]);
+  // The Ed25519 release key, and the Android release keystore (the debug-signed APK is signed again with it on a publish): both only in the release job, which is the one in the protected environment.
+  assert.deepEqual(secrets, ["ANDROID_KEYSTORE_B64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD", "VYRE_RELEASE_SIGNING_KEY"]);
+  const releaseJob = yml.indexOf("\n  release:\n");
+  assert.ok(releaseJob > 0 && yml.indexOf("secrets.ANDROID_KEYSTORE_B64") > releaseJob, "the Android keystore is read only in the release job");
+  assert.match(yml.slice(releaseJob, yml.indexOf("secrets.ANDROID_KEYSTORE_B64")), /environment: \$\{\{ needs\.prepare\.outputs\.publish == 'true' && 'release' \|\| '' \}\}/, "that job is the one in the release environment");
+  assert.match(yml, /shred -u "\$ks"/, "the keystore file is deleted after use");
+  assert.ok(!/echo[^\n]*ANDROID_KEY(STORE)?_(PASSWORD|B64)/.test(yml), "no secret is echoed");
   assert.ok(!/minisign/i.test(yml), "no minisign step, key or public key reference");
   // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
   for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);

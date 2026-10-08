@@ -368,9 +368,9 @@ jobs:
           path: apps/app/dist
           retention-days: 7
 
-  # The Android app, as a release file: Vyre-android.apk and Vyre_<version>_android.apk. It is the app's own release build signed with the debug key
-  # Expo's template ships, so it is sideloaded (installed from the file, not from a store); the same key signs every release, so a newer APK installs over an
-  # older one. No secret and no release key is used here; the release job lists the file in the signed SHA256SUMS.
+  # The Android app, as a release file: Vyre-android.apk and Vyre_<version>_android.apk. This job builds the app's release build, which Expo's template signs with its public debug key;
+  # no secret and no release key is used here. It is sideloaded (installed from the file, not from a store). On a publish the release job (the one in the protected environment) signs it again
+  # with Vyre's own Android key before it is listed in the signed SHA256SUMS, and check-release-dist.mjs --android-release refuses any APK not signed by the pinned release certificate.
   android:
     needs: prepare
     runs-on: ubuntu-latest
@@ -582,15 +582,36 @@ jobs:
         with:
           name: android-app
           path: ${{ runner.temp }}/android
-      - name: Add the Android app to dist (required, never optional; sideloaded)
+      - name: Add the Android app to dist (required, never optional; sideloaded), signed with the release key on a publish
+        env:
+          # The Android release key lives only in this environment's secrets (the same environment as the Ed25519 release key) and is read only in this step.
+          ANDROID_KEYSTORE_B64: ${{ env.PUBLISH == 'true' && secrets.ANDROID_KEYSTORE_B64 || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.PUBLISH == 'true' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ env.PUBLISH == 'true' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ env.PUBLISH == 'true' && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: |
+          set -euo pipefail
           apk="Vyre_${VERSION}_android.apk"
           for f in "$apk" Vyre-android.apk; do
             [ -f "$RUNNER_TEMP/android/$f" ] || { echo "the Android build has no $f; refusing to release without it"; ls "$RUNNER_TEMP/android"; exit 1; }
             cp "$RUNNER_TEMP/android/$f" "dist/$f"
           done
+          if [ "$PUBLISH" = true ]; then
+            # The android job's APK carries Expo's public debug signature. A published APK is signed again here with Vyre's own key (apksigner replaces the signature), or the release stops:
+            # an APK signed with the debug key could be installed over Vyre by anyone and would inherit its data. No secret is echoed; the keystore file is shredded when this step ends.
+            for v in ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+              [ -n "${!v}" ] || { echo "no $v in the release environment: refusing to publish a debug-signed Android app"; exit 1; }
+            done
+            ks="$RUNNER_TEMP/vyre-release.keystore"
+            trap 'shred -u "$ks" 2>/dev/null || rm -f "$ks"' EXIT
+            (umask 077; printf %s "$ANDROID_KEYSTORE_B64" | base64 -d > "$ks")
+            bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            "$bt/apksigner" sign --ks "$ks" --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD "dist/$apk"
+            "$bt/apksigner" verify --print-certs "dist/$apk" | grep -E "certificate SHA-256 digest" | tee -a "$GITHUB_STEP_SUMMARY"
+            cp "dist/$apk" dist/Vyre-android.apk
+          fi
           echo "Android: $apk and Vyre-android.apk, from this run's android job (sideloaded)" | tee -a "$GITHUB_STEP_SUMMARY"
-          printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. The same key signs every release, so a newer file installs over an older one.\n' >> dist/notes.md
+          printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. It is signed with Vyre's own Android release key, the same key every release, so a newer file installs over an older one and nothing signed with another key can.\n' >> dist/notes.md
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -632,7 +653,7 @@ jobs:
         run: |
           # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --modules --installer --android --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer --android --android-release --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
             node scripts/check-release-dist.mjs dist --modules --installer --android --setup ${MAC_FLAG:-}
           fi
