@@ -404,7 +404,7 @@ const raw = async (w, method, path, { origin, headers = {}, body } = {}) => {
 
 /** A reservation code for a name, asked for as the web page does (no key, any origin), from its own address so the per-address count of claims is not spent. */
 const codeFor = async (w, name, ip = "203.0.113.200") => {
-  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip, origin: "https://vyre.run" }, body: JSON.stringify({ name }) }));
+  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip, origin: "https://vyre.run" }, body: JSON.stringify({ name }) }), w.env);
   const j = await r.json();
   assert.ok(j.data, JSON.stringify(j));
   return j.data.code;
