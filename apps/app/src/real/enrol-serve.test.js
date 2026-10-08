@@ -96,7 +96,7 @@ test("the wiring: the card on Now and the Devices screen both ask for the reques
   const read = p => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   const cards = read("../../screens/pairing/PairingCards.tsx"), source = read("../../screens/pairing/source.ts"), add = read("../../screens/devices/RealAdd.tsx"), phone = read("./enrol-phone.ts");
   assert.match(cards, /void source\.serveEnrol\(\)/, "the card on Now asks on mount and on every wink event (load)");
-  assert.match(source, /serveEnrol: async \(\) => \{[^}]*import\("\.\.\/\.\.\/src\/real\/enrol-phone"\)/);
+  assert.match(source, /serveEnrol: async \(\) => [\s\S]*?import\("\.\.\/\.\.\/src\/real\/enrol-phone"\)/);
   assert.match(add, /setInterval\(run, 2000\)/);
   assert.match(add, /import\("\.\.\/\.\.\/src\/real\/enrol-phone"\)\.then\(\(m\) => m\.serveEnrol\(\)\)/);
   assert.match(phone, /serveEnrolWith\(\{/);

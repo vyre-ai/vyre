@@ -502,7 +502,7 @@
  "core/wink/node/real.test.js": 1,
  "core/wink/node/relay-peer.test.js": 3,
  "core/wink/node/shim.test.js": 6,
- "core/wink/pairing.test.js": 65,
+ "core/wink/pairing.test.js": 66,
  "core/wink/reset.test.js": 16,
  "core/wink/storage/bridge.test.js": 18,
  "core/wink/storage/discover.test.js": 6,
