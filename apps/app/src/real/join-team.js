@@ -46,9 +46,10 @@ export function parseInviteLink(link) {
 
 /**
  * The space's record from the names directory, verified from its genesis against the pin the link carries (the link's own version of the list), with the sealed record opened.
- * @param {{ fetch: typeof fetch, base: string, now?: () => number }} d @param {string} label @param {{ id: string, seq: number, head: string }} pin
+ * @param {{ fetch: typeof fetch, base: string, now?: () => number }} d @param {string} label @param {{ id: string, seq: number, head: string } | null} pin
  */
 export async function resolveSpace(d, label, pin) {
+  // `pin` null: the owner reading their own space to make a link; the list is verified from its genesis and the pin the link will carry is its head now.
   const now = d.now ?? Date.now;
   const root = d.base.replace(/\/+$/, "");
   const get = async (/** @type {string} */ name) => {
@@ -69,10 +70,11 @@ export async function resolveSpace(d, label, pin) {
   };
   if (!r || r.name !== label || r.kind !== "space" || !Array.isArray(r.ops)) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   /** @type {any} */ let state;
-  try { state = await C.verifyChain(r.ops, { now: now() + C.SKEW_MS, ownerOps, liveFrom: pin.seq + 1 }); } catch { throw refuse("wrong_space", "That space could not be verified. Ask for a new invite."); }
+  try { state = await C.verifyChain(r.ops, { now: now() + C.SKEW_MS, ownerOps, ...(pin ? { liveFrom: pin.seq + 1 } : {}) }); } catch { throw refuse("wrong_space", "That space could not be verified. Ask for a new invite."); }
   if (state.id !== r.id) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   const seen = await C.checkAnswer(pin, r.ops);
   if (!seen.ok) throw refuse("forged", "This invite could not be verified. Ask for a new one.");
+  const head = C.pinOf(state);
   const rec = r.rec;
   if (!r.sealed || !rec) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   try {
@@ -83,7 +85,7 @@ export async function resolveSpace(d, label, pin) {
   } catch { throw refuse("wrong_space", "That space's record does not check out. Ask for a new invite."); }
   const payload = await openRecord(label, r.sealed);
   if (!payload) throw refuse("wrong_space", "That space's record could not be opened.");
-  return { id: state.id, payload };
+  return { id: state.id, payload, pin: head };
 }
 
 /** Wait for a promise at most `ms`. @template T @param {Promise<T>} p @param {number} ms @param {() => Error} onTimeout @returns {Promise<T>} */
@@ -96,7 +98,7 @@ const within = (p, ms, onTimeout) => new Promise((resolve, reject) => { const t 
  *   connect: (o: any) => any, openServerPeer: (conn: any, o?: any) => Promise<any>,
  *   crypto: any,
  *   signPresence?: (req: { op: string, space: string, fields: any, payload_hash: string, prompt?: string, person: string }) => Promise<any>,
- *   presenceKey?: () => Promise<{ key_id: string, spki: string, signer: string, attestation?: any } | null | undefined>,
+ *   presenceKey?: (invite: string) => Promise<{ key_id: string, spki: string, signer: string, rp?: string, attestation?: any } | null | undefined>,   // asked with the invite id: a release server wants the key attested over "join:" + that id (kernel/seal/proof.js join)
  *   words?: string[],
  *   store?: { get(key: string): Promise<any> | any, put(key: string, value: any): Promise<void> | void, delete?(key: string): Promise<void> | void },
  * }} Deps
@@ -193,9 +195,9 @@ export async function openInvite(d, link) {
         const req = { op: "grant.accept", space: spaceId, fields, payload_hash: payloadHash("grant.accept", spaceId, fields), person: d.who.id, prompt: `Join ${view.label}` };
         const proof = await d.signPresence(req);
         if (!proof || typeof proof !== "object") throw refuse("no_proof", "The yes was not given.");
-        const pk = typeof d.presenceKey === "function" ? await d.presenceKey() : null;
+        const pk = typeof d.presenceKey === "function" ? await d.presenceKey(p.invite) : null;
         const bind = pk && typeof pk.key_id === "string" && typeof pk.spki === "string" && typeof pk.signer === "string"
-          ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64url(await d.who.sign(joinBytes(p.invite, spaceId, d.who.id, pk.key_id, pk.spki))), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
+          ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64url(await d.who.sign(joinBytes(p.invite, spaceId, d.who.id, pk.key_id, pk.spki))), ...(typeof pk.rp === "string" && pk.rp ? { rp: pk.rp } : {}), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
           : undefined;
         const got2 = await home.call("grants.invites.accept", [p.invite, { seen, proof, ...(bind ? { bind } : {}) }]);
         const membership = got2 && got2.membership ? got2.membership : got2;

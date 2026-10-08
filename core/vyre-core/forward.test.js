@@ -186,6 +186,15 @@ test("vyre-core forward: on a server the relay, and only the relay, takes a pair
     assert.equal(sc.presence.keys().length, 1, "the key is core's");
     const again = await reg.call("presence.enroll", { ...body, name: "second" }, "module:relay");
     assert.match(again.error?.message || "", /already has a key/, "no proof, no second key");
+    // the app's Secure Enclave key takes the setup key's place: the relay carries the setup key's proof, core checks it
+    const enclave = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const cap = { kind: "capsule", name: "the test Mac", public_key: enclave.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 };
+    const ts = String(Date.now()), nonce = "nonce-0123456789";
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\npresence.enroll\n${inputHash(cap)}\n${ts}\n${nonce}`), { key: app.privateKey, dsaEncoding: "der" }).toString("base64url");
+    const handed = await reg.call("presence.enroll", { ...cap, core_proof: `device key=${ok.data.id} ts=${ts} nonce=${nonce} sig=${sig}` }, "module:relay");
+    assert.ok(handed.data && handed.data.kind === "capsule", JSON.stringify(handed));
+    assert.deepEqual(sc.presence.keys().map((/** @type {any} */ k) => k.kind), ["capsule"]);
+    assert.equal((await reg.call("presence.enroll", { ...cap, core_proof: "x" }, "cli")).error?.code, "core_owned", "a person's call stays core's");
   } finally { coreHolder.link = null; }
   void link;
 });

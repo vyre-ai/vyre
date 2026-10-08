@@ -30,7 +30,7 @@ function fakes({ after = 1, contested = false, words = ["lantern", "quiet", "riv
 const make = (f, extra = {}) => createAddServer({ client: f.client, relay: "ws://x", identity: async () => ({ id: "per_abc" }), connect: f.connect, pair: async qr => { f.calls.paired.push(qr); }, sleep: () => new Promise(r => setTimeout(r, 2)), pollMs: 2, ...extra });
 
 test("the two choices: Records first and the default, then the small server; the line carries the code and the choice, the variables on sh", () => {
-  assert.deepEqual(CHOICES.map(c => [c.id, c.label, c.store]), [["records", "With Records", "auto"], ["plain", "Without Records", "sqlite"]]);
+  assert.deepEqual(CHOICES.map(c => [c.id, c.label, c.store]), [["records", "With Records (recommended)", "auto"], ["plain", "Without Records", "sqlite"]]);
   assert.equal(DEFAULT_CHOICE, "records");
   assert.match(CHOICES[0].note, /8 GB.*4 GB/);
   assert.match(CHOICES[1].note, /2 GB/);
@@ -41,7 +41,7 @@ test("the two choices: Records first and the default, then the small server; the
   assert.equal(installLine("1.0.0; rm -rf /", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a version that is not one is ignored");
   assert.equal(choiceOf("nope").id, "records");
   assert.equal(GAINS.length, 4);
-  assert.match(GAINS.join(" "), /sleeps.*phone.*Watchers.*Teammates/);
+  assert.match(GAINS.join(" "), /sleeps.*phone.*Watchers.*team/);
 });
 
 test("memory: said plainly when the server cannot run the choice, and nothing when it can", () => {
@@ -138,4 +138,13 @@ test("add-server: starting again drops the old run (its offer and its lines neve
   assert.equal(a.state.choice, "plain");
   a.stop();
   assert.equal(a.state.stage, "idle");
+});
+
+test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Records choice", async () => {
+  const f = fakes({ after: 3, lines: [] });
+  const a = make(f);
+  await a.begin("plain", "mac");
+  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "sqlite", os: "mac" }));
+  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=sqlite sh$/);
+  a.stop();
 });

@@ -187,8 +187,6 @@ export const PERSON_ONLY = new Map([
   ["relay.enable", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.join", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.pair.ticket", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
-  ["relay.setup.claim", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
-  ["relay.setup.claim-token", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.web.pin", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.web.release", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["runner.lock", "controls the person's own machine: starts, stops, locks and moves sessions on it"],

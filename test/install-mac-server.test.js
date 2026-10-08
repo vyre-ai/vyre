@@ -425,20 +425,21 @@ test("install-mac-server.sh: the full install is a server (config.json says mach
   assert.notEqual(x.r.status, 0); assert.match(x.r.stderr, /not valid JSON/);
 });
 
-test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
+test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it points to the app and prints no pairing code", t => {
   let m = sys(t);
   let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /Check words: come pilot company release/);
-  assert.match(r.stdout, /They should match the four on your screen\./);
-  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.match(r.stdout, /Your four words: come pilot company release/);
+  assert.match(r.stdout, /If it shows the same four, choose Same\./);
+  assert.match(r.stdout, /Go back to the Vyre app to finish\./);
   assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
   assert.ok(!(r.stdout + r.stderr).includes(CODE));
   m = sys(t);
   r = run({ ...m.env }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
-  assert.match(r.stdout, /wink\.server\.code/);
+  assert.ok(!/Your four words|Go back to the Vyre app/.test(r.stdout));
+  assert.match(r.stdout, /Open the Vyre app, choose "Add a server", and run the line it shows on this Mac\./);
+  assert.ok(!/wink\.server\.code|long code/i.test(r.stdout), "no terminal pairing text");
   // words that cannot be read are said so, with the command that shows them
   m = sys(t);
   fs.rmSync(path.join(m.src, "bin"), { recursive: true });
@@ -449,8 +450,8 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   fs.writeFileSync(path.join(l.src, "bin", "vyre"), "process.exit(1)\n");
   r = run({ ...l.env, VYRE_CODE: CODE }, ["--yes", "--from", l.src]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
-  assert.match(r.stdout, /Back in the Vyre app/);
+  assert.match(r.stdout, /four words did not show yet\. To see them, run: .*\/vyre words/);
+  assert.match(r.stdout, /Go back to the Vyre app/);
 });
 
 test("install-mac-server.sh: a failing root installer stops the script, says so, and shows no code", t => {

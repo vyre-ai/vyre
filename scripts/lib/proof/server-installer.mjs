@@ -9,7 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 
 const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", ...opt });
 
-/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string }} o */
+/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean }} o */
 export async function startInstallerServer(o) {
   if (!process.env.CI) throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds");
   const script = path.join(o.repo, "scripts", "install-box.sh");
@@ -30,8 +30,13 @@ export async function startInstallerServer(o) {
   child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });
   const exit = await new Promise(res => child.on("close", res));
   fs.writeFileSync(logFile, all.replace(/VYRE-?CODE=\S+/g, "VYRE_CODE=<hidden>"));
-  if (exit !== 0) throw new Error(`the installer exited ${exit}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
-  const m = all.match(/Check words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
+  if (exit !== 0 && !o.noCodeProbe) throw new Error(`the installer exited ${exit}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
+  if (o.noCodeProbe) {
+    // the line run with no code from the app: what it printed, and whether it started a pairing of its own (a QR, a long code or a typed code)
+    sh(`cd ${dir} && docker compose -p vyre down -v --remove-orphans >/dev/null 2>&1`);
+    return { output: all, exit };
+  }
+  const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const printed = m ? m[1] : "";
   const exec = (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", tool, JSON.stringify(input)], { encoding: "utf8" });

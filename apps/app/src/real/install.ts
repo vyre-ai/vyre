@@ -7,6 +7,8 @@ import { macDeviceKey, macEnclavePublic, macKeyAvailable, shellKeyHeld } from ".
 import { agreePublic } from "../identity/agree.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
+import { claimRoute, helloHere } from "../identity/windows-claim.js";
+import { shellKind } from "../shell/shell.ts";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, identityFrom, nameAnswerChecked } from "../../screens/install/real.js";
 
@@ -46,7 +48,7 @@ export async function reservedName(code: string): Promise<string> {
   catch { throw Object.assign(new Error("Cannot reach the names directory right now."), { code: "unreachable" }); }
   const body = await r.json().catch(() => null);
   if (r.ok && body?.data?.name) return String(body.data.name);
-  if (body?.error?.code === "bad_code") throw Object.assign(new Error("That reservation code is not valid. It lasts 24 hours and works once, and reserving the name again replaces it. Reserve the name again at vyre.run/setup."), { code: "bad_code" });
+  if (body?.error?.code === "bad_code") throw Object.assign(new Error("That code does not work. It may have run out, been used, or been replaced by a newer one. Reserve the name again at vyre.run/setup."), { code: "bad_code" });
   throw Object.assign(new Error(r.status === 429 ? "Too many tries from here. Wait a little." : "Cannot check this code right now. Try again."), { code: body?.error?.code ?? "directory" });
 }
 
@@ -68,17 +70,20 @@ export async function createIdentity(code: string, deviceLabel: string, password
     try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error(Platform.OS === "ios" ? "Set up Face ID or Touch ID on this iPhone, then create your name." : "Set up a screen lock and a fingerprint or face on this phone, then create your name."), { code: "no_biometrics" }); }
   }
   // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
-  const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
-  if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This computer would not keep your key, so no name was claimed."), { code: "cannot_keep" });
+  // A Windows PC claims with its Windows Hello passkey (identity/windows-claim.js): the DPAPI key is a held one, which a team's server will not take and which cannot change the name's list.
+  const route = await claimRoute({ shell: shellKind(), origin: typeof location !== "undefined" ? location.origin : undefined, helloAvailable: helloHere });
+  const hello = route.how === "windows-hello" ? route : null;
+  const macKey = macKeyAvailable() && !hello ? await macDeviceKey(true) : null;
+  if (macKeyAvailable() && !hello && !macKey) throw Object.assign(new Error("This computer would not keep your key, so no name was claimed."), { code: "cannot_keep" });
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
   // The Mac and Windows apps' windows are web pages too, but they hold their own key: they claim with it, never with a browser passkey (IR-32).
-  const claim = !macKey && Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
-  if (macKeyAvailable()) enclave = (await macEnclavePublic(true)) ?? undefined; // none on a Mac with no Secure Enclave: its entry signs alone
+  const claim: typeof claimIdentity = hello ? (a) => claimIdentityWithPasskey({ ...a, rp: hello.rp }) : !macKey && Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
+  if (macKeyAvailable() && !hello) enclave = (await macEnclavePublic(true)) ?? undefined; // none on a Mac with no Secure Enclave: its entry signs alone
   // This device's agreement key (its public point goes in the entry as `agree`): none in a plain browser.
   const agreeKey = (await agreePublic(true)) ?? undefined;
   try {
     const made = await claim({
-      name, code, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...((await shellKeyHeld()) ? { held: true } : {}),
+      name, code, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...(!hello && (await shellKeyHeld()) ? { held: true } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

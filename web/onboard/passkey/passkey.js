@@ -9,7 +9,7 @@
 // one WebAuthn ceremony and hand back to onboarding.
 
 import { h, put } from "../../js/dom.js";
-import { canProve, callWithCode, callWithGrant, call } from "../../js/api.js";
+import { canProve, callWithCode } from "../../js/api.js";
 import { icon, mark, wordmark } from "../../js/icons.js";
 import { signInAfterEnroll } from "../../js/person.js";
 
@@ -19,11 +19,7 @@ const root = /** @type {HTMLElement} */ (document.getElementById("pk"));
 // out of the address bar at once so it is never left in history or shown over a shoulder.
 const frag = new URLSearchParams(location.hash.slice(1));
 const code = frag.get("e");
-// A setup claim link (#claim=<token>&spki=<key>) is the other way in: the setup page's one-time token, checked by the box.
-const claim = frag.get("claim"), claimKey = frag.get("spki");
-if (code || claim) history.replaceState(null, "", location.pathname + location.search);
-/** What the box's relay.setup.claim answered: { grant, expires, rpId }, once the link has been checked. @type {null | { grant: string, rpId: string }} */
-let earned = null;
+if (code) history.replaceState(null, "", location.pathname + location.search);
 
 const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -61,7 +57,7 @@ function screen() {
     try {
       cred = await navigator.credentials.create({ publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: "Vyre", id: earned ? earned.rpId : location.hostname },
+        rp: { name: "Vyre", id: location.hostname },
         user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nameIn.value.trim() || "you", displayName: nameIn.value.trim() || "you" },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
         authenticatorSelection: { userVerification: "required" }, timeout: 60_000,
@@ -73,10 +69,9 @@ function screen() {
       const input = {
         kind: "passkey", name: nameIn.value.trim() || "This device",
         public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
-        rp_id: earned ? earned.rpId : location.hostname, credential_id: b64url(cred.rawId),
+        rp_id: location.hostname, credential_id: b64url(cred.rawId),
       };
-      if (earned) await callWithGrant("presence.enroll", input, earned.grant);
-      else await callWithCode("presence.enroll", input, /** @type {string} */ (code));
+      await callWithCode("presence.enroll", input, /** @type {string} */ (code));
     } catch (e) {
       btn.disabled = false;
       put(st, /** @type {any} */ (e)?.message || String(e));
@@ -96,28 +91,7 @@ function screen() {
   nameIn.focus();
 }
 
-/** The link failed (used, expired, or for another address): say so and where to go. @param {string} why */
-function claimFailed(why) {
-  shell(
-    h("div", { class: "lbl" }, "Passkey"),
-    h("h1", { class: "h1" }, "This link did not work."),
-    h("p", { class: "lead" }, `${why} Go back to the setup page and press "Get a new link": each one works once, for two minutes.`));
-}
-
-if (claim) {
-  // The link is checked the moment the page opens, before anything else: the token is single use and lasts two minutes.
-  if (!canProve()) shell(h("div", { class: "lbl" }, "Passkey"), h("h1", { class: "h1" }, "This browser cannot create a passkey."),
-    h("p", { class: "lead" }, "Open the link in Safari or Chrome, or scan its code with a phone."));
-  else if (!claimKey) claimFailed("The link is missing part of itself.");
-  else {
-    shell(h("div", { class: "lbl" }, "Passkey"), h("h1", { class: "h1" }, "Checking your link"), h("p", { class: "lead" }, "One moment."));
-    call("relay.setup.claim", { token: claim, spki: claimKey }).then(r => {
-      if (!r || !r.grant || !r.rpId) return claimFailed("The server did not accept it.");
-      earned = { grant: String(r.grant), rpId: String(r.rpId) };
-      screen();
-    }, e => claimFailed(String((e && e.message) || "The server did not accept it.").replace(/[.]*$/, ".")));
-  }
-} else if (!canProve()) {
+if (!canProve()) {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This browser cannot create a passkey." ),

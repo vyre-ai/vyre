@@ -1,5 +1,6 @@
 // @ts-check
 // The step runner for scripts/proof-install.mjs: one line per step, PASS or FAIL with the reason, and a log file per run.
+// A step that throws an error with `skip: true` is SKIPped with its message (a thing this walk cannot do, said plainly), not failed.
 // A step names what it needs; when a needed step failed it prints SKIP and says which one, so a red run points at the first break and not at its echoes.
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +34,11 @@ export function createRun(o) {
       say(line); log(line); results.push({ name, ok: true, why: typeof r === "string" ? r : "", ms: Date.now() - t0 }); done.set(name, true);
       return true;
     } catch (e) {
+      if (/** @type {any} */ (e) && /** @type {any} */ (e).skip) {
+        const line = `SKIP  ${name}: ${/** @type {Error} */ (e).message}`;
+        say(line); log(line); results.push({ name, ok: null, why: /** @type {Error} */ (e).message, ms: Date.now() - t0 }); done.set(name, false);
+        return false;
+      }
       const why = String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e).replace(/\s+/g, " ").slice(0, 400);
       const code = /** @type {any} */ (e) && /** @type {any} */ (e).code ? ` [${/** @type {any} */ (e).code}]` : "";
       const line = `FAIL  ${name}: ${why}${code}`;

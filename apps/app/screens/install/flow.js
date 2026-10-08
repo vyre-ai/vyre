@@ -1,7 +1,7 @@
 // @ts-check
 import { PHONE_SAY, WEB_SAY } from "./first-run.js";
 // The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
-// Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
+// Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > (cmd, when no server is paired) > look > members (invites, Skip) > ... > done.
 // spaces > join > invite > joined.
 
 export const NAMES_TAKEN = ["alex", "chris", "juniper", "vyre", "admin"];
@@ -39,21 +39,18 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, mycloud: null, adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
+  welcome: null, mycloud: null, choose: null, adding: "scan", browser: null, nosetup: "browser", novyre: "scan", addphone: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", cmd: "create", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. */
-export function backOf(/** @type {string} */ step, /** @type {{ have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
+export function backOf(/** @type {string} */ step, /** @type {{ have?: boolean, welcome?: boolean, browser?: boolean, first?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
+  // The first run's three choices: Join a team and Add a server go back to them.
+  if (ctx.first && (step === "join" || step === "mycloud")) return "choose";
   if (ctx.welcome && step === "name") return "welcome";
   if (ctx.welcome && step === "have") return "welcome";
   if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
-  // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
-  if (ctx.macFlow) {
-    if (step === "create") return "macwhere";
-    if (step === "cmd" || step === "here") return "create";
-  }
   // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
   if (step === "scan" && ctx.have) return "have";
   return BACK[step] ?? null;
@@ -71,8 +68,8 @@ export const nextSetup = (/** @type {string} */ step, /** @type {string} */ who 
   return l[l.indexOf(step) + 1] ?? "done";
 };
 
-/** Steps worth coming back to: a closed app reopens on one of these. Everything before "where" is quick and starts again. */
-const RESUMABLE = ["where", "cmd", "here", ...SETUP_STEPS];
+/** Steps worth coming back to: a closed app reopens on one of these. Everything before "cmd" is quick and starts again. */
+const RESUMABLE = ["cmd", ...SETUP_STEPS];
 export const isResumable = (/** @type {string} */ step) => RESUMABLE.includes(step);
 
 /** What is kept so a closed app resumes: the step and what the person entered. No secret, no code, no key. */
@@ -100,12 +97,8 @@ export function startStep(/** @type {string|undefined} */ start) {
   return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
 }
 
-/** Where "Where will it live?" sends each choice. */
-export const WHERE_STEP = { server: "cmd", here: "here" };
-
 /** The line shown under a made space. */
-export function homeLine(/** @type {"server"|"here"} */ where) {
-  if (where === "here") return "Lives on this computer. Unreachable while it sleeps.";
+export function homeLine(/** @type {"server"} */ _where) {
   return "Lives on your server.";
 }
 

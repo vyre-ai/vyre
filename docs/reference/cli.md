@@ -60,6 +60,7 @@ In the order `vyre help` lists them.
 | [`vyre dismiss`](#vyre-dismiss) | stop a ringing alarm, timer or reminder without finishing a todo |
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
+| [`vyre words`](#vyre-words) | the four words to compare with the Vyre app while it adds this server |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
@@ -581,6 +582,17 @@ What the watchers are doing, and turning them on and off.
 ```
 vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
 ```
+
+### vyre words
+
+The four words to compare with the Vyre app while it adds this server.
+
+```
+vyre words [--json]
+```
+
+While the Vyre app is adding this server, the server and the app each show four words.
+If they are the same, choose Same in the app. This prints the server's four.
 
 ### vyre connect
 

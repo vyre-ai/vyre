@@ -14,9 +14,15 @@ import { installLine } from "../../screens/install/first-run.js";
 export const SETUP_TTL_MS = 3_600_000;
 
 /** The two choices, the same for every space: Records recommended and first, preselected. `store` is VYRE_STORE on the install line. */
+/** Which kind of machine the server is: the line differs (a Linux server or cloud machine, or a Mac that stays on). */
+export const SERVER_KINDS = Object.freeze([
+  { id: "linux", label: "A Linux server, or a cloud server", where: "On the server, paste this line. Use your own account, not root." },
+  { id: "mac", label: "A Mac that stays on", where: "On the Mac, open Terminal and paste this line. It asks for the Mac password once." },
+]);
+
 export const CHOICES = Object.freeze([
-  Object.freeze({ id: "records", store: "auto", label: "With Records", note: "Recommended. A server with 8 GB of memory is right; 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
-  Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "A small server. 2 GB is enough.", minMb: 1800, recommendedMb: 1800 }),
+  Object.freeze({ id: "records", store: "auto", label: "With Records (recommended)", note: "Keeps your contacts, projects and tasks. Needs 8 GB of memory. 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
+  Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "For a small server. 2 GB is enough. You can add Records later.", minMb: 1800, recommendedMb: 1800 }),
 ]);
 export const DEFAULT_CHOICE = "records";
 
@@ -25,7 +31,7 @@ export const GAINS = Object.freeze([
   "Your assistants keep working when this computer sleeps.",
   "Your phone reaches everything from anywhere.",
   "Watchers and schedules run all the time.",
-  "Teammates can join.",
+  "Your team can join.",
 ]);
 
 /** @param {string} id */
@@ -40,20 +46,20 @@ export function memoryNote(id, memoryMb) {
   const c = choiceOf(id);
   if (!Number.isFinite(memoryMb) || memoryMb <= 0) return null;
   const gb = Math.round(memoryMb / 102.4) / 10;
-  if (c.id === "records" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than Records needs (4 GB). It will start without Records; you can turn them on in Settings when it has the memory.`;
+  if (c.id === "records" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than Records needs. Vyre will start without Records. You can change this in Settings.`;
   if (c.id === "plain" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than the 2 GB a small server needs.`;
   return null;
 }
 
 /** Plain words by code; nothing a server or the network says reaches the screen. */
 export const MESSAGES = Object.freeze({
-  expired: "The hour for this install line ran out. Start again to get a new one.",
-  mismatch: "Those words are not the ones on your server, so this is not your server. Nothing was opened. Start again.",
-  contested: "Two servers used this install line. Start again to get a new one.",
-  relay: "Vyre could not reach its relay. Check this device's connection, then start again.",
-  connect: "Vyre found your server but could not open a connection to it. Start again.",
-  pair: "Your server did not finish pairing. Start again.",
-  key: "This device could not make the key for the install line.",
+  expired: "The hour for this line ran out. Start again for a new one.",
+  mismatch: "Those words are different, so this may not be your server. Nothing was connected. Start again.",
+  contested: "Two servers used this line. Start again for a new one.",
+  relay: "Vyre could not connect. Check your internet, then start again.",
+  connect: "Vyre found your server but could not connect to it. Start again.",
+  pair: "Your server did not finish connecting. Start again.",
+  key: "This computer could not make a key for the line. Try again.",
 });
 
 /**
@@ -64,7 +70,7 @@ export const MESSAGES = Object.freeze({
 
 /**
  * @param {{ client: SetupClient, relay: string, identity: () => Promise<{ id: string }>, connect: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<{ call: (tool: string, input?: object) => Promise<any>, close: () => void }>,
- *   pair: (qr: string) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
+ *   pair: (qr: string, opts?: { pageKey?: any }) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
  */
 export function createAddServer(o) {
   const now = o.now || Date.now;
@@ -79,8 +85,8 @@ export function createAddServer(o) {
   const set = (/** @type {Partial<AddServerState>} */ patch) => { state = { ...state, ...patch }; o.onChange?.(state); };
   const stop = (/** @type {keyof typeof MESSAGES} */ code) => { run++; pending = null; set({ stage: "stopped", error: { code, message: MESSAGES[code] } }); };
 
-  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" or "plain" */
-  async function begin(choice = DEFAULT_CHOICE) {
+  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" or "plain" @param {string} [os] "linux" (the default) or "mac": which installer the line runs */
+  async function begin(choice = DEFAULT_CHOICE, os = "linux") {
     const mine = ++run;
     pending = null;
     const c = choiceOf(choice);
@@ -91,7 +97,7 @@ export function createAddServer(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return stop("key"); }
     if (mine !== run) return;
-    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
+    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store, os }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
     void followMailbox(mine, key, secret);
     void waitForBox(mine, key, secret);
     void (async () => {
@@ -161,7 +167,7 @@ export function createAddServer(o) {
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }
     try { chan.close(); } catch { /* gone */ }
     if (mine !== run) return;
-    try { await o.pair(qr); } catch { if (mine === run) stop("pair"); return; }
+    try { await o.pair(qr, { pageKey: p.key }); } catch { if (mine === run) stop("pair"); return; }
     if (mine !== run) return;
     set({ stage: "done" });
   }

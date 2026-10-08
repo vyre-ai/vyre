@@ -13,6 +13,7 @@ import { startSealer } from "./client.js";
 import { APPLE_ROOT_PEM, APPLE_ROOT_SHA256, APPATTEST_VERIFIED, appAttestVerifier, enrolClientData, cbor } from "./appattest.js";
 import { proofBytes } from "./wire.js";
 import { person, signer, tmp, SPACE } from "./testing.js";
+import { b64u, eidOf, makeGenesis } from "../identity/chain.js";
 
 const APP = "TEAM123456.com.example.vyre";
 const sha = (/** @type {any} */ b) => crypto.createHash("sha256").update(b).digest();
@@ -181,4 +182,35 @@ test("AA-11: fixed proofBytes vectors (the app's build must reproduce them byte 
   const { vectors } = JSON.parse(fs.readFileSync(new URL("./proofbytes-vectors.json", import.meta.url), "utf8"));
   for (const v of vectors) assert.equal(proofBytes(v.proof).toString("utf8"), v.bytes);
   assert.ok(vectors.some((/** @type {any} */ v) => v.proof.assertion && v.proof.signature), "a vector carries both fields");
+});
+
+// ---- the invitee's first key on a release server (kernel/seal/proof.js join): App Attest over the token "join:" + the invite id ----
+const edKeyJ = async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const pub = publicKey.export({ type: "spki", format: "der" }).subarray(-32), eid = await eidOf(pub);
+  return { eid, pub: b64u(pub), sign: (/** @type {any} */ m) => crypto.sign(null, Buffer.from(m), privateKey), entry: (/** @type {string} */ kind) => ({ eid, kind, pub: b64u(pub) }) };
+};
+test("join: an App Attest attestation over \"join:\" + the invite id is what a release server takes as the invitee's attested key; the app's bytes are the process's bytes; another invite's attestation is refused", async t => {
+  const { joinBytes } = await import("./wire.js");
+  const { enrolClientData: appBytes } = await import("../../apps/app/modules/vyre-signer/presence-proof.js");
+  const w = world(), r = setup(t, w);
+  const INVITE = "inv_" + "c".repeat(32);
+  // the signer in the app and the sealing process hash the same bytes for the same token and key
+  const probe = signer("per_probe");
+  assert.equal(Buffer.from(appBytes(`join:${INVITE}`, probe.enrolment.spki)).toString("hex"), enrolClientData(`join:${INVITE}`, probe.enrolment.spki).toString("hex"));
+  const identity = async () => {
+    const d1 = await edKeyJ(), rc = await edKeyJ(), t0 = Date.now() - 2 * 86_400_000;
+    const ops = [await makeGenesis({ kind: "person", entry: d1.entry("device"), code: rc.entry("code"), nonce: "nonce-" + crypto.randomBytes(4).toString("hex"), ts: t0, sign: d1.sign })];
+    return { id: ops[0].id, ops, d1 };
+  };
+  const join = async (/** @type {any} */ I, /** @type {any} */ sg, /** @type {string} */ tokenInvite, extra = {}) => {
+    const att = w.attest(enrolClientData(`join:${tokenInvite}`, sg.enrolment.spki));
+    const bind = { eid: I.d1.eid, sig: b64u(I.d1.sign(joinBytes(INVITE, SPACE, I.id, sg.key_id, sg.enrolment.spki))) };
+    return r.s.join({ chain: person(I.id), person: I.id, ops: I.ops, bind, invite: INVITE, key_id: sg.key_id, spki: sg.enrolment.spki, signer: sg.enrolment.signer, attestation: { format: "apple-appattest", key_id: w.keyId.toString("base64"), attestation: att.toString("base64") }, ...extra });
+  };
+  const I = await identity(), sg = signer(I.id);
+  assert.equal(await code(join(I, sg, "inv_" + "d".repeat(32))), "bad_attestation", "an attestation made for another invite is no attestation for this one");
+  const ok = await join(I, sg, INVITE);
+  assert.equal(ok.joined, true);
+  assert.equal(ok.attested, true, "the key is enrolled as attested hardware, not merely unattested");
 });

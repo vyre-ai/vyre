@@ -19,77 +19,52 @@ export function firstStep(kind, canClaim) {
 
 export const WELCOME = {
   title: "Vyre",
-  line: "Your assistants, your people and your work, in one place you control.",
-  start: "Get started",
-  have: "I already have Vyre",
+  line: "Your assistants, your team and your work, in one place you control.",
+  start: "Start",
+  have: "I already have a name",
 };
 
 /** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to. */
 export const SERVER_SETUP_ROUTE = "/u/setup/server";
 
-/** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */
-export const MAC_WHERE = {
-  title: "Where should Vyre run?",
-  line: "Vyre runs on a computer or a server. Phones and browsers connect to it.",
-  hereTitle: "On this Mac",
-  hereLine: "Only while the Mac stays on.",
-  serverTitle: "On a server",
-  serverLine: "Shows one line to run there, then you pair with a code.",
-};
-
-/** Mac, On a server, in the boxless window (rows 4e and 4f of the prototype): type the code the server shows, then type this Mac's ack on the server. */
-export const MAC_SERVER = {
-  title: "Type the code your server shows",
-  line: "Your server shows an avatar and a code that starts with WINK.",
-  help: "The code works once. Your server shows how long it has left.",
-  connect: "Connect",
-  back: "Back",
-  ackTitle: "Type this on your server",
-  ackLine: "Your server is waiting. Type this code there to finish connecting.",
-  cancel: "Cancel",
-  doneTitle: "Connected to your server",
-  doneLine: "Vyre is running there. Setup carries on here.",
-  doneRow: "Your server",
-  doneContinue: "Continue",
-  wrongTitle: "That code is not right",
-  tries: 3,
-};
-
-/** What the Mac says when typing the server's code did not work. `left` is how many tries remain; none left ends the code. @param {string} reason @param {number} left */
-export function macServerSay(reason, left) {
-  if (reason === "expired") return { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true };
-  if (reason === "offline") return { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false };
-  if (reason === "busy") return { title: "Too many tries", line: "Wait a minute, then try again.", over: false };
-  if (left <= 0) return { title: "That code is not right", line: "It has ended. Run the line on your server again to get a new one.", over: true };
-  return { title: "That code is not right", line: `Check the code on your server and type it again. ${left} ${left === 1 ? "try" : "tries"} left.`, over: false };
-}
-
 /**
  * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
  * `code` is the one-time setup code the app made for this server and `store` the Records choice (auto, or sqlite for a small server); both ride as variables on sh, the reader of the script.
- * @param {string | null | undefined} version @param {{ code?: string, store?: string }} [vars]
+ * @param {string | null | undefined} version @param {{ code?: string, store?: string, os?: string }} [vars]
  */
 export function installLine(version, vars = {}) {
   const v = String(version ?? "").trim();
   const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
   const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? `VYRE_STORE=${vars.store === "sqlite" ? "sqlite" : "auto"}` : ""].filter(Boolean).join(" ");
+  // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice and prints the same four words.
+  if (vars.os === "mac") return `curl -fsSL ${rc ? `${base}install-mac-server.sh` : "vyre.run/box/install-mac-server.sh"} | ${env ? `${env} ` : ""}sh`;
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
+
+/** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */
+export const FIRST = {
+  title: "How will you use Vyre?",
+  join: { title: "Join a team", line: "Paste the invite your team sent you. You use their server, so you need none of your own." },
+  server: { title: "Add a server", line: "A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and teammates can reach it.", upgrades: { mac: "This upgrades My Home to My Cloud.", windows: "This sets up My Cloud." } },
+  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. You can add a server later and move everything across." },
+  windows: "Using Vyre on this PC alone is coming. For now, join a team or add a server.",
+};
+/** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
+export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
 
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());
 
-/** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
-export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
-
 /** The Mac's "Add your phone": the phone becomes the one that approves. */
 export const ADD_PHONE = {
   title: "Add your phone",
-  line: "Scan this with Vyre on your phone. Your phone becomes the one that approves.",
-  orPaste: "Or paste the long code on your phone",
-  words: "Check that the phone shows the same three words.",
-  skip: "Skip",
+  line: "Open Vyre on your phone and scan this. Your phone will approve things for you.",
+  orPaste: "Or type the code on your phone",
+  words: "Check that the phone shows the same words as this screen.",
+  skip: "Not now",
+  android: "Android: download Vyre-android.apk from the latest release on your phone and open it. Allow installs when Android asks.",
+  iphone: "iPhone: there is no App Store app yet. The install steps are on vyre.run/phone.",
   waiting: "Waiting for your phone.",
 };
 

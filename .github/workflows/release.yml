@@ -330,11 +330,10 @@ jobs:
   # mac-app workflow. It holds no release key. On a publish it runs in the protected GitHub Environment "apple" (the same approver as the release
   # environment); that environment holds the Apple secrets, and only the workflow's package step receives them, so a rehearsal on a branch never
   # sees them. Each of Developer ID signing and notarization runs only when its secret is present and otherwise prints a skip line. A build that is
-  # not Developer ID signed and notarized is checked and uploaded to the run but never goes into dist (the release job below), so an unsigned run
-  # publishes no dmg and the site keeps "built on your Mac".
+  # not Developer ID signed and notarized is ad hoc signed: it still goes into dist, and the release notes say it is sideloaded (macOS asks the person to
+  # allow it once in System Settings). MAC_SIGNING=required turns that into a failure on a publish, for when the Developer ID is in place.
   mac:
     needs: prepare
-    if: needs.prepare.outputs.channel == 'stable'
     uses: ./.github/workflows/mac-app.yml
     permissions:
       contents: read
@@ -367,6 +366,57 @@ jobs:
         with:
           name: app-web
           path: apps/app/dist
+          retention-days: 7
+
+  # The Android app, as a release file: Vyre-android.apk and Vyre_<version>_android.apk. It is the app's own release build signed with the debug key
+  # Expo's template ships, so it is sideloaded (installed from the file, not from a store); the same key signs every release, so a newer APK installs over an
+  # older one. No secret and no release key is used here; the release job lists the file in the signed SHA256SUMS.
+  android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: "Build the release APK (no sample world: it talks to the person's own Vyre)"
+        working-directory: apps/app
+        env:
+          EXPO_NO_TELEMETRY: "1"
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          npm ci --no-audit --no-fund
+          node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js"
+          npx expo prebuild -p android --no-install --clean
+          (cd android && ./gradlew --no-daemon assembleRelease)
+          apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          test -f "$apk" || { echo "no release APK"; ls -R android/app/build/outputs; exit 1; }
+          mkdir -p dist-android
+          cp "$apk" "dist-android/Vyre_${VERSION}_android.apk"
+          cp "$apk" dist-android/Vyre-android.apk
+      - name: The package, what it asks the phone for, and that it sends nothing to a central server
+        working-directory: apps/app
+        run: |
+          set -o pipefail
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badging=$("$bt/aapt2" dump badging dist-android/Vyre-android.apk)
+          echo "$badging" | grep -q "^package: name='sh.vyre.app' " || { echo "the package is not sh.vyre.app"; exit 1; }
+          echo "$badging" | grep -q "application-debuggable" && { echo "the release APK is debuggable"; exit 1; }
+          node scripts/check-android-permissions.mjs --apk dist-android/Vyre-android.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/check-apk-nothing-central.mjs --apk dist-android/Vyre-android.apk | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-app
+          path: apps/app/dist-android/*
           retention-days: 7
 
   # Join the per-arch digests into one list per image, tag it, sign it, attach the SBOM and provenance.
@@ -441,9 +491,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web, windows, mac]
+    needs: [prepare, images, manifests, app-web, windows, mac, android]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the
@@ -483,25 +533,25 @@ jobs:
           cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
           echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: env.CHANNEL == 'stable'
         with:
           name: mac-app
           path: ${{ runner.temp }}/mac
-      - name: Add the Lumen Mac files to dist (stable only; only a Developer ID signed, notarized and Gatekeeper-checked build)
-        if: env.CHANNEL == 'stable'
+      - name: Add the Lumen Mac files to dist (Developer ID signed and notarized, or ad hoc signed and sideloaded)
         env:
           MAC_SIGNING: ${{ vars.MAC_SIGNING }}
         run: |
           # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
-          # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built: unless BOTH
-          # are signed=developer-id, notarized=yes and gatekeeper=accepted (spctl and stapler validate passed in the package script), nothing goes
-          # into dist, the gate does not ask for a dmg, and the release says why.
-          ok=yes
+          # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built. Both are
+          # either signed=developer-id, notarized=yes and gatekeeper=accepted, or signed=adhoc (sideloaded: the person allows the app once in System
+          # Settings); a mix is treated as ad hoc. The repo variable MAC_SIGNING=required fails a publish that is not Developer ID signed.
+          dev=yes
           for arch in aarch64 x86_64; do
             st="$RUNNER_TEMP/mac/mac-app-$arch.status"
             [ -f "$st" ] || { echo "the Mac build has no status for $arch; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
             sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
-            grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
+            if grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st"; then :
+            elif grep -qx "signed=adhoc" "$st"; then dev=no
+            else echo "the Mac status for $arch is neither Developer ID signed and notarized nor ad hoc signed; refusing"; cat "$st"; exit 1; fi
             # The status is written by the package job (code from the tagged commit); its claim is bound to the bytes: the sha256 of each dmg and zip it lists
             # is recomputed here over the files that will be signed into the release, and all four must be listed.
             for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
@@ -511,14 +561,8 @@ jobs:
               [ -n "$want" ] && [ "$want" = "$got" ] || { echo "the Mac status for $arch does not match $f (status says '$want', the file is $got); refusing"; exit 1; }
             done
           done
-          # The repo variable MAC_SIGNING=required turns "no signed build" from a quiet skip into a failure on a publish, so a missing or expired
-          # certificate cannot ship a release without the Mac files unnoticed. Set it once the Developer ID is in the "apple" environment.
-          if [ "$ok" != yes ] && [ "$PUBLISH" = true ] && [ "$MAC_SIGNING" = required ]; then
+          if [ "$dev" != yes ] && [ "$PUBLISH" = true ] && [ "$MAC_SIGNING" = required ]; then
             echo "MAC_SIGNING is required but the Mac build is not Developer ID signed, notarized and Gatekeeper-checked; failing the release"; exit 1
-          fi
-          if [ "$ok" != yes ]; then
-            echo "Mac: no dmg in this release (not Developer ID signed and notarized); the site keeps 'built on your Mac'" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 0
           fi
           for arch in aarch64 x86_64; do
             for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
@@ -527,7 +571,26 @@ jobs:
             done
           done
           echo "MAC_FLAG=--mac" >> "$GITHUB_ENV"
-          echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, signed, notarized and Gatekeeper-checked" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$dev" = yes ]; then
+            echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, signed, notarized and Gatekeeper-checked" | tee -a "$GITHUB_STEP_SUMMARY"
+            printf '\n## The apps\n\n- Mac: Vyre-Lumen-aarch64.dmg (Apple silicon) and Vyre-Lumen-x86_64.dmg (Intel). Signed and notarized by Apple.\n' >> dist/notes.md
+          else
+            echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, ad hoc signed (sideloaded)" | tee -a "$GITHUB_STEP_SUMMARY"
+            printf '\n## The apps\n\n- Mac: Vyre-Lumen-aarch64.dmg (Apple silicon) and Vyre-Lumen-x86_64.dmg (Intel). Not yet signed with an Apple Developer ID, so you sideload it: open the dmg, drag Vyre Lumen to Applications, open it once, and if macOS says it cannot check the app, allow it in System Settings, Privacy and Security, "Open Anyway".\n' >> dist/notes.md
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: android-app
+          path: ${{ runner.temp }}/android
+      - name: Add the Android app to dist (required, never optional; sideloaded)
+        run: |
+          apk="Vyre_${VERSION}_android.apk"
+          for f in "$apk" Vyre-android.apk; do
+            [ -f "$RUNNER_TEMP/android/$f" ] || { echo "the Android build has no $f; refusing to release without it"; ls "$RUNNER_TEMP/android"; exit 1; }
+            cp "$RUNNER_TEMP/android/$f" "dist/$f"
+          done
+          echo "Android: $apk and Vyre-android.apk, from this run's android job (sideloaded)" | tee -a "$GITHUB_STEP_SUMMARY"
+          printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. The same key signs every release, so a newer file installs over an older one.\n' >> dist/notes.md
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -569,9 +632,9 @@ jobs:
         run: |
           # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --modules --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer --android --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --modules --installer --setup ${MAC_FLAG:-}
+            node scripts/check-release-dist.mjs dist --modules --installer --android --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

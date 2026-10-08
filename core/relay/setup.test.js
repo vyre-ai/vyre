@@ -17,7 +17,7 @@ import { deviceSide } from "./channel.js";
 import * as wire from "./wire.js";
 import { WEB_DENY } from "./index.js";
 import { SetupSession, setupGate, setupToolAllowed, SETUP_TOOLS } from "./setup.js";
-import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader, claimToken } from "../../relay/client/setup.js";
+import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
 import { pairTicket } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
@@ -548,43 +548,4 @@ test("setup: an added module carrying setupTools is refused at load, so its fiel
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
   }
   assert.deepEqual(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: ["sessionsfx.accounts.signin"] }, { firstParty: true }), []);
-});
-
-// ---- the claim token (B4) ----
-
-test("claim token: one challenge, burned by the first try, for one route, one address and the page's own key", async () => {
-  const c = clock();
-  const { code, key } = await newCode();
-  const s = new SetupSession({ code, now: c.now, setTimer: /** @type {any} */ (c.setTimer), clearTimer: /** @type {any} */ (c.clearTimer) });
-  const route = "r".repeat(26), origin = "https://alex.vyre.run";
-  const mint = async (host = "alex.vyre.run", k = key) => { const m = s.mintClaim(host); return { m, token: await claimToken({ privateKey: k.privateKey, route, challenge: m.challenge, host }), spki: Buffer.from(k.spki).toString("base64url") }; };
-  const take = (t, o = {}) => s.takeClaim({ token: t.token, spki: t.spki, route, origin, ...o });
-
-  let t = await mint();
-  assert.equal(take(t), "alex.vyre.run");
-  assert.throws(() => take(t), /not valid/, "a token works once");
-
-  t = await mint();
-  assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), /not valid/, "another address");
-  assert.throws(() => take(t), /not valid/, "and the wrong try burned it");
-
-  t = await mint();
-  assert.throws(() => take(t, { origin: "http://alex.vyre.run" }), /not valid/, "not https");
-  t = await mint();
-  assert.throws(() => take(t, { route: "q".repeat(26) }), /not valid/, "another box");
-  t = await mint();
-  const other = await createSetupKey();
-  assert.throws(() => take({ token: t.token, spki: Buffer.from(other.spki).toString("base64url") }), /not valid/, "not the page key the code names");
-  const forged = await mint("alex.vyre.run", other);
-  assert.throws(() => take(forged), /not valid/, "signed by another key");
-  t = await mint();
-  assert.throws(() => take({ token: t.token.slice(0, -4) + "AAAA", spki: t.spki }), /not valid/, "a bad signature");
-  t = await mint();
-  c.advance(120_001);
-  assert.throws(() => take(t), /not valid/, "after two minutes");
-  const a = s.mintClaim("alex.vyre.run"), b = s.mintClaim("alex.vyre.run");
-  assert.notEqual(a.challenge, b.challenge, "a new challenge replaces the last");
-  assert.throws(() => s.mintClaim("bad host!"), { code: "bad_input" });
-  s.end("claimed");
-  assert.throws(() => s.mintClaim("alex.vyre.run"), { code: "setup_over" });
 });

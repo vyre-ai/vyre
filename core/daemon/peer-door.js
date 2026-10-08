@@ -12,7 +12,7 @@ import { peerSession, streamPipe, T } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
 import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
-import { youngAt } from "../../kernel/identity/chain.js";
+import { youngAt, verifyWebAuthn } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
@@ -113,7 +113,7 @@ export function createPeerDoor(o) {
     const now = (o.now || Date.now)();
     if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
     const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^(inv_[0-9a-f]{32}|member)$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^(inv_[0-9a-f]{32}|member)$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,1500}$/)) return { why: "bad_input" };
     if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
     if (h.channel !== inviteeId) return { why: "wrong_channel" };
     if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
@@ -132,8 +132,10 @@ export function createPeerDoor(o) {
     lookups.push(now);
     /** @type {any} */ let entry = null;
     try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
-    if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
-    if (!verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
+    if (!entry || typeof entry.pub !== "string" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
+    // A passkey entry (a Windows PC's Windows Hello, a browser's passkey) signs the hello as a WebAuthn assertion over the same message, checked by the identity chain's own verifier against the rp the entry names;
+    // every other entry is an Ed25519 key.
+    if (entry.alg === "webauthn-es256" ? !(await verifyWebAuthn(entry.pub, String(entry.rp || ""), helloMessage(box, h), h.sig)) : !verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
     // a member's device is held to the same newcomer rule as everywhere else: under 24 hours on the identity's list it reaches nothing, unless it founded the list (an entry whose age is unknown is young)
     if (h.invite === "member" && (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since) || youngAt({ founder: entry.founder, since: /** @type {number} */ (entry.since) }, now))) return { why: "young_device" };
     if (over(h.invite === "member" ? `m:${h.space}:${h.identity}` : `i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
@@ -203,7 +205,7 @@ export function createPeerDoor(o) {
       const memberStillOk = async a => {
         try {
           const e = typeof o.identityEntry === "function" ? await o.identityEntry(a.identity, a.entry, a.name) : null;
-          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.alg === "webauthn-es256" || e.held === "web") return false;
+          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.held === "web") return false;
           const sv = serverFor(a.space);
           if (!sv) return false;
           const m = await sv.serve(inviteeRequest(a.space, "grants.members.get", [a.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: a.identity, path: "relay" });

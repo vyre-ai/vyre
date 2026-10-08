@@ -16,7 +16,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --android --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -61,25 +61,24 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
 
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/capsule-win\.yml/);
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
 
-test("release.yml: the Lumen Mac app is stable only, built in this run, and its dmgs reach dist only when Developer ID signed, notarized and Gatekeeper-checked", () => {
-  assert.match(yml, /\n  mac:\n    needs: prepare\n    if: needs\.prepare\.outputs\.channel == 'stable'\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
+test("release.yml: the Lumen Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {
+  assert.match(yml, /\n  mac:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
   assert.match(yml, /sign: \$\{\{ needs\.prepare\.outputs\.publish == 'true' \}\}/, "the Apple environment is used on a publish only");
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
   assert.match(yml, /\(needs\.mac\.result == 'success' \|\| needs\.mac\.result == 'skipped'\)/, "a beta or rc run skips the Mac job and still releases");
   const add = yml.indexOf("Add the Lumen Mac files to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the dmgs are in dist before the signed list is made");
   const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
-  assert.match(step, /if: env\.CHANNEL == 'stable'/);
   for (const f of ["Vyre-Lumen-$arch.dmg", "Vyre-Lumen-$arch.zip"]) assert.ok(step.includes(f), `${f} is copied into dist`);
   for (const k of ["signed=developer-id", "notarized=yes", "gatekeeper=accepted"]) assert.ok(step.includes(k), `a dmg needs ${k}`);
-  assert.ok(step.indexOf("exit 0") > 0 && step.indexOf("exit 0") < step.indexOf('cp "$RUNNER_TEMP/mac/$f"'), "an unsigned run leaves before anything is copied");
+  assert.ok(step.includes("signed=adhoc"), "an ad hoc build is released too");
+  assert.match(step, /sideload/, "and the notes say it is sideloaded");
   assert.match(step, /MAC_FLAG=--mac/, "the gate asks for the dmgs only when they were added");
   assert.match(yml, /--setup \$\{MAC_FLAG:-\} --pubkey/);
   // Apple secrets: none in release.yml at all. They live in the "apple" environment and only mac-app.yml's package step receives them.
@@ -108,7 +107,7 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   const gate = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(gate, /MAC_SIGNING: \$\{\{ vars\.MAC_SIGNING \}\}/);
   assert.match(gate, /\[ "\$MAC_SIGNING" = required \]/);
-  assert.ok(gate.indexOf('"$MAC_SIGNING" = required') < gate.indexOf("exit 0"), "a required signing failure is raised before the quiet skip");
+  assert.ok(gate.indexOf('"$MAC_SIGNING" = required') < gate.indexOf('cp "$RUNNER_TEMP/mac/$f"'), "a required signing failure is raised before anything is copied");
   for (const m of mac.matchAll(/^          (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /inputs\.sign && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/);
 });
 
@@ -181,4 +180,18 @@ test("release.yml: a tag that already has a release is refused in prepare before
   const mac = fs.readFileSync(path.join(REPO, ".github/workflows/mac-app.yml"), "utf8");
   assert.ok(!/\$\{\{ *inputs\.version *\}\}"/.test(mac.replace(/IN_VERSION: \$\{\{ inputs\.version \}\}/g, "")), "no inputs expression inside a script");
   assert.match(mac, /printf 'sha256:%s=%s/);
+});
+
+test("release.yml: the Android APK is built in this run, checked, required in dist under both names, and the notes say it is sideloaded", () => {
+  assert.match(yml, /\n  android:\n    needs: prepare\n/);
+  const job = yml.slice(yml.indexOf("\n  android:\n"), yml.indexOf("\n  # Join the per-arch digests"));
+  assert.match(job, /assembleRelease/);
+  assert.ok(!/secrets\./.test(job) && !/environment:/.test(job), "the Android job holds no secret and no environment");
+  assert.match(job, /Vyre-android\.apk/);
+  assert.match(job, /check-apk-nothing-central/);
+  const add = yml.indexOf("Add the Android app to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
+  assert.ok(add > 0 && add < sums, "the APK is in dist before the signed list is made");
+  const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
+  assert.match(step, /refusing to release without it/);
+  assert.match(step, /sideload/);
 });
