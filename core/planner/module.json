@@ -22,7 +22,7 @@
     {"name": "planner.calendar.sync", "effect": "write", "reach": "anyone"},
     {"name": "planner.calendar.create", "effect": "write", "projectArg": "project", "reach": "anyone"}
   ] },
-  "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule", "planner.task-run"] },
+  "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule", "planner.task-run", "planner.escalated"] },
   "shows": { "deck": ["panel:planner"], "capsule": [], "cli": ["alarm", "remind", "todo", "notes", "agenda"] },
   "needs": {
     "kernel": {
