@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 14 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box`, `local` | 11 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box`, `local` | 13 | 6 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 6 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
@@ -139,7 +139,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal f
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [11](tools.md#appmods)
+- Tools: [13](tools.md#appmods)
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`

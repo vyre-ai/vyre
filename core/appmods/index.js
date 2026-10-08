@@ -182,6 +182,17 @@ export default {
       return { text: await driver.logs({ space: r.space, manifest: known(r.name) }, Math.min(Number(i.lines) || 100, 500)) };
     } });
 
+    // ---- for the Connections module (team/0.3/IFACE-connection.md): where a running app is, and the Connection record its manifest declares.
+    ctx.tool("appmods.origin", { description: "Where a running app is reached from this daemon: { origin }. For Vyre's own modules only (the Connections module calls it for a Connection made from an app).", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
+      const r = row(String(i.name)); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running", "not_found");
+      return { origin: r.origin };
+    } });
+    ctx.tool("appmods.connection", { description: "The Connection an installed app declares, in the Connection record's shape (label, auth, check, operations) with the Vault item that holds its key: { app, label, auth, credential: { item, field }, check, operations }.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+      const c = known(r.name).connection; if (!c) throw refuse("that app declares no Connection", "not_found");
+      return { app: r.name, label: c.label, auth: c.auth, credential: { item: item(r.name, c.credential.replace(/_/g, "-")), field: "value" }, check: c.check, operations: c.operations || [] };
+    } });
+
     // ---- the owner's yes
     ctx.tool("appmods.install", {
       description: "Install an app module. The owner's yes: it makes the app's keys in the Vault, starts the container on this server, sets the app up and connects its events. Takes a minute or two.",
