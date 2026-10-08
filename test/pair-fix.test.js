@@ -180,7 +180,7 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   const ks = keystore(t);
   const states = [];
   const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
-    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() },
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "app" }, presenceKey: devKey() },
     server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: nodeCrypto(), keyStore: ks } });
   const ack = await until(() => states.find(s => s.state === "ack"));
   await until(() => w.events.find(e => e[0] === "wink.found"));
@@ -189,7 +189,7 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.ok(r.done.owner, "the adopt returned the owner");
   assert.equal(r.done.session, true);
-  assert.equal(rows(w, r.paired.device).length, 1, "the device exists after the typed ack");
+  assert.deepEqual(rows(w, r.paired.device).map(x => x.kind), ["app"], "the Mac is an app device, not the limited web kind");
   // the same key store reconnects as a paired device (the app's later calls)
   const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Alex's Mac", crypto: nodeCrypto(), keyStore: ks });
   t.after(() => c.close());

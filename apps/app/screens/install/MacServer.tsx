@@ -46,7 +46,8 @@ function MacServerTyped({ name, onBack, onDone }: { name: string; onBack: () => 
     const inputs = await serverPairInputs();
     if (!inputs) { setSaid({ title: "This Mac has no Vyre name yet", line: "Make your name first, then pair the server.", over: true }); return; }
     const r = await joinWithCode({ relay: relayUrl(), input: c.code, name: "Vyre on this Mac", onState: (s) => { if (live.current && s.state === "ack" && s.code) { setAck(s.code); setStage("ack"); } },
-      pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: inputs.presenceKey, deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage },
+      // the Mac's window is the app, not a browser: a typed code's ticket enrols its redeemer at once, and as a web device it would be the limited kind (the long code's gated pairing makes an app device)
+      pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about: { ...about, kind: "app" as const }, presenceKey: inputs.presenceKey, deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage },
       server: { owner: inputs.owner, signIdentity: inputs.signIdentity, deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage, crypto: relayCrypto(), keyStore: relayKeyStore() } }).catch(() => ({ ok: false as const, reason: "offline" as const }));
     if (!live.current) return;
     if (!r.ok && "message" in r && r.message) {
