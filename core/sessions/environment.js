@@ -24,7 +24,7 @@ export const FAMILIES = {
   spaces: { section: "space" }, files: { section: "project" }, artifacts: { section: "project" }, publish: { section: "project" }, planner: { section: "planner" }, goals: { section: "planner" }, watchers: { section: "planner" },
   glass: { section: "computer" }, computers: { section: "computer" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
-  appearance: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
+  appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
   settings: { more: true }, sidebar: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
   context: { more: true }, import: { more: true }, mentions: { more: true }, modules: { more: true }, presence: { more: true }, push: { more: true }, releases: { more: true }, rules: { more: true },

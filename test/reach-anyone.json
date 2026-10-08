@@ -41,6 +41,34 @@
    "module": "agents",
    "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
+  "appmods.card": {
+   "module": "appmods",
+   "reason": "read-only: the install card of one catalog app, built from its manifest alone"
+  },
+  "appmods.catalog": {
+   "module": "appmods",
+   "reason": "read-only: the apps this build can install, from its own signed catalog (names, versions, the card)"
+  },
+  "appmods.connection": {
+   "module": "appmods",
+   "reason": "read-only: the Connection an installed app declares (label, how it signs in, operations) with the NAME of the Vault item that holds its key, never the key"
+  },
+  "appmods.hosts": {
+   "module": "appmods",
+   "reason": "read-only: the host names of the installed running apps, which the public gate needs; they are public names under the box's own"
+  },
+  "appmods.list": {
+   "module": "appmods",
+   "reason": "read-only: the apps installed on this server and their state"
+  },
+  "appmods.screens": {
+   "module": "appmods",
+   "reason": "read-only: the names of an installed app's own screens, no address and no ticket (opening one is appmods.open, person only)"
+  },
+  "appmods.status": {
+   "module": "appmods",
+   "reason": "read-only: one installed app's state and whether it answers; no key, no address of a secret"
+  },
   "artifacts.activity": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"

@@ -21,6 +21,11 @@
    "owner": "windows",
    "note": "call() runs as module:bridges and names spaces.membership and spaces.merge-list (modules-only, built) and spaces.policy and spaces.ask (not built yet: a missing tool is tolerated and the share is refused or held)"
   },
+  "core/connectors/index.js": {
+   "count": 1,
+   "owner": "connect-anything",
+   "note": "the Connections store (made.js) reaches vault.put, vault.delete, vault.connections.register and vault.request through this one pass-through; each call names its tool literally in made.js, and the person relay allows only the calls checkRelayTool lists"
+  },
   "core/flows/index.js": {
    "count": 1,
    "owner": "platform",
@@ -80,6 +85,11 @@
    "count": 1,
    "owner": "windows",
    "note": "reviewed (windows, 5 Oct): the registry's own relay (`ctx.call(tool, input, { relay: true })`) calls a tool by a computed name only after RELAY_ALLOWED (core/modules/index.js) lists that exact name or prefix for the calling first-party module (spaces to the chat and memory upgrade tools, memory and work to spaces.storage.); anything else is refused before the call. callInSpace calls a tool that declares crossSpace in its manifest."
+  },
+  "core/modules/sandbox-ctx.js": {
+   "count": 2,
+   "owner": "lead",
+   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
   },
   "core/names/index.js": {
    "count": 1,
@@ -146,22 +156,22 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
-  "core/work/index.js": {
-   "count": 2,
-   "owner": "chat",
-   "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
-  },
   "core/wink/index.js": {
    "count": 1,
    "owner": "network",
    "note": "reviewed (network, 5 Oct): dirCall reaches only names.directory.acme, acme-clear and publish, which the names module restricts to module:wink"
   },
-  "local/apps/index.js": {
+  "core/work/index.js": {
+   "count": 2,
+   "owner": "chat",
+   "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
+  },
+  "lib/views/engine.js": {
    "count": 1,
    "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "note": "the one engine behind the app's views and the Capsule's commands: it calls the tool a view declares, as the asking person (first party) or as the added module itself; the registry refuses any tool the module did not declare in one of its views (capsuleMayCall). Moved from local/capsule/views.js."
   },
-  "local/capsule/views.js": {
+  "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
@@ -185,11 +195,6 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
-  },
-  "core/modules/sandbox-ctx.js": {
-   "count": 2,
-   "owner": "lead",
-   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
   }
  }
 }
