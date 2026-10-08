@@ -85,7 +85,7 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings, effects: compiled.effects };
-    const put = await this.store.putVersion(id, flow, by, this.now(), cat.space);
+    const put = await this.store.putVersion(id, compiled.flow || flow, by, this.now(), cat.space);
     return { ok: true, id: put.id, version: put.version, hash: put.hash, same: put.same, warnings: compiled.warnings, effects: compiled.effects, caps: compiled.caps };
   }
 
