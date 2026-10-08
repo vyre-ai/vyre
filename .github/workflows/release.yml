@@ -388,7 +388,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Build the release APK (no sample world: it talks to the person's own Vyre)
+      - name: "Build the release APK (no sample world: it talks to the person's own Vyre)"
         working-directory: apps/app
         env:
           EXPO_NO_TELEMETRY: "1"
