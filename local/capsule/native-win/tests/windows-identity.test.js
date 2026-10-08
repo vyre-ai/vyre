@@ -50,9 +50,10 @@ test("no command returns a seed: the identity commands give a public key or a si
 
 test("the page sees a frozen window.__vyreShell of kind windows with the same identity calls as the Mac's, and no presence or menu", () => {
   const rs = read("../app/src/main.rs");
-  assert.match(rs, /kind: "windows", boxless: false, version: \{v\}, identity: identity/);
+  assert.match(rs, /kind: "windows", boxless: \{boxless\}, version: \{v\}, identity: identity/);
   for (const call of ["identity_public", "identity_sign", "enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`inv\\("${call}"`));
   assert.match(rs, /\.initialization_script\(shell_signal\(/);
+  for (const call of ["identity_has", "identity_forget"]) assert.match(rs, new RegExp(`inv\\("${call}"`));
   assert.doesNotMatch(/function shell_signal[\s\S]*?\}\)\(\);/.exec(rs)?.[0] ?? "", /presence|onCommand|notify/);
 });
 
@@ -91,7 +92,7 @@ test("the TPM key signs only bytes the shell can summarise, behind the shell's o
 
 test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_CODE=0 at compile time turns it off (the user's ruling of 5 Oct)", () => {
   const rs = read("../app/src/main.rs");
-  assert.match(rs, /const TYPED_CODE: bool = !matches!\(option_env!\("VYRE_TYPED_CODE"\), Some\("0"\)\);/, "on unless the build says 0");
+  assert.match(rs, /const TYPED_CODE: bool = !env_is_zero\(option_env!\("VYRE_TYPED_CODE"\)\);/, "on unless the build says exactly 0");
   const cmd = /async fn finish_typed_pair\([\s\S]*?\n}\n/.exec(rs)[0];
   assert.ok(cmd.indexOf("if !TYPED_CODE") > -1 && cmd.indexOf("if !TYPED_CODE") < cmd.indexOf("pin_from_offer"), "the command refuses only when the build turned it off");
   assert.match(rs, /StateOut \{ typed_code: TYPED_CODE,/, "the page is told");
@@ -101,4 +102,34 @@ test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_C
   assert.match(read("../app/ui/first-run.js"), /s\.typed_code === false\) document\.getElementById\("typed"\)\.hidden = true/, "hidden only when the shell says it was built off");
   const wf = readFileSync(new URL("../../../../.github/workflows/capsule-win.yml", import.meta.url), "utf8");
   assert.ok(!/VYRE_TYPED_CODE\s*[:=]\s*["']?0/.test(wf), "no workflow sets it to 0");
+});
+
+test("the bundled app page (its own origin, served by the shell) gets the identity commands too, and only from itself", () => {
+  const cap = JSON.parse(read("../app/capabilities/main-identity-bundled.json"));
+  assert.deepEqual(cap.windows, ["main"]);
+  assert.deepEqual(cap.remote.urls, ["http://vyreapp.localhost/*"]);
+  assert.deepEqual(cap.permissions, [...FOUR.slice(0, 2), "identity_has", "identity_forget", ...FOUR.slice(2)].map((c) => "allow-" + c.replace(/_/g, "-")));
+  assert.ok(!cap.permissions.some((p) => /core:|shell|fs|opener|notification|pair|drive|autostart|link/.test(p)), "no other permission");
+  const rs = read("../app/src/main.rs");
+  const build = read("../app/build.rs");
+  const handler = /generate_handler!\[([^\]]*)\]/.exec(rs)[1];
+  for (const c of ["identity_has", "identity_forget"]) {
+    assert.ok(build.includes(`"${c}"`) && handler.includes(c), c);
+    const body = rs.slice(rs.indexOf(`fn ${c}(`), rs.indexOf("\n}\n", rs.indexOf(`fn ${c}(`)));
+    assert.match(body, /from_pinned\(&app, &webview, &request\)\?;/, c);
+  }
+  // both the top-level page and the calling frame must be exactly the bundled origin
+  assert.match(rs, /bundled::is_page\(u\.as_str\(\)\)\) && bundled::is_origin\(frame\)/);
+  assert.match(read("../src/bundled.rs"), /pub const ORIGIN: &str = "http:\/\/vyreapp\.localhost";/);
+});
+
+test("every key failure is written to the app log with its real reason, and the page is given the same words", () => {
+  const rs = read("../app/src/main.rs");
+  assert.match(rs, /applog::path\(std::env::var\("LOCALAPPDATA"\)/);
+  for (const c of ["enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`logged\\("${c}", ncrypt::`), c);
+  assert.match(rs, /log\("fail", "identity_seed", e\)/);
+  // the page-side half: the claim names the shell's reason, not a generic line
+  const ik = readFileSync(new URL("../../../../apps/app/src/real/install.ts", import.meta.url), "utf8");
+  assert.match(ik, /lastKeyFailure\(\)/);
+  assert.match(ik, /Reason: \$\{why\}/);
 });

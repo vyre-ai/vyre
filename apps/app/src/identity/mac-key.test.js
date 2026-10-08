@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign as nodeSign, verify } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { b64u } from "../../../../kernel/identity/chain.js";
-import { macDeviceKey, macEnclavePublic, macEnclaveSign, macKeyAvailable, macSignListChange, shellKeyHeld, MAC_KEPT } from "./mac-key.ts";
+import { lastKeyFailure, macDeviceKey, macEnclavePublic, macEnclaveSign, macKeyAvailable, macSignListChange, shellKeyHeld, MAC_KEPT } from "./mac-key.ts";
 
 /** A stand-in for Host/MacIdentity.swift: the seed lives here, in the shell, and only the public key and signatures cross. */
 function fakeShell() {
@@ -114,4 +114,14 @@ test("a key a page's script can reach is held as a web key: no enclave key, or a
   const win = fakeShell(); withEnclave(win);
   globalThis.window = { __vyreShell: { kind: "windows", ...win } };
   assert.equal(await shellKeyHeld(), true, "Windows, even with a TPM key, until a Hello prompt per signature is shown");
+});
+
+test("when the shell will not make the key, the page keeps the shell's own words (the log and the screen say why)", async (t) => {
+  const f = fakeShell(); installShell(f); t.after(removeShell);
+  f.identity.public = async () => { throw new Error("Could not save the identity key: Access is denied. (os error 5)"); };
+  assert.equal(await macDeviceKey(true), null);
+  assert.match(lastKeyFailure(), /Access is denied/);
+  const ok = fakeShell(); installShell(ok);
+  assert.ok(await macDeviceKey(true));
+  assert.equal(lastKeyFailure(), "", "a success clears it");
 });

@@ -3,7 +3,8 @@
 import { said, tool } from "./box";
 import { Platform } from "react-native";
 import { RC, claimBlocked } from "../../screens/shell/rc";
-import { macDeviceKey, macEnclavePublic, macKeyAvailable, shellKeyHeld } from "../identity/mac-key.ts";
+import { lastKeyFailure, macDeviceKey, macEnclavePublic, macKeyAvailable, shellKeyHeld } from "../identity/mac-key.ts";
+import { shellKind } from "../shell/shell.ts";
 import { agreePublic } from "../identity/agree.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
@@ -56,7 +57,10 @@ export async function createIdentity(name: string, deviceLabel: string, password
   }
   // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
   const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
-  if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This Mac would not keep your key, so no name was claimed."), { code: "cannot_keep" });
+  if (macKeyAvailable() && !macKey) {
+    const why = lastKeyFailure();
+    throw Object.assign(new Error(`${shellKind() === "windows" ? "This computer" : "This Mac"} would not keep your key, so no name was claimed.${why ? ` Reason: ${why}` : ""}`), { code: "cannot_keep" });
+  }
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
   // The Mac and Windows apps' windows are web pages too, but they hold their own key: they claim with it, never with a browser passkey (IR-32).
   const claim = !macKey && Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
