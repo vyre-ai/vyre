@@ -674,6 +674,7 @@ test("install-box.sh v2: the four words are waited for while the server starts, 
 
 test("vyre (box wrapper): a command that needs Docker, run by an account that cannot use it, says to use sudo and not a raw socket error", t => {
   const b = box(t, { docker: 'case "$1" in info) echo "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock" >&2; exit 1 ;; *) exit 0 ;; esac' });
+  fs.mkdirSync(b.dir, { recursive: true }); fs.writeFileSync(path.join(b.dir, "compose.yml"), "services: {}\n"); // a box is installed here
   for (const cmd of [["uninstall", "--yes"], ["up"], ["status"], ["words"]]) {
     const r = spawnSync("sh", [BOXVYRE, ...cmd], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: b.env });
     assert.notEqual(r.status, 0, cmd.join(" "));
