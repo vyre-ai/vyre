@@ -61,7 +61,7 @@ test("setup elsewhere lists other devices' unfinished setups, not this one's", (
 });
 
 test("a claim puts the saved state back on the screen", () => {
-  const a = applyClaim({ space: "spc_b", moved: true, setup: { step: "members", name: "Northwind Bakery", address: "northwind.vyre.run", look: "sky", where: "vps", picks: { connectors: ["gmail"], kit: "estate" } } });
+  const a = applyClaim({ space: "spc_b", moved: true, setup: { step: "members", name: "Northwind Bakery", address: "northwind.vyre.run", look: "sky", where: "server", picks: { connectors: ["gmail"], kit: "estate" } } });
   assert.deepEqual(a, { space: "spc_b", step: "members", name: "Northwind Bakery", addr: "northwind", look: "sky", where: "vps", connectors: ["gmail"], kit: "estate", who: "team" });
   assert.equal(applyClaim({ space: "x", setup: null }), null);
 });
