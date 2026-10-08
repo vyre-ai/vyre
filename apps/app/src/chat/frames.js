@@ -184,7 +184,7 @@ export function createFolder() {
         if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
         open.add(String(mid));
-        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
+        const it = { key, kind: "text", text, done: false, ...(d.via ? { via: String(d.via) } : prev?.via ? { via: prev.via } : {}), settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
         out.appended = { key, length: text.length };
@@ -277,10 +277,26 @@ export function createFolder() {
         if (g && g.members.some((m) => m.message === d.keep)) { g.keep = String(d.keep); bump("@groups"); for (const m of g.members) out.touched.push("a:" + m.message); }
         break;
       }
+      case "handoff": {
+        // "Asked kit (billing)": one row per request, its state replaced by every later frame; the teammate's own frames (data.via = the request) draw nested under it (IFACE-activity.md).
+        const key = "h:" + d.request;
+        const prev = items.get(key);
+        const to = d.to && typeof d.to === "object" ? d.to : {};
+        const ended = (/** @type {any} */ x) => x === "done" || x === "failed" || x === "cancelled";
+        const it = { key, kind: "handoff", request: String(d.request), agent: String(to.agent ?? prev?.agent ?? ""), role: String(to.role ?? prev?.role ?? ""), name: String(to.name ?? prev?.name ?? to.agent ?? ""), project: to.project ?? prev?.project ?? null,
+          text: String(d.text ?? prev?.text ?? ""), state: prev && ended(prev.state) && !ended(d.state) ? prev.state : String(d.state ?? "queued"), thread: d.thread ?? prev?.thread ?? null, result: d.result ?? prev?.result ?? null, ...who(f) };
+        if (put(key, "handoff", it)) out.layout = true;
+        else items.set(key, it);
+        touch(key);
+        // The report-back is its own row, after the teammate's steps that came before it, so the conversation reads in the order it happened.
+        const rk = "hr:" + d.request;
+        if (it.result && !items.has(rk)) { put(rk, "handoffResult", { key: rk, kind: "handoffResult", request: it.request, name: it.name, state: it.state, result: it.result }); out.layout = true; touch(rk); }
+        break;
+      }
       case "tool-started": {
         const key = "t:" + d.tool_id;
         const rk = d.kind && d.kind !== "tool" ? "block" : "tool";
-        const it = { key, kind: rk, tool: String(d.tool ?? "tool"), toolKind: d.kind ?? null, summary: String(d.summary ?? ""), status: "running", output: "", pct: null, block: null };
+        const it = { key, kind: rk, tool: String(d.tool ?? "tool"), toolKind: d.kind ?? null, summary: String(d.summary ?? ""), status: "running", output: "", pct: null, block: null, ...(d.via ? { via: String(d.via) } : {}) };
         if (put(key, rk, it)) out.layout = true;
         else items.set(key, it);
         touch(key);

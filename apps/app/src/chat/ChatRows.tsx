@@ -3,7 +3,7 @@
 // height as it reveals), tool results as native blocks, asks as inline task cards, quiet notices.
 // Each row subscribes to its own key and is memoized on what it draws.
 
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
@@ -31,7 +31,7 @@ const S = StyleSheet.create({
   s6: { paddingTop: 12 },
   s7: { flexDirection: "row", gap: 12, paddingVertical: 8 },
   s8: { flex: 1, gap: 8 },
-  s9: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 28 },
+  s9: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 22 },
   s10: { flex: 1 },
 });
 
@@ -47,9 +47,9 @@ function useRow(store: ChatStore, key: string) {
 }
 
 /** One row's frame: a centred column, 16 px gutters on a phone, 24 on a desktop. */
-function Frame({ children, indent, wide }: { children: React.ReactNode; indent?: boolean; wide: boolean }) {
+function Frame({ children, indent, wide, dense }: { children: React.ReactNode; indent?: boolean; wide: boolean; dense?: boolean }) {
   return (
-    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: wide ? 24 : 16, paddingVertical: 6, paddingLeft: (wide ? 24 : 16) + (indent ? BODY_INDENT : 0) }}>
+    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: wide ? 24 : 16, paddingVertical: dense ? 1 : 6, paddingLeft: (wide ? 24 : 16) + (indent ? BODY_INDENT : 0) }}>
       {children}
     </View>
   );
@@ -69,11 +69,29 @@ function Who({ name, family, meta, sub }: { name: string; family: "person" | "as
 
 type Dress = { flash?: boolean; mentioned?: boolean; divider?: number | null; pinned?: boolean; replies?: number; reply?: boolean; cut?: string | null };
 
+
+/** The actions under a message (Copy, Highlight, Reply, Edit...) show on hover on a desktop and on a long press on a phone: one quiet row, its room kept so nothing jumps. */
+const ActionsOn = createContext(false);
+/** Screenshots of the sample world can show the actions row without a pointer (?actions=1). */
+const showActions = () => allowsMock() && typeof location !== "undefined" && /[?&]actions=1/.test(location.search);
+function ActionRow({ children }: { children: React.ReactNode }) {
+  const on = useContext(ActionsOn);
+  return (
+    <View pointerEvents={on ? "auto" : "none"} accessibilityElementsHidden={!on} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, opacity: on ? 1 : 0 }}>
+      {children}
+    </View>
+  );
+}
+
 function Message({ who, family, meta, sub, dress, children, wide, provider }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
+  const [hover, setHover] = useState(false);
+  const [held, setHeld] = useState(false);
   const { color } = useUiTheme();
   return (
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
+      <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
+      <ActionsOn.Provider value={hover || held || showActions()}>
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
         <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
@@ -84,6 +102,8 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
           {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
         </View>
       </View>
+      </ActionsOn.Provider>
+      </Pressable>
     </View>
   );
 }
@@ -187,13 +207,56 @@ export function SkeletonThread({ wide }: { wide: boolean }) {
   );
 }
 
-function ToolLine({ it, running }: { it: any; running: boolean }) {
+
+/** A teammate's own step or words sit under the hand-off they answer, behind a rule (data.via). */
+function Nested({ it, children }: { it: any; children: React.ReactNode }) {
+  const { color } = useUiTheme();
+  if (!it.via) return <>{children}</>;
+  return <View style={{ marginLeft: 12, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: color.edge }}>{children}</View>;
+}
+
+/** "Asked kit (billing)", its state, and the teammate's report-back as quoted data: what a teammate wrote is never drawn as the person's words. */
+function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
+  const { color } = useUiTheme();
+  const label = `Asked ${it.name}` + (it.role && it.role !== it.name ? ` (${it.role})` : "");
+  const state = it.state === "running" ? "working" : it.state;
   return (
-    <View style={S.s9}>
-      <Icon name={running ? "refresh" : it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />
-      <Text size="caption" tone="muted" numberOfLines={1} style={S.s10}>{it.tool} {it.summary}</Text>
-      {running ? <Text size="caption" tone="label">running</Text> : null}
+    <View style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`}>
+      <View style={S.s9}>
+        <Face name={it.name || it.agent} family="assistant" size={24} id={`agent:${it.agent}`} />
+        <Text size="caption" strong numberOfLines={1}>{label}</Text>
+        {it.project ? <Text size="caption" tone="label" numberOfLines={1} style={S.s10}>{`· ${String(it.project)}`}</Text> : <View style={S.s10} />}
+        <Text size="caption" tone={it.state === "failed" ? "err" : "label"}>{state}</Text>
+      </View>
+      {it.text ? <Text size="caption" tone="muted" numberOfLines={2}>{it.text}</Text> : null}
     </View>
+  );
+}
+
+/** What the teammate reported back, quoted: data from another session, never the person's words. */
+function HandoffResult({ it }: { it: any }) {
+  const { color } = useUiTheme();
+  return (
+    <View style={{ gap: 2 }} accessibilityLabel={`${it.name} reported back`}>
+      <Text size="caption" tone="label">{`${it.name} reported`}</Text>
+      <View style={{ borderLeftWidth: 3, borderLeftColor: color.edge, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{it.result}</Text></View>
+    </View>
+  );
+}
+
+function ToolLine({ it, running }: { it: any; running: boolean }) {
+  const [open, setOpen] = useState(false);
+  // the plain words ("Looking up overdue invoices"); the tool's own name is the detail, one tap away
+  const words = String(it.summary || "").trim() || String(it.tool);
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${words}. ${open ? "Hide" : "Show"} the details`} onPress={() => setOpen((v) => !v)}>
+      <View style={S.s9}>
+        <Icon name={running ? "refresh" : it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />
+        <Text size="caption" tone="muted" numberOfLines={1} style={S.s10}>{words}</Text>
+        {running ? <Text size="caption" tone="label">running</Text> : null}
+      </View>
+      {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${it.tool}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -203,7 +266,7 @@ function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <View style={{ gap: 4 }}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? "Hide the thinking" : "Show the thinking"} onPress={() => setOpen((v) => !v)} style={{ minHeight: 28, justifyContent: "center", alignSelf: "flex-start" }}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? "Hide the thinking" : "Show the thinking"} onPress={() => setOpen((v) => !v)} style={{ minHeight: 22, justifyContent: "center", alignSelf: "flex-start" }}>
         <Text size="caption" tone="label">{`${streaming ? "Thinking" : "Thought"} ${open ? "▾" : "▸"}`}</Text>
       </Pressable>
       {open ? <View style={{ borderLeftWidth: 2, borderLeftColor: color.edge ?? color.hover, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{text}</Text></View> : null}
@@ -249,7 +312,7 @@ function Replyable({ ctx, message, name, text, children }: { ctx: BlockCtx; mess
   if (!go) return <>{children}</>;
   return (
     <SwipeActions enabled={!ctx.wide} leading={[{ id: "reply", label: "Reply", icon: "back", tone: "accent", onPress: go, haptic: "selection" }]}>
-      <Pressable accessibilityActions={[{ name: "reply", label: "Reply" }]} onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === "reply") go(); }} onLongPress={go} delayLongPress={450}>{children}</Pressable>
+      <Pressable accessibilityActions={[{ name: "reply", label: "Reply" }]} onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === "reply") go(); }}>{children}</Pressable>
     </SwipeActions>
   );
 }
@@ -281,9 +344,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <Text size="read" selectable style={it.pending ? { opacity: 0.55 } : undefined}>{it.text}</Text>
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
-          {mine && !it.pending ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
-          <HighlightAction from={w.name} text={it.text} ctx={ctx} />
-          <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
+          {it.pending ? null : (
+            <ActionRow>
+              {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
+              <HighlightAction from={w.name} text={it.text} ctx={ctx} />
+              <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
+            </ActionRow>
+          )}
         </Message>
         </Replyable>
       );
@@ -299,15 +366,23 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} />
-          {it.done ? <AnswerActions text={it.text} ctx={ctx} /> : null}
-          {it.done ? <HighlightAction from={w.name} text={it.text} ctx={ctx} /> : null}
-          <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
+          {it.done ? (
+            <ActionRow>
+              <AnswerActions text={it.text} ctx={ctx} />
+              <HighlightAction from={w.name} text={it.text} ctx={ctx} />
+              <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
+            </ActionRow>
+          ) : <GroupTools store={store} k={k} ctx={ctx} name={w.name} />}
         </Message>
         </Replyable>
       );
     }
+    case "handoffResult":
+      return <Frame wide={wide} indent dense><HandoffResult it={it} /></Frame>;
+    case "handoff":
+      return <Frame wide={wide} indent dense><HandoffLine it={it} store={store} /></Frame>;
     case "tool":
-      return <Frame wide={wide} indent><ToolLine it={it} running={it.status === "running"} /></Frame>;
+      return <Frame wide={wide} indent dense><Nested it={it}><ToolLine it={it} running={it.status === "running"} /></Nested></Frame>;
     case "block": {
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
@@ -330,7 +405,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       return <Frame wide={wide} indent>{task ? <BlockView block={task} ctx={here} decided={decided} /> : null}</Frame>;
     }
     case "reasoning":
-      return <Frame wide={wide} indent><Reasoning text={String(it.text)} streaming={!it.done} /></Frame>;
+      return <Frame wide={wide} indent dense><Reasoning text={String(it.text)} streaming={!it.done} /></Frame>;
     case "notice":
       return <Frame wide={wide} indent><Text size="caption" tone="label">{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text></Frame>;
     default:
