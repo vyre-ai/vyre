@@ -1019,8 +1019,8 @@ export function createPairing(o) {
       const kind = String(input.deviceKind || "");
       if (!["phone", "computer", "web"].includes(kind)) return false;
       let session = false;
-      // The relay's own device event may have written a provisional row for this device (a phone, by the ring's flow) before this call knew its kind: an unconfirmed row of the same identity is replaced.
-      try { const at = devices.get(device); if (at && !at.removed && at.identity === identity && at.kind !== kind && !devices.record(device)) db.prepare("DELETE FROM wink_devices WHERE id = ? AND confirmed_by IS NULL").run(device); } catch { /* none */ }
+      // The relay's own device event may have written a provisional row for this device (a phone, by the ring's flow; a server, by a typed code's flow, under the identity this box had before it had an owner) before this call knew its kind and owner: an unconfirmed row for this very device is replaced.
+      try { const at = devices.get(device); if (at && !at.removed && (at.kind !== kind || at.identity !== identity) && !devices.record(device)) db.prepare("DELETE FROM wink_devices WHERE id = ? AND confirmed_by IS NULL").run(device); } catch { /* none */ }
       let row = null;
       try { row = devices.add({ id: device, identity, kind, name: cleanName(input.deviceName, 64) || "a device", target }); } catch (e) { ctx.log(`wink: could not record ${device} as the owner's device: ${/** @type {Error} */ (e).message}`); return false; }
       // The kernel decides who owns this home, and it decides BEFORE the device has a session or an enrolment (its row alone is made first, because the relay's own device event may already have written one that this call must agree with, and a refusal takes the row back). A refusal fails the pairing
