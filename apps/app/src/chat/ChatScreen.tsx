@@ -17,6 +17,7 @@ import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
+import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread } from "./ChatRows";
 import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
@@ -364,6 +365,7 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      {realComposer ? <GroupApprovals /> : null}
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
