@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-/** @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", store: "records" | "plain", out: string, inCI: boolean }} w */
+/** @param {{ update?: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string }, run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", store: "records" | "plain", out: string, inCI: boolean }} w */
 export async function walk(w) {
   const { run, ins, server, store } = w;
   const tag = `${store}`;
@@ -64,7 +64,7 @@ export async function walk(w) {
     }, { needs: [S("become yourself in the app (the code is spent)")] });
 
     await run.step(S(`the server installs from the line (${server})`), async () => {
-      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store };
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store, ...(w.update ? { release: w.update } : {}) };
       srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store, ownerId: mac.identity.id });
       return `${srv.kind}`;
     }, { needs: [S("add a server: the app shows the install line")] });
@@ -97,6 +97,7 @@ export async function walk(w) {
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
 
     const CALL = S("the app reaches the server and calls a tool");
+    if (w.update) await updateSteps({ w, run, S, mac, srv: () => srv, CALL });
     /** @type {any} */ let team = null, invite = null;
     await run.step(S("create a team space on the server (named in the app, signed with the identity)"), async () => {
       team = await mac.createTeamSpace(`team${person.slice(-6)}`);
@@ -286,4 +287,71 @@ export async function walkTerminal(w) {
       if (srv) await srv.stop().catch(() => {});
     }
   }
+}
+
+/**
+ * The update, from the app. The server was installed from the OLD release (v0.2.11 by default); the app asks for the update the way its Settings button does (update.status, then update.apply over its paired session, no ssh), and the box's own
+ * root unit downloads the candidate, checks its signature, backs up, swaps and restarts. Then the same app, with no new pairing, finds the new version and everything it wrote before.
+ * @param {{ w: any, run: any, S: (n: string) => string, mac: any, srv: () => any, CALL: string }} a
+ */
+async function updateSteps({ w, run, S, mac, srv, CALL }) {
+  const u = w.update;
+  const U = (/** @type {string} */ n) => S(`update: ${n}`);
+  /** @type {any} */ let before = null, notice = null;
+  const sorted = (/** @type {any} */ l) => JSON.stringify((Array.isArray(l) ? l : (l && (l.items || l.entries || l.notes)) || []).map((/** @type {any} */ x) => (typeof x === "string" ? x : JSON.stringify({ name: x.name, kind: x.kind, text: x.text, id: x.id }))).sort());
+  await run.step(U("the server runs the old release and the app shows its notice"), async () => {
+    notice = await mac.callTool("update.status");
+    assert.equal(notice.current, u.oldVersion, `the server runs ${notice.current}, not ${u.oldVersion}`);
+    // what the app's Settings notice needs to show (apps/app/screens/settings/update-model.js showNotice): a newer version out, and an update the server can take from here
+    assert.equal(notice.available, u.newVersion, "the notice names the candidate");
+    assert.equal(notice.canApply, true, "the server takes the request from the app (the host's update unit is installed)");
+    assert.ok(!notice.pending && !(notice.run && notice.run.state === "running"), "no update is running yet");
+    return `${notice.current} -> ${notice.available}`;
+  }, { needs: [CALL] });
+  await run.step(U("write a vault item and records, and read them back"), async () => {
+    await mac.callTool("vault.put", { name: "proof-update-secret", kind: "secret", value: "update-proof-value-1" });
+    await mac.callTool("planner.add", { kind: "note", text: "written before the update" });
+    const vault = await mac.callTool("vault.list", {}), plan = await mac.callTool("planner.list", {});
+    assert.match(JSON.stringify(vault), /proof-update-secret/, "the vault lists the item");
+    assert.match(JSON.stringify(plan), /written before the update/, "the planner lists the note");
+    const info = await mac.callTool("system.info");
+    before = { vault: sorted(vault), plan: sorted(plan), owner: JSON.stringify(mac.pairing.owner), device: JSON.stringify(mac.pairing.device && mac.pairing.device.id || null), info: info && info.version };
+    return `vault ${JSON.parse(before.vault).length} item(s), planner ${JSON.parse(before.plan).length}`;
+  }, { needs: [U("the server runs the old release and the app shows its notice")] });
+  await run.step(U("the app asks for the update (update.apply, the Settings button's call)"), async () => {
+    const r = await mac.callTool("update.apply");
+    assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
+    return "requested";
+  }, { needs: [U("write a vault item and records, and read them back")] });
+  await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
+    // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
+    let last = "", st = null;
+    for (let i = 0; i < 120 && !st; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try { await mac.openSession(); const s = await mac.callTool("update.status"); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
+      catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
+    }
+    assert.ok(st, `the server did not come back on ${u.newVersion} within 10 minutes: ${last}`);
+    assert.equal(st.current, u.newVersion, "the version changed");
+    return `${notice.current} -> ${st.current}`;
+  }, { needs: [U("the app asks for the update (update.apply, the Settings button's call)")] });
+  const BACK = U("the host's unit installs the candidate and the server comes back as it");
+  await run.step(U("the notice is gone"), async () => {
+    const st = await mac.callTool("update.status");
+    assert.equal(st.available, null, "no newer version is offered any more");
+    assert.deepEqual(st.notes, [], "no notes are left to show");
+    assert.ok(!st.pending, "no request is waiting");
+    assert.ok(!st.run || st.run.state === "ok", `the host says the run ${st.run && st.run.state}: ${st.run && st.run.message}`);
+    return `current ${st.current}, available null`;
+  }, { needs: [BACK] });
+  await run.step(U("the vault, the records and the app's sign-in are untouched"), async () => {
+    // the same pairing (no code, no words, no new owner) opened this session; the owner and the device are the ones from before
+    assert.equal(JSON.stringify(mac.pairing.owner), before.owner, "the owner is unchanged");
+    const vault = await mac.callTool("vault.list", {}), plan = await mac.callTool("planner.list", {});
+    assert.equal(sorted(vault), before.vault, "the vault lists exactly what it listed before");
+    assert.equal(sorted(plan), before.plan, "the planner lists exactly what it listed before");
+    const info = await mac.callTool("system.info");
+    assert.ok(info, "the signed-in app is still answered");
+    return "vault, planner and sign-in as before";
+  }, { needs: [BACK] });
 }
