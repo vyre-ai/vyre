@@ -315,6 +315,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.deeper(); return true
         case 31 where cmd && !shift && model.reply.map({ !$0.thread.isEmpty }) == true: // ⌘O: the thread in Vyre chat
             model.openInChat(); return true
+        case 31 where cmd && !shift && model.direct.dm?.thread != nil: // ⌘O in a conversation with an agent: it, in Vyre chat
+            model.openDirectInChat(); return true
         case 18, 19, 20 where cmd && !shift && (model.askedMemory?.sources.isEmpty == false): // ⌘1 ⌘2 ⌘3: a Vyre IQ source
             model.openSource(e.keyCode == 18 ? 0 : e.keyCode == 19 ? 1 : 2); return true
         // An answer that runs past its card scrolls from the keyboard; the focus stays in the box.

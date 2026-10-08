@@ -31,6 +31,20 @@ struct ActivityView: View {
         }
     }
 
+    /// How tall the conversation wants to be: a line for the header, the thinking line, the footer, and one per row (words wrap at about 78 characters), up to what Lumen's panel allows.
+    static func height(_ feed: ActivityFeed) -> CGFloat {
+        func lines(_ r: ActivityFeed.Row) -> Int {
+            switch r {
+            case .user(_, let t), .reply(_, let t, _, _): return 2 + t.count / 78
+            case .thinking: return 0
+            case .step, .ask: return 1
+            case .handoff(let h): return 1 + h.children.reduce(0) { $0 + lines($1) } + (h.result.map { 1 + $0.count / 78 } ?? 0)
+            }
+        }
+        let n = 3 + (feed.thinkingLine == nil ? 0 : 1) + feed.rows.reduce(0) { $0 + lines($1) }
+        return min(380, CGFloat(n) * 19 + 16)
+    }
+
     // ---- header ---------------------------------------------------------------------------------------------------------------
 
     private var header: some View {
@@ -121,7 +135,7 @@ struct ActivityView: View {
             Text("type to follow up").font(Theme.subtitle).foregroundColor(Theme.ash)
             Spacer()
             if let openInApp {
-                Button(action: openInApp) { Text("Open in Vyre  ⌘↩").font(Theme.subtitle).foregroundColor(Theme.stone) }.buttonStyle(.plain)
+                Button(action: openInApp) { Text("Open in Vyre  ⌘O").font(Theme.subtitle).foregroundColor(Theme.stone) }.buttonStyle(.plain)
             }
         }
         .padding(.horizontal, Theme.inset).frame(height: CapsuleLayout.lineHeight)
