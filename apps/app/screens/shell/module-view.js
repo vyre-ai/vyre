@@ -73,6 +73,6 @@ export function barHeights(chart) {
 
 /** The row actions a card or row offers on every row: the frame's own, in order. The Capsule shortcut hints are not shown here. @param {ViewRow} row @param {any[]} [fallback] */
 export function actionsOf(row, fallback) {
-  const own = Array.isArray(row && row.actions) ? row.actions : fallback || [];
+  const own = (Array.isArray(row && row.actions) ? row.actions : fallback) || [];
   return own.filter((/** @type {any} */ a) => a && a.id && a.id !== "move").map((/** @type {any} */ a) => ({ id: String(a.id), title: String(a.title || a.id), outward: Boolean(a.outward) }));
 }
