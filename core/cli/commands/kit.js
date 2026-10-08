@@ -21,7 +21,7 @@ export default {
     if (lib.error) return failTool(lib.error);
     const kits = /** @type {any[]} */ (lib.data.kits);
     const have = await call("flows.kit.list", {});
-    const installed = new Map((have.error ? [] : /** @type {any[]} */ (have.data.kits || have.data || [])).map((/** @type {any} */ k) => [k.id, k]));
+    const installed = new Map((have.error ? [] : /** @type {any[]} */ (have.data.kits || have.data || [])).filter((/** @type {any} */ k) => !k.status || k.status === "installed").map((/** @type {any} */ k) => [k.id ?? k.kit_id, k]));
     if (words[0] !== "deploy") {
       if (json()) return emit({ kits: kits.map(k => ({ ...k, installed: installed.has(k.id) })) });
       for (const k of kits) out(`  ${k.id.padEnd(18)} ${installed.has(k.id) ? signal("installed") : dim("not installed")}  ${dim(k.description)}`);

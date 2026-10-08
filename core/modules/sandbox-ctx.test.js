@@ -104,9 +104,9 @@ test("a module that lists a tool in flow.steps offers it to Flows, and a Flow's 
   t.after(() => d.stop());
   assert.equal(d.registry.status().find(m => m.name === "stamp")?.state, "running", JSON.stringify(d.registry.status().find(m => m.name === "stamp")));
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
-  assert.deepEqual(d.registry.flowTools().filter((/** @type {any} */ t) => t.name.startsWith("stamp.")).map((/** @type {any} */ t) => [t.name, t.risk, t.summary, t.inputs]), [["stamp.mark", "read", "Stamp the note", { note: "string" }]], "only the listed tool is a step");
+  assert.deepEqual(d.registry.flowTools().filter((/** @type {any} */ t) => t.name.startsWith("stamp.")).map((/** @type {any} */ t) => [t.name, t.risk, t.summary, t.inputs]), [["stamp.mark", "outward", "Stamp the note", { note: "string" }]], "only the listed tool is a step, and an added module's step is outward whatever its manifest says");
   const res = `vyre://${d.kernel.id.space}/module/stamp/mark`;
-  // A Flow with a call step runs it.
+  // A Flow with a call step reaches it only through the Gate.
   const host = d.registry.deps.flowsHost.get(d.kernel.id.space);
   const meta = async () => ({ token: (await d.kernel.surfaces.open(owner, {})).token });
   const flow = { format: 1, name: "stamp_it", label: "Stamp it", authorship: "human", trigger: { on: "manual" },
@@ -115,10 +115,13 @@ test("a module that lists a tool in flow.steps offers it to Flows, and a Flow's 
   assert.ok(def.data && def.data.ok, JSON.stringify(def));
   await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
   await host.flows.tools["flows.start"](host.personChain(), { id: def.data.id, input: {} });
-  let n = 0; for (let i = 0; i < 60 && n < 1; i++) { await new Promise(r => setTimeout(r, 250)); n = (await d.registry.call("stamp.peek", {}, "local")).data.n; }
-  assert.equal(n, 1, "the Flow's call step ran the module's tool once");
+  // Outward: the Flow holds the step for the person's yes, so the tool has not run.
+  await new Promise(r => setTimeout(r, 2000));
+  assert.equal((await d.registry.call("stamp.peek", {}, "local")).data.n, 0, "an added module's step is held for a yes, not run");
   // A tool that was not marked is no action a Flow may name.
   assert.ok(!d.registry.flowTools().some((/** @type {any} */ t) => t.name === "stamp.peek"));
+  await d.registry.call("stamp.mark", { note: "direct" }, "local");
+  await new Promise(r => setTimeout(r, 300));
   // The event the added module said is in the log under its own trust (external), not as a first-party service's.
   const said = d.kernel.log.read({ type: "stamp.marked" });
   assert.ok(said.length >= 1, "the module's event is in the kernel log");

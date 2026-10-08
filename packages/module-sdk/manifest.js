@@ -358,7 +358,7 @@ export function toolEntries(m) {
  * itself. Outward tools are listed apart, since those are the ones that act as the person.
  * @param {any} m
  */
-export function capabilities(m) {
+export function capabilities(m, { firstParty = false } = {}) {
   const does = TYPES.object(m && m.does) ? m.does : {};
   const needs = TYPES.object(m && m.needs) ? m.needs : {};
   const shows = TYPES.object(m && m.shows) ? m.shows : {};
@@ -384,12 +384,12 @@ export function capabilities(m) {
     }))],
     front: list(needs.slots).includes("front"),
   } : null;
-  // What it adds to Flows (flow.steps, flow.triggers): the card says so, steps that leave Vyre marked.
+  // What it adds to Flows (flow.steps, flow.triggers): the card says so. An added module's step is outward whatever it says (the Gate holds it for a yes); only Vyre's own modules are believed.
   const steps = flowSteps(m), triggers = flowTriggers(m);
   return {
     tools, outward,
     ...(capsule ? { capsule } : {}),
-    ...(steps.length || triggers.length ? { flows: { steps: steps.map(x => ({ tool: x.name, label: x.label, outward: x.risk === "outward" })), triggers: triggers.map(x => ({ name: x.name, label: x.label })) } } : {}),
+    ...(steps.length || triggers.length ? { flows: { steps: steps.map(x => ({ tool: x.name, label: x.label, outward: firstParty ? x.risk === "outward" : true })), triggers: triggers.map(x => ({ name: x.name, label: x.label })) } } : {}),
     hosts: [...list(needs.network)],
     credentials: list(needs.credentials).filter(TYPES.object).map((/** @type {any} */ c) => ({ id: c.id, kind: c.kind, provider: c.provider, purpose: c.purpose })),
     connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
