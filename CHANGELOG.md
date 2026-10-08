@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- test(install): scripts/proof-install.mjs walks the new install and pairing flow end to end, one PASS or FAIL line per step: reserve a name, become yourself in the app, Add a server with the install line, the real installer, the four words in the app, adopt, a tool call, Add a device, with and without Records. The app side is the app's own modules driven headless (scripts/lib/proof/app.mjs); the names directory and the relay are local stand-ins. CI: .github/workflows/install-proof.yml (the Linux installer, and the Mac mini server on the hosted macOS runner).
 - fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
 - fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
 - fix(mac-app): the ad hoc Lumen package is signed again after the version stamp and web build, and must verify; an invalid signature made the Keychain refuse the identity key ("This Mac would not keep your key", IR-31).
