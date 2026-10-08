@@ -850,7 +850,6 @@
  "test/reach-person-only.test.js": 2,
  "test/reach-registry.test.js": 3,
  "test/reap.test.js": 2,
- "test/redteam/launch.test.js": 4,
  "test/redteam/presence.test.js": 8,
  "test/redteam/scope.test.js": 4,
  "test/redteam/vault.test.js": 14,
