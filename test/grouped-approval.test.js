@@ -48,7 +48,7 @@ const MAILS = [
 test("three outward calls from one assistant are three cards in one group, each with its exact words", async t => {
   const reg = await world(t);
   const held = [];
-  for (const m of MAILS) { const r = await send(reg, m); assert.equal(r.error.code, "held_for_approval"); held.push(r.error); }
+  for (const m of MAILS) { const r = await send(reg, m); assert.equal(r.error.code, "held_for_approval", JSON.stringify(r.error)); held.push(r.error); }
   assert.equal(new Set(held.map(h => h.group)).size, 1, "one group");
   assert.ok(held[0].group.startsWith("gp_"));
   const p = await pending(reg);
