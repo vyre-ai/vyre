@@ -107,9 +107,6 @@ test("who it is for is kept with the progress and with what the box keeps", () =
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });
 
-  assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
-});
-
 test("the install line is the release candidate's own only for a hyphenated version; a plain release and an unknown version get the stable one", () => {
   const STABLE = "curl -fsSL vyre.run/i | sh";
   const rc = (v) => `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v${v}/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v${v}/ sh`;
