@@ -20,6 +20,13 @@
       { "name": "connectors.declared", "reach": "person", "effect": "read" },
       { "name": "connectors.logging", "reach": "person", "effect": "read", "projectArg": "project" },
       { "name": "connectors.declare", "reach": "person", "effect": "write" },
+      { "name": "connectors.connection.create", "reach": "person", "effect": "write" },
+      { "name": "connectors.connection.update", "reach": "person", "effect": "write" },
+      { "name": "connectors.connection.check", "effect": "read" },
+      { "name": "connectors.connection.list", "effect": "read" },
+      { "name": "connectors.connection.get", "effect": "read" },
+      { "name": "connectors.connection.rebuild", "reach": "person", "effect": "write" },
+      { "name": "connectors.connection.delete", "reach": "person", "effect": "write" },
       "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },
       "connectors.calendar.today",
       "connectors.mention.search",
@@ -32,7 +39,11 @@
       "connectors.connected",
       "connectors.connect-failed",
       "connectors.disconnected",
-      "connectors.scope-changed"
+      "connectors.scope-changed",
+      "connectors.connection-created",
+      "connectors.connection-updated",
+      "connectors.connection-checked",
+      "connectors.connection-deleted"
     ]
   },
   "shows": {
