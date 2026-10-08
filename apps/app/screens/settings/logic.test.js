@@ -55,4 +55,5 @@ test("settings hides what a role cannot use", () => {
   assert.ok(hrefs("member").includes("/u/spaces"));
   assert.ok(!hrefs("temp").includes("/u/memory"));
   assert.ok(hrefs("member").includes("/u/memory"));
+  assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
 });
