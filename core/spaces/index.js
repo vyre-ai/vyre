@@ -38,7 +38,7 @@
 // purpose (the device displays it) and is kept as a hash.
 
 import crypto from "node:crypto";
-import { devKindSwitch } from "../wink/buildkind.js";
+import { devKindSwitch } from "../../lib/release-build.js";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";

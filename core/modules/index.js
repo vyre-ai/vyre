@@ -11,7 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { sandboxDoor } from "./sandbox-ctx.js";
-import { setupToolAllowed } from "../relay/setup.js";
+import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";

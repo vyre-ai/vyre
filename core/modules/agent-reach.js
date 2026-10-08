@@ -7,7 +7,7 @@
 // person-only, so the person can always take it back).
 // Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
 
-import { SETUP_REASONS } from "../relay/setup.js";
+import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
@@ -119,6 +119,7 @@ export const PERSON_ONLY = new Map([
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.phone.enrolled", "the owner's app reports a phone's enrolment onto the name's list: pairing and devices, never a model's"],
   ["wink.storage.bridge", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
