@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(names): support-only POST /v1/names/admin/drop takes a name back from a server, so an identity or a space can claim it (names belong to identities and spaces; an older setup named servers).
 - fix(setup): IR-11 what the setup channel may call is one list: the registry's class check read its own copy of it (SETUP_REACH), which lacked network.wink.status, so the page's network step got "no tool network.wink.status" from a healthy box. SETUP_REACH is now built from core/relay/setup.js (SETUP_REASONS), classReach asks setupToolAllowed, and kernel/retrofit/gates.js reads the same classReach. test/setup-gates.test.js drives every tool site/setup calls through a real registry as a setup caller.
 - fix(setup): IR-14 the setup page's "What is happening" log is one list in the order things happened, new lines at the bottom: the page's own lines (words matched, claimed, signed in) were drawn above the install lines, so the log looked quiet after the install.
 - fix(release): REL-1 scripts/patch-release.mjs keeps the first commit argument when --base is not given (the filter skipped index 0 whenever the flag was absent).

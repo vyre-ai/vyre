@@ -417,3 +417,21 @@ test("publish: the name's A record is the public IPv4 the request came from, and
   assert.notEqual(b.route, a.route);
   assert.ok(code(await b.post("/v1/names/publish", { name: "pubby" }, { ip: "93.184.216.34" })), "another route cannot publish a name it does not hold");
 });
+
+const adminDrop = (w, body, secret = ADMIN) => worker.fetch(new Request(BASE + "/v1/names/admin/drop", {
+  method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }) }, body: JSON.stringify(body),
+}), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
+
+test("admin drop: a server's name is taken back, its address unpublished, and the name is free to claim again", async t => {
+  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
+  data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.1" }));
+  assert.equal((await adminDrop(w, { name: "alex" }, null)).status, 401, "no header");
+  assert.equal((await adminDrop(w, { name: "alex" }, "w".repeat(48))).status, 401, "a wrong secret");
+  const r = await adminDrop(w, { name: "alex" });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(w.dns.records.length, 0, "the address is unpublished");
+  assert.equal(data(await a.get("/v1/names/mine")).name, null, "the server no longer holds it");
+  const n = boxOf(w);
+  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "ok", "free again");
+  assert.equal(code(await adminDrop(w, { name: "alex" })), "no_such_name");
+});

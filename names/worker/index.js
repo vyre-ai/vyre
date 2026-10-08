@@ -12,6 +12,7 @@
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
 //   POST   /v1/names/admin/rebind    {name, route}        support only: move a name to a route at once; needs the ADMIN_SECRET header
+//   POST   /v1/names/admin/drop      {name}               support only: take a name back from a server, so an identity or a space can claim it; needs the ADMIN_SECRET header
 //   GET    /health
 //
 // Identity: the box's relay route key (ADR 0026), Ed25519. Every call but check carries
@@ -228,7 +229,7 @@ const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
-  "POST /v1/names/admin/rebind": "adminRebind",
+  "POST /v1/names/admin/rebind": "adminRebind", "POST /v1/names/admin/drop": "adminDrop",
   ...ID_ROUTES,
 };
 
@@ -291,7 +292,7 @@ async function route(request, env, url) {
     }
     const query = Object.fromEntries(url.searchParams);
     let auth = null;
-    if (op === "adminRebind") {
+    if (op === "adminRebind" || op === "adminDrop") {
       // Support only. Not signed with a route key: the Worker secret is the authority. With no secret set the
       // operation does not exist; a missing and a wrong header answer the same.
       const given = request.headers.get("x-vyre-admin") || "";
@@ -640,6 +641,22 @@ export class Directory {
     await this.save(rec);
     await this.wipeDns(rec);
     return { name: rec.name, route: route.slice(0, 8), state: rec.state };
+  }
+
+  /**
+   * Support only (the ADMIN_SECRET header): take a name back from a server. Names belong to identities and spaces; a name an older setup gave a box is
+   * freed here so its person's identity (or a space) can claim it. The box's route is told (a `moved` note with no name), and its DNS records go.
+   * @param {any} b @param {{admin?: boolean}} a
+   */
+  async op_adminDrop(b, a) {
+    if (!a || !a.admin) throw err(401, "unauthorized", "not authorised");
+    const v = verdict(String(b.name || ""));
+    if (v.status === "invalid") throw err(400, "bad_request", "not a name");
+    const rec = await this.load(v.name);
+    if (!rec) throw err(404, "no_such_name", "no server holds that name");
+    if (rec.route) await this.store.put(`m/${rec.route}`, { name: null, dropped: rec.name, at: this.now() });
+    await this.drop(rec);
+    return { name: rec.name, dropped: true };
   }
 
   /** Lapse what expired, retry DNS cleanups, drop yesterday's counters. */
