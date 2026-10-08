@@ -75,11 +75,6 @@ export async function macSignListChange(message: Uint8Array, prompt: string): Pr
  */
 export async function shellKeyHeld(): Promise<boolean> {
   if (!shellIdentity()) return false;
-  // A Windows PC whose name was claimed with its Windows Hello passkey (identity/windows-claim.js) is a full device: the passkey asks the person at the OS on every use, so no script can sign with it.
-  if (shellKind() === "windows") {
-    const { loadIdentity } = await import("./store");
-    const mine = await loadIdentity().catch(() => null);
-    return (mine?.key as { alg?: string } | undefined)?.alg !== "webauthn-es256";
-  }
+  if (shellKind() === "windows") return true;
   return (await macEnclavePublic(false)) === null;
 }

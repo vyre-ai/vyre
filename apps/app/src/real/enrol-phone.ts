@@ -15,7 +15,8 @@ const serving = new Set<string>();
 export const serveEnrol = (): Promise<boolean> => serveEnrolWith({
   call: (name, input) => tool(name, input),
   identity: loadIdentity,
-  held: shellKeyHeld,
+  // A Windows PC whose name was claimed with its Windows Hello passkey (identity/windows-claim.js) is a full device: the passkey asks the person at the OS on every use, so it is not held.
+  held: async () => (await shellKeyHeld()) && (await loadIdentity().catch(() => null))?.key?.alg !== "webauthn-es256",
   signers: async (mine) => {
     const { hasKeys, listChangeSigners } = await import("../keys");
     return (await hasKeys()).presence ? listChangeSigners("Add a device to your Vyre name") : { sign: (m: Uint8Array) => mine.key.sign(m) };
