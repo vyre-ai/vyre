@@ -1074,5 +1074,10 @@
  {
   "tool": "work.team.add",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen"
+ },
+ {
+  "tool": "files.drive.status",
+  "role": "local",
+  "reason": "the 0.3.0 cleanup removed the mounted-folder Drive (Taildrive) that held this tool back on a Mac; the one tool left is the Space Drive's read-only status (is it on, how many files), reach anyone, the same answer the box role already gave"
  }
 ]

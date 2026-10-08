@@ -31,8 +31,13 @@ export function diff(a, b) {
       if (x === y) continue;
       if (!x && y) continue;
       if (!x || !y) { out.push({ role, tool, caller: "*", world: "*", was: x ? "present" : "absent", now: y ? "present" : "absent" }); continue; }
-      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) {
-        out.push({ role, tool, caller: a.callers[Math.floor(i / a.worlds.length)], world: a.worlds[i % a.worlds.length], was: a.legend[x[i]] || x[i], now: (b.legend[y[i]] || y[i]) });
+      // Cells are matched by caller and world name, so a caller the matrix dropped (the tailnet ones) is not read as every later caller changing.
+      for (let i = 0; i < x.length; i++) {
+        const caller = a.callers[Math.floor(i / a.worlds.length)], world = a.worlds[i % a.worlds.length];
+        const ci = b.callers.indexOf(caller), wi = b.worlds.indexOf(world);
+        if (ci < 0 || wi < 0) continue;
+        const yv = y[ci * b.worlds.length + wi], was = a.legend[x[i]] || x[i], now = b.legend[yv] || yv;
+        if (was !== now) out.push({ role, tool, caller, world, was, now });
       }
     }
     for (const tool of Object.keys(a.roles[role].emptyBad)) if (a.roles[role].emptyBad[tool] !== (b.roles[role] || { emptyBad: {} }).emptyBad[tool]) out.push({ role, tool, caller: "*", world: "empty-input", was: a.roles[role].emptyBad[tool], now: (b.roles[role].emptyBad || {})[tool] });
