@@ -26,7 +26,7 @@ export function expandConnections(flow, cat) {
     const p = `${base}[${i}]`;
     if (!isObj(s)) return s;
     let out = s;
-    if (s.kind === "service" && s.connection !== undefined) out = expandOne(s, p);
+    if (s.kind === "service" && s.connection !== undefined && s.connector === undefined) out = expandOne(s, p);
     if (Array.isArray(out.steps)) out = { ...out, steps: walk(out.steps, `${p}.steps`) };
     if (Array.isArray(out.then)) out = { ...out, then: walk(out.then, `${p}.then`) };
     if (Array.isArray(out.else)) out = { ...out, else: walk(out.else, `${p}.else`) };
