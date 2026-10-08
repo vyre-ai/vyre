@@ -46,6 +46,7 @@
  "apps/app/src/session/model.test.js": 10,
  "apps/app/src/session/reveal.test.js": 5,
  "apps/app/src/state/answers.test.js": 5,
+ "apps/app/src/state/offline-model.test.js": 3,
  "apps/app/src/state/connection.test.js": 3,
  "apps/app/src/state/devices-model.test.js": 14,
  "apps/app/src/state/glass-model.test.js": 17,

@@ -17,6 +17,7 @@ import { listenCommands } from "../src/shell/shell";
 import { startGlass } from "../src/state/glass";
 import { startLive } from "../src/state/live";
 import { ThemeProvider, useTheme } from "../src/theme/theme";
+import { OfflineBar } from "../src/ui/OfflineBar";
 import { UndoToast } from "../src/ui/UndoToast";
 
 function Shell() {
@@ -37,6 +38,7 @@ function Shell() {
   return (
     <View style={[styles.fill, { backgroundColor: color.bg }]}>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <OfflineBar />
       <SetupGate>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />
       </SetupGate>
