@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- test: known-red burn-down 1.3, the 8 with no recorded cause: stdin-hygiene, within-hygiene, peer, screen-live and agents are green (fixes above and in their tests); sessions, golden and federation-send now each carry a written cause and owner in test/known-red.json; the list is 18 files.
 - fix(hygiene): known-red burn-down 1.3: the confinement probe listens for errors on its child's stdin (EPIPE could take vyred down), and the three Wink relay waits (homecall, netd, netjoin) race through lib/within.js instead of an unref'd timer; test/stdin-hygiene and test/within-hygiene go green.
 - fix(names): IR-9 in the name directory a released name stays its owner's: the route that released it, an identity that listed that route, or whoever holds the reclaim code the release now returns can claim it back; nobody else, and names.check says `ok` (never "someone else has that name") to them. Worker only; the box and the setup page pass the code in a later change.
 - fix(kernel): the event log's `iterate` asks the disk for the rows its caller's limit needs, not a whole batch of 500: a consumer far behind the window read 500 rows to deliver one event.
