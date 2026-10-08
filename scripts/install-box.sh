@@ -15,14 +15,15 @@
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
-# when the image can be pulled, and VYRE_CODE: the setup code the browser shows, for the
-# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
+# when the image can be pulled, VYRE_STORE (auto, the default: each space on Records when this server has room; or sqlite: the small built-in store, 2 GB is enough),
+# and VYRE_CODE: the one-time setup code the Vyre app makes when a server is added, for the
+# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh` (the variable goes on sh, the reader
 # of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
 # argument (a process list shows arguments); without one, and on a terminal, it is asked for and
 # Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_SETUP_CODE (VYRE_CODE stays the host-side pipe), which the box reads once
 # at start, and is never printed. With a code, each step is also sent, sealed under a key only the
-# browser's setup page can derive from the code, to the relay's progress mailbox (VYRE_RELAY, default
-# https://relay.vyre.run) so the page shows the install as it happens. That needs curl and openssl; without
+# app that made the code can derive from it, to the relay's progress mailbox (VYRE_RELAY, default
+# https://relay.vyre.run) so the app shows the install as it happens. That needs curl and openssl; without
 # them the terminal is the only place it shows.
 #
 # A release that carries image digests (release.json) is pulled by digest, after cosign has verified
@@ -167,7 +168,7 @@ finish() {
       if [ "$PAIRED" = 1 ]; then
         say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
       elif [ -n "$CODE" ]; then
-        say "  Done. Back to your browser."
+        say "  Done. Back in the Vyre app."
       else
         say "  Next: finish pairing from your device (the long code above)."
       fi
@@ -738,7 +739,7 @@ write_kernel_env() {
   fi
   chmod 600 "$TMP/vyre.kernel"
   grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
-  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=auto\n' >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.kernel"
   put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
 }
 
@@ -1114,6 +1115,7 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
+  case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
   early_one_install
   [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
