@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(team): `team.ask` takes an optional `model` (a provider such as codex or grok, `provider/model`, or a Claude model name; `vyre team ask --model`). The request runs in a session made for it alone on that provider, through the same launch, Gate and spend as any teammate session, and the teammate's standing thread is left as it was. The request records its model and its thread.
 - fix(daemon,test): the three failures on lead-cand 81fa2bd7b. A merge had put serveDeck back (deck/ is gone), so an unbuilt app at / answered no_deck instead of no_app: serveDeck is removed again and / answers 404 no_app when no export built for the root exists. The setup tool list moved to lib/setup-gate.js and the release-build helpers to lib/release-build.js, so core/modules no longer imports core/relay and core/spaces no longer imports core/wink; the unused core/onboard -> core/names frozen edge is dropped; wink.phone.enrolled is classed person-only in agent-reach.
 - feat(names): the names Worker accepts the Windows app's window origin (https://vyreapp.localhost) for the self-proving claim, finalize, append and update routes, beside the hosted app and the Mac window. The live Worker is not redeployed by this change (the lead's go).
 - docs: Install now uses the app's Same and Not the same buttons, names Windows Hello (with its fallback), the Mac server's Touch ID and boot start, the My Home to My Cloud upgrade, and `vyre words`.
