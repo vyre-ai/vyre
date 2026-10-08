@@ -1469,6 +1469,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (info && !info.methods.includes(req.method)) return send(res, 405, { error: { code: "method_not_allowed", message: `${url.pathname} answers ${info.methods.join(", ")}` } });
     return own(req, res, { caller, url });
   }
+  // An app module's screens (core/appmods): /m/<module>/... is served whole by the module that mounted /m/, which refuses anyone who is not a signed-in person.
+  if (url.pathname.startsWith("/m/")) {
+    const mnt = registry.mounts.get("m");
+    if (mnt) return mnt.fn(req, res, { caller, url });
+  }
   // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
   // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
   // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
