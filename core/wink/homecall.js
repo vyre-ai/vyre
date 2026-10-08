@@ -9,6 +9,7 @@
 // Space's directory record names the route and the box key), one peer stream, one request at a time. A direct path through the source's public gate is not used for a move yet.
 import { connect as realConnect } from "../../relay/client/client.js";
 import { nodeCrypto } from "../../relay/client/nodecrypto.js";
+import { withinOrThrow } from "../../lib/within.js";
 import { peerSession, streamPipe } from "./node/peer-wire.js";
 import { HOME_TOOL } from "./homemove.js";
 import { PEER_HOME } from "./serverlink.js";
@@ -46,7 +47,7 @@ export function createHomeCaller(o = {}) {
     const keyStore = { get: async () => k, set: async (/** @type {any} */ v) => { k = v; } };
     const conn = (o.relayConnect || realConnect)({ relay: String(q.relay), route: String(q.route), box: String(q.box), name: "a home", crypto: nodeCrypto(), keyStore, homeMove: true, backoff: { min: 500, max: 2000 } });
     try {
-      const chan = await Promise.race([conn.ready(), new Promise((_, rej) => setTimeout(() => rej(fail("unavailable", "the source home did not answer through the relay")), o.openMs ?? 10_000).unref?.())]);
+      const chan = await withinOrThrow(conn.ready(), o.openMs ?? 10_000, () => fail("unavailable", "the source home did not answer through the relay"));
       const s = chan.open({ peer: "wink", space: PEER_HOME, pull: { space: q.space } });
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { s.reset("no answer"); reject(fail("unavailable", "the source home did not accept the stream")); }, o.openMs ?? 10_000);

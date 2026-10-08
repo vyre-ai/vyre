@@ -80,6 +80,28 @@ test("a consumer reads forward from its cursor through the disk, not the window,
   assert.deepEqual(seen, log.read({ type: "grant.created" }).map(e => e.seq), "every grant event, including those long out of the window");
 });
 
+test("a read with a small limit asks the disk for that many rows, not a whole batch (a consumer far behind the window took 500 rows to deliver one event)", () => {
+  const db = new DatabaseSync(":memory:");
+  const asked = [];
+  const prepare = db.prepare.bind(db);
+  db.prepare = sql => {
+    const st = prepare(sql);
+    if (!/FROM kernel_events WHERE .*ORDER BY seq LIMIT \?$/.test(sql)) return st;
+    return new Proxy(st, { get: (t, k) => (k === "all" ? (...a) => { asked.push(a[a.length - 1]); return t.all(...a); } : typeof t[k] === "function" ? t[k].bind(t) : t[k]) });
+  };
+  const log = createSqliteEventLog({ db, space: SPACE, clock, window: { events: 10 } });
+  fill(log, 200);
+  asked.length = 0;
+  assert.equal([...log.iterate({ since: 3, limit: 1 })][0].seq, 4, "the next event after the cursor, from the disk");
+  assert.deepEqual(asked, [1], "one row asked for, not a batch");
+  asked.length = 0;
+  assert.equal([...log.iterate({ since: 3, limit: 7 })].length, 7);
+  assert.ok(asked.every(n => n <= 7), `at most the limit asked for: ${asked}`);
+  asked.length = 0;
+  assert.ok([...log.iterate({})].length >= 200);
+  assert.ok(asked.every(n => n <= 500) && asked.some(n => n === 500), "an unlimited walk still goes in batches");
+});
+
 test("the built-in store keeps hot rows and no change feed in memory, and still answers as the reference store does", async () => {
   const db = new DatabaseSync(":memory:");
   const store = createSqliteStore({ db, clock, hotRows: 50 });

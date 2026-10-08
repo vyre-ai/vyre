@@ -42,9 +42,11 @@ async function world(t) {
   const root = tempHome(t);
   t.after(() => FakeDriver.forget(root));
   const log = path.join(root, "claude.log");
-  const prev = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  const prev = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   process.env.VYRE_CLAUDE_BIN = FAKE_CLAUDE;
   process.env.FAKE_CLAUDE_LOG = log;
+  // The fake appends to a log in the temp home, which the session sandbox hides from a session (and strips FAKE_* from its environment); this test is about what resume launches, not the sandbox.
+  process.env.VYRE_SESSION_SANDBOX_OFF = "1";
   t.after(() => { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   // Transcripts in the temp home, so nothing looks at the user's own sessions.
   const transcripts = path.join(root, "transcripts");

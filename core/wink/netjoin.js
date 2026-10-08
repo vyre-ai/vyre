@@ -11,6 +11,7 @@ import { findBinaries as realFind } from "./netd.js";
 import { directKey, relayKeyPair } from "./directkey.js";
 import { connect as realRelayConnect } from "../../relay/client/client.js";
 import { nodeCrypto } from "../../relay/client/nodecrypto.js";
+import { withinOrThrow } from "../../lib/within.js";
 import { streamPipe } from "./node/peer-wire.js";
 import { PEER_HOME } from "./serverlink.js";
 
@@ -27,7 +28,7 @@ function makeRelayPeer(h, o) {
   /** @type {any} */ let conn = null;
   const open = async () => {
     if (!conn) conn = (o.relayConnect || realRelayConnect)({ relay: String(h.relay), route: String(h.route), box: String(h.box), name: o.name || "a server", crypto: nodeCrypto(), keyStore, backoff: { min: 1000, max: 15_000 } });
-    const chan = await Promise.race([conn.ready(), new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error("the relay did not answer"), { code: "unreachable" })), o.openMs ?? 10_000).unref?.())]);
+    const chan = await withinOrThrow(conn.ready(), o.openMs ?? 10_000, () => Object.assign(new Error("the relay did not answer"), { code: "unreachable" }));
     const s = chan.open({ peer: "wink", space: PEER_HOME });
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { s.reset("no answer"); reject(Object.assign(new Error("the home did not accept the peer stream"), { code: "unreachable" })); }, o.openMs ?? 10_000);

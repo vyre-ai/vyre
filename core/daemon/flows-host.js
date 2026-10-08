@@ -17,6 +17,16 @@ import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 const MIN_TICK_MS = 60_000;
 
 /**
+ * Run `f` now when the Space's store is attached, or when it joins. A Space on its own records store (Twenty) attaches a moment after the server is up (stores/twenty/deferred-store.js): whatever reads the Flow
+ * record types has to wait for that, and for the types to be defined, or it reads "no type flow-state".
+ * @param {any} store @param {() => any} f
+ */
+export function whenStoreReady(store, f) {
+  if (store && typeof store.attached === "function" && !store.attached() && typeof store.whenReady === "function") { store.whenReady(f); return undefined; }
+  return f();
+}
+
+/**
  * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
  * }} o
  */
@@ -155,8 +165,7 @@ export function createFlowsHost(o) {
       } catch (e) { log(`flows: communications for ${space} were not brought up to date: ${e && /** @type {Error} */ (e).message}`); }
     };
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
-    if (typeof k.store.attached === "function" && !k.store.attached() && typeof k.store.whenReady === "function") k.store.whenReady(setupTypes);
-    else await setupTypes();
+    await whenStoreReady(k.store, setupTypes);
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
@@ -187,8 +196,8 @@ export function createFlowsHost(o) {
       timer.unref();
     };
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
-    if (typeof k.store.attached === "function" && !k.store.attached() && typeof k.store.whenReady === "function") k.store.whenReady(recover); else await recover();
-    void arm();
+    // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.
+    await whenStoreReady(k.store, async () => { await recover(); void arm(); });
 
     const host = Object.freeze({ space, flows, stages, get owner() { return ownerOf(); },
       /** The chain of a session token this Space's door minted (an assistant's session, a person's), or null. */

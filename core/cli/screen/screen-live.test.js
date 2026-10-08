@@ -60,7 +60,8 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   // A failed step must not leave the screen running: its stream would keep this process alive.
   t.after(async () => { term.type("\x03"); await done; });
   await term.waitFor(/Inbox \(1\)/);
-  // The draft is the first item, so it opens selected, its content loaded.
+  // The screen opens on the folder's project (core/cli/screen/model.js initial), so Home goes to the first item, the draft, and loads its content.
+  term.type(HOME);
   const home = await term.waitFor(/subject {2}Intake follow-up/);
   assert.match(home, /✉ send to dana@harlowlegal\.com/);
   assert.equal(term.modes.alt, true);

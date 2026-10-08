@@ -15,6 +15,7 @@
 // Every engine is a dependency, so a test passes fakes (netd.test.js) and the real one runs under VYRE_WINK_REAL=1 (netd.real.test.js).
 
 import crypto from "node:crypto";
+import { withinOrThrow } from "../../lib/within.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHeadscale as realHeadscale, headscaleBin as realHeadscaleBin, freePort as realFreePort } from "./control/headscale.js";
@@ -233,7 +234,7 @@ export function createNetd(o) {
   async function teardown() {
     if (watch) { clearInterval(watch); watch = null; }
     for (const f of [() => pub && pub.stop(), () => reach && reach.stop && reach.stop(), () => host && host.stopAll(), () => gate && gate.close(), () => hs && hs.stop()]) {
-      try { await Promise.race([Promise.resolve().then(f), new Promise((_, rej) => { const t = setTimeout(() => rej(new Error("timed out")), 5000); t.unref && t.unref(); })]); } catch (e) { log(`wink net: stopping: ${/** @type {Error} */ (e).message}`); }
+      try { await withinOrThrow(Promise.resolve().then(f), 5000, () => new Error("timed out")); } catch (e) { log(`wink net: stopping: ${/** @type {Error} */ (e).message}`); }
     }
   }
 
