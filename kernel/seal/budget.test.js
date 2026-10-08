@@ -20,7 +20,8 @@ const GROUPS = {
   // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-3's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
   // SX-1 (platform, 0.2.9; signed off by the lead acting as reviewer, 6 Oct 2026): 960, raised from 900 for moving a sealed value to a Space on another server without its plaintext leaving a sealing process (wrapKey, export, exportApprove, import: the Personal to
   // My Cloud upgrade). That is 61 lines of the 60 asked for; the group sat at 861 before it.
-  sealing: { cap: 960, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
+  // PK-1 (a passkey is a yes at the sealing process on a release build, work/passkey-presence merged for the Windows PC): 980, raised from 960 for the WebAuthn check (preverify) and the `rp` the sealing process keeps for a passkey key. 973 used. Needs the lead's sign-off as reviewer.
+  sealing: { cap: 980, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
   // The host CLI's wipe (`sudo vyre admin wipe`): destroys the sealing master key and folder with the daemon stopped. Never imported by the daemon.
