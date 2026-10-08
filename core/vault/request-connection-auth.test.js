@@ -26,17 +26,18 @@ async function mk(t) {
   migrate(db, "vault", MIGRATIONS);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
+  let resolve = async (/** @type {string} */ _h) => [{ address: "203.0.113.10", family: 4 }];
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
   const transport = async r => { net.calls.push({ path: r.url.pathname + r.url.search, headers: r.headers, method: r.method }); return net.script(r); };
   const tools = new Map();
   const tool = (name, callers, description, input, run) => tools.set(name, { run });
   const internal = (name, description, input, run) => tools.set(name, { run });
   const said = saidTools.register({ vault: v, internal });
-  const api = register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport } });
+  const api = register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async host => resolve(host), transport } });
   const ask = (input, caller = "cli") => tools.get("vault.request").run(input, { caller });
   const key = (name, fields) => v.put({ name, kind: fields.username ? "login" : "secret", fields }, "cli");
   const cred = (name, config) => v.put({ name, kind: "api-credential", fields: { config: JSON.stringify(config) } }, "cli");
-  return { api, v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
+  return { setResolve: (/** @type {any} */ f) => { resolve = f; }, tools, api, v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
 }
 const BASE = { hosts: ["api.example.com"], endpoints: [{ method: "GET", path: "/*", kind: "read" }] };
 
@@ -146,4 +147,45 @@ test("the check: the connectors module may read the check path of a Connection a
   // nothing but that one path, and nothing but a read, for the connectors module
   await assert.rejects(ask({ credential: "conn-gohighlevel-sales", method: "GET", url: "https://services.leadconnectorhq.com/contacts" }, "module:connectors"), /may only read/);
   await assert.rejects(ask({ credential: "conn-gohighlevel-sales", method: "POST", url }, "module:connectors"), /may only read/);
+});
+
+test("fetching an API description by address: a public https GET with nothing of the person's, private ranges refused at every hop, size capped, and only the connectors module may ask", async t => {
+  const { api, net, setResolve, tools } = await mk(t);
+  const get = (/** @type {string} */ u, /** @type {string} */ caller = "module:connectors") => tools.get("vault.fetch.public").run({ url: u }, { caller });
+  net.script = () => ({ status: 200, headers: { "content-type": "application/json" }, body: Buffer.from('{"openapi":"3.0.0"}') });
+  const ok = await get("https://docs.example.com/openapi.json");
+  assert.deepEqual([ok.status, ok.body, ok.type], [200, '{"openapi":"3.0.0"}', "application/json"]);
+  assert.equal(net.calls.at(-1).method, "GET"); assert.equal(net.calls.at(-1).headers.authorization, undefined); assert.equal(net.calls.at(-1).headers.cookie, undefined);
+  // who may ask
+  await assert.rejects(get("https://docs.example.com/x", "mcp"), /only the connectors module/);
+  await assert.rejects(get("https://docs.example.com/x", "cli"), /only the connectors module/);
+  // the address itself: http, a port, credentials, a private address, nothing that resolves
+  await assert.rejects(get("http://docs.example.com/x"), /must be https/);
+  await assert.rejects(get("https://docs.example.com:8443/x"), /https port/);
+  await assert.rejects(get("https://u:p@docs.example.com/x"), /user or password/);
+  setResolve(async () => [{ address: "169.254.169.254", family: 4 }]);
+  await assert.rejects(get("https://metadata.example.com/x"), /private, loopback, link-local or metadata/);
+  setResolve(async () => []);
+  await assert.rejects(get("https://nothing.example.com/x"), /resolved to no address/);
+  setResolve(async () => [{ address: "203.0.113.10", family: 4 }]);
+  // a redirect is followed and checked again; one to a private address, off https, or too many, is not
+  let step = 0;
+  net.script = () => (step++ === 0 ? { status: 302, headers: { location: "https://raw.example.com/spec.json" }, body: Buffer.from("") } : { status: 200, headers: {}, body: Buffer.from("{}") });
+  assert.equal((await get("https://docs.example.com/spec")).body, "{}");
+  assert.equal(net.calls.at(-1).path, "/spec.json");
+  net.script = () => ({ status: 302, headers: { location: "http://plain.example.com/x" }, body: Buffer.from("") });
+  await assert.rejects(get("https://docs.example.com/spec"), /left https/);
+  net.script = () => ({ status: 302, headers: { location: "https://docs.example.com/again" }, body: Buffer.from("") });
+  await assert.rejects(get("https://docs.example.com/spec"), /more than three times/);
+  let hop = 0;
+  setResolve(async h => (hop++ === 0 ? [{ address: "203.0.113.10", family: 4 }] : [{ address: "10.0.0.5", family: 4 }]));
+  net.script = () => ({ status: 302, headers: { location: "https://inside.example.com/x" }, body: Buffer.from("") });
+  await assert.rejects(get("https://docs.example.com/spec"), /private, loopback/);
+  setResolve(async () => [{ address: "203.0.113.10", family: 4 }]);
+  // size and status
+  net.script = () => ({ status: 200, headers: {}, body: Buffer.from("x"), truncated: true });
+  await assert.rejects(get("https://docs.example.com/big"), /larger than 5 MB/);
+  net.script = () => ({ status: 404, headers: {}, body: Buffer.from("no") });
+  await assert.rejects(get("https://docs.example.com/missing"), /answered 404/);
+  void api;
 });

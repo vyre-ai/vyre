@@ -63,6 +63,11 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   const draft = await model("connectors.connection.import", { text: JSON.stringify({ openapi: "3.0.0", servers: [{ url: "https://api.acme-crm.invalid" }], paths: { "/contacts": { get: { operationId: "list" }, post: { operationId: "create" } } } }) });
   assert.deepEqual(draft.data.operations.map(o => [o.name, o.method]), [["list", "GET"], ["create", "POST"]]);
   assert.equal((await model("connectors.connection.import", { text: "nope" })).error?.code, "bad_input");
+  // by address is the person's act: a model's is refused before anything is fetched, and the person's goes through the vault's guarded fetch
+  assert.equal((await model("connectors.connection.import", { url: "https://docs.acme-crm.invalid/openapi.json" })).error?.code, "denied");
+  const byUrl = await cli("connectors.connection.import", { url: "https://docs.acme-crm.invalid/openapi.json" });
+  assert.match(byUrl.error?.message || "", /could not read that address/);
+  assert.equal((await cli("connectors.connection.import", {})).error?.code, "bad_input");
   assert.equal((await model("connectors.connection.list")).data.connections.length, 1, "a draft saves nothing");
   const tpl = (await model("connectors.connection.export", { id: "acme-crm" })).data;
   assert.equal(tpl.credential.item, ""); assert.ok(!JSON.stringify(tpl).includes(KEY));

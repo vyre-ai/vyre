@@ -211,6 +211,33 @@ export class ApiRequests {
   // ---- building the plan: everything a decision needs, from the request alone ----
 
   /**
+   * A public document by its https address, for a person who pointed at it (an API description to import): a plain GET with no credential and no cookie, the address resolved and checked against
+   * private, loopback, link-local and metadata ranges at every hop, the connection pinned to the address that was checked, at most 3 redirects (each checked the same way), a size cap, and a timeout.
+   * It sends nothing of the person's. The caller decides who may ask (the connectors module, for a person's own import).
+   * @param {string} rawUrl @param {number} [maxBytes]
+   */
+  async fetchPublic(rawUrl, maxBytes = 5_000_000) {
+    let url = String(rawUrl || "");
+    for (let hops = 0; ; hops++) {
+      let host;
+      try { host = new URL(url).hostname; } catch { throw bad("that is not an address"); }
+      const t = await checkTarget(url, [host], { lookup: this.deps.lookup });
+      const r = await this.transport({ url: t.url, address: t.addresses[0], method: "GET", headers: { accept: "application/json, application/yaml, text/yaml, text/plain, */*;q=0.1", "user-agent": "vyre-import" }, timeoutMs: 20_000, maxBytes });
+      if (r.status >= 300 && r.status < 400 && r.headers.location) {
+        if (hops >= 3) throw bad("that address redirected more than three times", "redirect");
+        let next;
+        try { next = new URL(r.headers.location, t.url); } catch { throw bad("the redirect was not an address", "redirect"); }
+        if (next.protocol !== "https:") throw bad("the redirect left https", "redirect");
+        url = next.toString();
+        continue;
+      }
+      if (r.truncated) throw bad(`that file is larger than ${Math.round(maxBytes / 1_000_000)} MB`, "too_large");
+      if (!(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
+      return { status: r.status, body: Buffer.from(r.body).toString("utf8"), type: String(r.headers["content-type"] || "") };
+    }
+  }
+
+  /**
    * An operation of a Connection as the request it stands for. A declared name builds from its path and shapes (the input is checked, an input it does not declare is refused); `request` is the
    * generic one: any method and path on the credential's host. Nothing is allowed here that the request below would not allow: this only writes the request down.
    * @param {any} input @param {string} name
@@ -780,6 +807,13 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
       body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
+
+  internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
+    obj({ url: str, max_bytes: { type: "integer" } }, ["url"]),
+    async ({ url, max_bytes }, { caller }) => {
+      if (caller !== "module:connectors") throw bad("only the connectors module fetches a description for a person's import", "denied");
+      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)));
+    });
 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",
     obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id"]),
