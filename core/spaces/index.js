@@ -175,6 +175,7 @@ export default {
       if (s.exists && !s.pending) return s;
       const f = meta && meta.kernelFacts;
       if (K && typeof K.owner === "string" && f && f.kind === "device" && f.person === K.owner) return { ...s, exists: true, pending: false, id: K.owner, name: null, eid: String(f.device_key_id || "") };
+      if (process.env.SP_DEBUG) console.error("SPDBG", JSON.stringify({ metaKeys: Object.keys(meta || {}), facts: meta && meta.kernelFacts, owner: K && K.owner, stack: new Error().stack.split('\n').slice(2,5).join('|') }));
       throw refuse("Choose your Vyre name first.", "no_identity");
     };
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
