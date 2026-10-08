@@ -251,6 +251,25 @@ test("a device the box does not know is refused with words a client can tell fro
   const c = connect({ relay: w.status.url, route: offer.route, box: offer.box, name: "stale", crypto: nodeCrypto(), keyStore: keystore(t), backoff: { min: 50, max: 100 } });
   t.after(() => c.close());
   await until(() => c.lastError);
-  console.error("STALE", JSON.stringify(String(c.lastError.message)));
   assert.match(String(c.lastError.message), /not a paired device|closed|refus/i);
+});
+
+test("long code -> words -> adopt, real daemon and relay, typed code on (the release default): the app's pairServer finishes and the same key store reconnects as the paired device", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const ks = keystore(t);
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", about: { kind: "web" }, name: "Alex's Mac",
+    crypto: nodeCrypto(), keyStore: ks, presenceKey: devKey(), pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
+  await until(async () => shown);
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
+  const r = await pairing;
+  assert.ok(r.paired && r.owner && r.session);
+  const c = connect({ relay: w.status.url, route: r.route, box: r.box, name: "Alex's Mac", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  await until(() => c.state === "open");
+  assert.equal(c.reply.device, r.device);
 });

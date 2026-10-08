@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(pairing): an app with no server of its own finishes a typed-code pairing. The Mac, Windows, iPhone and Android apps redeemed the typed code and stopped, so a server's pairing never got its owner (wink.server.adopt, with the typed ack as the yes and the name's proof) and a phone's never got its wink.phone.wait; the server let the half-paired device go and the app, which had saved the pairing anyway, was refused every few seconds. relay/client/join.js joinWithCode now finishes the pairing (relay/client/finish.js, shared with the long code and the add-a-device flows); the box names the gate in its pending reply; the owner's proof binds to a typed code's tag; a typed-code server device gets its paired session from the key it offered; and a saved pairing the server no longer knows is let go before a new server is paired. Tests: test/pair-fix.test.js.
 - fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
 - fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
 - fix(mac-app): the ad hoc Lumen package is signed again after the version stamp and web build, and must verify; an invalid signature made the Keychain refuse the identity key ("This Mac would not keep your key", IR-31).
