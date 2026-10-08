@@ -10,16 +10,18 @@ import { b64 } from "../../modules/vyre-signer/presence-proof.js";
 
 /**
  * This window's passkey: made now if there is none for this site, else the one kept. Null where the page may not make one (the site is not one the shell takes) or the platform has no WebAuthn.
- * @param {{ origin: string, store: KeepStore, name?: string, webauthn?: any, timeout?: number }} d
+ * `key`: the passkey this PC's name was claimed with, when it is for this site: it is the presence key too (one passkey, one prompt), as a passkey-claimed browser does.
+ * @param {{ origin: string, store: KeepStore, name?: string, webauthn?: any, timeout?: number, key?: any }} d
  * @returns {Promise<{ rp: string, key: any, signer: { signPresence(card: any): Promise<any> }, enrolment: { key_id: string, spki: string, signer: "webauthn_platform", rp: string } } | null>}
  */
 export async function windowsPasskey(d) {
   const rp = passkeyRp(d.origin, { shell: true });
   if (!rp) return null;
   const slot = `windows-passkey/${rp}`;
-  const kept = await d.store.get(slot);
+  const kept = d.key && d.key.alg === "webauthn-es256" && d.key.rp === rp ? d.key.keep() : await d.store.get(slot);
   /** @type {any} */ let key = null;
-  if (kept && kept.kind === "passkey" && kept.rp === rp) key = await restorePasskeyKey(kept, { ...(d.webauthn ? { webauthn: d.webauthn } : {}), ...(d.timeout ? { timeout: d.timeout } : {}) });
+  if (d.key && d.key.alg === "webauthn-es256" && d.key.rp === rp) key = d.key;
+  else if (kept && kept.kind === "passkey" && kept.rp === rp) key = await restorePasskeyKey(kept, { ...(d.webauthn ? { webauthn: d.webauthn } : {}), ...(d.timeout ? { timeout: d.timeout } : {}) });
   if (!key) {
     key = await createPasskeyKey({ rp, name: d.name || "Vyre", ...(d.webauthn ? { webauthn: d.webauthn } : {}), ...(d.timeout ? { timeout: d.timeout } : {}) });
     await d.store.put(slot, key.keep());

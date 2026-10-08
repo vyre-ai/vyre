@@ -14,7 +14,7 @@ const store = {
 const mem = new Map<string, unknown>();
 
 /** The hardware key that gives the yes on this device: the Mac's or Windows' window, else the phone's. Null where there is none. */
-async function yesSigner() {
+async function yesSigner(mine?: { key: { alg?: string; rp?: string } } | null) {
   const { shellSigner } = await import("./shell-signer");
   const s = await shellSigner();
   if (s) return { kind: "shell" as const, signer: s };
@@ -22,7 +22,7 @@ async function yesSigner() {
   const { shellKind } = await import("../shell/shell.ts");
   if (shellKind() === "windows" && typeof location !== "undefined") {
     const { windowsPasskey } = await import("./windows-passkey.js");
-    const wp = await windowsPasskey({ origin: location.origin, store: { get: (k: string) => store.get(k), put: (k: string, v: unknown) => store.put(k, v) } }).catch(() => null);
+    const wp = await windowsPasskey({ origin: location.origin, ...(mine?.key?.alg === "webauthn-es256" ? { key: mine.key } : {}), store: { get: (k: string) => store.get(k), put: (k: string, v: unknown) => store.put(k, v) } }).catch(() => null);
     if (wp) return { kind: "passkey" as const, signer: wp.signer, enrolment: wp.enrolment };
   }
   const { phoneSigner } = await import("./phone-signer");
@@ -57,7 +57,7 @@ export async function joinDeps(): Promise<JoinDeps | null> {
   const { DIRECTORY } = await import("./install");
   const client = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
   const peer = (await import("@vyre/relay-client/peerclient.js")) as unknown as { openServerPeer: (c: any, o?: any) => Promise<any> };
-  const yes = await yesSigner();
+  const yes = await yesSigner(mine);
   return {
     who: { id: mine.id, name: mine.name, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) },
     fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, connect: client.connect, openServerPeer: peer.openServerPeer, crypto: relayCrypto(), words: WORDS as unknown as string[],
@@ -110,7 +110,7 @@ async function inviteDeps(space: string) {
   const { openPeer } = await import("./peer");
   const { kernelWire } = await import("./kernel-wire.js");
   const { DIRECTORY } = await import("./install");
-  const yes = await yesSigner();
+  const yes = await yesSigner(mine);
   const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
