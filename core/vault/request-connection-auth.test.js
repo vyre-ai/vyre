@@ -29,7 +29,7 @@ async function mk(t) {
   let appOrigin = () => ({ error: { code: "not_found", message: "no app" } });
   let resolve = async (/** @type {string} */ _h) => [{ address: "203.0.113.10", family: 4 }];
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
-  const transport = async r => { net.calls.push({ path: r.url.pathname + r.url.search, headers: r.headers, method: r.method }); return net.script(r); };
+  const transport = async r => { net.calls.push({ path: r.url.pathname + r.url.search, headers: r.headers, method: r.method, address: r.address, host: r.url.hostname }); return net.script(r); };
   const tools = new Map();
   const tool = (name, callers, description, input, run) => tools.set(name, { run });
   const internal = (name, description, input, run) => tools.set(name, { run });
