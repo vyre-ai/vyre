@@ -5,7 +5,8 @@
 import { hashMatches, payloadHash } from "./payload-hash.js";
 
 /** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, acted_via?: string, expires_in_s?: number }} Pending */
-/** @typedef {{ signPresence(req: { op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }): Promise<any> }} Signer */
+/** @typedef {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }} SignRequest */
+/** @typedef {{ signPresence(req: SignRequest): Promise<any>, signMany?(reqs: SignRequest[]): Promise<any[] | null> }} Signer */
 
 /** The cards from approvals.pending, newest asks last as the box lists them. @param {any} answer @returns {Pending[]} */
 export const cardsFrom = (answer) => (Array.isArray(answer?.approvals) ? answer.approvals.filter((/** @type {any} */ a) => a && typeof a.id === "string" && (typeof a.payload_hash === "string" || signOf(a))).map(normalize) : []);

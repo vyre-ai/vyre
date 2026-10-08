@@ -5,7 +5,7 @@
 import { hashMatches } from "./payload-hash.js";
 import { cardsFrom } from "./phone-approve.js";
 
-/** @typedef {import("./phone-approve.js").Pending & { group?: string, words?: { field: string, text: string, cut?: boolean }[], partial?: boolean, edited?: boolean, line?: string, request?: { op: string, fields: Record<string, any> } }} Item */
+/** @typedef {import("./phone-approve.js").Pending & { readAll?: boolean, group?: string, words?: { field: string, text: string, cut?: boolean }[], partial?: boolean, edited?: boolean, line?: string, request?: { op: string, fields: Record<string, any> } }} Item */
 /** @typedef {{ id: string, line: string, items: Item[] }} Group */
 
 /**
@@ -51,10 +51,10 @@ export async function approveGroup({ group, dropped = new Set(), signer, call, p
   const yes = group.items.filter((i) => !dropped.has(i.id) && !i.partial);
   for (const i of yes) if (!hashMatches(i)) throw Object.assign(new Error("the hash does not match what the card shows"), { code: "hash_mismatch" });
   /** @type {Record<string, any>} */ const proofs = {};
-  const many = /** @type {any} */ (signer).signMany;
   const reqs = yes.map((i) => ({ op: i.op, space: i.space, fields: i.fields, payload_hash: i.payload_hash, prompt: i.line || i.title, person }));
-  // a signer with a batch call (one unlock for all) is used when the phone has one; otherwise the same key signs one at a time
-  const signed = typeof many === "function" ? await many.call(signer, reqs) : await reqs.reduce(async (acc, r) => { const out = await acc; out.push(await signer.signPresence(r)); return out; }, /** @type {Promise<any[]>} */ (Promise.resolve([])));
+  // A signer with a batch call asks for the face once for all of them (iPhone); one that answers null (Android prompts per use of the key) or has none signs one at a time
+  let signed = typeof signer.signMany === "function" ? await signer.signMany(reqs) : null;
+  if (!signed) signed = await reqs.reduce(async (acc, r) => { const out = await acc; out.push(await signer.signPresence(r)); return out; }, /** @type {Promise<any[]>} */ (Promise.resolve([])));
   yes.forEach((i, k) => {
     if (!signed[k] || signed[k].payload_hash !== i.payload_hash) throw Object.assign(new Error("the signed proof is not for this card"), { code: "needs_presence" });
     proofs[i.id] = signed[k];
@@ -86,4 +86,26 @@ export function closingLine(results, group, o = {}) {
   const tail = [dropped ? `${dropped} dropped` : "", waiting ? `${waiting} still ${waiting === 1 ? "waits" : "wait"}` : ""].filter(Boolean).join(", ");
   const log = o.logged && n && n[1] === "email" ? " Each is logged on its client." : "";
   return `${head}${tail ? `; ${tail}` : ""}.${log}`;
+}
+
+/**
+ * Read an item to its end: approvals.item-view pages (about 50 values or 8000 characters each) until `next` is null, a long value arriving in parts that are joined. Returns the item with
+ * every word, marked read (it stays `partial`: it is approved on its own, never with the group). The server refuses a yes on a part-shown item until this has been done (needs_view), and editing starts the reading again.
+ * @param {Item} item @param {(tool: string, input: Record<string, unknown>) => Promise<any>} call @returns {Promise<Item>}
+ */
+export async function readAll(item, call) {
+  /** @type {{ field: string, text: string, cut?: boolean }[]} */ const words = [];
+  let offset = 0;
+  for (let page = 0; page < 500; page++) {
+    const r = await call("approvals.item-view", { id: item.id, offset });
+    if (!r || !Array.isArray(r.words)) throw Object.assign(new Error("the item could not be read"), { code: "bad_input" });
+    for (const w of r.words) {
+      const last = words[words.length - 1];
+      if (w.part && last && last.field === w.field) last.text += w.text;
+      else words.push({ field: w.field, text: w.text });
+    }
+    if (r.next === null || r.next === undefined) return { ...item, words, readAll: true };
+    offset = r.next;
+  }
+  throw Object.assign(new Error("the item is too long to read here"), { code: "too_long" });
 }

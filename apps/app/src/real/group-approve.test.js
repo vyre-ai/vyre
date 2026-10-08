@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { payloadHash } from "./payload-hash.js";
-import { approveGroup, closingLine, editItem, groupsFrom, singlesFrom, wordLines, yesLabel } from "./group-approve.js";
+import { approveGroup, closingLine, editItem, readAll, groupsFrom, singlesFrom, wordLines, yesLabel } from "./group-approve.js";
 
 const SPACE = "spc_abcdefghijkl";
 const card = (/** @type {string} */ id, /** @type {string} */ to, extra = {}) => {
@@ -39,6 +39,25 @@ test("one yes: each approved item is signed over its own hash, the dropped one i
   assert.deepEqual(calls[0][1].decisions, [{ id: "a1", approve: true }, { id: "a2", approve: true }, { id: "a3", approve: false }]);
   assert.deepEqual(Object.keys(calls[0][1].proofs), ["a1", "a2"]);
   assert.equal(out.results.length, 3);
+});
+
+test("a batch signer that answers null (Android) falls back to one signature at a time", async () => {
+  const [g] = groupsFrom(PENDING);
+  let one = 0;
+  const signer = { signPresence: async (/** @type {any} */ r) => { one++; return { payload_hash: r.payload_hash }; }, signMany: async () => null };
+  await approveGroup({ group: g, signer, call: async () => ({ results: [] }), person: "per_a" });
+  assert.equal(one, 3);
+});
+
+test("a long item is read to its end through approvals.item-view, parts of one value joined", async () => {
+  const [g] = groupsFrom(PENDING);
+  const pages = [{ words: [{ field: "to", text: "Northwind" }, { field: "body", text: "AAA", part: "1/2" }], total: 3, offset: 0, next: 2 }, { words: [{ field: "body", text: "BBB", part: "2/2" }, { field: "subject", text: "S" }], total: 3, offset: 2, next: null }];
+  /** @type {number[]} */ const asked = [];
+  const read = await readAll({ ...g.items[0], partial: true }, async (_t, i) => { asked.push(/** @type {number} */ (i.offset)); return pages[asked.length - 1]; });
+  assert.deepEqual(asked, [0, 2]);
+  assert.deepEqual(read.words, [{ field: "to", text: "Northwind" }, { field: "body", text: "AAABBB" }, { field: "subject", text: "S" }]);
+  assert.deepEqual([read.partial, read.readAll], [true, true], "read to the end, but still approved on its own");
+  await assert.rejects(readAll(g.items[0], async () => ({})), (/** @type {any} */ e) => e.code === "bad_input");
 });
 
 test("a batch signer is used when the phone has one (one unlock), and a proof for another item sends nothing", async () => {

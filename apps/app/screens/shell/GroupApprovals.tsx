@@ -9,10 +9,12 @@ import { shellSigner } from "../../src/real/shell-signer";
 import { shellIdentity } from "../../src/shell/shell";
 import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal } from "../../src/real/phone-approve.js";
-import { approveGroup, closingLine, editItem, groupsFrom, wordLines, yesLabel, type Group, type Item } from "../../src/real/group-approve.js";
+import { approveCard } from "../../src/real/phone-approve.js";
+import { proofHeader } from "../../src/real/approvals.js";
+import { approveGroup, closingLine, editItem, groupsFrom, readAll, wordLines, yesLabel, type Group, type Item } from "../../src/real/group-approve.js";
 
-const ask = async (tool: string, input: Record<string, unknown>) => {
-  const r = await call<any>(tool, input);
+const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
+  const r = await call<any>(tool, input, o);
   if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
   return r.data;
 };
@@ -20,7 +22,7 @@ const signer = async () => (await phoneSigner()) ?? (await shellSigner());
 /** Words past this many characters open on a tap; the rest of the card stays short. */
 const SHORT = 160;
 
-function ItemRow({ item, dropped, onDrop, onEdit }: { item: Item; dropped: boolean; onDrop: () => void; onEdit: (field: string, text: string) => void }) {
+function ItemRow({ item, dropped, onDrop, onEdit, onRead, onApproveOne }: { item: Item; dropped: boolean; onDrop: () => void; onEdit: (field: string, text: string) => void; onRead: () => void; onApproveOne: () => void }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -28,7 +30,7 @@ function ItemRow({ item, dropped, onDrop, onEdit }: { item: Item; dropped: boole
   return (
     <View className="gap-s1 px-s4 py-s2" style={dropped ? { opacity: 0.5 } : undefined}>
       <Text size="body" strong>{item.line || item.title}</Text>
-      {item.partial ? <Text size="caption" tone="err">Part of this is not shown here, so it cannot be approved with the others. Open it on its own.</Text> : null}
+      {item.partial ? <Text size="caption" tone="err">{item.readAll ? "You have read all of it. Approve it on its own; it is not part of the group yes." : "Part of this is not shown here, so it cannot be approved with the others. Read all of it first."}</Text> : null}
       {lines.map((w) => {
         const long = w.text.length > SHORT && !open;
         return editing === w.field ? (
@@ -47,7 +49,9 @@ function ItemRow({ item, dropped, onDrop, onEdit }: { item: Item; dropped: boole
         );
       })}
       <View className="flex-row gap-s2 pt-s1">
-        {lines.some((w) => w.text.length > SHORT) ? <Button kind="ghost" size="sm" label={open ? "Show less" : "Read all"} onPress={() => setOpen(!open)} /> : null}
+        {lines.some((w) => w.text.length > SHORT) ? <Button kind="ghost" size="sm" label={open ? "Show less" : "Show more"} onPress={() => setOpen(!open)} /> : null}
+        {item.partial && !item.readAll ? <Button kind="outline" size="sm" label="Read all" onPress={onRead} /> : null}
+        {item.partial && item.readAll && !dropped ? <Button kind="primary" size="sm" icon="faceid" label="Approve this one" onPress={onApproveOne} /> : null}
         {!item.partial && !dropped && lines.length ? <Button kind="ghost" size="sm" label="Edit" onPress={() => { const w = lines[lines.length - 1]; setDraft(w.text); setEditing(w.field); }} /> : null}
         <Button kind="ghost" size="sm" label={dropped ? "Keep" : "Drop"} onPress={onDrop} />
       </View>
@@ -91,6 +95,22 @@ export function GroupApprovals() {
       setGroups((all) => all.map((x) => (x.id === g.id ? { ...x, items: x.items.map((i) => (i.id === item.id ? next : i)) } : x)));
     } catch { showToast("That change did not go through."); }
   };
+  const read = async (g: Group, item: Item) => {
+    try {
+      const next = await readAll(item, ask);
+      setGroups((all) => all.map((x) => (x.id === g.id ? { ...x, items: x.items.map((i) => (i.id === item.id ? next : i)) } : x)));
+    } catch { showToast("That could not be read. Try again."); }
+  };
+  const approveOne = async (item: Item) => {
+    setBusy(true);
+    try {
+      const me = await ask("records.me", {}).catch(() => null);
+      const person = typeof me?.person === "string" ? me.person : me?.person?.id ?? "";
+      await approveCard(item as never, await signer(), ask, proofHeader, person);
+      showToast("Approved.");
+    } catch (e) { showToast(answerRefusal((e as { code?: string }).code, howWord(Platform.OS))); }
+    finally { setBusy(false); load(); }
+  };
   return (
     <View className="gap-s2 px-s4 pb-s3">
       {groups.map((g) => (
@@ -99,7 +119,7 @@ export function GroupApprovals() {
           <Card flush>
             {g.items.map((item, i) => (
               <View key={item.id}>{i ? <Divider /> : null}
-                <ItemRow item={item} dropped={dropped.has(item.id)} onDrop={() => setDropped((d) => { const n = new Set(d); if (!n.delete(item.id)) n.add(item.id); return n; })} onEdit={(f, t) => void edit(g, item, f, t)} />
+                <ItemRow item={item} dropped={dropped.has(item.id)} onDrop={() => setDropped((d) => { const n = new Set(d); if (!n.delete(item.id)) n.add(item.id); return n; })} onEdit={(f, t) => void edit(g, item, f, t)} onRead={() => void read(g, item)} onApproveOne={() => void approveOne(item)} />
               </View>
             ))}
             <View className="flex-row gap-s2 px-s4 py-s3">
