@@ -1760,7 +1760,6 @@ Run a Connection's check request and say in plain words whether it works: { id }
 Connect any app that has an API, from a key already in the Vault: { label, base_url (one https host), send: { how: bearer | header | basic | query, name? (the header or query parameter) }, credential: { item, field? }, headers? (fixed, such as an API version), vars? (fixed values a {name} in headers or the check path takes), check: { path } }. Makes the Connection and its vault credential; run connectors.connection.check next.
 
 - Input:
-  - `base_url` string, required
   - `check` object, required
     - `path` string, required
   - `credential` object, required
@@ -1770,6 +1769,8 @@ Connect any app that has an API, from a key already in the Vault: { label, base_
   - `send` object, required
     - `how` one of "bearer", "header", "basic", "query", required
     - `name` string
+  - `app` string
+  - `base_url` string
   - `headers` object
   - `id` string
   - `operations` list
@@ -1837,7 +1838,6 @@ The Connections an assistant proposed that the person has not yet approved or de
 Propose a Connection for the person to approve, with the same fields as connectors.connection.create. This is how an assistant connects an app after reading its documentation: it names the Vault item that holds the key (it never sees the key), the host, how the key is sent and the operations. Nothing is made or called until the person approves it on their own screen. Operations get the kind their method gives (GET reads, POST PUT PATCH change, DELETE deletes); only the person can relabel one.
 
 - Input:
-  - `base_url` string, required
   - `check` object, required
     - `path` string, required
   - `credential` object, required
@@ -1847,6 +1847,8 @@ Propose a Connection for the person to approve, with the same fields as connecto
   - `send` object, required
     - `how` one of "bearer", "header", "basic", "query", required
     - `name` string
+  - `app` string
+  - `base_url` string
   - `headers` object
   - `id` string
   - `operations` list
@@ -1867,7 +1869,6 @@ Write a Connection's vault credential again from its record (after it shows out 
 Change a Connection (same fields as connectors.connection.create). Changing what it reaches is the person's act; the vault credential is rebuilt from the record.
 
 - Input:
-  - `base_url` string, required
   - `check` object, required
     - `path` string, required
   - `credential` object, required
@@ -1877,6 +1878,8 @@ Change a Connection (same fields as connectors.connection.create). Changing what
   - `send` object, required
     - `how` one of "bearer", "header", "basic", "query", required
     - `name` string
+  - `app` string
+  - `base_url` string
   - `headers` object
   - `id` string
   - `operations` list
