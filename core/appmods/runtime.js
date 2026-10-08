@@ -146,7 +146,8 @@ export function createDockerDirect(o) {
         for (const f of opt.files || []) {
           if (!/^[a-z0-9][a-z0-9._-]*$/.test(f.name)) throw Object.assign(new Error("not a file name"), { code: "bad_name" });
           const host = path.join(tmp, f.name);
-          fs.writeFileSync(host, f.text, { mode: 0o600 });
+          // readable by the app's user: a container with no capabilities cannot read a file it does not own through root's power. These are catalog scripts, never secrets.
+          fs.writeFileSync(host, f.text, { mode: 0o644 });
           await must(["cp", host, `${n.container}:/tmp/${f.name}`], "copy into the app");
           inside.push(`/tmp/${f.name}`);
         }

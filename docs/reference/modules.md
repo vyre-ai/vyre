@@ -143,6 +143,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal f
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`
+- Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
 - Needs vault: `per-app`
 
 ## approvals

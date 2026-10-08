@@ -100,7 +100,7 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const catalog = loadCatalog(m => ctx.log.warn(m));
-    const driver = seam.driver || createDockerDirect({ home: ctx.paths.data, log: m => ctx.log.warn(m) });
+    const driver = seam.driver || createDockerDirect({ home: ctx.paths.root, log: m => ctx.log.warn(m) });
     const space = () => String((ctx.kernel && ctx.kernel.space) || "home");
     /** @type {Map<string, http.Server>} */ const listeners = new Map();
     const row = (/** @type {string} */ name) => db.prepare("SELECT * FROM appmods_apps WHERE name = ?").get(name);
@@ -205,7 +205,7 @@ export default {
               env: { APP_URL: up.origin, VYRE_LOGIN_EMAIL: `vyre+${m.name}@vyre.invalid`, VYRE_HOOK_URL: `http://${up.hookHost}:${hookPort}/hook`, VYRE_HOOK_TOKEN: hookToken },
               files: [{ name: m.app.bootstrap.script, text: bootstrapScript(m) }],
             });
-            if (out.code !== 0) throw refuse(`setting ${m.name} up failed: ${out.stderr.trim().split("\n").slice(-2).join(" ").slice(0, 200)}`, "bootstrap");
+            if (out.code !== 0) throw refuse(`setting ${m.name} up failed: ${out.stderr.trim().split("\n").filter(l => !/not writable|Bundler will use|Changing the owner|Unable to/.test(l)).slice(0, 4).join(" ").replace(/\s+/g, " ").slice(0, 400)}`, "bootstrap");
             const lines = Object.fromEntries(out.stdout.split("\n").map(l => /^([a-z][a-z0-9_]*)=(.+)$/.exec(l.trim())).filter(Boolean).map(x => [/** @type {RegExpExecArray} */ (x)[1], /** @type {RegExpExecArray} */ (x)[2]]));
             for (const o of m.app.bootstrap.outputs) {
               if (!lines[o.name]) throw refuse(`setting ${m.name} up gave no ${o.name}`, "bootstrap");
