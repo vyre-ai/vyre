@@ -9,6 +9,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { start } from "../daemon/index.js";
+import * as config from "../config/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { seam, handleWebhook, pick } from "./index.js";
@@ -17,7 +18,30 @@ const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.js
 
 async function world(t) {
   const PDF = Buffer.from("%PDF-1.4 signed bytes");
-  const app = http.createServer((q, r) => { if (q.url === "/file/abc/nda.pdf") r.writeHead(200, { "content-type": "application/pdf" }).end(PDF); else r.writeHead(302, { location: "/sign_in" }).end(); });
+  // A small app that behaves like the real one where it matters: a sign-in form with an anti-forgery token, a session cookie, an origin check on writes, root-absolute links and redirects.
+  const seen = { sign: [], reqs: [] };
+  const origin = () => `http://127.0.0.1:${app.address().port}`;
+  const app = http.createServer((q, r) => {
+    seen.reqs.push({ method: q.method, url: q.url, cookie: q.headers.cookie || "", origin: q.headers.origin || "", referer: q.headers.referer || "", auth: q.headers.authorization || "", vyre: Object.keys(q.headers).filter(k => k.startsWith("x-vyre")) });
+    const authed = /(?:^|; )sess=authed(?:;|$)/.test(q.headers.cookie || "");
+    let body = ""; q.on("data", d => { body += d; });
+    q.on("end", () => {
+      if (q.url === "/file/abc/nda.pdf") return void r.writeHead(200, { "content-type": "application/pdf" }).end(PDF);
+      if (q.url === "/sign_in" && q.method === "GET") return void r.writeHead(200, { "content-type": "text/html", "set-cookie": "sess=anon; path=/; HttpOnly" }).end('<html><head><meta name="csrf-token" content="tok123"></head><body><form action="/sign_in" method="post"><input type="hidden" name="authenticity_token" value="tok123"><input name="user[email]"><input name="user[password]"></form></body></html>');
+      if (q.url === "/sign_in" && q.method === "POST") {
+        const f = new URLSearchParams(body); seen.sign.push(Object.fromEntries(f));
+        const ok = f.get("authenticity_token") === "tok123" && f.get("user[email]") === "vyre+docuseal@vyre.invalid" && f.get("user[password]") === "pw_1234567890abcdef" && /sess=anon/.test(q.headers.cookie || "");
+        return void r.writeHead(ok ? 302 : 422, { location: "/", ...(ok ? { "set-cookie": "sess=authed; path=/; HttpOnly" } : {}) }).end();
+      }
+      if (!authed) return void r.writeHead(302, { location: "/sign_in" }).end();
+      if (q.url === "/") return void r.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "tracker=1; path=/" }).end(`<html><head><link rel="stylesheet" href="/packs/app.css"><script src="/packs/app.js" defer></script></head><body><a href="/templates/1">T</a><meta property="og:url" content="http://localhost:3000/"></body></html>`);
+      if (q.url === "/packs/app.css") return void r.writeHead(200, { "content-type": "text/css" }).end("body{background:url(/img/x.png)}");
+      if (q.url === "/packs/app.js") return void r.writeHead(200, { "content-type": "text/javascript" }).end("fetch('/api/x')");
+      if (q.url === "/go") return void r.writeHead(302, { location: origin() + "/templates/1" }).end();
+      if (q.url === "/save" && q.method === "POST") return void r.writeHead(q.headers.origin === origin() ? 200 : 403, { "content-type": "application/json" }).end(JSON.stringify({ got: body }));
+      r.writeHead(404).end();
+    });
+  });
   await new Promise(r => app.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   const log = [];
@@ -36,7 +60,11 @@ async function world(t) {
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  return { d, root, cli, log, lines, boot: () => boot, model: (tool, input = {}) => d.registry.call(tool, input, "mcp", { thread: "t-1" }) };
+  const web = (method, p, { caller = "cli", headers = {}, body } = {}) => new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: config.paths(root).socket, path: p, method, headers: { host: "localhost", "x-vyre-caller": caller, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
+    req.on("error", reject); req.end(body);
+  });
+  return { d, root, cli, web, seen, log, lines, boot: () => boot, model: (tool, input = {}) => d.registry.call(tool, input, "mcp", { thread: "t-1" }) };
 }
 
 test("the catalog and the card are open to every caller and say what the app may reach", async t => {
@@ -132,4 +160,39 @@ test("remove takes the container, the listener and every key; data goes only whe
   assert.deepEqual((await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-")), []);
   assert.equal((await w.cli("appmods.list")).data.apps.length, 0);
   assert.equal((await w.cli("appmods.remove", { name: "docuseal" })).error.code, "not_found");
+});
+
+test("the app's screens are served under /m/<module>/ for a signed-in person only, signed in to the app for them, with the app's cookies and Vyre's kept apart", async t => {
+  const w = await world(t);
+  await w.cli("appmods.install", { name: "docuseal" });
+  // not a person: a model, and a hook, are told nothing
+  for (const caller of ["mcp", "hook", "harness"]) assert.equal((await w.web("GET", "/m/docuseal/", { caller })).status, 404, caller);
+  assert.equal((await w.web("GET", "/m/nothing/", {})).status, 404, "an app that is not installed is not there");
+  const home = await w.web("GET", "/m/docuseal/", { headers: { cookie: "__Host-vyre_person=secret; other=1", authorization: "Bearer vyre-secret", "x-vyre-proof": "p" } });
+  assert.equal(home.status, 200, home.text.slice(0, 200));
+  assert.match(home.text, /<head><script src="\/m\/docuseal\/__vyre\/shim\.js"><\/script>/);
+  assert.match(home.text, /href="\/m\/docuseal\/packs\/app\.css"/);
+  assert.match(home.text, /href="\/m\/docuseal\/templates\/1"/);
+  assert.match(home.text, /content="\/m\/docuseal\/"/, "the app's own origin became the prefix");
+  assert.equal(home.headers["set-cookie"], undefined, "the app's cookies never reach the browser");
+  // the app signed in once, with the credentials the install kept, and saw none of Vyre's
+  assert.equal(w.seen.sign.length, 1);
+  const forwarded = w.seen.reqs.filter(r => r.url === "/");
+  assert.ok(forwarded.length >= 1);
+  for (const r of w.seen.reqs) { assert.ok(!r.cookie.includes("vyre") && !r.cookie.includes("secret"), "no Vyre cookie reached the app"); assert.equal(r.auth, ""); assert.deepEqual(r.vyre, []); }
+  assert.equal(forwarded[forwarded.length - 1].cookie, "sess=authed", "the app's own session is the proxy's");
+  // css and redirects and the shim
+  const css = await w.web("GET", "/m/docuseal/packs/app.css");
+  assert.match(css.text, /url\(\/m\/docuseal\/img\/x\.png\)/);
+  const go = await w.web("GET", "/m/docuseal/go");
+  assert.equal(go.status, 302);
+  assert.equal(go.headers.location, "/m/docuseal/templates/1");
+  const shim = await w.web("GET", "/m/docuseal/__vyre/shim.js");
+  assert.equal(shim.status, 200);
+  assert.match(shim.headers["content-type"], /javascript/);
+  assert.equal((await w.web("GET", "/m/docuseal/__vyre/shim.js", { caller: "mcp" })).status, 404);
+  // a write carries the app's origin (its own anti-forgery check), not Vyre's
+  const save = await w.web("POST", "/m/docuseal/save", { headers: { "content-type": "application/json", origin: "https://box.example", "content-length": "7" }, body: '{"a":1}' });
+  assert.equal(save.status, 200, save.text);
+  assert.deepEqual(JSON.parse(save.text), { got: '{"a":1}' });
 });
