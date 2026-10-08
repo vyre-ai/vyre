@@ -144,12 +144,12 @@ export function createStages(o) {
     emit("stage.advanced", { record: ent.urn, from: ent.stage, to: next.name });
   }
 
-  /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[] }} e */
+  /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[], owner?: string }} e */
   function onStageEnter(e) {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(e.record);
     if (!m) return Promise.resolve();
     // Not awaited: the gateway calls this inside the write, and the queue may be mid-advance on this very record (an awaited call would wait on itself).
-    void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
+    void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates, owner: e.owner })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
     return Promise.resolve();
   }
   let entrySeq = 0;
