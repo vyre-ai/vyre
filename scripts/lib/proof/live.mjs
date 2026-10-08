@@ -58,7 +58,16 @@ export async function wipeServer(host) {
  */
 export async function installFromLine(host, line, out) {
   fs.mkdirSync(out, { recursive: true });
-  const r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
+  let r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
+  // A fresh server has no Docker. The installer says so and gives one line; a person runs it and then runs the install line again, and so does the walk.
+  const dockerLine = (r.out.match(/Install it with:\s*\n?\s*(curl -fsSL https:\/\/get\.docker\.com \| sh)/) || [])[1];
+  if (r.code !== 0 && dockerLine) {
+    const d = await asWalker(host, dockerLine, { pty: true, timeoutMs: 15 * 60_000 });
+    fs.writeFileSync(path.join(out, `docker-${Date.now()}.log`), d.out);
+    if (d.code !== 0) return { code: d.code, words: "", tail: `Docker did not install: ${d.out.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 300)}`, dockerFirst: true };
+    r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
+    r.out = `[a fresh server: the installer asked for Docker first and the walk ran ${dockerLine}]\n${r.out}`;
+  }
   fs.writeFileSync(path.join(out, `install-${Date.now()}.log`), r.out.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
   const m = r.out.match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/);
   return { code: r.code, words: m ? m[1] : "", tail: r.out.split("\n").filter(Boolean).slice(-6).join(" | ").slice(0, 500) };
