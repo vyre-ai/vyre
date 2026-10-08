@@ -37,8 +37,9 @@ test("an approved held call runs on the asker's retry, once, and only that call"
   assert.equal(held.error && held.error.code, "held_for_approval", JSON.stringify(held));
   const card = (await reg.call("approvals.pending", {}, "cli")).data.approvals.find((/** @type {any} */ c) => c.id === held.error.approval);
   const proof = { ok: true, payload_hash: card.payload_hash, for: canon({ op: card.request.op, fields: canon(card.request.fields) }) };
-  const ans = await reg.call("approvals.answer", { id: card.id, approve: true }, "cli", { proof });
-  assert.ok(!ans.error, JSON.stringify(ans));
+  // the phone's answer, with its presence proof beside the call, as the approvals tests give it
+  const ans = await reg.tools.get("approvals.answer").run({ id: card.id, approve: true }, { caller: "device:phone", proof });
+  assert.equal(ans.answered, "approved", JSON.stringify(ans));
   const run = await reg.call("mail.send", mail, "mcp:agent:kit", { approval: card.id });
   assert.equal(run.data && run.data.sent, "Northwind", JSON.stringify(run));
   assert.equal(sent.length, 1);
