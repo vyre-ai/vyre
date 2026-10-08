@@ -22,6 +22,10 @@
 //   public ingress     with `ingress` set (the public gate only) two more things, by exact shape, reach two loopback listeners of this box and nothing else:
 //                      POST /hooks/<route> (a signed webhook, 256 KB at most, its signature checked at the home by core/hooks) and GET|HEAD /s/<token> (a public
 //                      share link, core/artifacts/share-server.js). No query, no upgrade, no other path or method: the same 404 bytes as everything else.
+//   app hosts          with `ingress.apps` and `ingress.appsSuffix` (".<name>.vyre.run") a request whose Host is exactly one label under the box's name (and, over TLS, whose SNI is that same host) is an app
+//                      module's own origin. The Host is matched against the list of installed RUNNING apps BEFORE anything of the request is read: an unknown label gets the same 404 bytes and its body is
+//                      never read. A known one is carried to the apps' loopback front (core/appmods, which answers by Host) with the Host kept, any method and path, a body streamed up to 64 MB, under its own
+//                      per-address budget. A WebSocket upgrade on an app host is refused like every upgrade that is not Headscale's.
 //
 // It holds no secret except its own TLS key, runs under its own uid (gate-main.js drops privileges
 // after binding), and talks to Headscale on a loopback port.
@@ -77,6 +81,11 @@ const HOOK_TYPES = new Set(["application/json", "application/x-www-form-urlencod
 export const INGRESS_BODY_LIMIT = 256 * 1024;
 /** Per address, per window: a public link or a webhook sender never needs more. */
 const INGRESS_PER_WINDOW = 120;
+/** An app's screens load dozens of files per page, so an app host has its own, larger per-address budget in the same window (override with limits.appsPerWindow). */
+const APPS_PER_WINDOW = 600;
+export const APPS_BODY_LIMIT = 64 * 1024 * 1024;
+const APP_LABEL = /^[a-z][a-z0-9-]{1,30}$/;
+const TOO_LARGE = Buffer.from("HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 const HOP = /^(connection|keep-alive|upgrade|te|trailer|transfer-encoding|proxy-.*|host)$/i;
 
 const SPOOF = /^(x-forwarded-.*|forwarded|true-client-ip|x-real-ip|cf-connecting-ip|x-client-ip|x-cluster-client-ip|fastly-client-ip|via|proxy-.*|x-original-.*)$/i;
@@ -102,7 +111,7 @@ export function parseHeadscaleLog(line) {
  *   upstream: { host?: string, port: number, tls?: boolean, pin?: string },
  *   derp?: boolean,
  *   forwarder?: { trust: string[], header: string },
- *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404)
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
  *   limits?: Partial<{ maxHeaderBytes: number, headersMs: number, requestMs: number, idleMs: number, upgradedIdleMs: number,
  *     handshakeMs: number, maxBodyBytes: number, windowMs: number, upgradesPerWindow: number, maxConcurrentUpgrades: number,
  *     maxConcurrentDerp: number, maxConnsPerAddr: number, maxConns: number, failThreshold: number, failWindowMs: number, blockMs: number }>,
@@ -117,6 +126,7 @@ export function createGate(o) {
     maxHeaderBytes: 8192, headersMs: 10_000, requestMs: 15_000, idleMs: 30_000, upgradedIdleMs: 10 * 60_000,
     handshakeMs: 10_000, maxBodyBytes: 0, windowMs: 60_000, upgradesPerWindow: 30, maxConcurrentUpgrades: 8,
     maxConcurrentDerp: 16, maxConnsPerAddr: 128, maxConns: 4096, failThreshold: 5, failWindowMs: 60_000, blockMs: 10 * 60_000,
+    appsPerWindow: APPS_PER_WINDOW, appsBodyBytes: APPS_BODY_LIMIT, appsRequestMs: 10 * 60_000, appsIdleMs: 120_000,
     ...(o.limits || {}),
   };
   const now = o.now || Date.now;
@@ -186,6 +196,60 @@ export function createGate(o) {
     }
     if (SHARE_PATH.test(url) && (m === "GET" || m === "HEAD")) return cl === undefined || cl === "0" ? "share" : null;
     return null;
+  }
+
+  /**
+   * Is this request for an app module's own host? null when it is not one (it goes on as before); a host (lowercase, no port) when Host is exactly one label under the suffix; "" when it
+   * ends with the suffix but is not one valid label or the SNI differs from the Host (answered 404 like an unknown app, never handed to Headscale's paths).
+   * @param {import("node:http").IncomingMessage} req @returns {string | null}
+   */
+  function appsHost(req) {
+    const ing = o.ingress;
+    if (!ing || !ing.apps || !ing.appsSuffix) return null;
+    const h = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+    if (!h.endsWith(ing.appsSuffix)) return null;
+    if (!APP_LABEL.test(h.slice(0, h.length - ing.appsSuffix.length))) return "";
+    const sni = /** @type {any} */ (req.socket).servername;
+    if (/** @type {any} */ (req.socket).encrypted && String(sni || "").toLowerCase() !== h) return "";
+    return h;
+  }
+
+  /** Carry one request for an app module's own host to the apps' loopback front. Host is matched against the running apps before any of the request is read. */
+  async function apps(/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res, /** @type {string} */ host, /** @type {string} */ addr) {
+    const sock = req.socket, k = addrKey(addr), t = now();
+    const w = (windows.get("a:" + k) || []).filter(x => x > t - L.windowMs);
+    if (w.length >= L.appsPerWindow) { stats.limited++; emit({ type: "limit", addr: k, what: "apps" }); refuse(sock, TOO_MANY); return; }
+    w.push(t); windows.set("a:" + k, w);
+    /** @type {{ port: number, hosts: string[] } | null} */ let cur = null;
+    try { cur = /** @type {any} */ (o.ingress).apps ? await /** @type {any} */ (o.ingress).apps() : null; } catch { cur = null; }
+    if (!host || !cur || !Number.isInteger(cur.port) || cur.port < 1 || !Array.isArray(cur.hosts) || !cur.hosts.includes(host)) { stats.notFound++; emit({ type: "notfound", addr: k }); refuse(sock, NOT_FOUND); return; }
+    const declared = req.headers["content-length"];
+    if (declared !== undefined && (!/^\d{1,12}$/.test(String(declared)) || Number(declared) > L.appsBodyBytes)) { refuse(sock, TOO_LARGE); return; }
+    sock.setTimeout(L.appsIdleMs);
+    /** @type {Record<string, string>} */ const head = {};
+    const raw = req.rawHeaders;
+    for (let i = 0; i < raw.length; i += 2) {
+      const n = raw[i], low = n.toLowerCase();
+      if (SPOOF.test(low) || (HOP.test(low) && low !== "host") || (fwd && low === fwd.header)) continue;
+      head[n] = head[n] === undefined ? raw[i + 1] : head[n] + ", " + raw[i + 1];
+    }
+    head["X-Forwarded-For"] = addr; head["X-Real-IP"] = addr; head["X-Forwarded-Proto"] = "https"; head["Connection"] = "close";
+    stats.forwarded++;
+    const up = http.request({ host: "127.0.0.1", port: cur.port, method: req.method, path: req.url, headers: head, agent: false, timeout: L.appsIdleMs }, ures => {
+      const h = { ...ures.headers };
+      for (const n of Object.keys(h)) if (HOP.test(n)) delete h[n];
+      delete h.date; delete h.server;
+      res.writeHead(ures.statusCode || 502, ures.statusMessage, h);
+      ures.pipe(res);
+      ures.on("error", () => res.destroy());
+      res.on("close", () => ures.destroy());
+    });
+    up.on("timeout", () => up.destroy());
+    up.on("error", () => { stats.timeouts++; if (!res.headersSent) refuse(sock, UNAVAILABLE); else sock.destroy(); });
+    req.on("aborted", () => up.destroy());
+    let n = 0;
+    req.on("data", d => { n += d.length; if (n > L.appsBodyBytes) { up.destroy(); refuse(sock, TOO_LARGE); } });
+    req.pipe(up);
   }
 
   /** Carry one ingress request to its loopback listener and the answer back. The head is the client's minus every spoofable and hop-by-hop header, plus the real address. */
@@ -268,7 +332,8 @@ export function createGate(o) {
     ? https.createServer({ cert: o.tls.cert, key: o.tls.key, minVersion: "TLSv1.2", ALPNProtocols: ["http/1.1"], handshakeTimeout: L.handshakeMs, maxHeaderSize: L.maxHeaderBytes })
     : http.createServer({ maxHeaderSize: L.maxHeaderBytes });
   server.headersTimeout = L.headersMs;
-  server.requestTimeout = L.requestMs;
+  // With app hosts an upload may take minutes: the request timer is longer and the plain paths get their short one back per request (below).
+  server.requestTimeout = o.ingress && o.ingress.apps ? L.appsRequestMs : L.requestMs;
   server.keepAliveTimeout = 1000;
   server.maxConnections = L.maxConns;
 
@@ -294,6 +359,9 @@ export function createGate(o) {
     const kind = classify(req, false);
     const cl = Number(req.headers["content-length"] || 0);
     if (isBlocked(addr)) { stats.blocked++; sock.destroy(); return; }
+    const ah = appsHost(req);
+    if (ah !== null) { apps(req, res, ah, addr).catch(() => { try { sock.destroy(); } catch { /* gone */ } }); return; }
+    if (o.ingress && o.ingress.apps) { const rt = setTimeout(() => { try { sock.destroy(); } catch { /* gone */ } }, L.requestMs); rt.unref(); res.on("close", () => clearTimeout(rt)); }
     const ing = kind ? null : ingressKind(req);
     if (ing) { ingress(req, res, ing, addr).catch(() => { try { sock.destroy(); } catch { /* gone */ } }); return; }
     if (!kind || req.headers["transfer-encoding"] || cl > L.maxBodyBytes || req.headers.upgrade) {

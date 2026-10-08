@@ -378,3 +378,108 @@ test("gate ingress: a sender that lies about its length never gets more than the
   assert.ok(ls.seen.every(s => s.body === "{}" || s.body === ""), JSON.stringify(ls.seen.map(s => s.body.length)));
   assert.ok(!ls.seen.some(s => s.body.includes("y")));
 });
+
+// ---- app hosts: <module>.<name>.vyre.run, matched against the running apps before anything is read ----
+
+/** A fake apps front: records every request with its Host and body, answers by echoing the method and Host. */
+async function appsFront() {
+  /** @type {{ method: string, url: string, headers: Record<string, any>, body: Buffer }[]} */ const seen = [];
+  const srv = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", d => chunks.push(d));
+    req.on("end", () => { seen.push({ method: /** @type {string} */ (req.method), url: /** @type {string} */ (req.url), headers: req.headers, body: Buffer.concat(chunks) }); res.writeHead(200, { "content-type": "text/plain", "x-front": "1", "set-cookie": "vyre_app=t; Path=/" }); res.end(`${req.method} ${req.headers.host}`); });
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  return { seen, port: /** @type {net.AddressInfo} */ (srv.address()).port, close() { srv.close(); srv.closeAllConnections(); } };
+}
+const SUFFIX = ".alex.vyre.run";
+const appsOf = (/** @type {{ port: number }} */ f, hosts = ["docuseal.alex.vyre.run"]) => ({ apps: () => ({ port: f.port, hosts }), appsSuffix: SUFFIX });
+const req = (method, host, p, { body = "", headers = "" } = {}) => `${method} ${p} HTTP/1.1\r\nHost: ${host}\r\n${body ? `Content-Length: ${Buffer.byteLength(body)}\r\n` : ""}Connection: close\r\n${headers}\r\n${body}`;
+
+test("gate apps: a running app's host reaches the apps' front with the Host kept, any method and path, the real address, and Headscale is never asked", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(f) } });
+  const r = (await raw(port, req("PUT", "docuseal.alex.vyre.run:7443", "/templates/1?x=2", { body: '{"a":1}', headers: "X-Forwarded-For: 6.6.6.6\r\nTrue-Client-IP: 6.6.6.6\r\nCookie: vyre_app=abc\r\nOrigin: https://docuseal.alex.vyre.run:7443\r\n" }))).toString();
+  assert.match(r, /^HTTP\/1\.1 200 /);
+  assert.match(r, /PUT docuseal\.alex\.vyre\.run:7443\r\n/);
+  assert.match(r, /set-cookie: vyre_app=t/i, "the front's cookie goes back");
+  assert.deepEqual([f.seen[0].method, f.seen[0].url, f.seen[0].body.toString()], ["PUT", "/templates/1?x=2", '{"a":1}']);
+  assert.equal(f.seen[0].headers.host, "docuseal.alex.vyre.run:7443");
+  assert.equal(f.seen[0].headers["x-forwarded-for"], "127.0.0.1", "a client's own forwarding header is replaced");
+  assert.equal(f.seen[0].headers["true-client-ip"], undefined);
+  assert.equal(f.seen[0].headers.cookie, "vyre_app=abc");
+  // an app host never reaches Headscale's paths, whatever the path
+  const k = (await raw(port, req("GET", "docuseal.alex.vyre.run", "/key?v=130"))).toString();
+  assert.match(k, /^HTTP\/1\.1 200 /);
+  assert.equal(be.seen.length, 0, "Headscale was never asked");
+  assert.equal(f.seen[1].url, "/key?v=130", "the front got the /key");
+});
+
+test("gate apps: an unknown or malformed label, the name itself and a list that is empty or down are the same 404, and nothing is read or carried", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const bodyOf = "x".repeat(50_000);
+  for (const host of ["nothere.alex.vyre.run", "docuseal.alex.vyre.run.evil.test", "a.b.alex.vyre.run", "-x.alex.vyre.run", "Docu_seal.alex.vyre.run", ".alex.vyre.run", "alex.vyre.run", "docuseal.bob.vyre.run"]) {
+    const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(f) } });
+    const r = await raw(port, req("POST", host, "/save", { body: bodyOf }));
+    if (host === "alex.vyre.run" || host === "docuseal.bob.vyre.run" || host === "docuseal.alex.vyre.run.evil.test") assert.match(r.toString(), /^HTTP\/1\.1 404 /, host + ": the ordinary path answers 404 too (not an app host)");
+    else assert.deepEqual(r, NOT_FOUND, host);
+    assert.equal(be.seen.length, 0, host + ": nothing reached Headscale");
+  }
+  assert.equal(f.seen.length, 0, "the front was never asked for any of them");
+  for (const apps of [() => null, () => ({ port: f.port, hosts: [] }), () => { throw new Error("down"); }, async () => ({ port: 0, hosts: ["docuseal.alex.vyre.run"] }), () => ({ port: f.port, hosts: "docuseal.alex.vyre.run" })]) {
+    const { port } = await setup(t, { ingress: { hooks: () => null, share: () => null, apps, appsSuffix: SUFFIX } });
+    assert.deepEqual(await raw(port, req("GET", "docuseal.alex.vyre.run", "/")), NOT_FOUND);
+  }
+  assert.equal(f.seen.length, 0);
+});
+
+test("gate apps: the host list is asked before the body is read, and an app with no ingress.apps is not an app host at all", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  let asked = 0;
+  const { port } = await setup(t, { ingress: { hooks: () => null, share: () => null, appsSuffix: SUFFIX, apps: () => { asked++; return { port: f.port, hosts: [] }; } } });
+  // declare a big body and send none of it: the answer comes without waiting for it
+  const t0 = Date.now();
+  const r = await raw(port, `POST /x HTTP/1.1\r\nHost: nothere.alex.vyre.run\r\nContent-Length: 10000000\r\nConnection: close\r\n\r\n`, { wait: 3000 });
+  assert.deepEqual(r, NOT_FOUND);
+  assert.ok(Date.now() - t0 < 2500, "answered without reading the body");
+  assert.equal(asked, 1);
+  const off = await setup(t, { ingress: { hooks: () => null, share: () => null } });
+  assert.match((await raw(off.port, req("GET", "docuseal.alex.vyre.run", "/key"))).toString(), /^HTTP\/1\.1 200 /, "no apps option: the host header means nothing");
+});
+
+test("gate apps: the per-address budget, a refused upgrade, and the body limit (declared and streamed)", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const { port } = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(f) }, limits: { appsPerWindow: 3, appsBodyBytes: 1000 } });
+  const ok = [];
+  for (let i = 0; i < 3; i++) ok.push((await raw(port, req("GET", "docuseal.alex.vyre.run", "/"))).toString().slice(0, 12));
+  assert.deepEqual(ok, ["HTTP/1.1 200", "HTTP/1.1 200", "HTTP/1.1 200"]);
+  assert.match((await raw(port, req("GET", "docuseal.alex.vyre.run", "/"))).toString(), /^HTTP\/1\.1 429 /, "the fourth in the window is limited");
+  assert.match((await raw(port, req("GET", "nothere.alex.vyre.run", "/"))).toString(), /^HTTP\/1\.1 429 /, "unknown labels spend the same budget");
+  const g = await appsFront(); t.after(() => g.close());
+  const big = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(g) }, limits: { appsBodyBytes: 1000 } });
+  assert.match((await raw(big.port, req("POST", "docuseal.alex.vyre.run", "/up", { body: "x".repeat(1001) }))).toString(), /^HTTP\/1\.1 413 /, "declared over the limit");
+  assert.equal(g.seen.length, 0);
+  assert.match((await raw(big.port, req("POST", "docuseal.alex.vyre.run", "/up", { body: "x".repeat(1000) }))).toString(), /^HTTP\/1\.1 200 /, "at the limit is fine");
+  const chunked = `POST /up HTTP/1.1\r\nHost: docuseal.alex.vyre.run\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n${(1200).toString(16)}\r\n${"x".repeat(1200)}\r\n0\r\n\r\n`;
+  const c = (await raw(big.port, chunked)).toString();
+  assert.doesNotMatch(c, /^HTTP\/1\.1 200 /, "a streamed body over the limit is cut");
+  // a WebSocket upgrade on an app host is the same 404 as every upgrade that is not Headscale's
+  const up = await raw(big.port, `GET /cable HTTP/1.1\r\nHost: docuseal.alex.vyre.run\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Version: 13\r\n\r\n`);
+  assert.deepEqual(up, NOT_FOUND);
+});
+
+test("gate apps over TLS: the SNI must be the Host; one label under the name is served, anything else is the 404", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const { cert, key } = selfSigned({ ips: ["127.0.0.1"], names: ["localhost", "docuseal.alex.vyre.run", "other.alex.vyre.run"] });
+  const { port } = await setup(t, { tls: { cert, key }, ingress: { hooks: () => null, share: () => null, ...appsOf(f) } });
+  const via = (servername, host) => new Promise(resolve => {
+    const chunks = [];
+    const c = tls.connect({ host: "127.0.0.1", port, servername, rejectUnauthorized: false }, () => c.write(req("GET", host, "/")));
+    c.on("data", d => chunks.push(d)); c.on("close", () => resolve(Buffer.concat(chunks).toString())); c.on("error", () => resolve(Buffer.concat(chunks).toString()));
+    setTimeout(() => c.destroy(), 2000).unref();
+  });
+  assert.match(await via("docuseal.alex.vyre.run", "docuseal.alex.vyre.run"), /^HTTP\/1\.1 200 /);
+  assert.match(await via("other.alex.vyre.run", "docuseal.alex.vyre.run"), /^HTTP\/1\.1 404 /, "SNI for one app, Host for another");
+  assert.match(await via("localhost", "docuseal.alex.vyre.run"), /^HTTP\/1\.1 404 /, "SNI of something else");
+  assert.equal(f.seen.length, 1);
+});

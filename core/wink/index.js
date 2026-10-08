@@ -771,7 +771,17 @@ export function createWink(inject = {}) {
       ingress: {
         hooks: async () => { try { const r = /** @type {any} */ (await ctx.call("hooks.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         share: async () => { try { const r = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); const d = r && r.data; return d && d.on && d.available && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+        // the app modules' own hosts: the apps' front (a loopback listener the appmods module owns) and the hosts of the apps that are installed and running; null without either
+        apps: async () => {
+          try {
+            const f = /** @type {any} */ (await ctx.call("appmods.front", {})), h = /** @type {any} */ (await ctx.call("appmods.hosts", {}));
+            const port = f && f.data && f.data.port, hosts = h && h.data && h.data.hosts;
+            return Number.isInteger(port) && Array.isArray(hosts) && hosts.length ? { port, hosts: hosts.map((/** @type {string} */ x) => String(x).toLowerCase().replace(/:\d+$/, "")) } : null;
+          } catch { return null; }
+        },
       },
+      // any app module installed (running or not): the certificate and the wildcard in DNS follow this
+      apps: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.list", {})); return Boolean(r && r.data && Array.isArray(r.data.apps) && r.data.apps.length); } catch { return false; } },
       onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); },
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
       ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
@@ -781,7 +791,8 @@ export function createWink(inject = {}) {
       ...(inject.netd || {}),
     });
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
-      ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged())] : [];
+      ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged()),
+      ctx.events.on("appmods.installed", () => netd.appsChanged()), ctx.events.on("appmods.removed", () => netd.appsChanged())] : [];
     registerNetwork(ctx, { identity: ports.network, ...(netd ? { ingress: () => netd.ingress() } : {}), ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();
@@ -966,7 +977,7 @@ export function nameDirectory(dirCall) {
   return {
     acme: async (/** @type {string} */ _name, /** @type {string} */ token) => dirCall("names.directory.acme", { token }),
     acmeClear: async () => dirCall("names.directory.acme-clear", {}),
-    publish: async () => dirCall("names.directory.publish", {}),
+    publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean }} [o] */ o) => dirCall("names.directory.publish", o && o.apps === true ? { apps: true } : {}),
   };
 }
 

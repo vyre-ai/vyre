@@ -332,7 +332,9 @@ export function dnsFor(env) {
   const api = env.CF_API || "https://api.cloudflare.com/client/v4";
   const doFetch = env.CF_FETCH || globalThis.fetch.bind(globalThis);
   const guard = (fqdn, type) => {
-    if (!fqdn.endsWith("." + zone) || !/^[a-z0-9_.-]+$/.test(fqdn) || !["A", "AAAA", "TXT", "CAA"].includes(type)) throw new Error("refused: outside the zone");
+    // The one wildcard a box may hold is an A record at `*.<name>.<zone>` (its app modules' hosts); a `*` anywhere else, or in another record type, is refused.
+    const bare = type === "A" && fqdn.startsWith("*.") ? fqdn.slice(2) : fqdn;
+    if (!fqdn.endsWith("." + zone) || !/^[a-z0-9_.-]+$/.test(bare) || !["A", "AAAA", "TXT", "CAA"].includes(type)) throw new Error("refused: outside the zone");
     return fqdn;
   };
   async function call(method, path, body) {
@@ -467,7 +469,7 @@ export class Directory {
   async wipeDns(rec) {
     const dns = dnsFor(this.env), fq = `${rec.name}.${dns.zone}`;
     try {
-      await dns.clear(fq, "A"); await dns.clear(fq, "AAAA"); await dns.clear(`_acme-challenge.${fq}`, "TXT");
+      await dns.clear(fq, "A"); await dns.clear(fq, "AAAA"); await dns.clear(`*.${fq}`, "A"); await dns.clear(`_acme-challenge.${fq}`, "TXT");
       if (rec.dirty) { rec.dirty = false; await this.save(rec); }
     } catch (e) {
       if (await this.store.get(`n/${rec.name}`)) { rec.dirty = true; await this.save(rec); } else await this.store.put(`d/${rec.name}`, this.now());
@@ -539,7 +541,11 @@ export class Directory {
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, type: t.type, ip: t.ip };
   }
 
-  /** The box serves its own network gate on a public address: the name's A record becomes the public IPv4 this request came from. It is the caller's own observed address, never one it names. */
+  /**
+   * The box serves its own network gate on a public address: the name's A record becomes the public IPv4 this request came from. It is the caller's own observed address, never one it names.
+   * With `apps: true` (the box has an app module installed) `*.<name>` points at the same address too, so each app has its own host under the name; without it that wildcard is cleared, so the
+   * last app's removal takes the wildcard away with it. Nothing new is claimed: the wildcard sits under a name the caller already holds.
+   */
   async op_publish(b, a, ip) {
     const rec = await this.owned(b, a);
     const addr = publicIpv4(ip);
@@ -549,9 +555,11 @@ export class Directory {
     const fq = `${rec.name}.${dns.zone}`;
     await dns.point(fq, "A", addr);
     await dns.clear(fq, "AAAA").catch(() => {});
-    rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { A: addr };
+    const apps = b.apps === true;
+    if (apps) await dns.point(`*.${fq}`, "A", addr); else await dns.clear(`*.${fq}`, "A").catch(() => {});
+    rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { A: addr }; rec.apps = apps;
     await this.saveAny(rec);
-    return { name: rec.name, fqdn: fq, type: "A", ip: addr };
+    return { name: rec.name, fqdn: fq, type: "A", ip: addr, apps };
   }
 
   /** Where a challenge goes: under the name for a name, under <routehash>.acme for the person's own domain. */

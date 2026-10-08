@@ -73,7 +73,8 @@ export function findBinaries(env = process.env) {
  *   name?: () => string | null,                     this box's claimed name ("alex" for alex.vyre.run), for the public gate; none means a loopback-only network
  *   directory?: { acme(token: string): Promise<any>, acmeClear(): Promise<any>, publish(): Promise<any> },   the name directory's DNS calls for this box (names.directory.*)
  *   domain?: string,                                the name's zone (default vyre.run)
- *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   the loopback ports of the hooks listener and the share server: the public gate carries webhooks and share links to them
+ *   apps?: () => boolean | Promise<boolean>,   has this box an app module installed (the public gate then covers and publishes *.<name>)
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => any },   the loopback ports of the hooks listener and the share server: the public gate carries webhooks and share links to them
  *   onIngress?: (base: string | null) => void,      the public https origin for links and webhooks appeared (or went)
  *   publicGate?: boolean,                           false keeps the network loopback-only whatever the name
  *   certDeps?: any,                                 test seam for the public gate ({ deps: { createGate, certs, acme, waitDns } })
@@ -140,7 +141,7 @@ export function createNetd(o) {
     if (!publicUrl && o.directory && o.publicGate !== false) {
       pub = D.createPublicGate({
         name: () => (o.name ? o.name() : null), domain: o.domain, dir: path.join(dir, "certs"), directory: o.directory || { acme: async () => { throw new Error("no directory"); }, acmeClear: async () => {}, publish: async () => {} },
-        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}),
+        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}), ...(o.apps ? { apps: o.apps } : {}),
         reachable: reachNow, log, ...(o.certDeps || {}),
       });
       // started in the background below: a certificate can take a minute, and the network does not wait for it
@@ -301,6 +302,8 @@ export function createNetd(o) {
       return key.key;
     },
     /** A device row was added or removed: give or take away the node's rule now. */
+    /** An app module was installed, or the last one removed: the public gate gets the certificate and the DNS the apps need, or lets go of them. Never throws. */
+    appsChanged() { return pub && pub.appsChanged ? Promise.resolve(pub.appsChanged()).catch(e => { log(`wink net: apps: ${/** @type {Error} */ (e).message}`); }) : Promise.resolve(); },
     deviceChanged() { return syncPolicy().catch(e => { log(`wink net: policy: ${/** @type {Error} */ (e).message}`); }); },
     syncPolicy,
     async handover(_q) {
