@@ -67,15 +67,6 @@ async function reserve(name, ip = "198.18.0.1") {
   const j = await r.json();
   return j.data ? { code: j.data.code } : { refused: j.error };
 }
-/** Tests name the person they want; the tool takes the code that holds the name. A name the directory refuses comes back as the refusal. */
-async function withCode(tool, input) {
-  if (tool !== "spaces.identity.create" || input.code || typeof input.name !== "string") return { tool, input };
-  const { name, ...rest } = input;
-  const r = await reserve(name);
-  if (r.refused) return { refused: r.refused };
-  return { tool, input: { ...rest, code: r.code } };
-}
-
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
 async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
@@ -110,7 +101,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined,
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("spaces")?.state, "running", reg.modules.get("spaces")?.error);
   /** @param {string} tool @param {any} [input] @param {string} [caller] @param {any} [meta] */
-  const call = async (tool, input = {}, caller = "cli", meta = {}) => { const w = await withCode(tool, input); return w.refused ? { error: { code: w.refused.code, message: w.refused.message } } : reg.call(w.tool, w.input, caller, meta); };
+  const call = (tool, input = {}, caller = "cli", meta = {}) => reg.call(tool, input, caller, meta);
   const ok = async (tool, input, caller, meta) => { const r = await call(tool, input, caller, meta); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   const space = path.join(root, "spaces");
   return { reg, db, events, seen, logs, call, ok, root, space, p, types: () => seen.map(e => e.type), of: type => seen.filter(e => e.type === type).map(e => e.payload) };
@@ -183,14 +174,21 @@ test("identity: create makes a 0600 key file, claims the name, shows the recover
   assert.equal(again.error?.code, "exists");
   const other = await device(t);
   const taken = await other.call("spaces.identity.create", { name: "alex" });
-  assert.equal(taken.error?.code, "taken", "the directory will not reserve a name that is held");
+  assert.equal(taken.error?.code, "name_taken");
   assert.equal((await other.ok("spaces.identity.status")).exists, false, "a failed claim leaves no key behind");
   const bad = await other.call("spaces.identity.create", { name: "a" });
-  assert.equal(bad.error?.code, "invalid");
+  assert.equal(bad.error?.code, "bad_name");
   // a code that is not valid (wrong, used, replaced or expired) is one plain refusal
   const wrong = await other.reg.call("spaces.identity.create", { code: "VYRE-AAAA-AAAA-AAAA-AAAA" }, "cli", {});
   assert.equal(wrong.error?.code, "bad_code");
   assert.equal((await other.ok("spaces.identity.status")).exists, false);
+  // a release build takes a reservation code and nothing else (the self-reserve switch is a development one)
+  delete process.env.VYRE_TEST_SELF_RESERVE;
+  try { assert.equal((await other.reg.call("spaces.identity.create", { name: "carol" }, "cli", {})).error?.code, "code_needed"); } finally { process.env.VYRE_TEST_SELF_RESERVE = "1"; }
+  // and with a real code the name it holds is made
+  const held = await reserve("carol");
+  const made2 = await other.ok("spaces.identity.create", { code: held.code });
+  assert.equal(made2.address ?? made2.name, "carol.vyre.run");
   void w;
 });
 

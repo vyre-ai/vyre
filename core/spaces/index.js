@@ -38,6 +38,7 @@
 // purpose (the device displays it) and is kept as a hash.
 
 import crypto from "node:crypto";
+import { devKindSwitch } from "../wink/buildkind.js";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
@@ -604,16 +605,22 @@ export default {
       async () => { const st = identity.status(); const ok = st.exists && !st.pending; return { id: ok ? st.id : null, ...(ok && st.eid ? { eid: st.eid } : {}) }; }, { internal: true });
 
     tool("spaces.identity.create", "Become yourself on this device: make its key and your identity, and finish the Vyre name that a reservation code (VYRE-XXXX-XXXX-XXXX-XXXX, made at vyre.run/setup) holds. The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
-      obj({ code: str, password: str, deviceLabel: str }, ["code"]), async i => {
+      obj({ code: str, name: str, password: str, deviceLabel: str }), async i => {
         const st = identity.status();
         if (st.exists) throw refuse(st.name ? `This device already has the name ${st.name}.vyre.run.` : "This device already has a Vyre identity.", "exists");
         const password = passwordOf(i);
-        let made, label;
+        let made, label, code = typeof i.code === "string" ? i.code.trim() : "";
+        // Development builds only (never a release): the walks and tests that make many people reserve each name themselves. A release build takes a code and nothing else.
+        if (!code && devKindSwitch(process.env.VYRE_TEST_SELF_RESERVE) && typeof i.name === "string") {
+          const want = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
+          try { code = String((await dir.reserve(want)).code); } catch (e) { const c = /** @type {any} */ (e).code; throw refuse(c === "taken" ? "That name is taken. Pick another." : "That name can't be used.", c === "taken" ? "name_taken" : "bad_name"); }
+        }
+        if (!code) throw refuse("Paste the reservation code from vyre.run/setup.", "code_needed");
         try {
           // The code says which name it holds; the directory spends it only when the claim goes through.
-          const held = await dir.reservedFor(String(i.code || ""));
+          const held = await dir.reservedFor(code);
           label = String(held.name);
-          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined, code: String(i.code) });
+          made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined, code });
         } catch (e) { const err = /** @type {any} */ (e); if (err.code === "bad_code") throw refuse("That reservation code is not valid. It may have expired (they last 24 hours), been used, or been replaced by a newer one: reserve the name again at vyre.run/setup.", "bad_code"); throw idFail(err); }
         emit("identity.created", { name: `${label}.vyre.run`, id: made.status.id, at: now() });
         return {
