@@ -15,7 +15,8 @@ import { webCrypto } from "../relay/client/webcrypto.js";
 import { nodeCrypto } from "../relay/client/nodecrypto.js";
 import { utf8 } from "../relay/client/bytes.js";
 import { connectSetup } from "../relay/client/setupchannel.js";
-import { createAddServer, installLine } from "../apps/app/src/real/add-server.js";
+import { createAddServer } from "../apps/app/src/real/add-server.js";
+import { installLine } from "../apps/app/screens/install/first-run.js";
 
 const lenient = {
   required: () => false,
@@ -51,7 +52,7 @@ test("add-a-server end to end against a real server and relay: the offer is foun
   const paired = /** @type {string[]} */ ([]);
   await app.begin("plain");
   codeSeen = app.state.code;
-  assert.equal(app.state.installLine, installLine(codeSeen, "sqlite"));
+  assert.equal(app.state.installLine, installLine(undefined, { code: codeSeen, store: "sqlite" }));
   const saved = { code: process.env.VYRE_SETUP_CODE, at: process.env.VYRE_SETUP_CODE_AT };
   process.env.VYRE_SETUP_CODE = codeSeen;
   process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000));

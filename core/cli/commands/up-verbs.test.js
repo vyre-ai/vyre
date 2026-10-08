@@ -136,14 +136,12 @@ async function fakeVyred(t, root, tools) {
   return calls;
 }
 
-test("name: status, check, claim and release reach the names tools; usage mistakes are exit 2", async t => {
+test("name: status and check reach the names tools; usage mistakes are exit 2", async t => {
   const root = tempHome(t);
   let state = { name: null, address: null, phase: "idle" };
   const calls = await fakeVyred(t, root, {
     "names.status": async () => ({ data: state }),
     "names.check": async ({ name }) => ({ data: name === "taken" ? { name, valid: true, available: false, why: "someone else has it" } : { name, valid: true, available: true, address: `https://${name}.vyre.run` } }),
-    "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: { ...state } }; },
-    "names.release": async () => ({ error: { code: "presence_required", message: "releasing the name needs you here" } }),
   });
 
   const s = await run(root, ["name"]);
@@ -154,26 +152,13 @@ test("name: status, check, claim and release reach the names tools; usage mistak
   assert.match((await run(root, ["name", "check", "alex"])).out, /https:\/\/alex\.vyre\.run is free/);
   assert.match((await run(root, ["name", "check", "taken"])).out, /taken: someone else has it/);
 
-  const claim = await run(root, ["name", "claim", "alex", "--json"]);
-  assert.equal(claim.code, 0, claim.out);
-  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", name: null });
-  // Text mode prints the address and nothing about a recovery code: there is none (instant recovery is the way back).
-  const claimText = await run(root, ["name", "claim", "alex"]);
-  assert.ok(!/recovery code/i.test(claimText.out));
-  // The tool's refusal: a person must be here, exit 3, with the next step.
-  const rel = await run(root, ["name", "release"]);
-  assert.equal(rel.code, 3, rel.out);
-  assert.match(rel.out, /releasing the name needs you here/);
-  assert.match(rel.out, /next: run it in your own terminal/);
-
-  const noName = await run(root, ["name", "claim"]);
-  assert.equal(noName.code, 2, noName.out);
-  assert.match(noName.out, /next: vyre name check alex/);
+  // A name is reserved in the app and served by a server its space lists: the CLI has no claim or release.
+  assert.equal((await run(root, ["name", "claim", "alex"])).code, 2);
+  assert.equal((await run(root, ["name", "release"])).code, 2);
   assert.equal((await run(root, ["name", "frobnicate"])).code, 2);
 
   assert.deepEqual(calls.map(c => [c.tool, c.input]), [
     ["names.status", {}], ["names.status", {}], ["names.check", { name: "alex" }], ["names.check", { name: "taken" }],
-    ["names.claim", { name: "alex" }], ["names.claim", { name: "alex" }], ["names.release", {}],
   ], "usage mistakes never reach vyred");
   assert.ok(calls.every(c => c.caller === "cli"));
 });
@@ -207,8 +192,8 @@ test("up.js commands: vyre commands lists vyre name's verbs; the others take fla
   const root = tempHome(t);
   const d = JSON.parse((await run(root, ["commands", "--all", "--json"])).stdout);
   const of = n => d.commands.find(c => c.name === n);
-  assert.deepEqual(of("name").verbs.map(v => v.verb), ["status", "check", "claim", "release"]);
-  assert.deepEqual(of("name").verbs.find(v => v.verb === "claim").args, [{ name: "n", required: true }]);
+  assert.deepEqual(of("name").verbs.map(v => v.verb), ["status", "check"]);
+  assert.deepEqual(of("name").verbs.find(v => v.verb === "check").args, [{ name: "n", required: true }]);
   assert.deepEqual(of("name").verbs.filter(v => v.read).map(v => v.verb), ["status", "check"]);
   for (const n of ["up", "backup", "restore", "uninstall"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
   assert.deepEqual(of("up").flags.map(f => f.name), ["box", "connect", "no-capsule", "keep-link", "dry-run", "json"]);

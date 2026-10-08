@@ -588,37 +588,3 @@ test("claim token: one challenge, burned by the first try, for one route, one ad
   s.end("claimed");
   assert.throws(() => s.mintClaim("alex.vyre.run"), { code: "setup_over" });
 });
-
-test("claim token: the page mints over its channel, the browser at the address claims once and gets one grant; a phone claims with a second token", async t => {
-  const w = await world(t);
-  const p = await page(w);
-  await p.begin();
-  const a = await p.connect();
-  const route = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
-  assert.ok(route && route.challenge && route.route, "the setup channel can mint");
-  const spki = Buffer.from(p.key.spki).toString("base64url");
-  const token = await claimToken({ privateKey: p.key.privateKey, route: route.route, challenge: route.challenge, host: "alex.vyre.run" });
-  const at = { stableId: "n-laptop", node: "laptop", origin: "https://alex.vyre.run" };
-  const claim = (tok, caller = "tailnet:me@example.com", peer = at, sp = spki) => w.d.registry.call("relay.setup.claim", { token: tok, spki: sp }, caller, { peer });
-
-  for (const caller of ["cli", "tailnet-guest:sam@harlow.example", "mcp:agent:kit", "tailnet:agent:kit"]) assert.ok((await claim(token, caller)).error, `refused for ${caller}`);
-  // those refusals happened before the challenge was looked at, so it is still live
-  const r = await claim(token);
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.match(r.data.grant, /^[A-Za-z0-9_-]{43}$/);
-  assert.equal(r.data.rpId, "alex.vyre.run");
-  assert.ok((await claim(token)).error, "the token was burned");
-  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session goes on until onboard ends it");
-
-  // the phone: another token for the same address, claimed from its own node
-  const again = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
-  const token2 = await claimToken({ privateKey: p.key.privateKey, route: again.route, challenge: again.challenge, host: "alex.vyre.run" });
-  const phone = { stableId: "n-phone", node: "phone", origin: "https://alex.vyre.run" };
-  const r2 = await claim(token2, "tailnet:me@example.com", phone);
-  assert.match(r2.data.grant, /^[A-Za-z0-9_-]{43}$/);
-  assert.notEqual(r2.data.grant, r.data.grant);
-
-  // a code holder with no page key cannot mint; the claim tools are not in reach of a module that is not the presence one
-  assert.ok((await w.d.registry.call("relay.setup.claim-token", { host: "alex.vyre.run" }, "module:sneaky")).error);
-  assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null, host: "alex.vyre.run" }, "module:sneaky")).error, "only the relay module makes a grant");
-});
