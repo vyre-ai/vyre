@@ -2,7 +2,7 @@
   "name": "appmods",
   "version": "0.1.0",
   "description": "Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal first) that run on this server, with their screens, their API as a Connection and their events.",
-  "roles": ["box", "local"],
+  "roles": ["box"],
   "requires": ["vault"],
   "needs": { "daemon": ["flowsHost"], "vault": ["per-app"], "kernel": { "actions": ["drive.write", "drive.read"], "prefixes": ["file/Signed"] } },
   "does": {
@@ -12,6 +12,8 @@
       { "name": "appmods.list", "effect": "read", "reach": "anyone" },
       { "name": "appmods.status", "effect": "read", "reach": "anyone" },
       { "name": "appmods.screens", "effect": "read", "reach": "anyone" },
+      { "name": "appmods.open", "effect": "write", "reach": "person" },
+      { "name": "appmods.hosts", "effect": "read", "reach": "anyone" },
       { "name": "appmods.logs", "effect": "read", "reach": "person" },
       { "name": "appmods.install", "effect": "write", "reach": "person" },
       { "name": "appmods.start", "effect": "write", "reach": "person" },

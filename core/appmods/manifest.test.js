@@ -59,12 +59,21 @@ test("files an app makes go only into a Drive folder the manifest lists, with a 
   m = docuseal(); m.drive = ["lower"]; assert.ok(bad(m, "drive"));
 });
 
+test("public paths are static files served without a session: a path, no dot segments", () => {
+  let m = docuseal(); m.app.public = ["/manifest.json", "/favicon.svg"]; assert.deepEqual(checkAppModule(m), []);
+  m = docuseal(); m.app.public = ["/a/../b"]; assert.ok(bad(m, "app.public"));
+  m = docuseal(); m.app.public = ["manifest.json"]; assert.ok(bad(m, "app.public"));
+  m = docuseal(); m.app.public = "all"; assert.ok(bad(m, "app.public"));
+});
+
 test("the card is built from the manifest only and says what the app may reach", () => {
   const c = cardOf(docuseal());
   assert.match(c.runs, /docuseal\/docuseal:3\.3\.1/);
   assert.match(c.pinned, /^sha256:e171808c/);
   assert.deepEqual(c.reaches, ["your Vyre, to tell it a document was signed"]);
   assert.deepEqual(c.shows, ["Signatures"]);
+  assert.equal(c.opensFor, "the owner and the admins of this Space");
+  assert.equal(c.notes.length, 2);
   assert.equal(c.saves, "the files it gets back, in Signed/ in your Drive");
   const m = docuseal(); m.app.egress = []; assert.deepEqual(cardOf(m).reaches, ["nothing outside this server"]);
 });

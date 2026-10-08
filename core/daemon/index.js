@@ -1103,6 +1103,8 @@ function loginFrom(tty) {
 
 async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null, kernelOf = null, finishing = () => null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
+  // An app module's own origin (<module>.<host>, core/appmods): such a request is the app's and nothing else's, whatever its path; Vyre's routes are not on that origin.
+  if (registry.hostMount && String(req.headers.host || "").includes(".")) { const done = await registry.hostMount.fn(req, res, { url }); if (done) return; }
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
@@ -1468,11 +1470,6 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const info = registry.routeInfo.get(url.pathname);
     if (info && !info.methods.includes(req.method)) return send(res, 405, { error: { code: "method_not_allowed", message: `${url.pathname} answers ${info.methods.join(", ")}` } });
     return own(req, res, { caller, url });
-  }
-  // An app module's screens (core/appmods): /m/<module>/... is served whole by the module that mounted /m/, which refuses anyone who is not a signed-in person.
-  if (url.pathname.startsWith("/m/")) {
-    const mnt = registry.mounts.get("m");
-    if (mnt) return mnt.fn(req, res, { caller, url });
   }
   // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
   // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,

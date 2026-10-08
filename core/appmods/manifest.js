@@ -3,7 +3,7 @@
 //   app          a container image pinned by digest, its port, volumes, environment (secrets come from the Vault), a health path, memory and CPU limits, and what it may reach outward
 //   connection   the app's own API in the Connection format (team/0.3/IFACE-connection.md); its credential is made at install and kept in the Vault
 //   events       the app's webhooks mapped to Vyre events, and optionally to a Flow's web trigger
-//   screens      the app's own web screens, served by vyred under /m/<module>/ behind Vyre's sign-in: [{ id, label, path, icon? }]
+//   screens      the app's own web screens, served by vyred on the app's own origin, <module>.<host>, behind Vyre's sign-in (a one-time ticket): [{ id, label, path, icon? }], path relative to that origin
 // This file only reads and checks a manifest; nothing here starts anything. A manifest that fails is refused whole, with every problem named.
 
 export const NAME_RE = /^[a-z][a-z0-9-]{1,30}$/;
@@ -36,7 +36,7 @@ export function checkAppModule(m) {
   /** @type {{ path: string, message: string }[]} */ const out = [];
   const bad = (/** @type {string} */ path, /** @type {string} */ message) => out.push({ path, message });
   if (!isObj(m)) return [{ path: "", message: "a manifest is an object" }];
-  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "drive", "license", "source", "$schema"];
+  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "drive", "notes", "license", "source", "$schema"];
   for (const k of Object.keys(m)) if (!known.includes(k) && !k.startsWith("x-")) bad(k, `${k} is not part of an app module manifest`);
   if (typeof m.name !== "string" || !NAME_RE.test(m.name)) bad("name", "a name is lowercase letters, digits and dashes, 2 to 31 characters");
   if (typeof m.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(m.version)) bad("version", "version is semver");
@@ -47,10 +47,11 @@ export function checkAppModule(m) {
 
   // The Drive folders the app's files may be put in (the owner agrees at install; the module is granted these and no others).
   if (m.drive !== undefined && !(Array.isArray(m.drive) && m.drive.length > 0 && m.drive.length <= 4 && m.drive.every((/** @type {any} */ d) => typeof d === "string" && /^[A-Z][A-Za-z0-9 _-]{0,40}$/.test(d)))) bad("drive", "drive lists the top Drive folders the app's files go in, each starting with a capital letter");
+  if (m.notes !== undefined && !(Array.isArray(m.notes) && m.notes.length <= 6 && m.notes.every((/** @type {any} */ n) => typeof n === "string" && n.length > 0 && n.length <= 240))) bad("notes", "notes are a few plain sentences the install card shows");
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
-    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "tmp"];
+    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "tmp"];
     for (const k of Object.keys(a)) if (!ak.includes(k)) bad(`app.${k}`, `${k} is not part of app`);
     if (typeof a.image !== "string" || !PINNED_RE.test(a.image)) bad("app.image", "the image is pinned by digest: name:tag@sha256:<64 hex>");
     if (!(Number.isInteger(a.port) && a.port >= 1 && a.port <= 65535)) bad("app.port", "port is a whole number from 1 to 65535");
@@ -89,6 +90,8 @@ export function checkAppModule(m) {
       if (!num(l.cpus, /** @type {[number, number]} */ (LIMITS.cpus))) bad("app.limits.cpus", `cpus is ${LIMITS.cpus[0]} to ${LIMITS.cpus[1]}`);
       if (!num(l.pids, /** @type {[number, number]} */ (LIMITS.pids))) bad("app.limits.pids", `pids is ${LIMITS.pids[0]} to ${LIMITS.pids[1]}`);
     }
+    // Static files a browser fetches without its cookies (a web app manifest): served to anyone who reaches the app's origin, GET only, nothing else.
+    if (a.public !== undefined && !(Array.isArray(a.public) && a.public.length <= 8 && a.public.every((/** @type {any} */ p) => typeof p === "string" && /^\/[A-Za-z0-9_.\/-]{1,80}$/.test(p) && !p.includes("..")))) bad("app.public", "public lists the static paths served without a session");
     if (a.egress !== undefined) {
       if (!Array.isArray(a.egress) || !a.egress.every((/** @type {any} */ e) => EGRESS_TARGETS.includes(e))) bad("app.egress", `egress lists what the app may reach, from: ${EGRESS_TARGETS.join(", ")}; nothing else is reachable`);
     }
@@ -207,6 +210,8 @@ export function cardOf(m) {
     uses: [`up to ${a.limits.memoryMb} MB of memory`, `${a.limits.cpus} CPU`, ...(a.volumes || []).map((/** @type {any} */ v) => `a folder of its own for ${v.path}`), ...(a.secrets || []).length ? ["its own keys, made now and kept in your Vault"] : []],
     reaches: (a.egress || []).length ? (a.egress || []).map((/** @type {string} */ e) => e === "vyred" ? "your Vyre, to tell it a document was signed" : e) : ["nothing outside this server"],
     saves: (m.drive || []).length ? `the files it gets back, in ${(m.drive || []).map((/** @type {string} */ d) => `${d}/`).join(" and ")} in your Drive` : null,
+    opensFor: "the owner and the admins of this Space",
+    notes: m.notes || [],
     shows: (m.screens || []).map((/** @type {any} */ s) => s.label),
     tells: (m.events || []).map((/** @type {any} */ e) => e.event),
     connection: m.connection ? m.connection.label : null,

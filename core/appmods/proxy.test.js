@@ -1,59 +1,28 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rewriteLink, split, pre, rewriteHtml, rewriteCss, rewriteLocation, shimSource, keepCookies, cookieHeader, SHIM_PATH } from "./proxy.js";
+import { moduleHost, originFor, rewriteLocation, keepCookies, cookieHeader, createTickets, ENTER } from "./proxy.js";
 
-const P = "/m/docuseal";
-
-test("an address under /m/<module>/ splits into the module and the app's own path and query", () => {
-  assert.deepEqual(split(new URL("http://x/m/docuseal/templates/1?a=2")), { name: "docuseal", rest: "/templates/1?a=2" });
-  assert.deepEqual(split(new URL("http://x/m/docuseal")), { name: "docuseal", rest: "/" });
-  assert.equal(split(new URL("http://x/m/D/x")), null);
-  assert.equal(split(new URL("http://x/other/docuseal/")), null);
+test("a host under an app's name splits into the app and the host Vyre is served at; anything else is not an app's", () => {
+  assert.deepEqual(moduleHost("docuseal.acme.vyre.run"), { name: "docuseal", base: "acme.vyre.run" });
+  assert.deepEqual(moduleHost("DocuSeal.localhost:8080"), { name: "docuseal", base: "localhost:8080" });
+  for (const h of ["localhost:8080", "127.0.0.1:80", "", "x.y", "1abc.example.com", "docu_seal.example.com"]) assert.equal(moduleHost(h), null, h);
+  assert.deepEqual(moduleHost("acme.vyre.run"), { name: "acme", base: "vyre.run" }, "any host with a first label looks like one; whether an app of that name is installed decides");
 });
 
-test("only a root-absolute path gets the prefix, once", () => {
-  assert.equal(pre("/a/b", P), "/m/docuseal/a/b");
-  assert.equal(pre("/m/docuseal/a", P), "/m/docuseal/a");
-  for (const u of ["a/b", "//cdn.example/x", "https://x/y", "#frag", "mailto:a@b", "\\\\x", "", "data:image/png;base64,AAAA"]) assert.equal(pre(u, P), u, u);
+test("the app's origin is https on a real host and http on localhost", () => {
+  assert.equal(originFor("docuseal", "acme.vyre.run"), "https://docuseal.acme.vyre.run");
+  assert.equal(originFor("docuseal", "localhost:8080"), "http://docuseal.localhost:8080");
+  assert.equal(originFor("docuseal", "https://acme.vyre.run"), "https://docuseal.acme.vyre.run");
 });
 
-test("HTML: links, scripts, forms and images go under the prefix, the app's own origin becomes the prefix, and the shim is the first script", () => {
-  const html = `<html><head><meta property="og:url" content="http://localhost:3000/"><link rel="stylesheet" href="/packs/app.css"><script src='/packs/app.js' defer></script></head><body>
-    <a href="/templates/1">t</a> <a href="templates/2">rel</a> <a href="https://example.com/x">out</a> <form action="/sign_in" method="post"></form> <img src="/img/a.png" srcset="/img/a.png 1x, /img/b.png 2x">
-    <a href="http://localhost:3000/file/x.pdf">abs</a> <a href="//cdn.example/x">cdn</a></body></html>`;
-  const out = rewriteHtml(html, P, { origins: ["http://localhost:3000", "http://127.0.0.1:4000"] });
-  assert.match(out, /<head><script src="\/m\/docuseal\/__vyre\/shim\.js"><\/script>/);
-  assert.match(out, /href="\/m\/docuseal\/packs\/app\.css"/);
-  assert.match(out, /src='\/m\/docuseal\/packs\/app\.js'/);
-  assert.match(out, /href="\/m\/docuseal\/templates\/1"/);
-  assert.match(out, /href="templates\/2"/);
-  assert.match(out, /href="https:\/\/example\.com\/x"/);
-  assert.match(out, /action="\/m\/docuseal\/sign_in"/);
-  assert.match(out, /srcset="\/m\/docuseal\/img\/a\.png 1x, \/m\/docuseal\/img\/b\.png 2x"/);
-  assert.match(out, /href="\/m\/docuseal\/file\/x\.pdf"/);
-  assert.match(out, /content="\/m\/docuseal\/"/);
-  assert.match(out, /href="\/\/cdn\.example\/x"/);
-  assert.ok(!out.includes("localhost:3000"));
-});
-
-test("CSS: url() and @import with a root-absolute path get the prefix", () => {
-  const css = `@import "/a.css"; body{background:url(/img/x.png)} .b{background:url("/img/y.png")} .c{background:url(img/z.png)} .d{background:url(https://x/y.png)}`;
-  const out = rewriteCss(css, P);
-  assert.match(out, /@import "\/m\/docuseal\/a\.css"/);
-  assert.match(out, /url\(\/m\/docuseal\/img\/x\.png\)/);
-  assert.match(out, /url\("\/m\/docuseal\/img\/y\.png"\)/);
-  assert.match(out, /url\(img\/z\.png\)/);
-  assert.match(out, /url\(https:\/\/x\/y\.png\)/);
-});
-
-test("a redirect to the app's own address stays under the prefix; one to another host is left alone", () => {
-  const o = ["http://localhost:3000", "http://127.0.0.1:4000"];
-  assert.equal(rewriteLocation("/dashboard", P, o), "/m/docuseal/dashboard");
-  assert.equal(rewriteLocation("http://localhost:3000/dashboard?a=1", P, o), "/m/docuseal/dashboard?a=1");
-  assert.equal(rewriteLocation("http://127.0.0.1:4000", P, o), "/m/docuseal");
-  assert.equal(rewriteLocation("https://elsewhere.example/x", P, o), "https://elsewhere.example/x");
-  assert.equal(rewriteLocation("http://localhost:30001/x", P, o), "http://localhost:30001/x", "a different port is a different origin");
+test("a redirect to the app's own address is put back on the origin the person is on; another host is left alone", () => {
+  const o = ["http://127.0.0.1:4000", "http://localhost:3000"], here = "https://docuseal.acme.vyre.run";
+  assert.equal(rewriteLocation("http://127.0.0.1:4000/templates/1?a=1", o, here), "https://docuseal.acme.vyre.run/templates/1?a=1");
+  assert.equal(rewriteLocation("http://localhost:3000", o, here), here);
+  assert.equal(rewriteLocation("/dashboard", o, here), "/dashboard");
+  assert.equal(rewriteLocation("https://elsewhere.example/x", o, here), "https://elsewhere.example/x");
+  assert.equal(rewriteLocation("http://localhost:30001/x", o, here), "http://localhost:30001/x", "a different port is a different origin");
 });
 
 test("the app's cookies are kept in a jar and removed when it expires them", () => {
@@ -65,14 +34,25 @@ test("the app's cookies are kept in a jar and removed when it expires them", () 
   assert.equal(cookieHeader(jar), "");
 });
 
-test("the shim is a plain script that knows the prefix and patches the ways an app builds addresses", () => {
-  const s = shimSource(P);
-  assert.ok(s.includes('"/m/docuseal"'));
-  for (const w of ["window.fetch", "XMLHttpRequest.prototype.open", "EventSource", "WebSocket", "pushState", "window.open", "setAttribute", "HTMLScriptElement"]) assert.ok(s.includes(w), w);
-  assert.doesNotThrow(() => new Function(s));
-  assert.equal(SHIM_PATH, "/__vyre/shim.js");
-});
-
-test("a Link header's preload hints go under the prefix", () => {
-  assert.equal(rewriteLink('</packs/css/a.css>; rel=preload; as=style; nopush, <https://cdn.example/x.js>; rel=preload', P, ["http://localhost:3000"]), '</m/docuseal/packs/css/a.css>; rel=preload; as=style; nopush, <https://cdn.example/x.js>; rel=preload');
+test("a ticket is good once, for a minute, only at the host it was made for; its session only for that app at that host", () => {
+  let t = 1000;
+  const k = createTickets({ now: () => t });
+  const a = k.issue("docuseal", "docuseal.acme.vyre.run", "/templates");
+  assert.equal(k.trade(a, "docuseal.other.example"), null, "another host cannot spend it");
+  assert.equal(k.trade(a, "docuseal.acme.vyre.run"), null, "and a spent or wrong-host ticket is gone");
+  const b = k.issue("docuseal", "docuseal.acme.vyre.run", "/templates");
+  const got = k.trade(b, "docuseal.acme.vyre.run");
+  assert.equal(got.next, "/templates");
+  assert.equal(k.trade(b, "docuseal.acme.vyre.run"), null, "once");
+  assert.equal(k.valid(got.sid, "docuseal", "docuseal.acme.vyre.run"), true);
+  assert.equal(k.valid(got.sid, "other", "docuseal.acme.vyre.run"), false);
+  assert.equal(k.valid(got.sid, "docuseal", "docuseal.evil.example"), false);
+  assert.equal(k.valid(undefined, "docuseal", "docuseal.acme.vyre.run"), false);
+  const c = k.issue("docuseal", "h.x", "/"); t += 61_000;
+  assert.equal(k.trade(c, "h.x"), null, "a minute is all it gets");
+  t += 9 * 3_600_000;
+  assert.equal(k.valid(got.sid, "docuseal", "docuseal.acme.vyre.run"), false, "a session ends");
+  const d = k.issue("docuseal", "h.x", "/"); const s = k.trade(d, "h.x"); k.drop("docuseal");
+  assert.equal(k.valid(s.sid, "docuseal", "h.x"), false, "removing the app ends its sessions");
+  assert.equal(ENTER, "/__vyre/enter");
 });
