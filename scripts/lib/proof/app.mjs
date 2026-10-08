@@ -31,6 +31,11 @@ import { addDeviceCore } from "../../../apps/app/src/identity/add-device-core.js
 import { phoneAsk, added } from "../../../apps/app/screens/devices/real.js";
 import * as C from "../../../kernel/identity/chain.js";
 import { enrolDevice } from "../../../apps/app/src/identity/enrol-device.js";
+import { openInvite, callTeam } from "../../../apps/app/src/real/join-team.js";
+import { kernelWire } from "../../../apps/app/src/real/kernel-wire.js";
+import { createTeamInvite, listTeamInvites } from "../../../apps/app/src/real/team-invite.js";
+import { openServerPeer } from "../../../relay/client/peerclient.js";
+import { WORDS } from "../../../relay/client/words.js";
 import { serveEnrolWith } from "../../../apps/app/src/real/enrol-serve.js";
 
 const b64u = (/** @type {Uint8Array} */ b) => Buffer.from(b).toString("base64url");
@@ -221,13 +226,40 @@ export function createApp(o) {
   }
 
   /**
-   * "Join a team": paste the invite, run on the org's server with no server of your own (spec 0.3.0 part 10, 2b). There is no app module for this yet that an identity with no server can use:
-   * previewInvite and acceptInvite (apps/app/src/real/install.ts) call spaces.invites.preview and spaces.invites.accept on THIS person's own server, which this person does not have.
-   * @param {{ link: string }} a
+   * The owner's side of a team invite, as the app does it (apps/app/src/real/team-invite.js over kernel-wire.js on the paired peer stream): the server holds no identity, so the home's kernel asks THIS
+   * app's key for its yes. `signPresence` is that key (the walk hands in the development sealing process's software signer; a release server wants a hardware key).
+   * @param {{ space: string, name: string, to: string, signPresence: (card: any) => Promise<any> }} a
+   */
+  async function makeTeamInvite(a) {
+    if (!me || !pairing) throw new Error("this app has no identity or no server yet");
+    const conn = connect({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: o.label, crypto: relayCrypto, keyStore });
+    const peer = await openServerPeer(conn);
+    const wire = kernelWire(peer, a.space, { person: me.id, signPresence: a.signPresence });
+    const dir = { wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory };
+    const made = await createTeamInvite(dir, { space: a.space, name: a.name, role: "member", to: a.to });
+    const rows = await listTeamInvites(dir);
+    return { ...made, rows, close() { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } } };
+  }
+
+  /**
+   * "Join a team": paste the invite; this identity has no server of its own and joins through the team's server (apps/app/src/real/join-team.js openInvite, accept, callTeam), the same code team-join.ts
+   * gives the app. `signPresence` and `presenceKey` are this app's yes key (the walk hands in a development software signer).
+   * @param {{ link: string, signPresence: (req: any) => Promise<any>, presenceKey: (invite: string) => Promise<any> }} a
    */
   async function joinTeam(a) {
-    void a;
-    throw Object.assign(new Error("no app code joins a team from an identity with no server of its own: the join path (real/install.ts previewInvite/acceptInvite) calls the person's own box, and there is none (spec 0.3.0 part 10, Join a team)"), { code: "not_built" });
+    if (!me) throw new Error("this app has no identity yet");
+    const rows = new Map();
+    const deps = {
+      who: { id: me.id, name: me.name, eid: me.key.eid, sign: (/** @type {Uint8Array} */ m) => me.key.sign(m) },
+      fetch: globalThis.fetch.bind(globalThis), base: o.directory, connect, openServerPeer, crypto: relayCrypto, words: WORDS,
+      signPresence: a.signPresence, presenceKey: a.presenceKey,
+      store: { get: async (/** @type {string} */ k) => rows.get(k), put: async (/** @type {string} */ k, /** @type {any} */ v) => { rows.set(k, v); } },
+    };
+    const inv = await openInvite(deps, a.link);
+    try {
+      const joined = await inv.accept();
+      return { joined, card: inv.card, call: (/** @type {string} */ call, /** @type {any[]} */ args) => callTeam(deps, joined.space, call, args) };
+    } finally { inv.close(); }
   }
 
   /** A team space on the server this app is paired with: the app's claimServerSpace, with the server hosting it (spaces.host-here) and the names directory holding its record. @param {string} name */
@@ -241,7 +273,7 @@ export function createApp(o) {
   }
 
   return {
-    label: o.label, serveEnrol, joinTeam, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    label: o.label, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
