@@ -35,7 +35,7 @@ function parse(a) {
   /** @type {string[]} */ const colima = [];
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
-    if (k === "--dry-run" || k === "--purge") f[k.slice(2)] = true;
+    if (k === "--dry-run" || k === "--purge" || k === "--server") f[k.slice(2)] = true;
     else if (k.startsWith("--") && i + 1 < a.length) {
       if (k === "--colima-program") colima.push(a[++i]); else f[k.slice(2)] = a[++i];
     } else fail(`unknown or incomplete option ${k}`);
@@ -63,6 +63,8 @@ try {
       nodeBinary: String(f.node), vyredWrapper: String(f["vyred-wrapper"]),
       ...(typeof f["owner-home"] === "string" ? { ownerHome: f["owner-home"] } : {}),
       ...(typeof f["gh-bin"] === "string" ? { ghBin: f["gh-bin"] } : {}),
+      ...(f.server === true ? { server: true } : {}),
+      ...(typeof f["first-key-fp"] === "string" ? { firstKeyFp: f["first-key-fp"] } : {}),
       ...(typeof f["node-sha256"] === "string" ? { nodeSha256: f["node-sha256"] } : {}),
       ...(colima.length ? { colimaAgent: true, colimaProgram: colima } : {}),
     };

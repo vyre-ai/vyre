@@ -697,7 +697,14 @@ ns=$(shasum -a 256 "$nb" | cut -d" " -f1)
 
 system_install() {
   if [ "$DRY" = 1 ]; then say "would run, under one sudo: a fixed root step that copies the verified release into a root-owned folder and runs the installer from there (it asks for your password)"; return 0; fi
-  set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$BIN/vyre-serve"
+  # The full install is a server: core is told so by its own plist. With the app's install line, core is also told the fingerprint of the app's key that line carries (the last 16 bytes of the setup code:
+  # public, never the secret) and takes that one key first, within the hour. The code goes to this node on its stdin, never on a command line.
+  set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$BIN/vyre-serve" --server
+  if [ -n "$CODE" ]; then
+    fp=$(printf '%s' "$CODE" | "$(wrapper_node)" -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{const b=Buffer.from(s.trim(),"base64url");if(b.length!==32)process.exit(1);process.stdout.write(b.subarray(16).toString("hex"))})') || fp=""
+    printf '%s' "$fp" | grep -Eq '^[0-9a-f]{32}$' || die "that setup code does not look right. Copy the install line from your browser again."
+    set -- "$@" --first-key-fp "$fp"
+  fi
   [ -z "$GH_BIN" ] || set -- "$@" --gh-bin "$GH_BIN"
   if [ -n "$COLIMA_ARGS" ]; then
     oldifs=$IFS; IFS='
@@ -799,7 +806,8 @@ main() {
   setup_gh
   setup_wink_net
   write_env
-  write_machine
+  # only the full install is a server; the light --login-only install is My Home and stays local
+  [ "$SYSTEM" = 0 ] || write_machine
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then
     system_install
