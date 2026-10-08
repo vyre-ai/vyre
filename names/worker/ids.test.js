@@ -144,12 +144,12 @@ test("ids: a claim must carry a valid chain and a record an entry signed; a forg
   assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "dGFtcGVyZWQ", rec: good.rec })), "bad_signature", "a changed record");
   assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
   assert.equal(code(await fin(alex, { ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
+  // a person's genesis without a reservation code is refused, and so is a wrong code
+  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "reserve_first");
+  assert.equal(code(await alex.post("/v1/ids/finalize", { name: "alex", ops: alex.ops, ...good, code: "VYRE-AAAA-AAAA-AAAA-AAAA" })), "bad_code");
   w.clock.t += 10 * 60_000;
   assert.equal(code(await fin(alex, { ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found", "nothing was claimed by any of those");
-  // a person's genesis without a reservation code is refused, and so is a wrong, a replaced and a used code
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "reserve_first");
-  assert.equal(code(await alex.post("/v1/ids/finalize", { name: "alex", ops: alex.ops, ...good, code: "VYRE-AAAA-AAAA-AAAA-AAAA" })), "bad_code");
 });
 
 test("ids: an unknown, an invalid and a released-then-freed name all resolve as not found", async t => {
@@ -575,4 +575,81 @@ test("ids: the directory accepts a device's self-signed agree op, resolves the e
   assert.equal(st.entries.find(e => e.eid === phone.eid).agree, point);
   const second = await alex.append({ type: "agree", target: phone.eid, agree: point }, phone);
   assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [second] })), "exists");
+});
+
+// ---- reserve and finalize (spec part 10): a person's first name comes from the web, finished with the key in the app ----
+
+test("reserve: a code is made once for a free name, is long, and finalize with it claims the name for the identity the app made", async t => {
+  const w = world(t), alex = await person(w);
+  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" }, body: JSON.stringify({ name: "Alex" }) }), w.env);
+  const res = (await r.json()).data;
+  assert.equal(res.name, "alex", "names fold to lower case");
+  assert.match(res.code, /^VYRE-[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/, "20 characters of 5 bits: 100 bits");
+  assert.equal(res.expires, w.clock.t + 24 * HOUR);
+  // the name is held: another person's claim and reservation-less claim are refused while it lives, and resolve finds nothing yet
+  assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found");
+  const done = await alex.post("/v1/ids/finalize", { name: "alex", code: res.code, ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") });
+  assert.equal(data(done).name, "alex");
+  assert.equal(data(await alex.get("/v1/ids/resolve?name=alex")).kind, "person");
+});
+
+test("reserve: single use, 24 hours, and reserving the same name again cancels the old code", async t => {
+  const w = world(t), alex = await person(w);
+  const body = () => ({ name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") });
+  const c1 = await codeFor(w, "alex"), c2 = await codeFor(w, "alex");
+  assert.notEqual(c1, c2);
+  assert.equal(code(await alex.post("/v1/ids/finalize", { ...body(), code: c1 })), "bad_code", "the older code was replaced");
+  // the code names the name: a code for one name opens no other
+  const other = await person(w);
+  const cb = await codeFor(w, "bobby");
+  assert.equal(code(await other.post("/v1/ids/finalize", { name: "alex", ops: other.ops, ...other.sealRecord("alex", "c2VhbGVk"), code: cb })), "bad_code");
+  // a case and a dash do not matter when the code is pasted
+  assert.equal(data(await alex.post("/v1/ids/finalize", { ...body(), code: c2.toLowerCase().replace(/-/g, " ") })).name, "alex");
+  const again = await person(w);
+  assert.equal(code(await again.post("/v1/ids/finalize", { name: "alex", ops: again.ops, ...again.sealRecord("alex", "c2VhbGVk"), code: c2 })), "bad_code", "burned by the claim");
+  // 24 hours
+  const late = await person(w), cl = await codeFor(w, "lena");
+  w.clock.t += 24 * HOUR + 1000;
+  assert.equal(code(await late.post("/v1/ids/finalize", { name: "lena", ops: late.ops, ...late.sealRecord("lena", "c2VhbGVk"), code: cl })), "bad_code", "expired");
+});
+
+test("reserve: the namespace is one, reserved words and held names are refused, and a person's first name is never claimed without a code", async t => {
+  const w = world(t), box = who(w), alex = await person(w), space = await person(w);
+  const send = async (name, ip = "203.0.113.60") => { const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ name }) }), w.env); return { json: await r.json() }; };
+  assert.equal(code(await send("vyre")), "reserved");
+  assert.equal(code(await send("x")), "invalid");
+  data(await box.post("/v1/names/claim", { name: "juno" }));
+  assert.equal(code(await send("juno")), "taken", "a box's name (until boxes lose names) is taken");
+  data(await alex.claim("alex"));
+  assert.equal(code(await send("alex")), "taken", "an identity's name");
+  // a live reservation holds the name against a box
+  await send("kitty");
+  assert.equal(code(await box.post("/v1/names/claim", { name: "kitty" })), "taken");
+  // a person's genesis cannot be claimed outright
+  assert.equal(code(await space.post("/v1/ids/claim", { name: "sam", ops: space.ops, ...space.sealRecord("sam", "c2VhbGVk") })), "reserve_first");
+});
+
+test("reserve: a space's name is claimed outright by a chain whose owner exists, and a space is never made by a reservation code", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
+  const space = await identity(w, phone, { kind: "space", ctxFor });
+  await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id }, phone.eid);
+  const c = await codeFor(w, "harlow");
+  assert.equal(code(await space.post("/v1/ids/finalize", { name: "harlow", ops: space.ops, ...space.sealRecord("harlow", "aG9tZQ", phone, phone.eid), code: c })), "not_a_person");
+  assert.equal(code(await space.claim("harlow", "aG9tZQ", phone, phone.eid)), "taken", "another person's live reservation holds the name against a space too");
+  w.clock.t += 24 * HOUR + 1000;
+  assert.equal(data(await space.claim("harlow", "aG9tZQ", phone, phone.eid)).kind, "space");
+});
+
+test("reserve: reserving is limited per address, not per person, and answers any origin without credentials", async t => {
+  const w = world(t, { RESERVES_PER_IP_PER_DAY: "3" });
+  const ask = async (name, ip) => raw(w, "POST", "/v1/ids/reserve", { origin: "https://vyre.run", headers: { "cf-connecting-ip": ip }, body: { name } });
+  const first = await ask("aaaa", "203.0.113.70");
+  assert.equal(first.status, 200);
+  assert.equal(first.h("access-control-allow-origin"), "*");
+  assert.equal(first.h("access-control-allow-credentials"), null);
+  await ask("bbbb", "203.0.113.70"); await ask("cccc", "203.0.113.70");
+  assert.equal(code(await ask("dddd", "203.0.113.70")), "rate_limited");
+  assert.equal((await ask("dddd", "203.0.113.71")).status, 200, "another address is not held back by the first");
 });
