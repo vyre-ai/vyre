@@ -138,6 +138,5 @@ test("editing one item: the card is made again over the new words, the old proof
   const ra = await send(reg, MAILS[0], { approval: a.id });
   assert.equal(globalThis.__sent.at(-1).body, MAILS[0].body);
   void ra;
-  const card = await reg.call("approvals.card-input", { id: b.id, tool: "mail.send", from: ASKER }, "module:registry");
-  assert.ok(card.error, "only the registry reads a card's call");
+  for (const who of ["cli", ASKER, "module:mail"]) assert.ok((await reg.call("approvals.card-input", { id: b.id, tool: "mail.send", from: ASKER }, who)).error, `${who} cannot read a card's call`);
 });
