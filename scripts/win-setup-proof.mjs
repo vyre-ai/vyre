@@ -10,13 +10,13 @@
 //   3. the identity bridge: has, public, sign (verified here with node's crypto), public again (same key), the TPM and agreement keys (a runner has no TPM: the reason must be real words, not nothing);
 //   4. the log %LOCALAPPDATA%\Vyre\logs\app.log exists and names every failure;
 //   5. restart: the app is stopped and started again; the key is still the same, and the relay key store (IndexedDB vyre-relay) written before the restart is still there after it.
-// Exit 0 only when all hold. Needs playwright-core (CDP only, no browser download).
+// Exit 0 only when all hold. It speaks the DevTools protocol itself (Node's WebSocket): Playwright's connectOverCDP, and anything that asks WebView2 to close its "browser", ends the app (run 37729563740: exit 0 one second after the page loaded).
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { createPublicKey, verify as nodeVerify, randomBytes } from "node:crypto";
-import { createRequire } from "node:module";
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(n); return i < 0 ? d : args[i + 1]; };
@@ -26,8 +26,46 @@ const NAMES = flag("--names", "http://127.0.0.1:8787").replace(/\/+$/, "");
 const OUT = path.resolve(flag("--out", "win-proof-out"));
 const CDP = Number(flag("--cdp", "9222"));
 fs.mkdirSync(OUT, { recursive: true });
-const require = createRequire(process.env.PW_FROM || path.join(process.cwd(), "x"));
-const { chromium } = require("playwright-core");
+
+// ---- a small DevTools client: one page target, evaluate, real mouse and text input, screenshots. It never sends Browser.close or anything that disposes of the browser.
+class Cdp {
+  constructor(ws, url) { this.ws = ws; this.url = url; this.id = 0; this.waiting = new Map(); this.handlers = []; ws.onmessage = (m) => { const d = JSON.parse(String(m.data)); if (d.id && this.waiting.has(d.id)) { const w = this.waiting.get(d.id); this.waiting.delete(d.id); d.error ? w.rej(new Error(d.error.message)) : w.res(d.result); } else if (d.method) for (const h of this.handlers) h(d.method, d.params); }; }
+  send(method, params = {}) { return new Promise((res, rej) => { const id = ++this.id; this.waiting.set(id, { res, rej }); this.ws.send(JSON.stringify({ id, method, params })); }); }
+  on(fn) { this.handlers.push(fn); }
+  async evaluate(what, arg) {
+    const expression = typeof what === "function" ? `(${what.toString()})(${JSON.stringify(arg ?? null)})` : what;
+    const r = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true });
+    if (r.exceptionDetails) throw new Error((r.exceptionDetails.exception && r.exceptionDetails.exception.description) || r.exceptionDetails.text);
+    return r.result.value;
+  }
+  async screenshot({ path: file }) { const r = await this.send("Page.captureScreenshot", { format: "png" }); fs.writeFileSync(file, Buffer.from(r.data, "base64")); }
+  // The element whose own text is `text` (exactly, or as a prefix of a longer line when not exact), as a point on screen.
+  async find(kind, text, exact = true, timeout = 30000) {
+    const end = Date.now() + timeout;
+    for (;;) {
+      const pt = await this.evaluate(({ kind, text, exact }) => {
+        const all = [...document.querySelectorAll("*")];
+        let el = null;
+        if (kind === "placeholder") el = all.find((e) => e.getAttribute("placeholder") === text) || null;
+        else {
+          const hit = all.filter((e) => { const t = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim(); return exact ? t === text : t.includes(text); });
+          el = hit[0] || null;
+        }
+        if (!el) return null;
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+      }, { kind, text, exact });
+      if (pt) return pt;
+      if (Date.now() > end) throw new Error(`no ${kind} "${text}" on the page within ${timeout} ms`);
+      await sleep(400);
+    }
+  }
+  async clickAt({ x, y }) { for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await this.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 }); }
+  getByText(text, o = {}) { const self = this; const l = { first: () => l, click: async ({ timeout } = {}) => self.clickAt(await self.find("text", text, o.exact !== false, timeout)), waitFor: async ({ timeout } = {}) => { await self.find("text", text, o.exact !== false, timeout); } }; return l; }
+  getByPlaceholder(text) { const self = this; return { fill: async (value, { timeout } = {}) => { await self.clickAt(await self.find("placeholder", text, true, timeout)); await self.send("Input.insertText", { text: value }); } }; }
+  locator(sel) { const self = this; return { innerText: () => self.evaluate((s) => document.querySelector(s).innerText, sel) }; }
+}
 
 const results = [];
 const note = (s) => console.log(s);
@@ -59,22 +97,28 @@ function stop() {
   proc = null;
 }
 async function attach() {
-  let browser = null;
-  for (let i = 0; i < 60 && !browser; i++) {
-    try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP}`); } catch { await sleep(1000); }
+  let seen = "";
+  for (let i = 0; i < 90; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${CDP}/json`)).json();
+      const t = list.find((x) => x.type === "page" && String(x.url).startsWith("https://vyreapp.localhost/"));
+      seen = list.map((x) => `${x.type} ${x.url}`).join(" | ");
+      if (t) {
+        const ws = new WebSocket(t.webSocketDebuggerUrl);
+        await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error("the page's DevTools socket would not open")); });
+        const page = new Cdp(ws, t.url);
+        await page.send("Runtime.enable"); await page.send("Page.enable");
+        return { browser: { close: async () => { try { ws.close(); } catch { /* gone */ } } }, page };
+      }
+    } catch (e) { seen = seen || "DevTools not reachable yet: " + String(e.message || e).slice(0, 100); }
+    if (proc && proc.exitCode !== null) break;
+    await sleep(1000);
   }
-  if (!browser) {
-    let log = "(no app.log)";
-    try { log = fs.readFileSync(logFile, "utf8").slice(-1500); } catch { /* none */ }
-    throw new Error(`the app's window never listened for the DevTools protocol; app alive: ${proc ? proc.exitCode === null : "stopped"}, exit code ${proc ? proc.exitCode : "?"}; app.log: ${log}`);
-  }
-  for (let i = 0; i < 60; i++) {
-    for (const c of browser.contexts()) for (const p of c.pages()) if (p.url().startsWith("https://vyreapp.localhost/")) return { browser, page: p };
-    await sleep(500);
-  }
-  throw new Error("no window of the app's own origin opened; pages: " + browser.contexts().flatMap((c) => c.pages().map((p) => p.url())).join(", "));
+  let log = "(no app.log)";
+  try { log = fs.readFileSync(logFile, "utf8").slice(-1500); } catch { /* none */ }
+  throw new Error(`no window of the app's own origin on the DevTools port; targets: ${seen}; app alive: ${proc ? proc.exitCode === null : "stopped"}, exit code ${proc ? proc.exitCode : "?"}; app.log: ${log}`);
 }
-const call = (expr) => page.evaluate(expr);
+const call = (fn, arg) => page.evaluate(fn, arg);
 
 
 // The shell's own yes or no (a native message box the page cannot draw over or click): find it, read what it says, and answer it the way a person would. "Yes" is IDYES (6), "No" is IDNO (7).
@@ -111,11 +155,15 @@ try {
   await check("the stand-in directory answers", async () => { const r = await fetch(`${NAMES}/v1/names/check?name=winproof`); if (!r.ok) throw new Error("status " + r.status); return `status ${r.status}`; });
   launch();
   ({ browser, page } = await attach());
-  page.on("console", (m) => { if (m.type() === "error") note("  console error: " + m.text().slice(0, 200)); });
-  page.on("pageerror", (e) => note("  pageerror: " + String(e).slice(0, 200)));
+  page.on((method, p) => { if (method === "Runtime.exceptionThrown") note("  pageerror: " + JSON.stringify(p.exceptionDetails && (p.exceptionDetails.exception?.description || p.exceptionDetails.text)).slice(0, 240)); if (method === "Runtime.consoleAPICalled" && p.type === "error") note("  console error: " + JSON.stringify((p.args || []).map((a) => a.value ?? a.description)).slice(0, 240)); });
 
   let origin = "";
   await check("origin: the window runs at one fixed origin (the string APP_ORIGINS must list)", async () => { origin = await call(() => location.origin); if (origin !== "https://vyreapp.localhost") throw new Error("origin is " + origin); return origin; });
+  await check("WebAuthn probe (no credential made, no prompt): what this WebView2 page exposes", async () => {
+    const out = await page.evaluate(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "apps", "app", "scripts", "webauthn-probe.js"), "utf8"));
+    fs.writeFileSync(path.join(OUT, "webauthn-probe.json"), typeof out === "string" ? out : JSON.stringify(out));
+    return String(typeof out === "string" ? out : JSON.stringify(out)).slice(0, 400);
+  });
   await check("the shell is the Windows app's, boxless, with the identity calls", async () => {
     const s = await call(() => { const x = window.__vyreShell; return x ? { kind: x.kind, boxless: x.boxless, calls: Object.keys(x.identity || {}).sort() } : null; });
     if (!s || s.kind !== "windows" || s.boxless !== true) throw new Error(JSON.stringify(s));

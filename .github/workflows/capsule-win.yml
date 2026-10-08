@@ -158,11 +158,18 @@ jobs:
           for f in ../../../relay/client/*.js; do
             case "$f" in *.test.js|*/nodecrypto.js|*/testing.js) ;; *) cp "$f" app/ui/relay/ ;; esac
           done
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-tauri.exe
+            ~/.cargo/registry
+            local/capsule/native-win/app/target
+          key: win-proof-${{ runner.os }}-${{ hashFiles('local/capsule/native-win/app/Cargo.lock', 'local/capsule/native-win/Cargo.lock') }}
       - name: build the app (no installer)
         shell: bash
         working-directory: local/capsule/native-win/app
         run: |
-          cargo install tauri-cli --version "=2.12.0" --locked
+          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "=2.12.0" --locked
           cargo tauri build --no-bundle -- --locked
           ls -la target/release/Vyre.exe
       - name: the Windows-only checks the app runs on itself (DPAPI round trip, tray icons, update check)
@@ -173,16 +180,8 @@ jobs:
           sleep 3
           cat "$RUNNER_TEMP/win-proof-out/selftest.txt"
           if grep -q '^FAIL' "$RUNNER_TEMP/win-proof-out/selftest.txt"; then exit 1; fi
-      - name: playwright-core, for the DevTools protocol only (no browser is downloaded)
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund playwright-core@1.49.1
       - name: the proof
         shell: bash
-        env:
-          PW_FROM: ${{ runner.temp }}/pw/x
         run: |
           out="$RUNNER_TEMP/win-proof-out"; mkdir -p "$out"
           node scripts/standin-directory.mjs --port 8787 --host 127.0.0.1 --app-origins "https://vyreapp.localhost" > "$out/standin.log" 2>&1 &
