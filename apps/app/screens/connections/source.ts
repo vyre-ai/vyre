@@ -1,6 +1,7 @@
 // Connections' calls on a real vyred, over an injected `call` (the app's box connection, or a fake box in a test): connectors.* (the catalog and its sign-in steps), mcp.*, google.*,
 // github.*, vault.connections.* and vault.list / vault.grant (a server's or account's vault item must be readable by its module). Acts that need the person are answered by the app's
 // call with the device's own proof. A token typed here goes to the box once and is not kept; a refusal's text never echoes it (model.ts redact).
+import { pickMade, toCreate, type FormInput } from "./any-app.ts";
 import { deviceFlow, groupsOf, pickAccounts, pickConnections, pickGithub, pickGoogleTest, pickItems, pickRepos, pickServers, pickTest, stepOf, type Scope } from "./model.ts";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
@@ -61,6 +62,16 @@ export function connectionsSource(call: Call) {
     /** Removes Vyre's own vault item and account row; it never revokes the token at GitHub. */
     githubRemove: (name: string) => ask("github.remove", { name }),
     async githubRepos(o: { account?: string; q?: string; page?: number }) { return pickRepos(await ask("github.repos", { ...(o.account ? { account: o.account } : {}), ...(o.q ? { q: o.q } : {}), page: o.page ?? 1, limit: 30 })); },
+    // any app with an API: the person's own Connections (connectors.connection.*)
+    async madeList() { return pickMade(await ask("connectors.connection.list", {})); },
+    /** Make the Connection and run its check once; the answer is the light in words. */
+    async madeCreate(f: FormInput) {
+      const made = await ask<{ id: string }>("connectors.connection.create", toCreate(f));
+      const chk = await ask<{ light: string; words: string }>("connectors.connection.check", { id: made.id });
+      return { id: made.id, light: chk.light, words: chk.words };
+    },
+    madeCheck: (id: string) => ask<{ light: string; words: string }>("connectors.connection.check", { id }),
+    madeDelete: (id: string) => ask("connectors.connection.delete", { id }),
     // vault: items, grants, connections by surface
     async vaultItems() { return pickItems(await ask("vault.list", {})); },
     /** Let a module read a vault item: a person's own act (the box asks for presence). */
