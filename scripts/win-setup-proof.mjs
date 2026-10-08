@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createPublicKey, verify as nodeVerify, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 
@@ -75,6 +75,36 @@ async function attach() {
   throw new Error("no window of the app's own origin opened; pages: " + browser.contexts().flatMap((c) => c.pages().map((p) => p.url())).join(", "));
 }
 const call = (expr) => page.evaluate(expr);
+
+
+// The shell's own yes or no (a native message box the page cannot draw over or click): find it, read what it says, and answer it the way a person would. "Yes" is IDYES (6), "No" is IDNO (7).
+const PS = `
+Add-Type -TypeDefinition @"
+using System; using System.Text; using System.Runtime.InteropServices;
+public class W { 
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+}
+"@
+$h = [W]::FindWindow("#32770", "Vyre")
+if ($h -eq [IntPtr]::Zero) { Write-Output "NODIALOG"; exit 0 }
+$text = ""; $c = [IntPtr]::Zero
+while ($true) { $c = [W]::FindWindowEx($h, $c, "Static", $null); if ($c -eq [IntPtr]::Zero) { break }; $sb = New-Object System.Text.StringBuilder 1024; [void][W]::GetWindowText($c, $sb, 1024); if ($sb.Length -gt 0) { $text += $sb.ToString() } }
+Write-Output ("TEXT:" + ($text -replace "[\r\n]+", " | "))
+[void][W]::SendMessage($h, 0x111, [IntPtr]::new($env:ANSWER), [IntPtr]::Zero)
+Write-Output "ANSWERED"
+`;
+async function answerDialog(idButton) {
+  for (let i = 0; i < 40; i++) {
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS], { env: { ...process.env, ANSWER: String(idButton) }, encoding: "utf8" });
+    const out = String(r.stdout || "");
+    if (out.includes("ANSWERED")) return /TEXT:(.*)/.exec(out)?.[1]?.trim() || "";
+    await sleep(500);
+  }
+  throw new Error("the shell's confirmation never appeared");
+}
 
 let browser = null;
 try {
@@ -146,6 +176,34 @@ try {
     if (r.agreeErr !== undefined && r.agreeErr.length < 8) throw new Error("the agreement failure has no real reason: " + JSON.stringify(r.agreeErr));
     enclave = r.enclave || "";
     return JSON.stringify({ enclave: r.enclave ? "key" : r.enclaveErr, agree: r.agree ? "key" : r.agreeErr });
+  });
+
+  // The shell's own yes (KP-3): a list change signed by the computer's enclave (TPM) key is confirmed in a native box the shell writes from the bytes, so a page cannot approve its own change. This is what lets a Windows
+  // computer with a TPM key be a full device; one without a TPM key is a held (web) key, as before.
+  const chain = (e) => new TextEncoder().encode("vyre-chain-v1\n" + JSON.stringify({ type: "add", entry: e }));
+  const signAsk = (bytes) => call(async (m) => { try { return { ok: await window.__vyreShell.identity.enclaveSign(m, "Approve") }; } catch (e) { return { err: String((e && e.message) || e) }; } }, b64u(bytes));
+  await check("native yes/no: answering No refuses, and the box says what would be signed in the shell's own words", async () => {
+    const pending = signAsk(chain({ kind: "device", label: "Proof phone" }));
+    const said = await answerDialog(7);
+    const r = await pending;
+    if (!r.err || !/Not approved/.test(r.err) || /status/.test(r.err)) throw new Error("No did not refuse cleanly: " + JSON.stringify(r).slice(0, 200));
+    if (!/Add a device: Proof phone/.test(said)) throw new Error("the box does not name the change: " + said);
+    return said.slice(0, 100);
+  });
+  await check("native yes/no: answering Yes reaches the key (a signature, or the TPM's own refusal), never the page's own approval", async () => {
+    const pending = signAsk(chain({ kind: "device", label: "Proof phone" }));
+    await answerDialog(6);
+    const r = await pending;
+    if (r.ok) return "signed (a TPM key answered)";
+    if (!r.err || r.err === "Not approved. Nothing was changed.") throw new Error("Yes was treated as No: " + JSON.stringify(r));
+    return "past the box; the key said: " + r.err.slice(0, 160);
+  });
+  await check("native yes/no: bytes the shell cannot read are refused with no box at all", async () => {
+    const r = await signAsk(new TextEncoder().encode("anything the page likes"));
+    if (!r.err || !/cannot tell what this would sign/.test(r.err)) throw new Error(JSON.stringify(r));
+    const p = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS], { env: { ...process.env, ANSWER: "7" }, encoding: "utf8" });
+    if (!String(p.stdout).includes("NODIALOG")) throw new Error("a box appeared for unreadable bytes");
+    return "refused, no box";
   });
   await check("the log exists and holds the TPM failure (or the app made a TPM key)", async () => {
     if (!fs.existsSync(logFile)) { if (enclave) return "no failures to log (a TPM key was made)"; throw new Error("no log at " + logFile); }

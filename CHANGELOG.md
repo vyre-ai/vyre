@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(windows-app): the TPM key's refusals carry the provider's status code, the app logs its start, setup and exit, and the Windows proof drives the shell's own yes/no box for a list change.
 - ci(windows-app): the installer carries the app's web build (capsule-win.yml), and a dispatch-only proof job in capsule-win.yml builds and drives the Windows app on windows-latest against a stand-in names directory (first run, identity bridge, app log, restart keeps the identity and relay keys).
 - feat(windows-app): the Windows app opens the app's own web build in its window with no server (a vyreapp scheme served by the shell, origin http://vyreapp.localhost), so reserve, become yourself, Join or Add a server can run on Windows; the page has identity.has and identity.forget; every key failure goes to %LOCALAPPDATA%\Vyre\logs\app.log with its real reason, and the claim screen shows the shell's reason instead of one generic line.
 - test(pairing): the computer app serving a phone's enrolment is tested with the real chain (apps/app/src/real/enrol-serve.test.js; the steps moved out of enrol-phone.ts into enrol-serve.js), and the three-minute enrolling timeout of a phone added to a server with no identity is tested in core/wink/pairing.test.js.

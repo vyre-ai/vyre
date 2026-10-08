@@ -47,7 +47,7 @@ mod imp {
         let mut h: Handle = 0;
         let name = w("Microsoft Platform Crypto Provider");
         let s = unsafe { NCryptOpenStorageProvider(&mut h, name.as_ptr(), 0) };
-        if s != 0 { return Err("This computer has no TPM that Vyre can use.".into()); }
+        if s != 0 { return Err(format!("This computer has no TPM that Vyre can use. (status {:#010x})", s as u32)); }
         Ok(Prov(h))
     }
 
@@ -62,7 +62,8 @@ mod imp {
         let mut h: Handle = 0;
         let alg = w("ECDSA_P256");
         let name = w(KEY_NAME);
-        if unsafe { NCryptCreatePersistedKey(p.0, &mut h, alg.as_ptr(), name.as_ptr(), 0, 0) } != 0 { return Err("This computer's TPM would not make a key.".into()); }
+        let c = unsafe { NCryptCreatePersistedKey(p.0, &mut h, alg.as_ptr(), name.as_ptr(), 0, 0) };
+        if c != 0 { return Err(format!("This computer's TPM would not make a key. (status {:#010x})", c as u32)); }
         let key = Key(h);
         // Windows asks the person (Windows Hello) every time this key signs.
         let title = w("Vyre");
@@ -71,8 +72,9 @@ mod imp {
         let ui = UiPolicy { dw_version: 1, dw_flags: NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG, psz_creation_title: title.as_ptr(), psz_friendly_name: friendly.as_ptr(), psz_description: desc.as_ptr() };
         let prop = w("UI Policy");
         let st = unsafe { NCryptSetProperty(key.0, prop.as_ptr(), &ui as *const UiPolicy as *const u8, std::mem::size_of::<UiPolicy>() as u32, 0) };
-        if st != 0 { return Err("Windows Hello is not set up on this computer.".into()); }
-        if unsafe { NCryptFinalizeKey(key.0, 0) } != 0 { return Err("This computer's TPM would not keep the key.".into()); }
+        if st != 0 { return Err(format!("Windows Hello is not set up on this computer. (status {:#010x})", st as u32)); }
+        let f = unsafe { NCryptFinalizeKey(key.0, 0) };
+        if f != 0 { return Err(format!("This computer's TPM would not keep the key. (status {:#010x})", f as u32)); }
         Ok(key)
     }
 
@@ -99,7 +101,7 @@ mod imp {
         let mut sig = [0u8; 64];
         let mut got: u32 = 0;
         let s = unsafe { NCryptSignHash(key.0, null(), digest.as_ptr(), digest.len() as u32, sig.as_mut_ptr(), sig.len() as u32, &mut got, 0) };
-        if s != 0 || got != 64 { return Err("Not approved. Nothing was changed.".into()); }
+        if s != 0 || got != 64 { return Err(format!("Not approved. Nothing was changed. (status {:#010x})", s as u32)); }
         Ok(sig)
     }
 

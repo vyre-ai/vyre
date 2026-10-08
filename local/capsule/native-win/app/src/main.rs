@@ -662,6 +662,9 @@ fn selftest(out: &str) {
         let back = protect(&sealed, false)?;
         if back == secret { Ok(format!("{} byte blob", sealed.len())) } else { Err("did not round-trip".into()) }
     })());
+    // The TPM key, as a real PC does it: what the provider says at each step is the proof of what this machine can do. A hosted runner has no TPM, so the honest result there is the refusal and its status.
+    check("tpm-key", match ncrypt::public_point(true) { Ok(p) => Ok(format!("a TPM key was made ({} bytes)", p.len())), Err(e) => Ok(format!("no TPM key: {e}")) });
+    check("agreement-key", match ncrypt::agree_public(true) { Ok(p) => Ok(format!("an agreement key was made ({} bytes)", p.len())), Err(e) => Err(e) });
     check("taskbar-theme", Ok(if taskbar_is_light() { "light".into() } else { "dark".into() }));
     check("tray-icons-decode", (|| {
         for (n, b) in [("white", TRAY_DARK_TASKBAR), ("black", TRAY_LIGHT_TASKBAR)] {
@@ -738,6 +741,7 @@ fn main() {
             tray = tray.tooltip(APP_NAME);
             if let Some(icon) = tray_icon().or_else(|| app.default_window_icon().cloned()) { tray = tray.icon(icon); }
             let tray = tray.build(app)?;
+            log("note", "setup", "tray built");
             // Follow the taskbar theme; once a minute is plenty.
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
@@ -749,6 +753,7 @@ fn main() {
             if pinned(&handle).is_none() { show_first_run(&handle); }
             ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
+            log("note", "setup", "done");
 
             use tauri_plugin_deep_link::DeepLinkExt;
             let link_app = handle.clone();
@@ -763,8 +768,10 @@ fn main() {
             // A tray app keeps running with no window open: closing the last window (finishing pairing closes
             // the first-run page before the panel exists) asks to exit with no code, and that is refused.
             // Quit from the tray exits with a code and goes through.
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
+                log("note", "exit-requested", &format!("code {code:?}"));
                 if code.is_none() { api.prevent_exit(); }
             }
+            if let tauri::RunEvent::Exit = &event { log("note", "exit", "the event loop ended"); }
         });
 }
