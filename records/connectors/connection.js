@@ -89,7 +89,8 @@ export function fromForm(form) {
   const declaration = defineConnector({
     id, label, version: 1, base_url: String(form.base_url || "").replace(/\/+$/, ""), auth,
     ...(Object.keys(headers).length ? { headers } : {}),
-    ops: { check: { method: "GET", path, kind: "read", label: "Check the connection" }, ...ops },
+    // the check is one of the declared operations when it names the same call; the format does not take one call twice
+    ops: { ...(Object.values(ops).some(o => o.method === "GET" && o.path === path) ? {} : { check: { method: "GET", path, kind: "read", label: "Check the connection" } }), ...ops },
     ...(Object.keys(poll).length ? { poll } : {}),
   });
   return { id, declaration, credential: { item: cred.item, ...(cred.field ? { field: String(cred.field) } : {}) }, check: { method: "GET", path } };
