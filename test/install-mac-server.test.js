@@ -180,6 +180,20 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   assert.match(r.stdout, /Back in the Vyre app/);
 });
 
+test("install-mac-server.sh: the Records choice from the install line lands in vyre.env: auto by default, sqlite when asked, a later choice replaces an older one, anything else refuses", t => {
+  const m = mac(t);
+  const f = path.join(m.env.VYRE_HOME, "vyre.env");
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=auto$/m);
+  assert.equal(run({ ...m.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", m.src]).status, 0);
+  assert.equal(fs.readFileSync(f, "utf8").match(/^VYRE_STORE=/gm)?.length, 1);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m);
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m, "no choice named keeps the one made");
+  const bad = run({ ...m.env, VYRE_STORE: "twenty" }, ["--yes", "--from", m.src]);
+  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto/);
+});
+
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {
   const m = mac(t);
   fs.mkdirSync(m.env.VYRE_HOME, { recursive: true });
