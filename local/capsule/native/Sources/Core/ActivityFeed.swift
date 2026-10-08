@@ -193,7 +193,8 @@ struct ActivityFeed: Equatable {
     /// The words beside the header: what the conversation is doing now.
     var headerState: String {
         if state == .asking { return "waiting for you" }
-        if runningSteps > 0 || state == .working || state == .starting { return thinkingNow ? "thinking" : "working" }
+        if runningSteps > 0 { return "working" }
+        if state == .working || state == .starting { return thinkingNow ? "thinking" : "working" }
         switch state { case .failed: return "failed"; case .paused: return "paused"; case .stopped: return "stopped"; default: return "" }
     }
 

@@ -177,16 +177,15 @@ struct HandoffRow: View {
             }
             .frame(height: Tokens.TypeScale.base.line)
             if !handoff.children.isEmpty || handoff.result != nil {
-                HStack(alignment: .top, spacing: 8) {
-                    Rectangle().fill(Theme.rule).frame(width: 2).padding(.leading, 6)
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(handoff.children) { c in child(c) }
-                        if let r = handoff.result {
-                            Text(r).font(Theme.subtitle).foregroundColor(Theme.stone).textSelection(.enabled)
-                                .padding(.vertical, 2).fixedSize(horizontal: false, vertical: true)
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(handoff.children) { c in child(c) }
+                    if let r = handoff.result {
+                        Text(r).font(Theme.subtitle).foregroundColor(Theme.stone).textSelection(.enabled)
+                            .padding(.vertical, 2).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .padding(.leading, 14)
+                .overlay(alignment: .leading) { Rectangle().fill(Theme.rule).frame(width: 2).padding(.leading, 6) }
             }
         }
     }
