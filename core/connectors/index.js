@@ -17,6 +17,7 @@ import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/ca
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
+import { madeConnections } from "./made.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };
@@ -205,6 +206,67 @@ export default {
         return { name, connectors: ids, hosts: ds.map(x => new URL(/** @type {any} */ (x).base_url).hostname), ops: ds.reduce((n, x) => n + Object.keys(/** @type {any} */ (x).ops).length, 0), outward: ds.flatMap(x => Object.entries(/** @type {any} */ (x).ops).filter(([, op]) => isOutward(/** @type {any} */ (op))).map(([n]) => n)),
           next: d.auth.type === "oauth" && !input.as ? "sign in with connectors.connect so the vault holds tokens" : "ready: Flows reach it as the connector " + name };
       },
+    });
+
+    // Connections a person made from any app's API (records/connectors/connection.js, made.js): a row, a derived vault credential and a check. Making, changing, rebuilding and deleting one are
+    // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
+    const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x) });
+    const person = (/** @type {any} */ meta, /** @type {string} */ what) => {
+      const who = String(meta && meta.caller || "");
+      if (!PEOPLE.includes(who)) throw fail(`only you ${what}, from your own screen`, "denied");
+      return who;
+    };
+    const formShape = obj({ label: str, id: str, base_url: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
+      headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]) }, ["label", "base_url", "send", "credential", "check"]);
+    const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    ctx.tool("connectors.connection.create", {
+      effect: "write",
+      description: "Connect any app that has an API, from a key already in the Vault: { label, base_url (one https host), send: { how: bearer | header | basic | query, name? (the header or query parameter) }, credential: { item, field? }, headers? (fixed, such as an API version), vars? (fixed values a {name} in headers or the check path takes), check: { path } }. Makes the Connection and its vault credential; run connectors.connection.check next.",
+      input: formShape,
+      callers: PEOPLE,
+      run: (input, meta) => made.save(input, { as: person(meta, "connect an app"), origin: "form" }),
+    });
+    ctx.tool("connectors.connection.update", {
+      effect: "write",
+      description: "Change a Connection (same fields as connectors.connection.create). Changing what it reaches is the person's act; the vault credential is rebuilt from the record.",
+      input: formShape,
+      callers: PEOPLE,
+      run: (input, meta) => made.save(input, { as: person(meta, "change a connection"), origin: "form", replace: true }),
+    });
+    ctx.tool("connectors.connection.check", {
+      effect: "read",
+      callers: READERS,
+      description: "Run a Connection's check request and say in plain words whether it works: { id } -> { light: green | red, words } (\"the key was refused (401)\", \"that id was not found (404)\", \"no answer from the host (timeout)\" ...).",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.check(String(id)),
+    });
+    ctx.tool("connectors.connection.list", {
+      effect: "read",
+      callers: READERS,
+      description: "The Connections a person made: id, label, host, how it signs in, light and when it was last checked, and its operations. Never the key.",
+      input: obj({}),
+      run: () => made.list(),
+    });
+    ctx.tool("connectors.connection.get", {
+      effect: "read",
+      callers: READERS,
+      description: "One Connection with its declaration (no key): { id }.",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.get(String(id)),
+    });
+    ctx.tool("connectors.connection.rebuild", {
+      effect: "write",
+      description: "Write a Connection's vault credential again from its record (after it shows out of step): { id }.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: ({ id }, meta) => made.rebuild(String(id), person(meta, "rebuild a connection")),
+    });
+    ctx.tool("connectors.connection.delete", {
+      effect: "write",
+      description: "Delete a Connection and its vault credential (the key's own Vault item stays): { id }.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: ({ id }, meta) => made.remove(String(id), person(meta, "delete a connection")),
     });
 
     ctx.tool("connectors.disconnect", {

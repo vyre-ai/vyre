@@ -260,6 +260,7 @@ export class ApiRequests {
     if (!r) throw bad(`${plan.name} names the vault item ${a.item}, which is not there`, "config");
     if (r.kind === "api-credential") throw bad(`${plan.name} names another api-credential, which never hands out a value`, "config");
     const f = await this.vault.fields(r);
+    if (a.type === "basic" && !a.field && isStr(f.username) && isStr(f.password) && f.username && f.password) return `${f.username}:${f.password}`;
     const want = a.field || defaultField(r.kind, Object.keys(f));
     if (!want || !isStr(f[want]) || !f[want]) throw bad(`${plan.name}: ${a.item} has no ${want || "field named"}`, "config");
     return f[want];
@@ -268,7 +269,7 @@ export class ApiRequests {
   /**
    * The authentication headers for a plan and every value it touched, for scrubbing. Fetched
    * per call; only a minted access token is kept, in memory, until shortly before it expires.
-   * @returns {Promise<{ headers: Record<string, string>, known: string[] }>}
+   * @returns {Promise<{ headers: Record<string, string>, query?: Record<string, string>, known: string[] }>}
    */
   async authFor(plan) {
     const a = plan.config.auth;
@@ -284,6 +285,19 @@ export class ApiRequests {
       const token = await this.mint(plan, secret, known);
       known.push(token);
       return { headers: { authorization: `Bearer ${token}` }, known };
+    }
+    if (a.type === "basic") {
+      if (/[\r\n]/.test(secret)) throw bad(`${plan.name}'s secret has a line break, which a header cannot carry`, "config");
+      const value = `Basic ${Buffer.from(secret, "utf8").toString("base64")}`;
+      // the pair, its encoding, and the password alone (an API that echoes the password back must not get it past the scrub)
+      const at = secret.indexOf(":");
+      known.push(value, Buffer.from(secret, "utf8").toString("base64"), ...(at >= 0 && secret.length - at > 1 ? [secret.slice(at + 1)] : []));
+      return { headers: { authorization: value }, known };
+    }
+    if (a.type === "api-key" && a.in === "query") {
+      if (/[\r\n]/.test(secret)) throw bad(`${plan.name}'s secret has a line break, which a query cannot carry`, "config");
+      known.push(encodeURIComponent(secret));
+      return { headers: {}, query: { [a.param]: secret }, known };
     }
     const header = String(a.header || (a.type === "api-key" ? "x-api-key" : "authorization")).toLowerCase();
     const format = a.format || (a.type === "bearer" ? "Bearer {value}" : "{value}");
@@ -423,11 +437,13 @@ export class ApiRequests {
     try {
       const auth = await this.authFor(plan);
       known = auth.known;
-      const headers = { accept: "application/json", ...plan.headers, ...(plan.body !== undefined && !plan.headers["content-type"] ? { "content-type": looksJson(plan.body) ? "application/json" : "application/x-www-form-urlencoded" } : {}), ...auth.headers };
+      const headers = { accept: "application/json", ...plan.headers, ...(plan.body !== undefined && !plan.headers["content-type"] ? { "content-type": looksJson(plan.body) ? "application/json" : "application/x-www-form-urlencoded" } : {}), ...(plan.config.headers || {}), ...auth.headers };
+      // a query api-key is added here, at every hop, so the approval hash and the audit line never carry it
+      const withKey = (/** @type {URL} */ u) => { if (!auth.query) return u; const c = new URL(u.toString()); for (const [k, v] of Object.entries(auth.query)) c.searchParams.set(k, v); return c; };
       let url = plan.url, method = plan.method, hops = 0, tooMany = 0;
       /** @type {Reply} */ let reply;
       for (;;) {
-        const t = await checkTarget(url.toString(), plan.config.hosts, { lookup: this.deps.lookup });
+        const t = await checkTarget(withKey(url).toString(), plan.config.hosts, { lookup: this.deps.lookup });
         await this.throttle(plan);
         reply = await this.transport({ url: t.url, address: t.addresses[0], method, headers, ...(plan.body !== undefined && method === plan.method ? { body: plan.body } : {}),
           timeoutMs: TIMEOUT_MS, maxBytes: MAX_RESPONSE });

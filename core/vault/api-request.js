@@ -20,6 +20,7 @@
 // so nothing here and nothing downstream does a second, unchecked lookup.
 
 import crypto from "node:crypto";
+import { checkFixedHeaders } from "../../records/connectors/format.js";
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
@@ -47,7 +48,7 @@ const optionalRef = a => (a.item === undefined && a.field === undefined ? {} : c
  *   { type: "bearer"|"api-key", item: string, field?: string, header?: string, format?: string }}
  */
 function normalizeAuth(a) {
-  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer" or "api-key"');
+  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key", "basic"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer", "api-key" or "basic"');
   if (a.type === "service-account") {
     const ref = optionalRef(a);
     if (typeof a.subject !== "string" || !a.subject) throw bad("a service-account credential needs auth.subject (the address it acts as), fixed here, never in a request");
@@ -65,6 +66,14 @@ function normalizeAuth(a) {
   }
   const ref = optionalRef(a);
   const out = { type: a.type, ...ref };
+  // basic: the secret is "user:password" and vyred makes the header. api-key `in: "query"`: the key goes in the named query parameter, not a header.
+  if (a.in !== undefined) {
+    if (a.type !== "api-key" || a.in !== "query") throw bad('auth.in is "query", for an api-key');
+    if (typeof a.param !== "string" || !/^[A-Za-z0-9_.-]{1,64}$/.test(a.param)) throw bad("a query api-key names its parameter (auth.param)");
+    if (a.header !== undefined || a.format !== undefined) throw bad("a query api-key has no header or format");
+    return { ...out, in: "query", param: a.param };
+  }
+  if (a.type === "basic" && (a.header !== undefined || a.format !== undefined)) throw bad("basic auth has no header or format of its own");
   if (a.header !== undefined) { if (typeof a.header !== "string" || !a.header) throw bad("auth.header must be a header name"); out.header = a.header.toLowerCase(); }
   if (a.format !== undefined) { if (typeof a.format !== "string" || !a.format.includes("{value}")) throw bad("auth.format needs {value}"); out.format = a.format; }
   return out;
@@ -117,8 +126,20 @@ export function normalize(i) {
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
   const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
   const service = i.service === undefined ? undefined : normalizeService(i.service);
+  const headers = i.headers === undefined ? undefined : normalizeFixedHeaders(i.headers);
   if (service) for (const r of service.allow) if (r.host && !hosts.includes(r.host)) throw bad(`a service rule names ${r.host}, which is not one of the credential's hosts`);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}) };
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}) };
+}
+
+/**
+ * Headers a connection sets on every request (an API version, a sub-account id), written with the credential by a person and added by vyred. A name that authenticates or frames the request
+ * is never one of these, and a value is one line.
+ * @param {any} h @returns {Record<string, string>}
+ */
+export function normalizeFixedHeaders(h) {
+  const problems = checkFixedHeaders(h);
+  if (problems.length) throw bad(problems.join("; "));
+  return Object.fromEntries(Object.entries(h).map(([k, v]) => [k.toLowerCase(), v]));
 }
 
 /**
