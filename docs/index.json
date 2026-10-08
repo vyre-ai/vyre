@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":343,"tool":1341,"event":456,"config":271,"env":253,"screen":0,"concept":39},
+  "counts": {"command":343,"tool":1341,"event":456,"config":271,"env":254,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2509,6 +2509,7 @@
     {"kind":"env","name":"VYRE_UPDATE_WAIT","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_UPDATER_NAME","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_USER_HOME","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_VERB","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_VERIFY_TRIES","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_VERSION","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_WALL_STATUS","definedIn":"core/spawner/main.js","page":"reference/config.md#environment-variables","mentions":[]},
