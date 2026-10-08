@@ -10,6 +10,8 @@ import { shellIdentity } from "../../src/shell/shell";
 import { proofHeader } from "../../src/real/approvals.js";
 import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard, type Pending } from "../../src/real/phone-approve.js";
+import { singlesFrom } from "../../src/real/group-approve.js";
+import { GroupApprovals } from "./GroupApprovals";
 
 const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
   const r = await call<any>(tool, input, o);
@@ -24,7 +26,7 @@ export function PhoneApprovals() {
   const [cards, setCards] = useState<Pending[]>([]);
   const [canSign, setCanSign] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
-  const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setCards(cardsFrom(a))).catch(() => setCards([])); }, []);
+  const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setCards(singlesFrom(a) as Pending[])).catch(() => setCards([])); }, []);
   useEffect(() => {
     if (Platform.OS === "web" && !shellIdentity()) return;
     load();
@@ -33,7 +35,8 @@ export function PhoneApprovals() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") load(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [load]);
-  if ((Platform.OS === "web" && !shellIdentity()) || !cards.length) return null;
+  if (Platform.OS === "web" && !shellIdentity()) return null;
+  if (!cards.length) return <GroupApprovals />;
   const approve = async (c: Pending) => {
     setBusy(c.id);
     try {
@@ -47,6 +50,8 @@ export function PhoneApprovals() {
   };
   const no = async (c: Pending) => { setBusy(c.id); await refuseCard(c, ask).catch(() => {}); setBusy(""); load(); };
   return (
+    <View>
+      <GroupApprovals />
     <View className="gap-s2 px-s4 pb-s3">
       <Text size="caption" strong tone="label">Waiting for your approval</Text>
       <Card flush>
@@ -65,6 +70,7 @@ export function PhoneApprovals() {
           </View>
         ))}
       </Card>
+    </View>
     </View>
   );
 }

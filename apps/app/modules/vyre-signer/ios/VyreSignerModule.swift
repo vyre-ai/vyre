@@ -170,6 +170,45 @@ public class VyreSignerModule: Module {
       return b64url(sig)
     }
 
+    // One Face ID for a group: the person is asked once (one LAContext, evaluated with biometrics), then every message is signed with the same authenticated context, so the system does not
+    // ask again for the second and third signature. The context is closed to further prompts after the one, so a signature that would need another fails instead of asking twice.
+    // Runs off the main queue like sign: the evaluation blocks until the person answers.
+    AsyncFunction("signMany") { (alias: String, messages: [String], options: SignOptions) throws -> [String] in
+      // The count in the Face ID reason is written here, never taken from JS: a page that says "Approve 1 item" cannot get ten signed. The JS prompt may follow it.
+      if messages.isEmpty || messages.count > 20 { throw fail("ERR_INPUT", "a group is 1 to 20 items") }
+      let context = LAContext()
+      defer { context.invalidate() }
+      let count = "Approve \(messages.count) item\(messages.count == 1 ? "" : "s")"
+      let reason = options.prompt.map { "\(count): \($0.prefix(80))" } ?? count
+      context.localizedReason = reason
+      var evalError: Error?
+      let done = DispatchSemaphore(value: 0)
+      context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { ok, err in
+        if !ok { evalError = err ?? NSError(domain: LAErrorDomain, code: LAError.authenticationFailed.rawValue) }
+        done.signal()
+      }
+      done.wait()
+      if let ns = evalError.map({ $0 as NSError }) {
+        if ns.domain == LAErrorDomain, ns.code == LAError.userCancel.rawValue || ns.code == LAError.appCancel.rawValue || ns.code == LAError.systemCancel.rawValue { throw fail("ERR_CANCELED", ns.localizedDescription) }
+        throw fail("ERR_BIOMETRIC", ns.localizedDescription)
+      }
+      context.interactionNotAllowed = true
+      guard let key = findKey(alias, context: context) else {
+        throw fail("ERR_NO_KEY", "no key \(alias); call ensureKey first")
+      }
+      var out: [String] = []
+      for message in messages {
+        var error: Unmanaged<CFError>?
+        guard let sig = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, Data(message.utf8) as CFData, &error) as Data? else {
+          let ns = error?.takeRetainedValue().map { $0 as Error as NSError }
+          if let ns, ns.code == Int(errSecUserCanceled) { throw fail("ERR_CANCELED", ns.localizedDescription) }
+          throw fail("ERR_SIGN", ns?.localizedDescription ?? "the signature failed")
+        }
+        out.append(b64url(sig))
+      }
+      return out
+    }
+
     AsyncFunction("deleteKey") { (alias: String) -> Bool in
       let query: [String: Any] = [
         kSecClass as String: kSecClassKey,
