@@ -54,8 +54,10 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
   // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
-  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
+  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request", "reminder.send"] } },
+    `export default { async start(ctx) { ctx.tool("billing.relay", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.send", i); return r.data || r; } }); ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
+  writeModule(mods, "reminder", { version: "0.1.0", does: { tools: [{ name: "reminder.send", reach: "anyone", effect: "write", summary: "send a reminder" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("reminder.send", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "reminder" }); return r.data || r; } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
@@ -78,7 +80,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
   const junoSession = { id: started.id, key: bound.key };
   const framesOf = (/** @type {string} */ session) => { const db = openStore(paths(root).db); try { return db.prepare("SELECT json FROM stream_frames WHERE session = ? ORDER BY cur").all(session).map((/** @type {any} */ r) => JSON.parse(r.json)); } finally { db.close(); } };
-  return { root, d, owner, chain, meta, tool, asPerson, step, record, junoSession, started, framesOf, sent };
+  return { root, d, owner, chain, meta, tool, asPerson, step, record, junoSession, started, framesOf, sent, mods };
 }
 
 async function story(/** @type {import("node:test").TestContext} */ t) {
@@ -189,4 +191,60 @@ test("one card covers one send: a call that files two sends gets the first sent 
   const held = await asPerson("gate.held", {});
   assert.equal((held.items ?? held).length, 1, "the second send is held at the Gate: one card covers one send");
   assert.equal(sent.length, 1);
+});
+
+/** Hold one call as the plain model session `mcp`, approve its card alone with the app's own code, and give back what a retry needs. @param {any} w @param {string} toolName @param {any} input */
+async function approved(w, toolName, input) {
+  const first = await w.d.registry.call(toolName, input, "mcp", {});
+  assert.equal(first.error && first.error.code, "held_for_approval", JSON.stringify(first));
+  const p = await w.asPerson("approvals.pending", {});
+  const g = groupsFrom(p).find(x => x.items.some((/** @type {any} */ i) => i.id === first.error.approval));
+  const item = g.items.find((/** @type {any} */ i) => i.id === first.error.approval);
+  const signer = { signPresence: async (/** @type {any} */ req) => ({ op: req.op, fields: req.fields, n: `n${Math.random()}`, payload_hash: req.payload_hash, key_id: "k1" }) };
+  const res = await approveGroup({ group: { id: g.id, line: "", items: [item] }, signer, call: w.asPerson, person: w.owner });
+  assert.equal(res.results[0].answered, "approved");
+  return first.error.approval;
+}
+const gateHeld = async (/** @type {any} */ w) => { const h = await w.asPerson("gate.held", {}); return (h.items ?? h).length; };
+
+test("a forged mark does nothing: a covered field in the input, a made-up card id, a client asking the approvals queue, all hold or are refused", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const req = { kind: "send", via: "mail", to: "ap@northwind.example", content: { subject: "s", body: "b" }, why: "forged" };
+  // from a module, with a `covered` in the input as if it were the mark; and from a client the same
+  for (const [caller, extra] of [["module:billing", {}], ["cli", {}], ["mcp", {}]]) {
+    const r = await w.d.registry.call("gate.request", { ...req, covered: { card: "ap_01a11d8e-aad6-4f45-8e02-4b52bed61f9a", tool: "billing.email", input_sha256: "a".repeat(32), asker: "mcp" } }, caller, extra);
+    assert.ok(r.error || (r.data && r.data.state === "held"), `${caller}: ${JSON.stringify(r)}`);
+  }
+  assert.deepEqual(w.sent, [], "nothing was sent");
+  // the approvals queue answers only the Gate
+  for (const who of ["cli", "mcp", "module:billing"]) assert.ok((await w.d.registry.call("approvals.cover", { card: "ap_x", tool: "billing.email", input_sha256: "a".repeat(32), asker: "mcp" }, who, {})).error, `${who} cannot ask`);
+});
+
+test("a card for one email does not release another, and it cannot release twice", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const A = { to: "ap@northwind.example", subject: "Invoice 1042", body: "Pay A", cc: "partner@harlow.example" };
+  const B = { to: "billing@oakline.example", subject: "Invoice 1051", body: "Pay B", cc: "partner@harlow.example" };
+  const card = await approved(w, "billing.email", A);
+  // B with A's card: the card is bound to A's input, so the registry refuses it and nothing is filed
+  const wrong = await w.d.registry.call("billing.email", B, "mcp", { approval: card });
+  assert.equal(wrong.error && wrong.error.code, "approval_refused", JSON.stringify(wrong));
+  assert.equal(await gateHeld(w), 0);
+  assert.deepEqual(w.sent, []);
+  // A with A's card goes out; the same again is refused (the card is spent) and sends nothing more
+  const ok = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  await until(() => w.sent.length === 1, "A reached the mail server");
+  const twice = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
+  assert.equal(twice.error && twice.error.code, "approval_refused", JSON.stringify(twice));
+  assert.equal(w.sent.length, 1);
+});
+
+test("a card for one module's tool does not release a send another first-party module files in the same turn", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const input = { to: "ap@northwind.example" };
+  const card = await approved(w, "billing.relay", input);
+  const r = await w.d.registry.call("billing.relay", input, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(await gateHeld(w), 1, "the reminder module's send is held: the card was for billing's tool");
+  assert.deepEqual(w.sent, []);
 });

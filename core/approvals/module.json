@@ -47,6 +47,10 @@
         "reach": "person"
       },
       {
+        "name": "approvals.cover", "effect": "write",
+        "reach": "modules"
+      },
+      {
         "name": "approvals.card-input", "effect": "read",
         "reach": "modules"
       },
