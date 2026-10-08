@@ -21,20 +21,28 @@ const strip = (/** @type {string} */ s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, 
  * @param {string} host @param {string} cmd @param {{ pty?: boolean, timeoutMs?: number, log?: (s: string) => void, input?: string, user?: string }} [o]
  * @returns {Promise<{ code: number, out: string }>}
  */
-export function ssh(host, cmd, o = {}) {
-  return new Promise(resolve => {
-    const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", ...(o.user ? ["-l", o.user] : []), o.pty ? "-tt" : "-T", host, cmd];
-    const child = spawn("ssh", args, { stdio: ["pipe", "pipe", "pipe"] });
-    let out = "", asked = 0;
-    const onData = (/** @type {Buffer} */ d) => {
-      const s = String(d); out += s; if (o.log) o.log(s);
-      if (o.pty && /\[y\/N\]\s*$/.test(strip(out.slice(-200)))) { asked++; child.stdin.write("y\n"); out += `\n[the walk answered y (${asked})]\n`; }
-    };
-    child.stdout.on("data", onData); child.stderr.on("data", onData);
-    if (o.input !== undefined) { child.stdin.write(o.input); if (!o.pty) child.stdin.end(); } else if (!o.pty) child.stdin.end();
+export function ssh(host, cmd, o = {}) { return sshStart(host, cmd, o).done; }
+
+/**
+ * The same, but running: `out()` is what the terminal has shown so far, `done` settles when the command ends. The install uses this, because the app is waiting while the installer runs.
+ * @param {string} host @param {string} cmd @param {{ pty?: boolean, timeoutMs?: number, log?: (s: string) => void, input?: string, user?: string }} [o]
+ */
+export function sshStart(host, cmd, o = {}) {
+  const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", ...(o.user ? ["-l", o.user] : []), o.pty ? "-tt" : "-T", host, cmd];
+  const child = spawn("ssh", args, { stdio: ["pipe", "pipe", "pipe"] });
+  let out = "", asked = 0;
+  const onData = (/** @type {Buffer} */ d) => {
+    const s = String(d); out += s; if (o.log) o.log(s);
+    if (o.pty && /\[y\/N\]\s*$/.test(strip(out.slice(-200)))) { asked++; child.stdin.write("y\n"); out += `\n[the walk answered y (${asked})]\n`; }
+  };
+  child.stdout.on("data", onData); child.stderr.on("data", onData);
+  if (o.input !== undefined) { child.stdin.write(o.input); if (!o.pty) child.stdin.end(); } else if (!o.pty) child.stdin.end();
+  /** @type {Promise<{ code: number, out: string }>} */
+  const done = new Promise(resolve => {
     const timer = setTimeout(() => { out += "\n[the walk gave up waiting]\n"; child.kill("SIGTERM"); }, o.timeoutMs ?? 30 * 60_000);
     child.on("close", code => { clearTimeout(timer); resolve({ code: code ?? 1, out: strip(out) }); });
   });
+  return { out: () => strip(out), done };
 }
 
 /** The user a person would install as: not root, with sudo. @param {string} host */
@@ -53,17 +61,31 @@ export async function wipeServer(host) {
 }
 
 /**
- * Install from the line the app showed, on the server, and read what the person reads: the four words on its terminal.
+ * Start the install from the line the app showed, on the server, and keep it running: the app is waiting for the server while the installer waits for the app, as it is for a person. The
+ * installer asks for Docker itself on a fresh server ([y/N]) and the walk answers y the way a person would.
  * @param {string} host @param {string} line @param {string} out
  */
-export async function installFromLine(host, line, out) {
+export function startInstall(host, line, out) {
   fs.mkdirSync(out, { recursive: true });
-  // The installer asks for Docker itself on a fresh server ([y/N]); the walk answers y the way a person would.
-  const r = await asWalker(host, line, { pty: true, timeoutMs: 40 * 60_000 });
-  fs.writeFileSync(path.join(out, `install-${Date.now()}.log`), r.out.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
-  const m = r.out.match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/);
-  return { code: r.code, words: m ? m[1] : "", tail: r.out.split("\n").filter(Boolean).slice(-6).join(" | ").slice(0, 500) };
+  const run = sshStart(host, line, { pty: true, user: "walker", timeoutMs: 40 * 60_000 });
+  const finished = run.done.then(r => { fs.writeFileSync(path.join(out, `install-${Date.now()}.log`), r.out.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>")); return r; });
+  return {
+    /** The four words the installer printed, once it has. */
+    async words(/** @type {number} */ ms = 25 * 60_000) {
+      const end = Date.now() + ms;
+      for (;;) {
+        const m = run.out().match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/);
+        if (m) return m[1];
+        const r = await Promise.race([finished, new Promise(res => setTimeout(() => res(null), 1000))]);
+        if (r) throw new Error(`the installer ended before it showed four words (exit ${/** @type {any} */ (r).code}): ${tailOf(/** @type {any} */ (r).out)}`);
+        if (Date.now() > end) throw new Error(`the installer showed no four words in ${Math.round(ms / 60000)} minutes: ${tailOf(run.out())}`);
+      }
+    },
+    /** The installer's end: its exit code and the last lines it printed. */
+    async finish() { const r = await finished; return { code: r.code, tail: tailOf(r.out), out: r.out }; },
+  };
 }
+const tailOf = (/** @type {string} */ s) => s.split("\n").filter(l => l.trim() && !/█|▀|▄/.test(l)).slice(-6).join(" | ").slice(0, 500);
 
 /**
  * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, host: string, out: string }} w
@@ -92,29 +114,35 @@ export async function walkLive(w) {
       assert.match(line, /^curl -fsSL vyre\.run\/i \| /, "the line is the published installer");
       return line.replace(flow.state.code, "<code>");
     }, { needs });
-    await run.step(S("the server installs from that line (the published release)"), async () => {
-      installed = await installFromLine(host, flow.state.installLine, dir);
-      assert.equal(installed.code, 0, `the installer exited ${installed.code}: ${installed.tail}`);
-      const v = await asWalker(host, "vyre --version 2>&1 || vyre version 2>&1");
-      const ver = (v.out.match(/\b\d+\.\d+\.\d+\S*/) || [""])[0];
-      assert.ok(!ver || /^0\.2\.12/.test(ver), `the server runs ${ver}, not the published 0.2.12`);
-      return `installed${ver ? ` ${ver}` : ""}`;
+    await run.step(S("the server installs from that line (the published release): it shows four words"), async () => {
+      installed = startInstall(host, flow.state.installLine, dir);
+      const words = await installed.words();
+      return words;
     }, { needs: [S("add a server: the app shows the install line")] });
     await run.step(S("the app finds the server"), async () => {
       await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
       assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
       return `${flow.state.box.name || "server"}`;
-    }, { needs: [S("the server installs from that line (the published release)")] });
+    }, { needs: [S("the server installs from that line (the published release): it shows four words")] });
     await run.step(S("the four words in the app are the ones the server shows"), async () => {
-      assert.ok(installed.words, "the installer printed no four words");
-      assert.equal(flow.state.box.words.join(" "), installed.words);
-      return installed.words;
+      const held = await installed.words();
+      assert.equal(flow.state.box.words.join(" "), held);
+      assert.equal(flow.state.box.words.length, 4);
+      return held;
     }, { needs: [S("the app finds the server")] });
     await run.step(S("confirm the words in the app: adopt and pair"), async () => {
       await flow.confirmWords();
       assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
       assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
     }, { needs: [S("the four words in the app are the ones the server shows")] });
+    await run.step(S("the installer finishes on the server once the app has adopted it"), async () => {
+      const r = await installed.finish();
+      assert.equal(r.code, 0, `the installer exited ${r.code}: ${r.tail}`);
+      const v = await asWalker(host, "vyre --version 2>&1 || vyre version 2>&1");
+      const ver = (v.out.match(/\b\d+\.\d+\.\d+\S*/) || [""])[0];
+      assert.ok(!ver || /^0\.2\.12/.test(ver), `the server runs ${ver}, not the published 0.2.12`);
+      return `exit 0${ver ? `, ${ver}` : ""}`;
+    }, { needs: [S("confirm the words in the app: adopt and pair")] });
     await run.step(S("the app reaches the server and calls a tool"), async () => {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
