@@ -63,7 +63,7 @@ function fakeRun(state = {}) {
     }
     if (cmd.endsWith("launchctl") && args[0] === "bootout") st.loaded.delete(args[1]);
     if (cmd.endsWith("launchctl") && args[0] === "print") { if (!st.loaded.has(args[1])) throw new Error("not loaded"); return ""; }
-    if (cmd.endsWith("sudo") && line.endsWith(" code")) return "SEKRET-CODE-42 1999999999\n";
+    if (cmd.endsWith("sudo") && /\ code( --first-key-fp [0-9a-f]+)?$/.test(line)) return "SEKRET-CODE-42 1999999999\n";
     return "";
   };
   return { run, calls, st, has: (re) => calls.some((c) => re.test(`${c.cmd} ${c.args.join(" ")}`)) };
@@ -142,7 +142,8 @@ test("a server install: core's plist says so, the code mint names the first key'
   const res = install(f.opts(f.rel, { server: true, firstKeyFp: fp }), { run: r.run, root: f.root, key: f.kp.key, step: () => {} });
   assert.equal(res.code, "SEKRET-CODE-42");
   const last = r.calls.filter((c) => c.cmd.endsWith("sudo")).at(-1);
-  assert.deepEqual(last.args.slice(-4), ["main.js", "code", "--first-key-fp", fp].map((x, i) => (i === 0 ? last.args.at(-4) : x)));
+  assert.ok(last, "the mint ran");
+  assert.deepEqual(last.args.slice(-3), ["code", "--first-key-fp", fp]);
   assert.ok(last.args.includes("VYRE_CORE_SERVER=1"));
   assert.throws(() => buildPlists(f.opts(f.rel, { firstKeyFp: fp })), /only for a server/);
   assert.throws(() => buildPlists(f.opts(f.rel, { server: true, firstKeyFp: "xyz" })), /32 hex/);
