@@ -317,3 +317,20 @@ test("the computer app and the phone app, as their clients are built: a computer
     assert.equal(c.reply.device, r.paired.device, "the same key reaches the server as the same device");
   }
 });
+
+test("a device whose presence key is not P-256 (alg -257) still enrols its key; only a P-256 key is kept for the paired session", async t => {
+  typedOn(t);
+  const w = await world(t);
+  const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: open.code, name: "Sam's laptop", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t), about: { kind: "app" }, presenceKey: { public_key: rsa, alg: -257, storage: "software" } } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.offer, typed: ack.code })).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal((await deviceRowOf(w, r.paired.device)).presence, true, "the key enrolled; it is not marked as refused");
+});
+const deviceRowOf = async (w, id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === id);

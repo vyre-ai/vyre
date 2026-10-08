@@ -326,8 +326,11 @@ export default {
       const pk = hello.presenceKey;
       if (pk && typeof pk.public_key === "string") {
         const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
-        if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
-        if (presenceKey && (pk.alg === undefined || pk.alg === -7)) { offeredKeys.set(id, { public_key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" }); if (offeredKeys.size > 64) offeredKeys.delete(offeredKeys.keys().next().value); }
+        if (r && r.data && (r.data.keyId || r.data.id)) {
+          presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" };
+          // kept briefly, for the module that owns the pairing when the ticket was not gated (a server's typed code); a P-256 key only, which is what a paired session binds to
+          if (pk.alg === undefined || pk.alg === -7) { offeredKeys.set(id, { public_key: pk.public_key, alg: -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" }); if (offeredKeys.size > 64) offeredKeys.delete(offeredKeys.keys().next().value); }
+        }
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
       const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
