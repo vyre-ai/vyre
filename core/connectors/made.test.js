@@ -121,3 +121,44 @@ test("a template carries the app and none of the person: no key item, no values,
   assert.equal(again.id, "gohighlevel-marketing");
   assert.equal((await w.m.get("gohighlevel-marketing")).check.path, "/locations/loc_9");
 });
+
+test("an assistant's proposal waits for the person: relabeling and kinds are taken out, the key is only named, and nothing exists until the person approves", async () => {
+  const w = world();
+  const ops = [{ name: "contacts.search", method: "POST", path: "/contacts/search", kind: "read", relabeled: true }, { name: "contacts.delete", method: "DELETE", path: "/contacts/{id}", kind: "read", input: { params: { id: { type: "string", required: true } } } }];
+  const p = await w.m.propose({ ...form(), operations: ops }, "mcp", "read the GHL docs");
+  assert.match(p.proposal, /^prop_/);
+  assert.equal(p.card.title, "Connect GoHighLevel Sales?");
+  assert.ok(p.card.lines.some(l => /services\.leadconnectorhq\.com and nothing else/.test(l)));
+  assert.ok(p.card.lines.some(l => /key in your Vault item ghl-pat/.test(l)));
+  assert.ok(p.card.lines.some(l => /^contacts\.search: changes things in/.test(l)), "a POST the assistant called a read is a change on the card");
+  assert.ok(p.card.lines.some(l => /^contacts\.delete: deletes in/.test(l)));
+  assert.equal((await w.m.list()).connections.length, 0, "nothing exists yet");
+  assert.ok(!w.calls.some(c => c.tool === "vault.put"), "nothing was written to the vault");
+  const listed = w.m.proposals();
+  assert.equal(listed.length, 1); assert.equal(listed[0].by, "mcp"); assert.equal(listed[0].why, "read the GHL docs");
+  assert.ok(!JSON.stringify(listed).includes("relabeled"));
+  const made = await w.m.approve(p.proposal, "deck");
+  assert.equal(made.id, "gohighlevel-sales");
+  const d = (await w.m.get("gohighlevel-sales")).declaration;
+  assert.equal(d.ops["contacts.search"].kind, "change"); assert.equal(d.ops["contacts.delete"].kind, "delete");
+  assert.equal((await w.m.get("gohighlevel-sales")).origin, "assistant");
+  assert.equal(w.m.proposals().length, 0);
+  assert.equal(w.calls.find(c => c.tool === "vault.put").opts.as, "deck", "written as the person who approved");
+});
+
+test("a proposal is refused when it cannot work, replaced by the same proposer's newer one, and declined to nothing", async () => {
+  const w = world();
+  await assert.rejects(() => w.m.propose(form({ credential: { item: "nope" } }), "mcp"), /ask the person to save the key there first/);
+  w.items.set("a-cred", { name: "a-cred", kind: "api-credential", updated: 1 });
+  await assert.rejects(() => w.m.propose(form({ credential: { item: "a-cred" } }), "mcp"), /never hands out/);
+  await assert.rejects(() => w.m.propose(form({ base_url: "http://x.example.com" }), "mcp"), /https/);
+  await w.m.propose(form(), "mcp");
+  const second = await w.m.propose(form(), "mcp");
+  assert.deepEqual(w.m.proposals().map(x => x.proposal), [second.proposal], "the same proposer's newer proposal for the same app replaces the old");
+  assert.deepEqual(w.m.decline(second.proposal), { declined: second.proposal });
+  assert.equal(w.m.proposals().length, 0);
+  assert.throws(() => w.m.decline("prop_x"), /no proposal/);
+  await assert.rejects(() => w.m.approve("prop_x", "deck"), /no proposal/);
+  await w.m.save(form(), { as: "deck" });
+  await assert.rejects(() => w.m.propose(form(), "mcp"), /already a connection/);
+});

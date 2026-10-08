@@ -138,3 +138,23 @@ export function outcomeOf({ reply, error }) {
   if (s >= 300 && s < 400) return { light: "red", words: `the service sent the check somewhere else (${s})` };
   return { light: "red", words: `the service answered ${Number.isFinite(s) && s ? s : "nothing usable"}` };
 }
+
+/**
+ * The plain-words card for a proposed Connection: what it would reach, how the key is sent, and what each operation may do. Built from the checked form, never from the proposer's own words.
+ * @param {ReturnType<typeof fromForm>} made @param {string} item
+ */
+export function cardOf(made, item) {
+  const d = made.declaration, a = d.auth;
+  const how = a.type === "bearer" ? "as a bearer token" : a.type === "basic" ? "as a username and password" : a.in === "query" ? `in the address, as ${a.param}` : `in the ${a.header || "x-api-key"} header`;
+  const kindWords = /** @type {Record<string, string>} */ ({ read: "reads", draft: "prepares a draft in", change: "changes things in", send: "sends from", spend: "spends money at", delete: "deletes in" });
+  return {
+    title: `Connect ${d.label}?`,
+    reaches: new URL(d.base_url).hostname,
+    lines: [
+      `It can reach ${new URL(d.base_url).hostname} and nothing else.`,
+      `It uses the key in your Vault item ${item}, sent ${how}. The key is never shown to the assistant.`,
+      `Any call to it that is not a plain read waits for your yes.`,
+      ...Object.entries(d.ops).filter(([n]) => n !== "check").map(([n, o]) => `${n}: ${kindWords[o.kind] || o.kind} ${new URL(d.base_url).hostname} (${o.method} ${o.path})`),
+    ],
+  };
+}
