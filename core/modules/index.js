@@ -85,7 +85,7 @@ export function checkRelayTool(module, tool, input, as) {
   const obj = input && typeof input === "object";
   if (module === "connectors" && !(tool === "vault.put" && obj && input.kind === "api-credential") && !(tool === "vault.delete" && obj && /^conn-[a-z0-9-]+$/.test(String(input.name)))
     // and runs one operation of a Connection as the person who asked (a view over a wrapped app): vault.request of that Connection's own credential, by operation. The send/change/delete gate judges the operation there.
-    && !(tool === "vault.request" && obj && /^conn-[a-z0-9-]+$/.test(String(input.credential)) && typeof input.operation === "string" && input.url === undefined && input.method === undefined)) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, to vault.delete for a connection's own conn-<id> credential, and to vault.request of a connection's own credential by operation, only`);
+    && !(tool === "vault.request" && obj && /^conn-[a-z0-9-]+$/.test(String(input.credential)) && typeof input.operation === "string" && input.operation !== "request" && input.url === undefined && input.method === undefined)) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, to vault.delete for a connection's own conn-<id> credential, and to vault.request of a connection's own credential by operation, only`);
   if (module === "appmods" && !["connectors.connection.create", "connectors.connection.delete"].includes(tool)) throw new Error(`appmods may not call ${tool} as ${as}: it relays an installing person to the app's own Connection (create and delete) only`);
 }
 
