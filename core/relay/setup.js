@@ -21,11 +21,10 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
  * from a channel, whatever this list says.
  */
 export const SETUP_TOOLS = Object.freeze(new Set([
-  "relay.setup.status",
-  "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
+  "relay.setup.status", "wink.server.setup-offer", "link.health", "system.info",
 ]));
-/** The network tool the channel may call, by exact name: a later tool is not exposed by being added. */
-export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);
+/** Families of tools the channel may call, by exact name: none now (the network step is gone with the old setup page). */
+export const SETUP_TOOL_FAMILIES = Object.freeze(/** @type {RegExp[]} */ ([]));
 /**
  * Why each of those may be called, by exact name: the fixed tools and the family's one tool. The registry's own check of a setup caller (core/modules/agent-reach.js SETUP_REACH) is
  * built from this map and asks setupToolAllowed below, so the relay's gate and the registry's gates read one list: a tool added above and left out here is refused by a test, not by a
@@ -33,19 +32,13 @@ export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);
  * @type {ReadonlyMap<string, string>}
  */
 export const SETUP_REASONS = new Map([
-  ["relay.setup.status", "the page reads its own setup session"],
-  ["relay.setup.claim-token", "the page claims the box with its code"],
-  ["names.check", "checks that a name is free"],
-  ["names.claim", "claims the box's name"],
-  ["names.status", "reads the name's state"],
-  ["names.domain.check", "checks the person's own domain"],
-  ["link.health", "reads whether the box is reachable"],
-  ["system.info", "reads what machine this is"],
-  ["onboard.machine", "reads the machine's setup state"],
-  ["network.wink.status", "reads whether the box's network is up (the one network tool, by exact name)"],
+  ["relay.setup.status", "the app reads its own setup session: the four check words"],
+  ["wink.server.setup-offer", "the app asks the unowned server for its pairing ticket, for the app's own identity"],
+  ["link.health", "reads whether the server is reachable"],
+  ["system.info", "reads what machine this is, and how much memory it has for Records"],
 ]);
 /** The events the setup page may follow, one type per stream. */
-export const SETUP_EVENTS = Object.freeze(new Set(["relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
+export const SETUP_EVENTS = Object.freeze(new Set(["relay.paired"]));
 
 // Tools added later (the sessions sign-in tool, for "Sign in to your AI") come from the registry,
 // not from a call: a shipped module lists them under "setupTools" in its module.json. Nothing under

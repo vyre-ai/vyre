@@ -8,7 +8,7 @@ import { agreePublic } from "../identity/agree.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
-import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
+import { createdFrom, identityFrom, nameAnswerChecked } from "../../screens/install/real.js";
 
 type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
 
@@ -27,25 +27,38 @@ export const readIdentity = async (): Promise<{ id: string; label: string; addre
  */
 export const DIRECTORY: string = ((typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY) || "https://names.vyre.run").replace(/\/+$/, "");
 
-/** Is a name free in the directory? Asked of the directory itself, no box. An answer that is neither found nor not_found is "unknown". */
+/** Is a name free in the directory? Asked of the directory itself, no box: /v1/names/check covers people, spaces and anything else that holds a name, in the one namespace. An answer that is neither free nor taken is "unknown". */
 export async function checkName(name: string): Promise<"free" | "taken" | "unknown"> {
   try {
-    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" }, cache: "no-store" });
+    const r = await fetch(`${DIRECTORY}/v1/names/check?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" }, cache: "no-store" });
     const body = await r.json().catch(() => null);
-    return nameAnswer(directoryAnswer(r.status, body));
+    return nameAnswerChecked(r.status, body);
   } catch {
     // A browser cannot read an answer from a directory that sends no CORS headers: that is also "unknown", never a guess.
     return "unknown";
   }
 }
 
+/** Which name a reservation code holds (the code is not spent). Throws with code bad_code for a wrong, used, replaced or lapsed code. */
+export async function reservedName(code: string): Promise<string> {
+  let r: Response;
+  try { r = await fetch(`${DIRECTORY}/v1/ids/reserved-for`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ code }) }); }
+  catch { throw Object.assign(new Error("Cannot reach the names directory right now."), { code: "unreachable" }); }
+  const body = await r.json().catch(() => null);
+  if (r.ok && body?.data?.name) return String(body.data.name);
+  if (body?.error?.code === "bad_code") throw Object.assign(new Error("That reservation code is not valid. It lasts 24 hours and works once, and reserving the name again replaces it. Reserve the name again at vyre.run/setup."), { code: "bad_code" });
+  throw Object.assign(new Error(r.status === 429 ? "Too many tries from here. Wait a little." : "Cannot check this code right now. Try again."), { code: body?.error?.code ?? "directory" });
+}
+
 /**
  * Claim the person's name from this device, with no box: the key is made here, the claim goes to the names directory, and the identity is kept
  * here. The recovery code is in this answer only: the caller shows it once and drops it.
  */
-export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+export async function createIdentity(code: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
   // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
   if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
+  // The code says which name it holds; nothing is spent until the claim goes through.
+  const name = await reservedName(code);
   // Save first, then claim: the key is kept and read back BEFORE the name is claimed, so a failed save claims nothing and never loses the recovery code.
   let kept = false;
   // On an iPhone the device entry also names the Secure Enclave key (NK-2): every later change to who speaks for this name needs that key's Face ID signature too. No Face ID, no name.
@@ -65,7 +78,7 @@ export async function createIdentity(name: string, deviceLabel: string, password
   const agreeKey = (await agreePublic(true)) ?? undefined;
   try {
     const made = await claim({
-      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...((await shellKeyHeld()) ? { held: true } : {}),
+      name, code, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...((await shellKeyHeld()) ? { held: true } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

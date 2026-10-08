@@ -93,7 +93,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 65 | 37 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 65 | 35 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 38 | 0 | cli |
 
 ## about
@@ -975,7 +975,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Runs on: `box`, `local`
 - Requires: `relay`
 - Tools: [65](tools.md#wink), 12 of them only for other modules
-- Emits: [37 events](events.md#wink)
+- Emits: [35 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs daemon: `dataStores`

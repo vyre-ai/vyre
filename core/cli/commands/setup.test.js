@@ -41,47 +41,6 @@ const tools = o => ({
   "names.status": async () => ({ data: { address: "https://alex.vyre.run", phase: "serving" } }),
 });
 
-test("setup --name --yes: checks, claims through the page's two tools as the CLI, prints the address and says nothing about a recovery code", async t => {
-  const root = tempHome(t);
-  const calls = await fakeVyred(t, root, tools({}));
-  const r = await run(root, ["setup", "--name", "alex", "--yes"]);
-  assert.equal(r.code, 0, r.out);
-  assert.deepEqual(calls.map(c => [c.tool, c.input]), [["names.check", { name: "alex" }], ["names.claim", { name: "alex" }]]);
-  assert.match(r.out, /https:\/\/alex\.vyre\.run/);
-  assert.ok(!/recovery code/i.test(r.out), "there is no recovery code to keep");
-  const j = JSON.parse((await run(root, ["setup", "--name=alex", "--yes", "--json"])).stdout);
-  assert.deepEqual(j, { name: "alex", address: "https://alex.vyre.run", phase: "named", why: "the address is published once your server pairs" });
-});
-
-test("setup --name: a taken or invalid name, a failed claim and a refused call each exit non-zero in plain words, and nothing is claimed", async t => {
-  const root = tempHome(t);
-  let calls = await fakeVyred(t, root, tools({ claim: async () => ({ data: { phase: "failed", why: "the directory would not answer" } }) }));
-  const taken = await run(root, ["setup", "--name", "taken", "--yes"]);
-  assert.equal(taken.code, 1);
-  assert.match(taken.out, /https:\/\/taken\.vyre\.run is taken: someone else has it/);
-  assert.match(taken.out, /next: pick another/);
-  const bad = await run(root, ["setup", "--name", "bad_name", "--yes"]);
-  assert.equal(bad.code, 1);
-  assert.match(bad.out, /bad_name is not a name Vyre can use: names are lower case/);
-  assert.ok(!calls.some(c => c.tool === "names.claim"), "no claim for a name that failed its check");
-  const failed = await run(root, ["setup", "--name", "alex", "--yes"]);
-  assert.equal(failed.code, 1);
-  assert.match(failed.out, /could not claim alex\.vyre\.run: the directory would not answer/);
-  assert.ok(!/Recovery code/.test(failed.out));
-});
-
-test("setup: a script must pass --yes (claiming is for good), and the options are checked", async t => {
-  const root = tempHome(t);
-  const calls = await fakeVyred(t, root, tools({}));
-  const noYes = await run(root, ["setup", "--name", "alex"]);
-  assert.equal(noYes.code, 2, noYes.out);
-  assert.match(noYes.out, /a script must pass --yes/);
-  assert.ok(!calls.some(c => c.tool === "names.claim"));
-  assert.equal((await run(root, ["setup", "--yes"])).code, 2);
-  assert.equal((await run(root, ["setup", "--name"])).code, 2);
-  assert.equal((await run(root, ["setup", "--name", "alex", "--wat"])).code, 2);
-});
-
 test("setup with no name: where setup stands, the same ten steps, and the one place to continue; --new-link makes a fresh link", async t => {
   const root = tempHome(t);
   const steps = (current, done) => ["install:Install", "words:Check the words", "address:Choose your address", "pair:Pair your server", "ai:Sign in to your AI", "phone:Add your phone", "passkey:Create your passkey", "assistant:You and your assistant", "computers:Your computers", "history:Your history"]

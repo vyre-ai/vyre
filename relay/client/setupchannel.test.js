@@ -15,7 +15,7 @@ import { openChannel, request } from "../../relay/client/client.js";
 import { webCrypto } from "../../relay/client/webcrypto.js";
 import { nodeCrypto } from "../../relay/client/nodecrypto.js";
 import { utf8 } from "../../relay/client/bytes.js";
-import { connectSetup } from "./box.js";
+import { connectSetup } from "./setupchannel.js";
 
 const lenient = {
   required: () => false,

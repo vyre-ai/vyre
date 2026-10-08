@@ -16,6 +16,10 @@ import { setPeerHosting } from "../core/daemon/peer.js";
 process.env.VYRE_TEST_HOSTED = "1"; // for a vyred a test starts as a child (see peerHosting)
 setPeerHosting(true);
 
+// A person's first name is finished with a reservation code from vyre.run/setup (spaces.identity.create). The walks and tests that make many people let the home reserve each name itself, a development
+// build's switch (never honoured in a release build); the tests of the code path itself unset it.
+if (process.env.VYRE_TEST_SELF_RESERVE === undefined) process.env.VYRE_TEST_SELF_RESERVE = "1";
+
 // A ring ticket (relay.pair.ticket) is confirmed with three words by the Wink module once that module is up (X-1, 4 Oct 2026): the redeemer is a waiting pairing until the
 // person picks the right words. Tests of the relay's own pairing run with no one to confirm, so they take the one-step ring; test/wink.test.js unsets this and tests the gate.
 if (process.env.VYRE_TEST_UNGATED_RING === undefined) process.env.VYRE_TEST_UNGATED_RING = "1";

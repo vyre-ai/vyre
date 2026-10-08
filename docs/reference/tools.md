@@ -5302,14 +5302,6 @@ Is <name>.vyre.run a valid name, and is it free (or already this box's)?
   - `name` string, required
 - Callers: any caller
 
-### `names.claim`
-
-Claim <name>.vyre.run for this box for good. The name is held; its address is published once the built-in network has one for this home.
-
-- Input:
-  - `name` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
-
 ### `names.directory.acme`
 
 Put an ACME DNS-01 challenge value under this box's name (Wink module only).
@@ -5340,12 +5332,13 @@ Live DNS check of the records for using your own domain: _acme-challenge.<domain
   - `domain` string, required
 - Callers: any caller
 
-### `names.release`
+### `names.serve`
 
-Release this box's vyre.run name.
+Set the space this server serves: <name>.vyre.run. The directory points the name at this server only when the space listed this server's route, so a wrong name here publishes nothing.
 
-- Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.status`
 
@@ -5353,6 +5346,13 @@ This box's name and whether it is held: the name, its address once the built-in 
 
 - Input: none
 - Callers: any caller
+
+### `names.unserve`
+
+Stop serving the space's name on this server.
+
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ## network
 
@@ -5461,14 +5461,12 @@ ADR 0039: how Vyre runs on this machine. solo (everything here) or server (alway
 
 ### `onboard.name`
 
-Checks <name>.vyre.run and saves it; reserve holds the name for this server; its address is published once the built-in network has one for this home. `via` says which; again retries.
+Checks <name>.vyre.run, or reads which space's name this server serves. A server holds no name: a space is named in the app, and the app tells the server to serve it (names.serve).
 
 - Input:
-  - `action` one of "check", "reserve", "claim", "status"
-  - `confirm` boolean
+  - `action` "check" or "status"
   - `name` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `onboard`, `tailnet`
-- Needs a person present.
 
 ### `onboard.pair`
 
@@ -8361,11 +8359,12 @@ As a recovery contact: make the approval key for someone's identity and give the
 
 ### `spaces.identity.create`
 
-Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.
+Become yourself on this device: make its key and your identity, and finish the Vyre name that a reservation code (VYRE-XXXX-XXXX-XXXX-XXXX, made at vyre.run/setup) holds. The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.
 
 - Input:
-  - `name` string, required
+  - `code` string
   - `deviceLabel` string
+  - `name` string
   - `password` string
 - Callers: any caller
 
@@ -8516,9 +8515,10 @@ On the new device: put two contacts' approvals on the request and take your iden
 
 ### `spaces.identity.republish`
 
-Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Says what it put back and what it could not.
+Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Your name is finished again with a fresh reservation code (`code`) when the directory no longer holds it. Says what it put back and what it could not.
 
-- Input: none
+- Input:
+  - `code` string
 - Callers: any caller
 
 ### `spaces.identity.resolve`
@@ -13074,6 +13074,15 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `sig` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
+
+### `wink.server.setup-offer`
+
+Over the setup channel only: an unowned server installed with a setup code makes its pairing ticket for one identity and answers { qr, expires }. The app pairs with it and proves the identity; nothing is asked at the server.
+
+- Input:
+  - `identity` string, required
+- Callers: any caller
 - Registered only on the box.
 
 ### `wink.server.status`

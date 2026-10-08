@@ -11,6 +11,8 @@ import { claimIdentity } from "./claim.js";
 import { codeKey } from "./recovery.js";
 import { recoverIdentity } from "./restore.ts";
 import { forgetIdentity, hadIdentity, loadIdentity } from "./store.ts";
+/** The code the web page hands a person for a free name (the directory's reserve, no key). */
+const reserveAt = async (base, name) => (await (await fetch(`${base}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json()).data.code;
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const PARAMS = { memoryKiB: 8, passes: 1 };
@@ -27,7 +29,7 @@ const resolve = async (base, name) => (await (await fetch(`${base}/v1/ids/resolv
 test("recover: a wrong code is refused and changes nothing; the right code returns the same identity with one more device; a second recovery on this device is idempotent", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "robin", base, params: PARAMS });
+  const made = await claimIdentity({ name: "robin", code: await reserveAt(base, "robin"), base, params: PARAMS });
   assert.equal((await resolve(base, "robin")).ops.length, 1);
   const wrongCode = made.recoveryCode.replace(/^./, c => (c === "a" ? "b" : "a"));
   await assert.rejects(recoverIdentity({ name: "robin", code: wrongCode, deviceLabel: "new phone", base, params: PARAMS }), { code: "wrong_code" });
@@ -56,7 +58,7 @@ test("recover: no such name, a bad format, and a rolled-back chain (the pin) are
   await forgetIdentity();
   const base = await standIn(t);
   await assert.rejects(recoverIdentity({ name: "nobody", code: "aaaa-bbbb-cccc-dddd-eeee-ffff-gg", deviceLabel: "x", base, params: PARAMS }), { code: "not_found" });
-  const made = await claimIdentity({ name: "sam", base, params: PARAMS });
+  const made = await claimIdentity({ name: "sam", code: await reserveAt(base, "sam"), base, params: PARAMS });
   await assert.rejects(recoverIdentity({ name: "sam", code: "nope", deviceLabel: "x", base, params: PARAMS }), { code: "wrong_code" });
   // a device that saw the chain at seq 5 is told seq 0: refused, and nothing is changed
   await assert.rejects(recoverIdentity({ name: "sam", code: made.recoveryCode, deviceLabel: "x", base, params: PARAMS, pin: { id: made.id, seq: 5, head: "0".repeat(64) } }), { code: "rolled_back" });
@@ -68,7 +70,7 @@ test("recover: no such name, a bad format, and a rolled-back chain (the pin) are
 test("RX-1: a phone (requireEnclave) without its Secure Enclave key signs and keeps nothing; with it the entry carries `enclave`", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "kim", base, params: PARAMS });
+  const made = await claimIdentity({ name: "kim", code: await reserveAt(base, "kim"), base, params: PARAMS });
   await assert.rejects(recoverIdentity({ name: "kim", code: made.recoveryCode, deviceLabel: "phone", base, params: PARAMS, requireEnclave: true }), { code: "not_hardware" });
   assert.equal((await resolve(base, "kim")).ops.length, 1, "nothing was appended");
   assert.equal(await loadIdentity(), null, "and nothing kept");
@@ -84,7 +86,7 @@ test("RX-1: a phone (requireEnclave) without its Secure Enclave key signs and ke
 test("RX-2: a publish whose answer is lost after the directory applied it keeps the identity; a clear refusal forgets it", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "lee", base, params: PARAMS });
+  const made = await claimIdentity({ name: "lee", code: await reserveAt(base, "lee"), base, params: PARAMS });
   // the directory applies the append, then the connection drops
   const dropAfter = async (url, init) => { const r = await fetch(url, init); if (init && init.method === "POST") throw new TypeError("connection dropped"); return r; };
   const got = await recoverIdentity({ name: "lee", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: dropAfter });
@@ -96,7 +98,7 @@ test("RX-2: a publish whose answer is lost after the directory applied it keeps 
   assert.equal((await resolve(base, "lee")).ops.length, 2);
   await forgetIdentity();
   // a clear refusal (the directory answers 4xx) forgets the key
-  const made2 = await claimIdentity({ name: "moe", base, params: PARAMS });
+  const made2 = await claimIdentity({ name: "moe", code: await reserveAt(base, "moe"), base, params: PARAMS });
   const refuse = async (url, init) => (init && init.method === "POST" ? new Response(JSON.stringify({ error: { code: "bad_op", message: "no" } }), { status: 400 }) : fetch(url, init));
   await assert.rejects(recoverIdentity({ name: "moe", code: made2.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: refuse }));
   assert.equal(await loadIdentity(), null, "a refusal kept nothing");
@@ -105,7 +107,7 @@ test("RX-2: a publish whose answer is lost after the directory applied it keeps 
 test("RX-2a: a retry while the directory is down does not say success; with the directory back it sends the op and succeeds", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "ola", base, params: PARAMS });
+  const made = await claimIdentity({ name: "ola", code: await reserveAt(base, "ola"), base, params: PARAMS });
   // the first publish is lost: the append is refused as unreachable and the re-read cannot be read either
   const down = async () => { throw new Error("down"); };
   let gets = 0;
@@ -124,7 +126,7 @@ test("RX-2a: a retry while the directory is down does not say success; with the 
 test("RX-2b: a directory that lies (a list without the key) after a lost answer does not make the phone keep it; one that cannot be verified is not 'there'", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
-  const made = await claimIdentity({ name: "pia", base, params: PARAMS });
+  const made = await claimIdentity({ name: "pia", code: await reserveAt(base, "pia"), base, params: PARAMS });
   let reads = 0;
   const liar = async (u, i) => {
     if (i && i.method === "POST") throw new Error("lost");

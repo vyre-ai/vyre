@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Set up · Vyre</title>
-  <meta name="description" content="Put Vyre on your own server. One line to run, and this page follows the install.">
+  <title>Reserve your name · Vyre</title>
+  <meta name="description" content="Pick your Vyre name. You get a code to paste into the Vyre app, which makes the name's key on your device.">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#0E0D0C">
@@ -18,8 +18,27 @@
 <body>
 <a class="skip" href="#setup">Skip to content</a>
 <header class="bar"><a class="brand" href="/" aria-label="Vyre home">Vyre</a></header>
-<main id="setup" class="col" aria-live="off">
-  <noscript><p class="lead">Setup needs JavaScript: it makes a key in your browser that only this page can use.</p></noscript>
+<main id="setup" class="col">
+  <noscript><p class="lead">This page needs JavaScript to check and reserve a name.</p></noscript>
+  <section id="pick">
+    <p class="lbl">Your name</p>
+    <h1>Reserve your name</h1>
+    <p class="lead">Pick the name your Vyre will have. You get a code, and the Vyre app on your computer or phone uses it to make the name's key, which stays on that device.</p>
+    <form id="form" autocomplete="off">
+      <label class="sr" for="name">Name</label>
+      <div class="field"><input id="name" class="name" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="40" placeholder="yourname"><span class="suffix">.vyre.run</span></div>
+      <p id="hint" class="hint" aria-live="polite"></p>
+      <div class="actions"><button id="reserve" class="btn primary" type="submit" disabled>Reserve this name</button></div>
+    </form>
+  </section>
+  <section id="done" hidden>
+    <p class="lbl">Reserved</p>
+    <h1 id="done-title" tabindex="-1">Your code</h1>
+    <p class="lead"><span id="address"></span> is held for you for <span id="lasts"></span>. Paste this code into the Vyre app. It works once.</p>
+    <p class="code-line" id="code"></p>
+    <div class="actions"><button id="copy" class="btn secondary" type="button">Copy</button></div>
+    <p class="note">Do not have the app yet? Get it for <a href="/mac/">Mac</a>, <a href="/windows/">Windows</a> or <a href="/phone/">your phone</a>. Lose the code or let it run out, and reserve the name again here.</p>
+  </section>
 </main>
 <script type="module" src="/setup/page.js"></script>
 </body>

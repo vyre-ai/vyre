@@ -60,6 +60,13 @@ const presence = {
   verify: async ({ proof }) => (proof ? { ok: true, method: "test" } : { ok: false, code: "presence_required", message: "needs a person", methods: ["passkey"] }),
 };
 
+
+/** The reservation a person gets at vyre.run/setup, asked of the same directory Worker the module talks to: { code } or the Worker's refusal as the tool would say it. */
+async function reserve(name, ip = "198.18.0.1") {
+  const r = await hooks.fetch("http://127.0.0.1:1/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ name }) });
+  const j = await r.json();
+  return j.data ? { code: j.data.code } : { refused: j.error };
+}
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
 async function device(t, { records = false, wink = false, kernelFor = undefined, machine = undefined } = {}) {
   const root = tempHome(t);
@@ -115,7 +122,7 @@ async function actAs(d, label) {
   const seen = memorySeen();
   const dir = idDirectory({ base: "http://127.0.0.1:1", fetch: hooks.fetch, now: () => hooks.now(), seen });
   const ops = createIdentityOps({ store, dir, seen, now: () => hooks.now(), stretch: { memoryKiB: 64, passes: 1 } });
-  await ops.create({ name: label, deviceLabel: label });
+  await ops.create({ name: label, deviceLabel: label, code: (await reserve(label)).code });
   return { id: store.status().id, publicKey: store.status().publicKey };
 }
 const person = () => { const kp = newKeyPair(); return { ...kp, id: personIdOf(kp.publicKey) }; };
@@ -171,6 +178,17 @@ test("identity: create makes a 0600 key file, claims the name, shows the recover
   assert.equal((await other.ok("spaces.identity.status")).exists, false, "a failed claim leaves no key behind");
   const bad = await other.call("spaces.identity.create", { name: "a" });
   assert.equal(bad.error?.code, "bad_name");
+  // a code that is not valid (wrong, used, replaced or expired) is one plain refusal
+  const wrong = await other.reg.call("spaces.identity.create", { code: "VYRE-AAAA-AAAA-AAAA-AAAA" }, "cli", {});
+  assert.equal(wrong.error?.code, "bad_code");
+  assert.equal((await other.ok("spaces.identity.status")).exists, false);
+  // a release build takes a reservation code and nothing else (the self-reserve switch is a development one)
+  delete process.env.VYRE_TEST_SELF_RESERVE;
+  try { assert.equal((await other.reg.call("spaces.identity.create", { name: "carol" }, "cli", {})).error?.code, "code_needed"); } finally { process.env.VYRE_TEST_SELF_RESERVE = "1"; }
+  // and with a real code the name it holds is made
+  const held = await reserve("carol");
+  const made2 = await other.ok("spaces.identity.create", { code: held.code });
+  assert.equal(made2.address ?? made2.name, "carol.vyre.run");
   void w;
 });
 
@@ -1275,20 +1293,30 @@ test("spaces.identity.name-of: a claimed name the directory confirms for that id
 
 test("a space whose home is a PAIRED server is hosted by the server: the device asks it (with the owner's proof beside the call), keeps only a row, takes the server's id, and cancel gives it back there; a refusal makes nothing and never falls back to hosting here", async t => {
   const w = world(t);
+  const { hooks } = await import("./index.js");
+  const dirPosts = [];
+  const realFetch = hooks.fetch;
+  hooks.fetch = /** @type {any} */ (async (url, init) => { if (init && init.method === "POST" && String(url).endsWith("/v1/ids/server")) dirPosts.push(JSON.parse(init.body)); return realFetch(url, init); });
   const d = await device(t, { wink: true });
   await d.ok("spaces.identity.create", { name: "alex" });
-  const { hooks } = await import("./index.js");
   /** @type {any[]} */ const recorded = [];
   let counter = 0;
   hooks.sessionFor = async dev => ({ call: async (tool, input) => { recorded.push({ device: dev, tool, input, proof: input.proof }); if (/** @type {any} */ (globalThis).__winkRefuse) throw Object.assign(new Error("the server said no"), { code: "forbidden" }); counter++; return tool === "spaces.host-here" ? { space: "spc_" + "abcdefghjkl" + "mnopqrstuvwx"[counter - 1], existed: false } : { retired: true }; } });
   t.after(() => { hooks.sessionFor = null; });
   const calls = () => recorded;
+  // The server's route (what the paired channel says): the space lists it with the directory, so the server may point the space's name at itself.
+  const SERVER_ROUTE = "a".repeat(26);
+  hooks.route = () => ({ relay: "https://relay.example", route: SERVER_ROUTE, box: "bx" });
+  t.after(() => { hooks.route = null; });
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
   const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal(made.data.status, "done", JSON.stringify(made.data));
   assert.equal(made.data.space, "spc_abcdefghjklm", "THE id is the server's");
-  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }]], "one call to the server, the owner's proof beside it");
+  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }], ["srv_paired0000000001", "names.serve", "servedspace", { op: "t" }]], "the server hosts the space, then is told which name it serves, the owner's proof beside both");
+  assert.equal(dirPosts.length, 1, "and the directory is asked to list the server");
+  assert.deepEqual([dirPosts[0].name, dirPosts[0].route, dirPosts[0].remove], ["servedspace", SERVER_ROUTE, undefined]);
+  hooks.fetch = realFetch;
   assert.ok((await d.ok("spaces.list")).some(x => x.id === "spc_abcdefghjklm" && x.hostedHere === undefined), "listed as a normal space, not as a local copy");
   // giving it back: cancel asks the server to retire it
   calls().length = 0;
@@ -1327,7 +1355,7 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   const w = world(t);
   const { d, alex, space } = await harlow(t, w);
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
-  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const claim = async (name, agree) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
   const casey = await claim("casey", pt()), dana = await claim("dana", pt());
   const caseyPt = (await d.reg.call("spaces.identity.devices", { person: casey.id }, "cli")).data;
   assert.deepEqual(caseyPt, { devices: [] }, "before they share a space: nothing, though casey has a device with a point");
@@ -1613,7 +1641,7 @@ test("spaces.identity.devices.read on a SERVER (no identity of its own): the pai
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
   const device0 = await device(t); // a home that makes the directory's `hooks` live
   void device0;
-  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const claim = async (name, agree) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
   const owner = await claim("srvowner", pt()), stranger = await claim("srvstranger", pt());
   let claimed = /** @type {string | null} */ (owner.id);
   const kernelFor = () => ({ for: () => null, ownerClaimed: () => claimed });

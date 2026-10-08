@@ -1,7 +1,7 @@
 // @ts-check
-// The names service: `<you>.vyre.run`, claimed through the name directory (ADR 0002, DESIGN-wink 2).
+// The names service: `<space>.vyre.run`, served by this server for the space that listed it (ADR 0002, DESIGN-wink 2, spec 0.3.0 part 10: a server never holds a name).
 //
-// A name is claimed, released and watched here, and nothing else: there is no listener, no certificate and no VPN. The browser address of a home is the
+// A name is served, unserved and watched here, and nothing else: there is no listener, no certificate and no VPN. The browser address of a home is the
 // built-in network's to publish (SPEC-wink-network 4.5), and "a home with no Wink node yet publishes no address": until then a claim stops at "named". Everything that
 // touches the outside world comes in as an adapter (the name directory, the DNS resolver), so the whole flow runs in tests against fakes. index.js wires the real ones.
 
@@ -26,8 +26,6 @@ export function names(deps) {
   /** @type {{ phase: "idle"|"named"|"failed", why: string|null }} */
   const state = { phase: "idle", why: null };
   const dir = deps.directory || null;
-  let working = null;
-  const fail = e => { state.phase = "failed"; state.why = /** @type {Error} */ (e).message; ctx.log("names: " + state.why); };
 
   function status() {
     return {
@@ -57,38 +55,24 @@ export function names(deps) {
   }
 
   /**
-   * Reserve the name for this box through the directory. The address is published once the built-in
-   * network has one for this home; until then the name is only held ("named").
+   * This server serves a space's name: the one the space listed it for (the Worker checks that at every publish and certificate, so nothing here is trusted). The address is published once the
+   * built-in network has one for this home; until then the name is only set ("named").
    * @param {string} [raw]
    */
-  function claim(raw) {
+  function serve(raw) {
     const c = checkName(raw || ctx.config.name);
     if (!c.valid) throw new Error(c.why || "no name");
-    if (!dir) throw new Error("claiming a name needs the name directory");
-    return claimNamed(c.name);
-  }
-
-  /** @param {string} name */
-  async function claimNamed(name) {
-    if (working) return status();
-    state.phase = "idle"; state.why = null;
-    working = true;
-    try {
-      const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
-      deps.save({ name, network: { via: "vyre.run" } });
-      if (r.fresh) ctx.events.emit("name.claimed", { name: `${name}.${domain()}` });
-      state.phase = "named";
-    } catch (e) { fail(e); } finally { working = null; }
+    deps.save({ name: c.name, network: { via: "vyre.run" } });
+    ctx.events.emit("name.claimed", { name: `${c.name}.${domain()}` });
+    state.phase = "named"; state.why = null;
     return status();
   }
 
-  async function release() {
+  /** This server stops serving its space's name. */
+  function unserve() {
     const name = ctx.config.name;
-    if (name && net().via === "vyre.run") {
-      if (dir) await dir.release(name);
-      ctx.events.emit("name.released", { name: `${name}.${domain()}` });
-    }
-    deps.save({ network: { address: null, via: null } });
+    if (name && net().via === "vyre.run") ctx.events.emit("name.released", { name: `${name}.${domain()}` });
+    deps.save({ name: null, network: { address: null, via: null } });
     state.phase = "idle";
     return status();
   }
@@ -123,7 +107,7 @@ export function names(deps) {
     if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(host) || host === domain() || host.endsWith("." + domain())) throw new Error("that is not a domain of your own");
     if (!dir || !deps.resolver) throw new Error("the domain check needs the name directory");
     const m = await dir.mine();
-    if (!m.name) throw new Error("claim a name first");
+    if (!m.name) throw new Error("a space must list this server first");
     const expected = m.acmeZone;
     if (!expected) throw new Error("the directory did not say where challenges go");
     const ask = async fn => { try { return await fn(); } catch (e) { const code = /** @type {any} */ (e).code; if (["ENODATA", "ENOTFOUND", "NXDOMAIN", "ENOENT"].includes(code)) return []; throw e; } };
@@ -136,5 +120,5 @@ export function names(deps) {
     return { domain: host, ok: cname.ok, cname, caa: { host, present: caa.length > 0, found: caa, expected: account, ok: pinned, optional: true } };
   }
 
-  return { status, check, claim, release, watch, domainCheck, wait: () => working };
+  return { status, check, serve, unserve, watch, domainCheck };
 }

@@ -39,20 +39,17 @@ export default {
 
     const svc = names({ ctx, save, directory: dir, resolver });
 
-    const person = caller => !["onboard"].includes(String(caller));
-    // Who may change a box's name: the person's own surfaces and their devices (the setup page's device
-    // included), and only the named modules that run those steps for them (onboard, launch). A model session, an agent, a hook, a guest or any other module is refused, so no session can
-    // claim <name>.vyre.run for the box for good, release it or reassign its owner. Declared with the surface kinds the router
+    // Who may change the name a server serves: the person's own surfaces and their devices (the paired app included). A model session, an agent, a hook, a guest or any module is refused. Declared with the surface kinds the router
     // lets through (callers); this is the check that narrows "a module" to the three that may.
     const SURFACES = ["cli", "local", "deck", "capsule", "mobile"];
-    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"];
+    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
     const steward = (/** @type {string[]} */ modules) => (/** @type {any} */ meta) => {
       const c = String((meta && meta.caller) || "");
       const ok = !(meta && meta.agent) && agentClaim(c) === null
         && (c.startsWith("module:") ? modules.includes(c.slice(7)) : SURFACES.includes(c) || ownerDevice(c) || /^setup:[a-z2-7]{16}$/.test(c));
       if (!ok) throw Object.assign(new Error("changing the box's name or owner is the person's own"), { code: "denied" });
     };
-    const ownerOnly = steward([]), setupSteps = steward(["onboard", "launch"]);
+    const ownerOnly = steward([]);
     ctx.tool("names.status", {
       description: "This box's name and whether it is held: the name, its address once the built-in network publishes one, and why not when it cannot.",
       input: obj(),
@@ -63,22 +60,22 @@ export default {
       input: obj({ name: { type: "string" } }, ["name"]),
       run: async ({ name }) => svc.check(name),
     });
-    ctx.tool("names.claim", {
-      description: "Claim <name>.vyre.run for this box for good. The name is held; its address is published once the built-in network has one for this home.",
-      input: obj({ name: { type: "string" } }),
+    ctx.tool("names.serve", {
+      description: "Set the space this server serves: <name>.vyre.run. The directory points the name at this server only when the space listed this server's route, so a wrong name here publishes nothing.",
+      input: obj({ name: { type: "string" } }, ["name"]),
       callers: WHO,
-      run: async ({ name }, meta = {}) => { setupSteps(meta); return svc.claim(name); },
+      run: async ({ name }, meta = {}) => { ownerOnly(meta); return svc.serve(name); },
     });
     ctx.tool("names.domain.check", {
       description: "Live DNS check of the records for using your own domain: _acme-challenge.<domain> as a CNAME to <routehash>.acme.vyre.run (required) and an optional CAA record.",
       input: obj({ domain: { type: "string" } }, ["domain"]),
       run: async ({ domain }) => svc.domainCheck(domain),
     });
-    ctx.tool("names.release", {
-      description: "Release this box's vyre.run name.",
+    ctx.tool("names.unserve", {
+      description: "Stop serving the space's name on this server.",
       input: obj(),
       callers: WHO,
-      run: async (_, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release(); },
+      run: async (_, meta = {}) => { ownerOnly(meta); return svc.unserve(); },
     });
     // The box's public gate (core/wink/control/publicgate.js) gets its certificate and its address through the directory, which this module alone can sign for.
     // Modules only, and only the Wink module: it never sees the route key, only these three answers.

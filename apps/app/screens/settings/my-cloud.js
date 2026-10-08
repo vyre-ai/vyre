@@ -99,12 +99,12 @@ export function cloudState(list) {
   return { personal, cloud, movedTo: typeof personal?.upgraded_to === "string" && personal.upgraded_to ? personal.upgraded_to : null };
 }
 
-/** What the card offers: set up (none yet), move (it exists and Personal has not moved), or done. @param {ReturnType<typeof cloudState>} s @param {boolean} hasServer a paired server exists to make it on @returns {"setup" | "move" | "moved" | "none"} */
+/** What the card offers: add a server (Personal has none yet and no server is paired), set up (a server is paired), move (it exists and Personal has not moved), or done. @param {ReturnType<typeof cloudState>} s @param {boolean} hasServer a paired server exists to make it on @returns {"add" | "setup" | "move" | "moved" | "none"} */
 export function offerFor(s, hasServer) {
   if (!s.personal) return "none";
   if (s.movedTo) return "moved";
   if (s.cloud) return "move";
-  return hasServer ? "setup" : "none";
+  return hasServer ? "setup" : "add";
 }
 
 /** The person's paired servers from spaces.servers ({ servers: [{ id, name, online }] }): the ones My Cloud can be made on. An empty list means none is paired, and the card stays away. @param {any} data @returns {{ id: string, name: string }[]} */
