@@ -17,6 +17,7 @@
 // A module screen that is not installed is not drawn and not an error; a stored list is cleaned on every read and write.
 
 import { isPerson } from "../../lib/caller.js";
+import { createSidebarService } from "./service.js";
 import { builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES } from "../../lib/sidebar/model.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
@@ -205,6 +206,7 @@ export default {
         throw refuse("call is get, edit or team", "bad_input");
       },
     });
-    return {};
+    // The peer door (a team member's sidebar over the remote Space) asks for this module's service by name from its handle: the daemon imports nothing of the sidebar.
+    return { peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createSidebarService(o) };
   },
 };
