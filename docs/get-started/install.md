@@ -16,9 +16,20 @@ terminal is on the server, and only for one line the app gives you.
 - [ ] A Mac or a Windows PC for the app. A phone alone cannot start: you reserve your name on a computer first.
 - [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok account if you want them.
 - [ ] If you will add a server: a Linux server (a cloud machine is fine) or a Mac that stays on, and a terminal on it.
-  With Records, which is the recommended choice, the server needs 8 GB of memory (4 GB is the least).
-  Without Records it needs 2 GB.
+  See [What size of server](#what-size-of-server): 8 GB of memory is recommended, 4 GB is the least, and a small server can run
+  without Records on 2 GB.
 - [ ] If you are joining a team: the invite your team sent you.
+
+## What size of server
+
+Records is where your contacts, projects and tasks live. It is a full database, and by itself it uses about 2.2 GB of memory. Vyre needs room beside it.
+
+| Choice | Memory | Good for |
+| --- | --- | --- |
+| **With Records** | 8 GB recommended, 4 GB at the least | Contacts, projects, tasks, [Flows and Kits](../using/flows.md), a team. |
+| **Without Records** | 2 GB | A small server, or a first try. Vyre keeps your data in a smaller built-in store, so it runs on less. |
+
+On a server with 4 to 6 GB, Vyre uses a smaller Records setup and tells you, when it installs, how many spaces fit. If the server has less than Records needs, the installer says so and uses the small built-in store instead.
 
 ## 1. Reserve your name
 

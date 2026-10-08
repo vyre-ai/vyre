@@ -8,7 +8,7 @@ status: stable
 
 # ADR 0002: Network and identity
 
-Status: accepted, 26 Sep 2026. Supersedes the "served with `tailscale serve`, identified by
+Status: accepted, 26 Sep 2026. Its identification of callers by Tailscale's whois is superseded by [ADR 0050](0050-built-in-network.md): a caller is a device paired to the person's identity chain. Supersedes the "served with `tailscale serve`, identified by
 Tailscale's identity headers" sentence in SPEC 7.1 and 7.10.
 
 ## Context
