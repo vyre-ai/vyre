@@ -135,3 +135,9 @@ test("a refusal coded owned_by_other says the server is someone else's, with or 
   assert.equal(serverSay({ code: "owned_by_other", message: "The pairing did not finish." }), "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.");
   assert.match(serverSay({ code: "owned_by_other", message: "This server belongs to walkeroo.vyre.run. Ask them to add you to a space." }), /^This server belongs to walkeroo\.vyre\.run\./);
 });
+
+test("on the first run, Join a team and Add a server go back to the three choices", () => {
+  assert.equal(backOf("join", { first: true }), "choose");
+  assert.equal(backOf("mycloud", { first: true }), "choose");
+  assert.equal(backOf("join", {}), null);
+});

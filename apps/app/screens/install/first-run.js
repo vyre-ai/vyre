@@ -77,6 +77,17 @@ export function installLine(version, vars = {}) {
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
 
+/** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */
+export const FIRST = {
+  title: "How will you use Vyre?",
+  join: { title: "Join a team", line: "Paste the invite you were sent. You run on your team's server." },
+  server: { title: "Add a server", line: "A machine that stays on. This becomes your own Cloud." },
+  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. A server can be added later." },
+  windows: "Home on Windows is coming.",
+};
+/** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
+export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
+
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());
 

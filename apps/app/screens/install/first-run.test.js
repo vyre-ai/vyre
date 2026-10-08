@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -189,6 +189,12 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
   assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
   assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
+});
+
+test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
+  assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
+  for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
+  assert.match(FIRST.windows, /Windows is coming/);
 });
 
 test("the paste check accepts every character the directory can put in a code", async () => {

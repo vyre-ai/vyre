@@ -15,7 +15,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { isWindowsShell, shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { codeLooksRight, codeRoute, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, codeLooksRight, codeRoute, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -142,7 +142,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const spaceSt = MOCK ? nameStatus(spaceSlug, [name]) : nameStatusReal(spaceSlug, taken[slug(spaceSlug)] ?? null, [name]);
   const sn = spaceName.trim() || DATA.defaultSpaceName;
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
-  const back = !first && step === startStep(start) ? null : backOf(step, { have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow });
+  const back = !first && step === startStep(start) ? null : backOf(step, { have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow, first });
   // The empty states open Add your phone and Connect: when they end the person is back on Now, not on Spaces.
   const startAdd = (payload: string) => {
     setWrong(""); setAddWords(""); setStep("adding");
@@ -155,6 +155,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
   const boxless = isBoxlessMac(shell());
   const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
+  const afterIdentity = () => (invite ? "invite" : first ? "choose" : afterName());
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
@@ -284,11 +285,36 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
       </Page>
     );
+  } else if (step === "choose") {
+    const pick = (id: string) => () => {
+      setWrong("");
+      if (id === "join") return setStep("join");
+      if (id === "server") return setStep("mycloud");
+      // My Home: this Mac runs Vyre itself (the light login-only setup, no password); the Mac app does the install, then setup is done here.
+      const make = shell()?.identity?.makeServer;
+      if (MOCK || !make) return finish();
+      setBusy(true);
+      void make().then(finish).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+    };
+    const rows = firstChoices(dk);
+    body = (
+      <Page title={FIRST.title}>
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        <Card flush>
+          {rows.map((id, i) => {
+            const c = FIRST[id as "join" | "server" | "home"];
+            return <View key={id}>{i ? <Divider /> : null}<Choice icon={id === "join" ? "share" : id === "server" ? "server" : "laptop"} title={c.title} sub={c.line} onPress={pick(id)} /></View>;
+          })}
+        </Card>
+        {isWindowsShell() ? <Text tone="muted">{FIRST.windows}</Text> : null}
+      </Page>
+    );
   } else if (step === "mycloud") {
     // Upgrade to My Cloud (Settings has the same card): what a server unlocks, the two choices, the install line, the words, then the move.
     body = (
       <Page title="My Cloud" sub="Add a server and move what you have onto it.">
         <MyCloudCard />
+        {first ? <Button kind="ghost" label="Skip for now" onPress={finish} /> : null}
       </Page>
     );
   } else if (step === "browser" || (step === "name" && !MOCK && claimBlocked())) {
@@ -387,7 +413,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
         {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
-        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterName(); setStep(next); }} />
+        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterIdentity(); setStep(next); }} />
       </Page>
     );
   } else if (step === "spaces") {

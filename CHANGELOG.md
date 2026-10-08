@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(app): after a name the first run offers Join a team, Add a server (your own Cloud) and, on a Mac, My Home; Windows says Home is coming.
 - fix(setup): the reserve page and the app's paste check accept every character the directory puts in a reservation code (A-Z without I and O, 2-9); they refused any code with an 8 or 9.
 - feat(site): vyre.run/setup checks a name, reserves it and shows the code for the app; the browser setup flow (key, install follow, claim, AI, devices) and its relay client copies are removed; staging override and build scripts follow.
 - feat(app): a first name is made by pasting the code from vyre.run/setup; one add-a-server step (install line with a one-time owner token, With Records or Without Records, the words checked in the app) replaces the question, server and VPS screens; My Home upgrades to My Cloud and moves everything.
