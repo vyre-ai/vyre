@@ -101,7 +101,7 @@ test("a model cannot install, start, stop or remove an app", async t => {
 test("install: keys in the Vault, the app started with them, set up by its bootstrap, webhooks become events; no secret anywhere", async t => {
   const w = await world(t);
   const r = await w.cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: null }, JSON.stringify(r));
+  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: "docuseal" }, JSON.stringify(r));
   assert.match(w.log[0][1], /^spc_[a-z2-7]{12}$/);
   assert.deepEqual([w.log[0][0], w.log[0][2]], ["up", "docuseal"]);
   assert.deepEqual(w.log[0][4], ["SECRET_KEY_BASE"]);
@@ -248,8 +248,11 @@ test("the Connection form for an app is the Connections module's create form wit
   m.connection.auth = { kind: "bearer" }; assert.deepEqual(connectionForm(m, "x").send, { how: "bearer" });
 });
 
-test("without the Connections module's app form the install still works and says the Connection is pending", async t => {
+test("when the Connection cannot be made the install still works and says the Connection is pending", async t => {
   const w = await world(t);
+  // a Connection of that name is already there (someone made one by hand), so the install's own cannot be made
+  assert.ok(!(await w.cli("vault.put", { name: "docuseal-key", kind: "secret", value: "k-123456789012" })).error);
+  assert.ok((await w.cli("connectors.connection.create", { ...connectionForm(docuseal(), "docuseal-key") })).data);
   const r = await w.cli("appmods.install", { name: "docuseal" });
   assert.equal(r.data.state, "running");
   assert.equal(r.data.connection, null);
@@ -261,7 +264,7 @@ test("without the Connections module's app form the install still works and says
 test("install through the host helper: the hook port is the catalog's, root's hand-over is kept in the Vault, no key is made here and no command is run in the app", async t => {
   const w = await world(t, { helper: true });
   const r = await w.cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: null }, JSON.stringify(r));
+  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: "docuseal" }, JSON.stringify(r));
   assert.deepEqual([w.log[0][0], w.log[0][2], w.log[0][3], w.log[0][4]], ["up", "docuseal", 43001, []], "the catalog's hook port, and no secret handed to the host (root made them)");
   assert.equal(w.log.filter(l => l[0] === "exec").length, 0);
   const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-")).sort();
@@ -336,11 +339,17 @@ test("DocuSeal's two Vyre views are valid in the view language, name only operat
   assert.equal(mod.views["docuseal-waiting"].list.input.query.status, "pending");
 });
 
-test("the app lists DocuSeal's views, and one asked for before DocuSeal is installed says there is no Connection rather than failing", async t => {
+test("DocuSeal's views are listed only while DocuSeal is connected: absent, then present once its Connection exists, then absent again", async t => {
   const w = await world(t);
-  const list = (await w.cli("views.list", {})).data;
-  const rows = (Array.isArray(list) ? list : list.views || list.commands || []).filter(r => r.module === "appmods");
-  assert.deepEqual(rows.map(r => r.id).sort(), ["docuseal-send", "docuseal-waiting"]);
+  const ids = async () => { const l = (await w.cli("views.list", {})).data; return (Array.isArray(l) ? l : l.views || l.commands || []).filter(r => r.module === "appmods").map(r => r.id).sort(); };
+  assert.deepEqual(await ids(), [], "DocuSeal is not there: no views");
+  assert.equal((await w.cli("views.get", { module: "appmods", command: "docuseal-waiting" })).error?.code ?? "gone", "not_found", "and asking for one finds nothing");
+  assert.ok(!(await w.cli("vault.put", { name: "docuseal-key", kind: "secret", value: "k-123456789012" })).error);
+  const made = await w.cli("connectors.connection.create", { ...connectionForm(docuseal(), "docuseal-key") });
+  assert.ok(made.data, JSON.stringify(made));
+  assert.deepEqual(await ids(), ["docuseal-send", "docuseal-waiting"], "connected: both views");
   const frame = (await w.cli("views.get", { module: "appmods", command: "docuseal-waiting" })).data;
-  assert.ok(frame && frame.kind !== "list", `no Connection yet, so no rows: ${JSON.stringify(frame).slice(0, 200)}`);
+  assert.ok(frame && typeof frame.kind === "string", JSON.stringify(frame).slice(0, 200));
+  assert.ok(!(await w.cli("connectors.connection.delete", { id: made.data.id })).error);
+  assert.deepEqual(await ids(), [], "removed: the views go with it");
 });

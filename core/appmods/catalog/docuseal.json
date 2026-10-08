@@ -27,11 +27,11 @@
     "credential": "api_token",
     "check": { "method": "GET", "path": "/api/user" },
     "operations": [
-      { "name": "templates.list", "label": "List templates", "method": "GET", "path": "/api/templates", "kind": "read" },
+      { "name": "templates.list", "label": "List templates", "method": "GET", "path": "/api/templates", "kind": "read", "input": { "query": { "limit": { "type": "number" } } } },
       { "name": "submissions.list", "label": "Documents sent for signature", "method": "GET", "path": "/api/submissions", "kind": "read", "input": { "query": { "status": { "type": "string", "enum": ["pending", "completed", "declined", "expired"] }, "limit": { "type": "number" } } } },
       { "name": "submissions.create", "label": "Send a document to be signed", "method": "POST", "path": "/api/submissions", "kind": "send", "input": { "body": { "template_id": { "type": "number", "required": true }, "send_email": { "type": "boolean" }, "submitters": { "type": "array", "required": true, "items": { "type": "object", "fields": { "email": { "type": "email", "required": true }, "name": { "type": "string" }, "role": { "type": "string" } } } } } } },
-      { "name": "submissions.get", "label": "One submission", "method": "GET", "path": "/api/submissions/{id}", "kind": "read" },
-      { "name": "submissions.documents", "label": "The signed documents of a submission", "method": "GET", "path": "/api/submissions/{id}/documents", "kind": "read" }
+      { "name": "submissions.get", "label": "One submission", "method": "GET", "path": "/api/submissions/{id}", "kind": "read", "input": { "params": { "id": { "type": "number", "required": true } } } },
+      { "name": "submissions.documents", "label": "The signed documents of a submission", "method": "GET", "path": "/api/submissions/{id}/documents", "kind": "read", "input": { "params": { "id": { "type": "number", "required": true } } } }
     ]
   },
   "events": [

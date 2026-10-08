@@ -136,6 +136,15 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const sub = await api("POST", "/api/submissions", { template_id: Number(tpl.template_id), send_email: false, submitters: [{ role: "First Party", email: "signer@example.com" }] });
   assert.equal(sub.s, 200, JSON.stringify(sub.j));
   const submitter = sub.j[0].id;
+  // the Vyre views over DocuSeal's Connection, against the real app: the document just sent is waiting for a signature
+  const listed = (await d.registry.call("views.list", {}, "cli", await ownerMeta())).data;
+  const vids = (Array.isArray(listed) ? listed : listed.views || listed.commands || []).filter(/** @param {any} r */ r => r.module === "appmods").map(/** @param {any} r */ r => r.id).sort();
+  assert.deepEqual(vids, ["docuseal-send", "docuseal-waiting"], "DocuSeal is connected: its views are listed");
+  const waiting = (await d.registry.call("views.get", { module: "appmods", command: "docuseal-waiting" }, "cli", await ownerMeta())).data;
+  assert.equal(waiting.kind, "list", JSON.stringify(waiting).slice(0, 300));
+  assert.ok(waiting.rows.some(/** @param {any} r */ r => /signer@example.com/.test(JSON.stringify(r))), `the waiting view shows the document just sent: ${JSON.stringify(waiting.rows).slice(0, 300)}`);
+  const sendList = (await d.registry.call("views.get", { module: "appmods", command: "docuseal-send" }, "cli", await ownerMeta())).data;
+  assert.ok(sendList.rows && sendList.rows.some(/** @param {any} r */ r => /Vyre proof NDA/.test(JSON.stringify(r))), `the send view lists the template: ${JSON.stringify(sendList).slice(0, 300)}`);
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
