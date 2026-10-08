@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(names): a person's first name is reserved on the web (POST /v1/ids/reserve, a VYRE-code good for 24 hours, once) and finished in the app with its own key (POST /v1/ids/finalize); a space lists the servers that serve its name (POST /v1/ids/server, at most 8); the box routes names.claim, release and admin rebind are gone (Worker not deployed).
 - fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
 - fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
 - fix(mac-app): the ad hoc Lumen package is signed again after the version stamp and web build, and must verify; an invalid signature made the Keychain refuse the identity key ("This Mac would not keep your key", IR-31).
