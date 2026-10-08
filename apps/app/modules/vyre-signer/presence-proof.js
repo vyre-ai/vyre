@@ -110,14 +110,15 @@ export function lowS(raw) {
 /**
  * Check what the card showed against its hash and build the proof body (everything but the signature). Refuses, with a code, when the fields do not hash to the card's
  * payload_hash: that is what makes what you see what you sign.
- * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string }} req
+ * A space on a server asks for the yes with a one-use challenge (kernel/remote/server.js): the proof then names that home and that challenge in its signed body (`home`, `challenge`), or the home refuses it.
+ * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string, home?: string, challenge?: string }} req
  * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" | "tpm" }} o
  */
 export function proofBody(req, o) {
   if (!req.person) throw Object.assign(new Error("no person id for this proof"), { code: "ERR_NO_PERSON" });
   if (payloadHash(req.op, req.space, req.fields ?? {}) !== req.payload_hash) throw Object.assign(new Error("the card's fields do not match its hash"), { code: "ERR_PAYLOAD_MISMATCH" });
   const life = Math.min(o.lifeMs ?? 90_000, 120_000);
-  return { signer: o.signer ?? "secure_enclave", key_id: o.keyId, payload_hash: req.payload_hash, decision: req.op, chain_hash: chainHash(req.person, req.space), issued_at: o.now, expires_at: o.now + life, nonce: o.nonce };
+  return { signer: o.signer ?? "secure_enclave", key_id: o.keyId, payload_hash: req.payload_hash, decision: req.op, chain_hash: chainHash(req.person, req.space), issued_at: o.now, expires_at: o.now + life, nonce: o.nonce, ...(req.home && req.challenge ? { home: String(req.home), challenge: String(req.challenge) } : {}) };
 }
 
 /**

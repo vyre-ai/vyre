@@ -104,8 +104,8 @@ export function randomBytes(n: number): string {
 // One function for app-wire and chat: signPresence(card) -> the PresenceProof the kernel's sealing process checks. The key is "vyre.human" (Secure Enclave P-256,
 // biometryCurrentSet: Face ID on every signature). Bytes are platform's (kernel/seal/wire.js): see presence-proof.js. On Android the same proof is signed by the Keystore key (vyre.human, TEE or StrongBox, BiometricPrompt per use) with signer class "strongbox" (the kernel contract's Android class; unattested in RC1).
 
-export type PresenceCard = { op: string; space: string; fields: Record<string, unknown>; payload_hash: string; prompt: string; person?: string };
-export type PresenceProof = { signer: "secure_enclave" | "strongbox" | "tpm"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
+export type PresenceCard = { op: string; space: string; fields: Record<string, unknown>; payload_hash: string; prompt: string; person?: string; home?: string; challenge?: string };
+export type PresenceProof = { signer: "secure_enclave" | "strongbox" | "tpm"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string; home?: string; challenge?: string };
 
 const APPATTEST_KEY = "vyre.appattest.keyid";
 const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -171,7 +171,7 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
   iosOnly();
   const person = card.person ?? (personProvider ? await personProvider() : null) ?? "";
   const k = await presenceKey();
-  const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
+  const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   const bytes = proofBytes(body);
   const der = await native.sign(HUMAN, new TextDecoder().decode(bytes), card.prompt ? { prompt: card.prompt } : {});
   const proof: PresenceProof = { ...(body as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(der))) };
