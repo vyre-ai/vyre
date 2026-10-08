@@ -11,7 +11,7 @@
 // Rules, in words:
 // - Entering a stage makes its tasks once per entry (key: record, stage, the entry's event, template). A redelivered event makes nothing twice.
 // - A task template: title, doer ("teammate:x" or "role:x"), checker ("role:x", optional), output, how, template, depends_on (titles in the same
-//   stage), due_offset_ms, required (default true).
+//   stage), due_offset_ms, required (default true). A stage may name an owner (role:x or person:x): each task with a due offset then escalates to the owner when it is not done by then.
 // - The stage advances when every required task is done. If it has tasks but none is required, when all are done or skipped. A stage with no tasks
 //   never advances by itself (a person moves it), and the last stage has nowhere to go.
 // - A stuck or rejected task simply is not done: nothing advances, nothing is made twice. A record that was moved by hand before the tasks
@@ -75,9 +75,9 @@ export function createStages(o) {
     return undefined;
   };
 
-  /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[] }} e */
+  /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string }} e */
   async function enter(e) {
-    const stage = e.templates ? { tasks: e.templates } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
+    const stage = e.templates ? { tasks: e.templates, owner: e.owner } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
@@ -87,6 +87,8 @@ export function createStages(o) {
     latest.set(`${e.urn}|${e.stage}`, key);
     if (!templates.length) return;
     const chain = o.chain();
+    // The stage owner (role:x or person:x) is told when one of its tasks is not done by its due offset: the task's escalate_to, read by the planner.
+    const owner = stage && stage.owner ? await actorFor(stage.owner, space, { record: e.urn, type: e.type, stage: e.stage }) : null;
     /** @type {Map<string, string>} */ const made = new Map();
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
@@ -101,6 +103,7 @@ export function createStages(o) {
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
         ...(t.due_offset_ms ? { due: now() + t.due_offset_ms } : {}),
+        ...(owner && t.due_offset_ms && owner.id !== doer.id ? { escalate_after: t.due_offset_ms, escalate_to: owner } : {}),
         // The kernel treats `required` as guarded (completion needs a check). A required task with no checker would wait for nobody, so the flag
         // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
         ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),

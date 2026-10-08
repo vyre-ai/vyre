@@ -52,7 +52,7 @@ export const GROUPS = [
   ["Memory", ["recall", "index", "roll", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence", "signin", "signout"]],
   ["Box care", ["update", "backup", "restore"]],
-  ["Under the hood", ["modules", "module", "tools", "call", "commands", "tips"]],
+  ["Under the hood", ["modules", "module", "tools", "call", "commands", "tips", "kit"]],
 ];
 
 const usageOf = c => c.usage || `vyre ${c.name}`;
