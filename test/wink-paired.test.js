@@ -351,7 +351,7 @@ async function standinIdentity(t, { passkey = false } = {}) {
   if (passkey) {
     // a browser's identity: a passkey is the first device (0.2.9), and every proof it makes is a WebAuthn assertion, never a bare signature
     const auth = authenticator();
-    const made = await claimIdentityWithPasskey({ name: "alex", password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, webauthn: auth });
+    const made = await claimIdentityWithPasskey({ name: "alex", code: (await idDir.reserve("alex")).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, webauthn: auth });
     return { id: made.id, home, state, clock, auth, sign: async m => ({ eid: made.eid, sig: Buffer.from(await made.key.sign(m)).toString("base64url") }) };
   }
   await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone", code: (await idDir.reserve("alex")).code });

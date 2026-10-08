@@ -98,7 +98,7 @@ const within = (p, ms, onTimeout) => new Promise((resolve, reject) => { const t 
  *   connect: (o: any) => any, openServerPeer: (conn: any, o?: any) => Promise<any>,
  *   crypto: any,
  *   signPresence?: (req: { op: string, space: string, fields: any, payload_hash: string, prompt?: string, person: string }) => Promise<any>,
- *   presenceKey?: (invite: string) => Promise<{ key_id: string, spki: string, signer: string, attestation?: any } | null | undefined>,   // asked with the invite id: a release server wants the key attested over "join:" + that id (kernel/seal/proof.js join)
+ *   presenceKey?: (invite: string) => Promise<{ key_id: string, spki: string, signer: string, rp?: string, attestation?: any } | null | undefined>,   // asked with the invite id: a release server wants the key attested over "join:" + that id (kernel/seal/proof.js join)
  *   words?: string[],
  *   store?: { get(key: string): Promise<any> | any, put(key: string, value: any): Promise<void> | void, delete?(key: string): Promise<void> | void },
  * }} Deps
@@ -197,7 +197,7 @@ export async function openInvite(d, link) {
         if (!proof || typeof proof !== "object") throw refuse("no_proof", "The yes was not given.");
         const pk = typeof d.presenceKey === "function" ? await d.presenceKey(p.invite) : null;
         const bind = pk && typeof pk.key_id === "string" && typeof pk.spki === "string" && typeof pk.signer === "string"
-          ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64url(await d.who.sign(joinBytes(p.invite, spaceId, d.who.id, pk.key_id, pk.spki))), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
+          ? { key_id: pk.key_id, spki: pk.spki, signer: pk.signer, sig: b64url(await d.who.sign(joinBytes(p.invite, spaceId, d.who.id, pk.key_id, pk.spki))), ...(typeof pk.rp === "string" && pk.rp ? { rp: pk.rp } : {}), ...(pk.attestation && typeof pk.attestation === "object" ? { attestation: pk.attestation } : {}) }
           : undefined;
         const got2 = await home.call("grants.invites.accept", [p.invite, { seen, proof, ...(bind ? { bind } : {}) }]);
         const membership = got2 && got2.membership ? got2.membership : got2;
