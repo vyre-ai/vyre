@@ -245,6 +245,7 @@ test("a card for one module's tool does not release a send another first-party m
   const card = await approved(w, "billing.relay", input);
   const r = await w.d.registry.call("billing.relay", input, "mcp", { approval: card });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
+  console.log("RESULT", JSON.stringify(r), JSON.stringify(await w.asPerson("approvals.pending", {})).slice(0,600));
   assert.equal(await gateHeld(w), 1, "the reminder module's send is held: the card was for billing's tool");
   assert.deepEqual(w.sent, []);
 });
