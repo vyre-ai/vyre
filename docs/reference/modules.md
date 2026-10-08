@@ -71,6 +71,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 39 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
+| [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 3 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
@@ -709,6 +710,17 @@ One way to read and change every setting, at account, project, device or session
 - Emits: [2 events](events.md#settings)
 - Shows on: cli, deck
 - Needs kernel: `{"actions":[]}`
+
+## sidebar
+
+The sidebar each person arranges: the built-in places, an installed module's screens and saved views, with groups, an order and hidden entries. An admin sets the Space's default; each person's own arrangement sits on top of it.
+
+- Folder: `core/sidebar`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#sidebar)
+- Emits: [1 events](events.md#sidebar)
+- Shows on: cli
 
 ## sideview
 
