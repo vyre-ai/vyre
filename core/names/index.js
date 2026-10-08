@@ -42,7 +42,7 @@ export default {
     // Who may change the name a server serves: the person's own surfaces and their devices (the paired app included). A model session, an agent, a hook, a guest or any module is refused. Declared with the surface kinds the router
     // lets through (callers); this is the check that narrows "a module" to the three that may.
     const SURFACES = ["cli", "local", "deck", "capsule", "mobile"];
-    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"];
+    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
     const steward = (/** @type {string[]} */ modules) => (/** @type {any} */ meta) => {
       const c = String((meta && meta.caller) || "");
       const ok = !(meta && meta.agent) && agentClaim(c) === null

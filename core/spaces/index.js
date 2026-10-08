@@ -815,6 +815,13 @@ export default {
         if ((KS || remoteServer) && view && view.status === "failed") await retireHosted(spaceId, meta);
         // The home's route goes into the space's directory record so another person's device can find the home from an invite link (the flow's own pointHome ran before the server-hosted record existed on every path).
         if (remoteServer && view && view.status !== "failed") { try { await deps.names.pointHome({ name: `${label}.vyre.run`.replace(/\.vyre\.run$/, ""), spaceId, home: { kind: "server" } }); } catch { /* the record is republished by spaces.identity.republish */ } }
+        // The server serves the space's name (a server holds no name of its own): the space lists the server's route in the directory, signed by its owner, and the server is told which name it serves.
+        if (remoteServer && view && view.status !== "failed") {
+          try {
+            const rt = await routeOf(spaceId);
+            if (rt && rt.route) { await dir.server(label, String(rt.route), await ownerSigner()); await remoteCall(remoteServer, "names.serve", { name: label }, meta); }
+          } catch (e) { ctx.log.warn(`spaces: ${label} was made, but its server could not be listed to serve the name (${/** @type {Error} */ (e).message}); run spaces.identity.republish after fixing the cause`); }
+        }
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);

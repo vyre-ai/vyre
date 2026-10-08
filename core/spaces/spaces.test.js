@@ -1301,12 +1301,22 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   hooks.sessionFor = async dev => ({ call: async (tool, input) => { recorded.push({ device: dev, tool, input, proof: input.proof }); if (/** @type {any} */ (globalThis).__winkRefuse) throw Object.assign(new Error("the server said no"), { code: "forbidden" }); counter++; return tool === "spaces.host-here" ? { space: "spc_" + "abcdefghjkl" + "mnopqrstuvwx"[counter - 1], existed: false } : { retired: true }; } });
   t.after(() => { hooks.sessionFor = null; });
   const calls = () => recorded;
+  // The server's route (what the paired channel says): the space lists it with the directory, so the server may point the space's name at itself.
+  const SERVER_ROUTE = "a".repeat(26);
+  hooks.route = () => ({ relay: "https://relay.example", route: SERVER_ROUTE, box: "bx" });
+  t.after(() => { hooks.route = null; });
+  const dirPosts = [];
+  const realFetch = hooks.fetch;
+  hooks.fetch = /** @type {any} */ (async (url, init) => { if (init && init.method === "POST" && String(url).endsWith("/v1/ids/server")) dirPosts.push(JSON.parse(init.body)); return realFetch(url, init); });
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
   const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal(made.data.status, "done", JSON.stringify(made.data));
   assert.equal(made.data.space, "spc_abcdefghjklm", "THE id is the server's");
-  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }]], "one call to the server, the owner's proof beside it");
+  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }], ["srv_paired0000000001", "names.serve", "servedspace", { op: "t" }]], "the server hosts the space, then is told which name it serves, the owner's proof beside both");
+  assert.equal(dirPosts.length, 1, "and the directory is asked to list the server");
+  assert.deepEqual([dirPosts[0].name, dirPosts[0].route, dirPosts[0].remove], ["servedspace", SERVER_ROUTE, undefined]);
+  hooks.fetch = realFetch;
   assert.ok((await d.ok("spaces.list")).some(x => x.id === "spc_abcdefghjklm" && x.hostedHere === undefined), "listed as a normal space, not as a local copy");
   // giving it back: cancel asks the server to retire it
   calls().length = 0;
