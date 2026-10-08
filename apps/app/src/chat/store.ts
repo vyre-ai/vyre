@@ -163,6 +163,29 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     if (!scheduled) { scheduled = true; queueMicrotask(flush); }
   }
 
+  /** The words show at once, dimmed, and the box's own row replaces them; a refusal (or a throw) takes them back out and says why. */
+  async function withOptimistic(text: string, run: () => Promise<string | null>): Promise<string | null> {
+    const key = folder.addOptimistic(text);
+    for (const f of [...layoutSubs]) f();
+    let why: string | null;
+    try { why = await run(); } catch (e) { why = e instanceof Error && e.message ? e.message : "That did not send."; }
+    if (why && folder.dropOptimistic(key)) for (const f of [...layoutSubs]) f();
+    return why;
+  }
+
+  /** The plain send: the group route, the session's own, or the source's. */
+  async function sendPlain(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue" }): Promise<string | null> {
+      const a = withActions(source);
+      // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
+      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
+        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
+        return r.ok ? null : r.reason;
+      }
+      if (a.sendText) return a.sendText(text, o);
+      source.send(text);
+      return null;
+  }
+
   const store: ChatStore = {
     session,
     start() {
@@ -190,15 +213,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     },
     async send(text, o) {
       if (!text.trim()) return null;
-      const a = withActions(source);
-      // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
-      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
-        return r.ok ? null : r.reason;
-      }
-      if (a.sendText) return a.sendText(text, o);
-      source.send(text);
-      return null;
+      return withOptimistic(text, () => sendPlain(text, o));
     },
     async interrupt() {
       if (!store.meta().canStop) return null;
@@ -222,13 +237,15 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
+      return withOptimistic(text, async () => {
       const a = withActions(source);
       if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
         const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
         return r.ok ? null : r.reason;
       }
       if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
-      return store.send(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}) });
+      return sendPlain(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}) });
+      });
     },
     social: {
       keep: (g, m) => source.keep?.(g, m),

@@ -38,7 +38,8 @@ function BoxSession({ thread }: { thread: string }) {
   const router = useRouter();
   const { phone } = useUiTheme();
   const listed = useThread(thread);
-  const chatRow = useChats().rows.find((r) => r.id === thread);
+  const chats = useChats();
+  const chatRow = chats.rows.find((r) => r.id === thread);
   const [term, setTerm] = useState<Term | null>(null);
   const [termNote, setTermNote] = useState<string | null>(null);
   const [width, setWidth] = useState(520);
@@ -73,6 +74,9 @@ function BoxSession({ thread }: { thread: string }) {
       title={title}
       belowHeader={guts}
       onBack={() => router.back()}
+      project={listed?.projectName ?? null}
+      onSwitch={() => router.push("/u/chats" as never)}
+      onJumpSession={(n) => { const row = chats.rows[n - 1]; if (row) router.push({ pathname: "/session/[id]", params: { id: row.id } } as never); }}
       onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
       onOpenTerminal={() => void openTerminal()}
       handlers={handlers}

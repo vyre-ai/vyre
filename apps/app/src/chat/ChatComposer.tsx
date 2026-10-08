@@ -103,13 +103,13 @@ export function ChatComposer(p: ComposerProps) {
     setCaret(r.caret);
     input.current?.focus();
   };
-  const send = useCallback(() => {
+  const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
     if (!t) return;
     const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
     const working = busyState(p.state);
-    if (to.to.length || mentions.length || working) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}), ...(working ? { mode } : {}) }); else p.onSend(t);
+    if (to.to.length || mentions.length || working) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}), ...(working ? { mode: over ?? mode } : {}) }); else p.onSend(t);
     picked.current.clear();
     setText("");
     setCaret(0);
@@ -131,7 +131,7 @@ export function ChatComposer(p: ComposerProps) {
         placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, or / for commands"}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
-        onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); send(); } }}
+        onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); const ne = e.nativeEvent; send(ne.metaKey || ne.ctrlKey ? "steer" : undefined); } }}
         style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : 24, maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: 4, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
       />
   );
@@ -207,7 +207,7 @@ export function ChatComposer(p: ComposerProps) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-              onPress={send}
+              onPress={() => send()}
               style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
             >
               <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
@@ -230,7 +230,7 @@ export function ChatComposer(p: ComposerProps) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-            onPress={send}
+            onPress={() => send()}
             style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
           >
             <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />

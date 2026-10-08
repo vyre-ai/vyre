@@ -29,7 +29,7 @@
  "apps/app/src/chat/box-stream.test.js": 1,
  "apps/app/src/chat/composer-model.test.js": 8,
  "apps/app/src/chat/follow.test.js": 4,
- "apps/app/src/chat/frames.test.js": 24,
+ "apps/app/src/chat/frames.test.js": 25,
  "apps/app/src/chat/group.test.js": 11,
  "apps/app/src/chat/highlight.test.js": 5,
  "apps/app/src/chat/mock-stream.test.js": 8,
@@ -913,5 +913,6 @@
  "core/sidebar/service.test.js": 5,
  "apps/app/screens/shell/module-screen.test.js": 4,
  "core/views/views.test.js": 10,
- "apps/app/screens/shell/module-view.test.js": 5
+ "apps/app/screens/shell/module-view.test.js": 5,
+ "apps/app/src/chat/polish.test.js": 5
 }

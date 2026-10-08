@@ -11,7 +11,7 @@
 // in the same way.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
@@ -40,6 +40,7 @@ import { tool } from "../real/box";
 import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
+import { findLabel, findMatches, headerParts, keyAction, lastOwnMessage, stepMatch } from "./polish.js";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -65,6 +66,11 @@ export type ChatScreenProps = {
   initialAbout?: boolean;
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
+  /** The project this chat is in, for the header (a name, never an id). */
+  project?: string | null;
+  /** Cmd-K: the place that switches chats. Cmd-1..9: open the nth chat of the list. */
+  onSwitch?: () => void;
+  onJumpSession?: (n: number) => void;
 };
 
 const storage = (): { getItem(k: string): string | null; setItem(k: string, v: string): void } | null => {
@@ -124,11 +130,49 @@ export function ChatScreen(p: ChatScreenProps) {
   useEffect(() => { if (sealedNote) markSealedNoteSeen(storage(), p.sessionId); }, [sealedNote, p.sessionId]);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
+  // Find in this conversation (Cmd-F): the rows that hold the words, one at a time, the current one scrolled to and lit.
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQ, setFindQ] = useState("");
+  const [findAt, setFindAt] = useState(-1);
+  const matches = useMemo(() => (findOpen ? findMatches(rows.filter((r) => r.kind === "user" || r.kind === "text").map((r) => ({ key: r.key, text: String(store.item(r.key)?.text ?? "") })), findQ) : []), [findOpen, findQ, rows, store]);
+  const goMatch = useCallback((at: number) => {
+    setFindAt(at);
+    const m = matches[at];
+    if (!m) return;
+    setJump({ key: m.key, n: Date.now() });
+    setFlash(m.key.slice(2));
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), 1800);
+  }, [matches]);
+  useEffect(() => { if (findOpen && matches.length) goMatch(0); else setFindAt(-1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [findQ, findOpen]);
   const actions = store.actions;
   const { onBranched } = p;
   const needs = useNeeds();
   const router = useRouter();
   const chatId = here.thread ?? p.sessionId;
+  // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
+  // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.
+  const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p });
+  keyRef.current = { findOpen, busy: meta.busy, rows, store, actions, p };
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => {
+      const k = keyRef.current;
+      const el = document.activeElement as (HTMLElement & { value?: string }) | null;
+      const typing = !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT");
+      const last = k.actions ? lastOwnMessage(k.rows, (key) => k.store.item(key), (key) => k.store.group.isMine(key)) : null;
+      const act = keyAction({ key: e.key, meta: e.metaKey || e.ctrlKey, shift: e.shiftKey, alt: e.altKey }, { composerEmpty: typing && el?.tagName === "TEXTAREA" && !el.value, busy: k.busy, findOpen: k.findOpen, canEdit: !!last });
+      if (!act) return;
+      if (act.do === "find") { e.preventDefault(); setFindOpen(true); }
+      else if (act.do === "close-find") { e.preventDefault(); setFindOpen(false); setFindQ(""); }
+      else if (act.do === "stop") { e.preventDefault(); void k.store.interrupt().then((why) => { if (why) setNote(why); }); }
+      else if (act.do === "edit-last" && last) { e.preventDefault(); setNote(null); setEditing((x) => ({ id: (x?.id ?? 0) + 1, uuid: last.uuid, text: last.text })); }
+      else if (act.do === "switch" && k.p.onSwitch) { e.preventDefault(); k.p.onSwitch(); }
+      else if (act.do === "jump" && k.p.onJumpSession) { e.preventDefault(); k.p.onJumpSession(act.n); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
@@ -195,7 +239,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
-  const line = [info.record?.title, info.space, allowsMock() ? null : here.where].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
+  const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
+  const head = headerParts({ title: p.title, project: p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
+  const line = head.line + (muted ? (head.line ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // Who is in the chat, for the composer's @ list and the model chips: the stream's participants once it has said, else the chat's members from the box (work.chat.get), never the viewer.
   const roster = faces.filter((f) => f.id !== viewerId && f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) }));
@@ -207,7 +253,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
@@ -228,6 +274,26 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {p.belowHeader}
+
+      {findOpen ? (
+        <View accessibilityLabel="Find in this conversation" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: phone ? 12 : 20, borderBottomWidth: 1, borderBottomColor: color.edge, backgroundColor: color["surface-2"] }}>
+          <Icon name="search" tone="label" />
+          <TextInput
+            autoFocus
+            value={findQ}
+            onChangeText={setFindQ}
+            placeholder="Find in this conversation"
+            placeholderTextColor={color.label}
+            accessibilityLabel="Find"
+            onKeyPress={(e: any) => { if (e.nativeEvent.key === "Enter") { e.preventDefault?.(); goMatch(stepMatch(findAt, e.nativeEvent.shiftKey ? -1 : 1, matches.length)); } }}
+            style={{ flex: 1, color: color.text, fontSize: 15, minHeight: 32, outlineStyle: "none" } as never}
+          />
+          <Text size="caption" tone="label">{findLabel(findAt, matches.length, findQ)}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous match" onPress={() => goMatch(stepMatch(findAt, -1, matches.length))} style={{ minHeight: 32, minWidth: 32, alignItems: "center", justifyContent: "center" }}><Icon name="chev-l" tone="label" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Next match" onPress={() => goMatch(stepMatch(findAt, 1, matches.length))} style={{ minHeight: 32, minWidth: 32, alignItems: "center", justifyContent: "center" }}><Icon name="chev-r" tone="label" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close find" onPress={() => { setFindOpen(false); setFindQ(""); }} style={{ minHeight: 32, minWidth: 32, alignItems: "center", justifyContent: "center" }}><Icon name="x" tone="label" /></Pressable>
+        </View>
+      ) : null}
 
       <View style={{ flex: 1, minHeight: 0 }}>
         {loading ? (
