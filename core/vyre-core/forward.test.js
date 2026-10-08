@@ -168,6 +168,7 @@ test("vyre-core forward: on a server the relay, and only the relay, takes a pair
   const socket = path.join(dir, "s.sock");
   const sc = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, dev: true, server: true, notModel: () => true });
   t.after(() => sc.close());
+  sc.presence.coreOpt = null; // core is its own process in life; here the registry's link is process-wide, and core must not use it
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
