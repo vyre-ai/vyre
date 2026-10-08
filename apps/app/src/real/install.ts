@@ -71,7 +71,8 @@ export async function createIdentity(code: string, deviceLabel: string, password
   const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
   if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This Mac would not keep your key, so no name was claimed."), { code: "cannot_keep" });
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
-  const claim = Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
+  // The Mac and Windows apps' windows are web pages too, but they hold their own key: they claim with it, never with a browser passkey (IR-32).
+  const claim = !macKey && Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
   if (macKeyAvailable()) enclave = (await macEnclavePublic(true)) ?? undefined; // none on a Mac with no Secure Enclave: its entry signs alone
   // This device's agreement key (its public point goes in the entry as `agree`): none in a plain browser.
   const agreeKey = (await agreePublic(true)) ?? undefined;

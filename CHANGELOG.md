@@ -3,6 +3,9 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
+- fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
+- fix(mac-app): the ad hoc Lumen package is signed again after the version stamp and web build, and must verify; an invalid signature made the Keychain refuse the identity key ("This Mac would not keep your key", IR-31).
 - fix(lumen): an ad hoc signed Mac app keeps the identity key in the login Keychain when macOS refuses the this-device-only class (errSecMissingEntitlement); before, "This Mac would not keep your key" and no name could be claimed.
 - feat(names): support-only POST /v1/names/admin/drop takes a name back from a server, so an identity or a space can claim it (names belong to identities and spaces; an older setup named servers).
 - test: known-red burn-down 1.3, the 8 with no recorded cause: stdin-hygiene, within-hygiene, peer, screen-live and agents are green (fixes above and in their tests); sessions, golden and federation-send now each carry a written cause and owner in test/known-red.json; the list is 18 files.
