@@ -22,3 +22,4 @@ pub mod devicekey;
 pub mod identity;
 pub mod bundled;
 pub mod applog;
+pub mod sealsvc;
