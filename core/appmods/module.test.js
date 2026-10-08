@@ -102,6 +102,13 @@ test("install: keys in the Vault, the app started with them, set up by its boots
   assert.equal((await w.cli("appmods.list")).data.apps[0].state, "running");
   assert.equal((await w.cli("appmods.screens")).data.screens[0].path, "/");
   assert.equal((await w.cli("appmods.install", { name: "docuseal" })).error.code, "exists");
+  // what the Connections module reads: the record the manifest declares, and the Vault item that holds the key (never the key)
+  const conn = (await w.cli("appmods.connection", { name: "docuseal" })).data;
+  assert.deepEqual([conn.app, conn.label, conn.auth, conn.credential, conn.check], ["docuseal", "DocuSeal", { kind: "header", name: "X-Auth-Token" }, { item: "app-docuseal-api-token", field: "value" }, { method: "GET", path: "/api/user" }]);
+  assert.equal(conn.operations[2].name, "submissions.get");
+  assert.ok(!JSON.stringify(conn).includes("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+  assert.ok((await w.cli("appmods.origin", { name: "docuseal" })).error, "the origin is for Vyre's own modules, not a person at the terminal");
+  assert.match((await w.d.registry.call("appmods.origin", { name: "docuseal" }, "module:connectors", { door: true })).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
   // nothing secret leaked into what a person or the log can read
   const db = w.d.registry.deps.db;
   const everything = JSON.stringify([r, w.lines, w.d.registry.deps.events.since(0, { limit: 5000 }), db.prepare("SELECT * FROM appmods_apps").all(), await w.cli("appmods.status", { name: "docuseal" })]);

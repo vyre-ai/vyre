@@ -17,7 +17,9 @@
       { "name": "appmods.start", "effect": "write", "reach": "person" },
       { "name": "appmods.stop", "effect": "write", "reach": "person" },
       { "name": "appmods.remove", "effect": "write", "reach": "person" },
-      { "name": "appmods.hook", "effect": "write", "reach": "hook" }
+      { "name": "appmods.hook", "effect": "write", "reach": "hook" },
+      { "name": "appmods.origin", "effect": "read", "reach": "modules" },
+      { "name": "appmods.connection", "effect": "read", "reach": "anyone" }
     ]
   },
   "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.started", "appmods.stopped", "docuseal.signed", "docuseal.form-completed"] },
