@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- refactor(app): the Mac window's "type your server's code" screen (MacServer) and the where-Vyre-runs copy are removed; a Mac adds a server with the install line.
 - refactor: the setup claim is gone (relay.setup.claim and claim-token, the session's mint/take, the claim message and TTL, the page's claim link, callWithGrant), with the old browser-setup CI journey (matrix J1) and the staging override for the setup page; the first-owner grant stays for a device's own enrol.
 - feat(app): a team space is made in the order name, add a server (the same add-a-server step), invites with Skip; the Where will it live, On this computer and Mac server-code steps are removed, so no space is made without a server.
 - feat(mac-app): the bundled setup passes --login-only (My Home: a LaunchAgent as the person, no admin password); a Mac that stays on as a server is added with the install line.
