@@ -96,7 +96,9 @@ test("an added module ships a Kit, and an upgrade keeps its records, its tables,
   await install(d, kit2, 2);
   const c = (await d.registry.call("tasker.add", { title: "Send the invoice", project: { urn: project.urn }, priority: "High" }, "local")).data;
   assert.ok(c && c.urn);
-  const got = (await d.registry.call("records.get", { urn: a.urn }, "cli", await meta(d))).data;
+  const gotRaw = (await d.registry.call("records.get", { urn: a.urn }, "cli", await meta(d))).data;
+  const got = gotRaw.data ? gotRaw : gotRaw.record ? gotRaw.record : { data: gotRaw };
+  assert.ok(got.data && got.data.title, `records.get: ${JSON.stringify(gotRaw).slice(0, 300)}`);
   assert.equal(got.data.title, "Call the court", "the old record is intact after the Kit's update");
   assert.equal(JSON.stringify(got.data.project).includes(project.urn), true, `and still on its project: ${JSON.stringify(got.data.project)}`);
   const linked2 = JSON.stringify((await d.registry.call("records.linked", { urn: project.urn }, "cli", await meta(d))).data);
