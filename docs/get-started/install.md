@@ -45,6 +45,8 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 Open the app and choose **Start**. It asks for the reservation code. Paste it. The app shows the name it holds for
 you and makes your key on this computer. The key stays here.
 
+On a Windows PC the key is made with Windows Hello, which asks for your face, fingerprint or PIN. If Windows Hello is not set up, Vyre keeps the key on this PC instead.
+
 The app then shows a recovery code, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
 
@@ -55,9 +57,10 @@ The app asks how you will use it:
 
 - **Join a team.** Paste the invite your team sent. You run on your team's server and need none of your own. This is
   the choice for most people who work at a company that uses Vyre.
-- **Add a server.** A machine of your own that stays on. It becomes your own Cloud. Go to step 5.
+- **Add a server.** A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and your teammates can
+  reach it. Go to step 5. On a Mac this upgrades My Home to My Cloud, and on Windows it sets up My Cloud.
 - **Use My Home** (Mac only). Vyre runs on this Mac while it is awake. Nothing else to set up. You can add a server later
-  from Settings, and Vyre moves everything across.
+  from Settings, and Vyre moves everything across: that is the upgrade from My Home to My Cloud.
 
 On Windows the app offers **Join a team** and **Add a server**. A home on Windows is coming.
 
@@ -69,13 +72,15 @@ On Windows the app offers **Join a team** and **Add a server**. A home on Window
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
    - On Linux it looks like `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
    - On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=... VYRE_STORE=auto sh`. It asks for the
-     Mac's password once, to set Vyre up to start when the Mac starts.
+     Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
+     Touch ID key approves new devices.
 
    The line is good for one hour and works once. It carries a one-time code made by the app, so nobody at the server has to
    answer a question.
 4. The installer checks the release's signature before it installs anything, and prints four words when it is up. The
-   app finds the server by itself and shows four words too. If they match, choose **They match**. If they do not, choose
-   **They do not match** and nothing is connected.
+   app finds the server by itself and shows four words too. If they are the same, choose **Same**. If they are not, choose
+   **Not the same** and nothing is connected. If the words scrolled away or did not show on the server, run `vyre words` there
+   (on a Mac server, `~/.vyre-server/bin/vyre words`) to see them again.
 5. The app connects, and your Cloud is ready. Choose what to move across from Personal if you have anything there.
 
 
@@ -121,6 +126,6 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 > If the installer says `Vyre is already running`, run `vyre uninstall --keep-data` on the server first, then paste the new line. Your data stays.
 
 > [!SNAG] The four words do not match
-> Choose **They do not match**. Nothing is connected. Run a fresh line from the app, and make sure you are looking at the server you just ran it on.
+> Choose **Not the same**. Nothing is connected. Run a fresh line from the app, and make sure you are looking at the server you just ran it on.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).

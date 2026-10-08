@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- docs: Install now uses the app's Same and Not the same buttons, names Windows Hello (with its fallback), the Mac server's Touch ID and boot start, the My Home to My Cloud upgrade, and `vyre words`.
 - refactor(installer): the Docker and Mac installers no longer pair a server at the terminal (the QR, long code, typed code and three-word questions are gone, and so is VYRE_PAIR_TO); run by hand without the app's code they say: Open the Vyre app, choose "Add a server", and run the line it shows. Setup pairs in one place, the app.
 - fix(records): with Records on (Twenty), every gated call from a space whose record store was not up yet when its gateway was built failed as "no such record" (the owner app's team invite among them): the not-yet-attached store handed the gateway a refusing function where its attribute map belongs. It now holds a real map, replays it onto the store when that attaches, and forwards to it after.
 - test: every workflow and composite action must parse as YAML with a trigger and jobs (test/workflows-yaml.test.js); an unquoted colon in a step name had made release.yml invalid.
