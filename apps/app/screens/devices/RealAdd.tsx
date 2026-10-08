@@ -42,6 +42,14 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     tool("wink.pair.targets").then((d) => { const t = targetsOf(d); setTargets(t); setTarget(t[0] ?? null); }).catch((e) => setSaid(said(e)));
   }, [kind]);
 
+  // A phone's key is signed onto the name's list by this app (the server holds no identity): asked while this screen is up and again on the wink events, so a typed code's yes is served too.
+  useEffect(() => {
+    if (kind === "server") return;
+    const run = () => { void import("../../src/real/enrol-phone").then((m) => m.serveEnrol()).catch(() => {}); };
+    const t = setInterval(run, 2000);
+    return () => clearInterval(t);
+  }, [kind]);
+
   // A phone or computer: poll for the new device asking, every 2 s while the code is up.
   useEffect(() => {
     if (kind === "server" || !opened || done || ask) return;

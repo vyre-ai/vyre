@@ -21,6 +21,8 @@ export function PairingCards({ onPaired }: { onPaired?: (name: string) => void }
   const load = useCallback(async () => {
     const w = await source.winkAsk();
     if (live.current) setWink(w);
+    // a phone the person said yes to, whose key this computer signs onto the name's list (the server holds no identity)
+    void source.serveEnrol();
   }, []);
   useEffect(() => {
     live.current = true;

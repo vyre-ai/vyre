@@ -896,6 +896,7 @@ export function createPairing(o) {
     // installer's terminal). No answer in `askMs` pairs nothing. A server installed unattended was told up front who may complete it (`pairTo`, set by wink.server.code):
     // only that identity completes, and no yes is asked. One ask at a time: a second device is refused while one is pending.
     const ASK_MS = o.askMs ?? 5 * 60_000, HOLD_MS = o.askHoldMs ?? 15_000;
+    const ENROL_MS = o.enrolMs ?? 3 * 60_000;
     const confirmAdopt = o.confirmAdopt !== false;
     // the development switch lets the older real-daemon tests pair with no proof; a release build ignores it
     const needProof = o.requireProof ?? (confirmAdopt && !devKindSwitch(process.env.VYRE_TEST_PAIR_NO_PROOF, o.buildRoot));
@@ -1386,6 +1387,8 @@ export function createPairing(o) {
     let phoneAsk = null;
     const phoneLive = () => {
       if (phoneAsk && phoneAsk.state === "waiting" && phoneAsk.until <= now()) { phoneAsk.state = "expired"; dropLater(`device:${phoneAsk.device}`); }
+      // the owner's app signs the list change for a phone and says so (wink.phone.enrolled); if it never does, the phone is told its key was not added, and stays paired
+      if (phoneAsk && phoneAsk.state === "enrolling" && /** @type {any} */ (phoneAsk).enrolUntil <= now()) { /** @type {any} */ (phoneAsk).enrolled = false; /** @type {any} */ (phoneAsk).enrolReason = "The app that holds your name did not add this device in time."; phoneAsk.state = "yes"; }
       return phoneAsk;
     };
     /** The name a phone gave itself, made safe to show: letters, digits and a few marks, at most 64 characters; nothing usable (or only a generic word) gives "". @param {unknown} x */
@@ -1474,11 +1477,13 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pairing", {
-      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).",
+      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line } (no `words`: the person types the three the phone shows), or { asking: false, enrol: { device, name, entry, until } } when a phone was added and this server cannot sign its key onto the name's list (the owner's app does, then calls wink.phone.enrolled): `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).",
       input: obj(),
       run: async (_, meta = {}) => {
         owner(meta, "the phone question");
         const a = phoneLive();
+        // a phone the person said yes to, whose key this server cannot put on the name's list: the owner's app does it (wink.phone.enrolled reports it)
+        if (a && a.state === "enrolling" && a.entry) return { asking: false, enrol: { device: a.device, name: a.name, entry: a.entry, until: a.enrolUntil } };
         if (!a || a.state !== "waiting" || !a.words) return { asking: false };
         return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("phoneAsk", { name: a.name, choices: a.choices }) };
       },
@@ -1497,12 +1502,15 @@ export function createPairing(o) {
           const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label, ...entryExtras(a.entry) }));
           a.enrolled = Boolean(r && !r.error && r.data);
           if (!a.enrolled) a.enrolReason = String((r && r.error && r.error.message) || "the identity list did not take this device").slice(0, 200);
+          // A server that holds no identity (the name's key lives in the owner's computer app) cannot sign the list change: it records the request, and the owner's app signs and reports (wink.phone.enrolled)
+          if (!a.enrolled && r && r.error && (r.error.code === "no_identity" || /Choose your Vyre name first/.test(String(r.error.message)))) { a.state = "enrolling"; a.enrolUntil = now() + ENROL_MS; a.enrolReason = ""; }
         } catch (e) { a.enrolled = false; a.enrolReason = String(/** @type {Error} */ (e).message || "the identity list did not take this device").slice(0, 200); }
       }
-      a.state = "yes";
+      if (a.state !== "enrolling") a.state = "yes";
       await openPairedSession(a.device, identity, presence, confirmed);
       ctx.events.emit("wink.pair-answered", { yes: true, kind: "phone" });
       ctx.events.emit("wink.joined", { device: dev.id, flow: "W1", kind: "phone" });
+      if (a.state === "enrolling") ctx.events.emit("wink.enrol-asked", { device: dev.id });
       return dev;
     };
     ctx.tool("wink.phone.pair.answer", {
@@ -1529,6 +1537,21 @@ export function createPairing(o) {
         return { answered: true, yes: true, name: a.name, device: dev.id, ...(a.entry ? { enrolled: a.enrolled === true } : {}) };
       },
     });
+    ctx.tool("wink.phone.enrolled", {
+      description: "From the owner's app, after it signed a phone's key onto the name's list itself (the server holds no identity): { device, ok, reason?, identity?: { id, vyre? } }. The waiting phone is then told (wink.phone.wait): added, or why not.",
+      input: obj({ device: str, ok: { type: "boolean" }, reason: str, identity: obj({ id: str, vyre: str }) }, ["device", "ok"]),
+      run: async (input, meta = {}) => {
+        owner(meta, "the phone's enrolment");
+        const a = phoneLive();
+        if (!a || a.state !== "enrolling" || a.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be added to the name's list");
+        a.enrolled = input.ok === true;
+        if (!a.enrolled) a.enrolReason = cleanName(input.reason, 200) || "The app that holds your name could not add this device.";
+        if (input.identity && typeof input.identity.id === "string") a.joinedIdentity = { id: String(input.identity.id).slice(0, 64), ...(typeof input.identity.vyre === "string" ? { vyre: input.identity.vyre.slice(0, 253) } : {}) };
+        a.state = "yes";
+        ctx.events.emit("wink.enrolled", { device: a.device, ok: a.enrolled });
+        return { ok: true };
+      },
+    });
     ctx.tool("wink.phone.wait", {
       callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
@@ -1552,7 +1575,8 @@ export function createPairing(o) {
         }
         // Once the yes is done the phone is told whose identity it joined (the id, and the Vyre name when the identity has one), so it can read the identity's list from the directory without guessing from the box's name.
         let joined = null;
-        if (a.state === "yes") { const idn = await o.identity().catch(() => null); const vy = typeof o.identityVyre === "function" ? await Promise.resolve(o.identityVyre()).catch(() => null) : null; if (idn) joined = { id: String(idn), ...(vy ? { vyre: String(vy) } : {}) }; }
+        if (a.state === "yes" && /** @type {any} */ (a).joinedIdentity) joined = /** @type {any} */ (a).joinedIdentity;
+        else if (a.state === "yes") { const idn = await o.identity().catch(() => null); const vy = typeof o.identityVyre === "function" ? await Promise.resolve(o.identityVyre()).catch(() => null) : null; if (idn) joined = { id: String(idn), ...(vy ? { vyre: String(vy) } : {}) }; }
         return { state: a.state, nb: a.nb, ...(joined ? { identity: joined } : {}), ...(a.words ? { words: a.words } : {}), ...(a.state === "yes" && a.entry ? { enrolled: a.enrolled === true, ...(a.enrolled === true ? {} : { reason: a.enrolReason || "the identity list did not take this device" }) } : {}), until: a.until };
       },
     });
