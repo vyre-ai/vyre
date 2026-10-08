@@ -32,7 +32,7 @@ async function mk(t) {
   const said = saidTools.register({ vault: v, internal });
   register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport } });
   const ask = (input, caller = "cli") => tools.get("vault.request").run(input, { caller });
-  const key = (name, fields) => v.put({ name, kind: "secret", fields }, "cli");
+  const key = (name, fields) => v.put({ name, kind: fields.username ? "login" : "secret", fields }, "cli");
   const cred = (name, config) => v.put({ name, kind: "api-credential", fields: { config: JSON.stringify(config) } }, "cli");
   return { v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
 }

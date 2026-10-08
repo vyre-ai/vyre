@@ -95,7 +95,7 @@ test("update replaces the record and the credential; delete removes both", async
   await assert.rejects(() => w.m.save(form(), { as: "deck", replace: true }), /no connection/);
   await w.m.save(form(), { as: "deck" });
   await w.m.save(form({ headers: { Version: "2022-01-01" } }), { as: "deck", replace: true });
-  assert.equal(JSON.parse(w.items.get("conn-gohighlevel-sales").fields.config).headers.version, "2022-01-01");
+  assert.equal(JSON.parse(w.items.get("conn-gohighlevel-sales").fields.config).headers.Version, "2022-01-01");
   assert.equal((await w.m.get("gohighlevel-sales")).declaration.headers.Version, "2022-01-01");
   assert.deepEqual(await w.m.remove("gohighlevel-sales", "deck"), { id: "gohighlevel-sales", removed: true });
   assert.ok(!w.items.has("conn-gohighlevel-sales")); assert.ok(w.items.has("ghl-pat"), "the key's own item stays");
