@@ -169,8 +169,8 @@ export function summaryFrame(summary, answer, o) {
   let chart;
   if (isObj(map.chart)) {
     const src = getPath(answer, map.chart.rows);
-    const points = (Array.isArray(src) ? src : []).slice(0, 24).map((/** @type {any} */ r) => ({ label: clip(getPath(r, map.chart.label), 24), value: Number(numText(getPath(r, map.chart.value))) }))
-      .filter((/** @type {any} */ p) => p.label && Number.isFinite(p.value));
+    const points = (Array.isArray(src) ? src : []).slice(0, 24).map((/** @type {any} */ r) => ({ label: clip(getPath(r, map.chart.label), 24), ok: numText(getPath(r, map.chart.value)) !== "", value: Number(numText(getPath(r, map.chart.value))) }))
+      .filter((/** @type {any} */ p) => p.label && p.ok && Number.isFinite(p.value)).map((/** @type {any} */ p) => ({ label: p.label, value: p.value }));
     if (points.length) chart = { kind: map.chart.kind === "line" ? "line" : "bar", points };
   }
   return bounded({ v: 1, kind: "summary", title: clip(o.title, 60), cards, ...(chart ? { chart } : {}), ...(cards.length || chart ? {} : { empty: clip(summary.empty || "Nothing to count yet.", 200) }) });

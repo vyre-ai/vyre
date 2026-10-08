@@ -1231,7 +1231,7 @@ export class Registry {
         // relay without them would be refused for every person who asks an agent from a device.
         const cur = m.name === "agents" && agentsMayRelay(tool) ? currentCall() : null;
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
-        return this.call(tool, input, String(as), { ...(m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed, ...asked });
+        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under

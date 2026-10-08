@@ -80,7 +80,7 @@ test("views: views.list shows every view with its kind, from `views` and from th
 test("views: a board frame groups the cards into the declared columns, puts a stranger into Other, and carries action ids", async t => {
   const { c } = await world(t);
   const f = (await c("views.get", { module: "cards", command: "board" })).data;
-  assert.equal(f.kind, "board");
+  assert.equal(f.kind, "board", JSON.stringify(f));
   assert.equal(f.from, "cards", "an added module's frame says whose it is");
   assert.deepEqual(f.columns.map((/** @type {any} */ x) => [x.id, x.rows.map((/** @type {any} */ r) => r.id)]), [["todo", ["c1"]], ["doing", ["c2"]], ["done", []], ["other", ["c3"]]]);
   assert.deepEqual(f.columns[0].rows[0].actions.map((/** @type {any} */ a) => a.id), ["move", "nudge"]);
