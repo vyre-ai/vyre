@@ -1899,7 +1899,7 @@ export class Switchboard {
    */
   async seedFor({ chain, rec, thread = null, roll = 1, kind = "roll", since = 0 }) {
     const [ptr, dec] = await Promise.all([
-      this.deps.call("recall.pointers", { sessions: chain, tail_chars: Math.floor(ROLL.tailChars * 0.8), lines: ROLL.lines }).catch(() => null),
+      this.deps.call("recall.pointers", { sessions: chain, tail_chars: Math.floor((kind === "roll" ? ROLL : SWITCH).tailChars * 0.8), lines: ROLL.lines }).catch(() => null),
       this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null),
     ]);
     const held = ptr && !ptr.error && ptr.data && Array.isArray(ptr.data.tail) && ptr.data.tail.length ? ptr.data : null;
