@@ -187,7 +187,6 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
   const r = await joining;
   assert.equal(r.ok, true, JSON.stringify(r));
-  console.error("DBG", JSON.stringify(r.paired), rows(w, r.paired.device));
   assert.ok(r.done.owner, "the adopt returned the owner");
   assert.equal(r.done.session, true);
   assert.equal(rows(w, r.paired.device).length, 1, "the device exists after the typed ack");
@@ -199,20 +198,21 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   assert.ok(c.reply && c.reply.device === r.paired.device, `the reconnect is the paired device: ${JSON.stringify(c.reply)}`);
 });
 
-test("typed code -> adopt: a wrong ack finishes nothing and a server without a name to own it says so", async t => {
+test("typed code -> adopt: a wrong ack finishes nothing and the server stays unowned", async t => {
   typedOn(t);
   const { ident, w } = await setup(t);
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const ks = keystore(t);
   const states = [];
-  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
-    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() } });
-  const ack = await until(() => states.find(s => s.state === "ack"));
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 3000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: nodeCrypto(), keyStore: ks } });
+  await until(() => states.find(s => s.state === "ack"));
   await until(() => w.events.find(e => e[0] === "wink.found"));
-  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: "WINK-0000-0000" }, "cli", PROOF)).data.ok, false);
   const r = await joining;
   assert.equal(r.ok, false);
-  assert.equal(r.reason, "needs_identity", "a server's pairing cannot finish without the name that will own it");
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.some(d => d.id === "self"), false, "the server is not owned");
 });
 
 test("--pair-to server: the long code finishes at once with the identity's proof, and a wrong identity is refused", async t => {
