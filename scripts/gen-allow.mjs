@@ -27,7 +27,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
   "sidebar.get": "reads the sidebar: the Space's default, the person's own list and the installed module screens that can be added",
-  "sidebar.edit": "arranges the person's own sidebar (add, remove, hide, show, move, group); the team's default is refused to anyone but the person at their own surface",
+  "sidebar.edit": "arranges the caller's own sidebar (add, remove, hide, show, move, group): a reversible change to the person's own list; the Space's default is sidebar.team, which is held",
   "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
   "spaces.storage.get": "reads the caller's own per-member storage; the kernel's grants decide",
   "spaces.storage.list": "lists the caller's own per-member storage; the kernel's grants decide",

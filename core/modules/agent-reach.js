@@ -438,6 +438,7 @@ export const ASK_FIRST = new Map([
   ["files.drive.url", "leaves the Space: makes a link"],
   ["files.send", "leaves the Space: sends a file"],
   ["agents.delete", "destructive"],
+  ["sidebar.team", "changes what everyone in the Space sees in their sidebar: held for an owner or admin's yes"],
   ["files.drive.link.create", "leaves the Space: makes a link that gives outsiders access to a file"],
   ["threads.delete", "destructive: deletes a thread for good"],
   ["threads.rewind", "destructive: rewinds a thread, and with restore its files, to an earlier turn"],
