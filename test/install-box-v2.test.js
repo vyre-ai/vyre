@@ -658,3 +658,29 @@ test("install-box.sh: a site that does not list VERSION cannot confirm a named v
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /does not say which version it serves/);
 });
+
+test("install-box.sh v2: the four words are waited for while the server starts, and the person is told once that it is waiting", t => {
+  // the server answers with no words for the first four asks, then with the words
+  const counter = path.join(os.tmpdir(), `vyre-words-${process.pid}-${Date.now()}`);
+  t.after(() => fs.rmSync(counter, { force: true }));
+  const docker = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) n=$(cat "${counter}" 2>/dev/null || echo 0); n=$((n + 1)); echo $n >"${counter}"; if [ $n -ge 7 ]; then echo '{"data":{"words":"lantern quiet river oak"}}'; fi ;; esac ;; esac; exit 0`;
+  const b = box(t, { docker });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Your four words: lantern quiet river oak/);
+  assert.equal((r.stdout.match(/Waiting for the server to be ready to show the four words/g) || []).length, 1, "said once");
+  assert.doesNotMatch(r.stdout, /did not show yet/);
+});
+
+test("vyre (box wrapper): a command that needs Docker, run by an account that cannot use it, says to use sudo and not a raw socket error", t => {
+  const b = box(t, { docker: 'case "$1" in info) echo "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock" >&2; exit 1 ;; *) exit 0 ;; esac' });
+  fs.mkdirSync(b.dir, { recursive: true }); fs.writeFileSync(path.join(b.dir, "compose.yml"), "services: {}\n"); // a box is installed here
+  for (const cmd of [["uninstall", "--yes"], ["up"], ["status"], ["words"]]) {
+    const r = spawnSync("sh", [BOXVYRE, ...cmd], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: b.env });
+    assert.notEqual(r.status, 0, cmd.join(" "));
+    assert.match(r.stdout + r.stderr, new RegExp(`run it with sudo: sudo vyre ${cmd.join(" ")}`), cmd.join(" "));
+    assert.doesNotMatch(r.stdout + r.stderr, /docker API/, cmd.join(" "));
+  }
+  // help needs no Docker
+  assert.doesNotMatch(spawnSync("sh", [BOXVYRE, "help"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: b.env }).stderr, /sudo vyre/);
+});
