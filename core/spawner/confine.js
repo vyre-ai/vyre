@@ -32,6 +32,7 @@ export async function confineSelfTest(o) {
   let text = "";
   child.stdout.on("data", (/** @type {any} */ d) => { text += d; });
   child.stderr.on("data", () => {});
+  child.stdin.on("error", () => {});
   try { child.stdin.end(); } catch { /* the probe reads nothing */ }
   const killer = () => { try { child.kill("SIGKILL"); } catch {} };
   if (o.signal) { if (o.signal.aborted) killer(); else o.signal.addEventListener("abort", killer, { once: true }); }
