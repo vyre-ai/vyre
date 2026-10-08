@@ -3,6 +3,9 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(approvals): a card the registry held now names its asker as its device. Before, the asker's retry with the card the phone approved was refused as a wrong request, so every outward call an assistant made and the person approved stayed refused.
+- fix(install): the four words are waited for (up to three minutes) while the server starts, with one line saying it is waiting, before the installer ever falls back to the "run vyre words" hint. The Mac server installer does the same.
+- fix(vyre): a command that needs Docker, run by an account that cannot use it, says "this account cannot use Docker, so run it with sudo: sudo vyre <command>" and not a raw docker socket error.
 - fix(security): an added module can never name a tool that pairs, admits or drops a device or sets the server up (the relay, link, wink and presence families, except their read-only status tools). `vyre module check` and the loader refuse a manifest that lists one, and a call to one from an added module is denied whatever its needs.tools say. test/added-module-never.test.js runs real added modules in a real daemon with the real presence check.
 - fix(security): only first-party modules may reach another machine. An added module is refused by ctx.remote and by link.call, link.remote and link.upload on a Mac, before anything is forwarded; Vyre's own modules (Files, Planner, Sync) are unchanged. test/remote-first-party.test.js refuses every model and added-module caller for each carrier.
 - docs(readme): the Lumen film is captioned as where 0.3.0 is heading, until a walk on real devices shows it working.

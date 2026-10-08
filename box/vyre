@@ -1983,6 +1983,15 @@ admin() {
   esac
 }
 
+# A command that talks to Docker, run by an account that cannot (not root and not in the docker group): say what to do, not a raw socket error. The installer tells the same account to use sudo.
+needs_docker_access() {
+  [ "$(id -u)" = 0 ] && return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  docker info >/dev/null 2>&1 && return 0
+  die "this account cannot use Docker, so run it with sudo: sudo vyre $*"
+}
+case "${1:-}" in ""|help|-h|--help|publish-release|update-from-request|space-helper-run) ;; *) needs_docker_access "$@" ;; esac
+
 case "${1:-}" in up|update) expire_code ;; esac
 case "${1:-}" in
   up)

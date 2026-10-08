@@ -645,12 +645,14 @@ start_service() {
 # talking to. Words that still cannot be read are said so, with the one command that shows them.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  # The server can take a while to answer the first time it starts, so this waits up to three minutes, says so once, and only then gives up.
   n=0
-  while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
+  while [ "$n" -lt "${VYRE_WORDS_TRIES:-180}" ]; do
     out=$("$BIN/vyre" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
     words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
     if [ -n "$words" ]; then say "  Your four words: $words"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
     n=$((n + 1)); sleep 1
+    [ "$n" = 5 ] && say "  Waiting for the server to be ready to show the four words."
   done
   say "  The four words did not show yet. To see them, run: $BIN/vyre words"
 }

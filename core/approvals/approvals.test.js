@@ -82,3 +82,26 @@ test("the calling device comes from the verified peer, not the caller label: a `
   assert.equal((await w.run("approvals.answer", { id: a.id, approve: false }, { caller: "device:other" })).answered, "refused", "a label alone is not a device");
   void card;
 });
+
+import { configureYes, yes } from "../../lib/one-yes.js";
+test("approvals.hold: a held outward call, approved with a real yes(), is spent by the asker's retry (the card names its asker as its device)", async () => {
+  const w = await world();
+  const proofOk = { ok: true };
+  configureYes({ softwareOk: () => true, verify: async ({ proof }) => (proof && proof.ok === true ? null : "bad_signature") });
+  try {
+    const f = { to: "juno", input_sha256: "a".repeat(32) };
+    const held = await w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" });
+    const [card] = (await w.run("approvals.pending", {}, { caller: "device:phone" })).approvals;
+    const answered = await w.run("approvals.answer", { id: held.id, approve: true }, { caller: "device:phone", proof: { ...proofOk, payload_hash: card.payload_hash } });
+    assert.equal(answered.answered, "approved");
+    // the asker's retry: the registry names the asker as the device and spends the card for exactly this call
+    const spent = await yes("outward", { op: "mail.send", fields: f, device: "mcp:agent:kit" }, { card: held.id });
+    assert.deepEqual(spent, { ok: true, strength: "real" });
+    // once; and not for another asker, nor another call
+    assert.deepEqual(await yes("outward", { op: "mail.send", fields: f, device: "mcp:agent:kit" }, { card: held.id }), { ok: false, reason: "replayed" });
+    const again = await w.run("approvals.hold", { tool: "mail.send", fields: { ...f, to: "kit" }, from: "mcp:agent:kit" }, { caller: "module:registry" });
+    await w.run("approvals.answer", { id: again.id, approve: true }, { caller: "device:phone", proof: { ...proofOk, payload_hash: (await w.run("approvals.pending", {}, {})).approvals.find((/** @type {any} */ c) => c.id === again.id).payload_hash } });
+    assert.equal((await yes("outward", { op: "mail.send", fields: { ...f, to: "kit" }, device: "mcp:agent:other" }, { card: again.id })).ok, false, "another asker cannot spend it");
+    assert.equal((await yes("outward", { op: "mail.send", fields: f, device: "mcp:agent:kit" }, { card: again.id })).ok, false, "nor for another call");
+  } finally { configureYes({ verify: null }); }
+});
