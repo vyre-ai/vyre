@@ -30,7 +30,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
 import { json, emit, EXIT, viewing } from "../kit.js";
 import { execFileSync, spawnSync } from "node:child_process";
-import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../vyre-core/online.js";
+import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../lib/online.js";
 
 /** The whole run's budget, and one check's. */
 export const BUDGET_MS = 2000;
@@ -288,7 +288,7 @@ export async function diagnose(deps = {}) {
     return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
   }) : Promise.resolve(null);
 
-  // A Mac that is a server (the system service is installed) must come back by itself: after a power cut it boots, it never sleeps (vyre-core/online.js). Not applicable anywhere else.
+  // A Mac that is a server (the system service is installed) must come back by itself: after a power cut it boots, it never sleeps (lib/online.js). Not applicable anywhere else.
   const sysRun = deps.sysRun || ((cmd, args) => execFileSync(cmd, args, { encoding: "utf8", timeout: 1200, stdio: ["ignore", "pipe", "ignore"] }));
   const macServer = (deps.platform || process.platform) === "darwin" && fs.existsSync(deps.coreJson || "/Library/Application Support/Vyre/core.json");
   const alwaysOn = !macServer ? Promise.resolve(null) : (async () => {
