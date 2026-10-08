@@ -78,3 +78,10 @@ export function listenCommands(go: (route: string) => void, back: () => void, fo
 export async function shellSetupDone(): Promise<void> {
   try { await shellIdentity()?.setupDone?.(); } catch { /* the app keeps opening its window until this lands */ }
 }
+
+/** Does this window run the page with no server of its own (the Mac app on a server Mac, or the Windows app, whose window is the bundled app at every run)? Such a page gates on setup and talks to its server over the relay. */
+export function isBoxless(): boolean {
+  const w = typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: { kind?: string; boxless?: boolean } });
+  const s = w?.__vyreShell;
+  return !!s && (s.kind === "mac" || s.kind === "windows") && s.boxless === true;
+}

@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(app): the Windows app's window is a boxless window like the Mac's server-Mac window (setup gate), so its first run opens on the install flow instead of "Now did not load".
 - feat(windows-app): one origin for the life of the app: the window is always the bundled app at https://vyreapp.localhost (before and after pairing), a Windows build without the web build fails, and the app starts hidden in the tray once the page says setup has finished (setup_finished).
 - feat(names): the names Worker accepts the Windows app's window origin (https://vyreapp.localhost) for the self-proving claim, finalize, append and update routes, beside the hosted app and the Mac window. The live Worker is not redeployed by this change (the lead's go).
 - docs: Install now uses the app's Same and Not the same buttons, names Windows Hello (with its fallback), the Mac server's Touch ID and boot start, the My Home to My Cloud upgrade, and `vyre words`.

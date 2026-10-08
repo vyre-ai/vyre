@@ -74,6 +74,7 @@ const shot = async (n) => { if (page) await page.screenshot({ path: path.join(OU
 const check = async (name, fn) => {
   let ok = false, said = "";
   try { said = (await fn()) || ""; ok = true; } catch (e) { said = String(e && e.message || e).split("\n")[0].slice(0, 300); }
+  if (!ok && page) { try { const t = await page.evaluate(() => document.body.innerText); said += " | page says: " + String(t).replace(/\s+/g, " ").slice(0, 300); } catch { /* the page is gone */ } }
   await shot(name);
   results.push({ name, ok, note: said });
   note(`${ok ? "PASS" : "FAIL"}   ${name}${said ? ": " + said : ""}`);
@@ -132,12 +133,13 @@ public class W {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, uint m, int w, StringBuilder l);
 }
 "@
 $h = [W]::FindWindow("#32770", "Vyre")
 if ($h -eq [IntPtr]::Zero) { Write-Output "NODIALOG"; exit 0 }
 $text = ""; $c = [IntPtr]::Zero
-while ($true) { $c = [W]::FindWindowEx($h, $c, "Static", $null); if ($c -eq [IntPtr]::Zero) { break }; $sb = New-Object System.Text.StringBuilder 1024; [void][W]::GetWindowText($c, $sb, 1024); if ($sb.Length -gt 0) { $text += $sb.ToString() } }
+while ($true) { $c = [W]::FindWindowEx($h, $c, "Static", $null); if ($c -eq [IntPtr]::Zero) { break }; $sb = New-Object System.Text.StringBuilder 1024; [void][W]::SendMessage($c, 0x000D, 1024, $sb); if ($sb.Length -gt 0) { $text += $sb.ToString() } }
 Write-Output ("TEXT:" + ($text -replace "[\r\n]+", " | "))
 [void][W]::SendMessage($h, 0x111, [IntPtr]::new($env:ANSWER), [IntPtr]::Zero)
 Write-Output "ANSWERED"
