@@ -450,7 +450,13 @@ export function install(opts, seams = {}) {
   done("launchd");
 
   // 7. The enrolment code, as _vyre, from the bundled node and the tree we just verified.
-  const out = run("/usr/bin/sudo", ["-n", "-u", ACCOUNT, "/usr/bin/env", "-i", `PATH=${SAFE_PATH}`, `VYRE_CORE_OWNER=${opts.ownerUid}`, RUNTIME.node, RUNTIME.mainJs, "code"]);
+  // core was only just started and is making its database for the first time; this command opens the same database, and the two migrations can collide ("UNIQUE constraint failed:
+  // _migrations", seen on the hosted Mac runner). The second try finds it migrated, so a failure is tried again a few times before it ends the install.
+  /** @type {any} */ let out;
+  for (let attempt = 1; ; attempt++) {
+    try { out = run("/usr/bin/sudo", ["-n", "-u", ACCOUNT, "/usr/bin/env", "-i", `PATH=${SAFE_PATH}`, `VYRE_CORE_OWNER=${opts.ownerUid}`, RUNTIME.node, RUNTIME.mainJs, "code"]); break; }
+    catch (e) { if (attempt >= 6) throw e; pause(1500); }
+  }
   const [code, expires] = String(out).trim().split(/\s+/);
   if (!code) throw new Error("vyre-core did not print an enrolment code");
   done("enrol-code");

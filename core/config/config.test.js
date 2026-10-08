@@ -313,3 +313,13 @@ test("config: fingerprint8() matches the spec's formula, the first 8 bytes of sh
   assert.notEqual(config.fingerprint8(id), config.fingerprint8("f".repeat(32)), "a different id fingerprints differently");
   assert.match(config.fingerprint8(id), /^[A-Za-z0-9_-]{11}$/, "base64url, no padding, of 8 raw bytes");
 });
+
+test("config: a Mac set up as a server (machine server, no role named) is role box, so the box-only modules run; a role the person named stays", t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server" }));
+  const mac = config.load(root, "darwin");
+  assert.equal(mac.machine, "server"); assert.equal(mac.role, "box");
+  assert.equal(config.load(tempHome(t), "darwin").role, "local", "a Mac with no config is still a Home");
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server", role: "local" }));
+  assert.equal(config.load(root, "darwin").role, "local", "the role the person named is theirs");
+});

@@ -31,6 +31,7 @@ import { addDeviceCore } from "../../../apps/app/src/identity/add-device-core.js
 import { phoneAsk, added } from "../../../apps/app/screens/devices/real.js";
 import * as C from "../../../kernel/identity/chain.js";
 import { enrolDevice } from "../../../apps/app/src/identity/enrol-device.js";
+import { serveEnrolWith } from "../../../apps/app/src/real/enrol-serve.js";
 
 const b64u = (/** @type {Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const until = async (/** @type {() => any} */ fn, ms = 30_000, what = "the app") => { const end = Date.now() + ms; while (Date.now() < end) { const v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, 40)); } throw new Error(`timed out waiting for ${what}`); };
@@ -186,20 +187,19 @@ export function createApp(o) {
 
   /**
    * Serve the pending device enrolment: the server could not put the new device's key on the name's list (the key lives in this app), so this app signs the list change, sends it to the directory and tells
-   * the server. apps/app/src/real/enrol-phone.ts serveEnrol does this on the phone and the computer; that file is TypeScript on the app's box client, so its steps are repeated here around the app's own
-   * enrolDevice (identity/enrol-device.js) and must be kept in step with it. Resolves true when a request was served.
-   * @param {{ timeoutMs?: number }} [a]
+   * the server. The steps are the app's own (apps/app/src/real/enrol-serve.js serveEnrolWith, the same one the Devices screen runs) with this headless app's call, identity and signer handed in.
+   * Resolves true when a request was served. @param {{ timeoutMs?: number }} [a]
    */
   async function serveEnrol(a = {}) {
-    const ask = /** @type {any} */ (await until(async () => { const r = await callTool("wink.phone.pairing", {}); return r && r.enrol ? r : null; }, a.timeoutMs || 20_000, "the server to ask this app to add the device"));
-    const e = ask.enrol;
-    const tell = (/** @type {boolean} */ ok, /** @type {string} */ reason, /** @type {any} */ identity) => callTool("wink.phone.enrolled", { device: e.device, ok, ...(reason ? { reason } : {}), ...(identity ? { identity } : {}) });
-    try {
-      const done = await enrolDevice({ name: me.name, eid: me.key.eid, pin: me.pin, base: o.directory, sign: (/** @type {Uint8Array} */ m) => me.key.sign(m), entry: e.entry });
-      me = { ...me, ops: done.ops, pin: done.pin };
-      await tell(true, "", { id: me.id, vyre: me.name });
-    } catch (err) { await tell(false, String(/** @type {Error} */ (err).message || "The device could not be added to your name."), null); throw err; }
-    return true;
+    await until(async () => { const r = await callTool("wink.phone.pairing", {}); return r && r.enrol ? r : null; }, a.timeoutMs || 20_000, "the server to ask this app to add the device");
+    let failure = null;
+    const served = await serveEnrolWith({
+      call: async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "wink.phone.enrolled" && input && input.ok === false) failure = input.reason; return callTool(tool, input || {}); },
+      identity: async () => me, held: async () => false, signers: async (/** @type {any} */ mine) => ({ sign: (/** @type {Uint8Array} */ m) => mine.key.sign(m) }),
+      enrol: enrolDevice, save: async (/** @type {any} */ i) => { me = { ...me, ops: i.ops, pin: i.pin }; }, base: o.directory,
+    });
+    if (failure) throw new Error(String(failure));
+    return served;
   }
 
   /** This (new, name-less) device joins the name held by another device: the app's addDeviceCore with the relay's phonepair as its pairing. @param {{ payload: string, onWords?: (w: string) => void }} a */
