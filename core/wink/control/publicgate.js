@@ -36,7 +36,8 @@ const DAY = 86_400_000;
  *   upstream: { port: number },                 the Headscale the loopback gate already fronts
  *   listen?: { host?: string, port?: number },  default 0.0.0.0 and config port
  *   acme?: "production" | "staging" | string,   a name from acme.DIRECTORIES or a directory URL (a test CA)
- *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null> },   public webhooks and share links (control/gate.js): the loopback ports to carry them to
+ *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null> },   public webhooks, share links and app modules' own hosts (control/gate.js): the loopback ports to carry them to
+ *   apps?: () => boolean | Promise<boolean>,    has this box an app module installed: the certificate then covers *.<name> too and the directory points *.<name> here (and stops when the last app is removed)
  *   onIngress?: (base: string | null) => void,   told the https origin links and webhooks use when it appears (the gate is up and the name points here) and null when it goes
  *   reachable?: () => boolean,                  has the outside check proved the port answers
  *   publish?: boolean,                          publish the address without waiting for the outside check (the person's word: this box is directly on the internet)
@@ -66,28 +67,35 @@ export function createPublicGate(o) {
   };
   const accountWhich = () => (o.acme === "staging" ? "staging" : "production");
 
-  /** The certificate on disk if it is good for a while, else a fresh one by DNS-01 through the directory, with the SAME key as before. @param {string} name @param {string} host */
-  async function ensureCert(name, host) {
+  /** Does this box have an app module installed? Never throws. */
+  const appsNow = async () => { try { return o.apps ? Boolean(await o.apps()) : false; } catch { return false; } };
+  let wantApps = false, publishedApps = false, certApps = false;
+
+  /** The certificate on disk if it is good for a while and covers the names, else a fresh one by DNS-01 through the directory, with the SAME key as before. With apps the names are [host, *.host] (one order, two challenges at the same label). @param {string} name @param {string} host @param {boolean} [withApps] */
+  async function ensureCert(name, host, withApps = false) {
+    const names = withApps ? [host, `*.${host}`] : [host];
     const have = D.certs.load(o.dir, host);
-    if (have && !D.acme.needsRenewal(have.cert, now(), renewDays)) return { ...have, renewed: false };
+    if (have && !D.acme.needsRenewal(have.cert, now(), renewDays) && (!withApps || (D.acme.covers ? D.acme.covers(have.cert, names) : false))) return { ...have, renewed: false, apps: withApps };
     set("getting-cert");
     log(`wink net: getting a certificate for ${host}`);
     const r = await D.acme.issue({
-      names: [host], directory: acmeUrl(), accountKey: D.certs.accountKey(o.dir, accountWhich()),
+      names, directory: acmeUrl(), accountKey: D.certs.accountKey(o.dir, accountWhich()),
       ...(have ? { certKey: have.key } : {}),
       dns: { set: async (/** @type {string} */ _f, /** @type {string} */ value) => { await o.directory.acme(name, value); return name; }, clear: async (/** @type {string} */ h) => { await o.directory.acmeClear(String(h)); } },
       ...(D.waitDns ? { waitDns: D.waitDns } : {}), log: m => log(`wink net: ${m}`),
     });
     D.certs.save(o.dir, host, { cert: r.cert, key: r.key });
-    return { cert: r.cert, key: r.key, expires: r.expires, renewed: true };
+    return { cert: r.cert, key: r.key, expires: r.expires, renewed: true, apps: withApps };
   }
 
   /** Publish the name's address when the port is known to answer from outside (or the person said so). Never throws. */
   async function publishIfReady() {
     const name = o.name();
-    if (!name || !gate || published === name) return;
+    if (!name || !gate || (published === name && publishedApps === wantApps)) return;
     if (!(o.publish === true || (o.reachable && o.reachable()))) return;
-    try { await o.directory.publish(name); published = name; log(`wink net: ${name}.${domain} points at this box`); told(); }
+    // The wildcard goes into DNS only once the certificate that covers it is in hand: a name that resolves before it can be served would show a certificate error.
+    const withApps = wantApps && certApps;
+    try { await (withApps ? o.directory.publish(name, { apps: true }) : o.directory.publish(name)); published = name; publishedApps = withApps; log(`wink net: ${name}.${domain} points at this box${withApps ? ", and so do its apps" : ""}`); told(); }
     catch (e) { log(`wink net: could not publish the address: ${/** @type {Error} */ (e).message}`); }
   }
 
@@ -106,10 +114,11 @@ export function createPublicGate(o) {
     if (!name) { set("no-name", "this box has no name yet"); return status(); }
     fqdn = `${name}.${domain}`;
     try {
-      const c = await ensureCert(name, fqdn);
-      expires = c.expires;
+      wantApps = await appsNow();
+      const c = await ensureCert(name, fqdn, wantApps);
+      expires = c.expires; certApps = Boolean(c.apps);
       if (!gate) {
-        gate = D.createGate({ listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port }, ...(o.ingress ? { ingress: o.ingress } : {}),
+        gate = D.createGate({ listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port }, ...(o.ingress ? { ingress: o.ingress.apps ? { ...o.ingress, appsSuffix: `.${fqdn}` } : o.ingress } : {}),
           onEvent: (/** @type {any} */ e) => { if (e && e.type !== "accept") log(`public gate: ${e.type}${e.addr ? " " + e.addr : ""}`); } });
         at = await gate.listen();
       } else if (c.renewed) gate.setTls({ cert: c.cert, key: c.key });
@@ -135,7 +144,7 @@ export function createPublicGate(o) {
     return {
       state: st.state, why: st.why, since: st.since,
       name: fqdn, port: at ? at.port : null, expires: expires || null,
-      pin: gate && gate.pin ? gate.pin : null, published: Boolean(published), ingress: Boolean(o.ingress),
+      pin: gate && gate.pin ? gate.pin : null, published: Boolean(published), ingress: Boolean(o.ingress), apps: wantApps && certApps && publishedApps,
     };
   }
 
@@ -143,6 +152,17 @@ export function createPublicGate(o) {
     start, status,
     /** The reach helper has a new answer: publish now if the port just proved reachable. */
     reachChanged() { return publishIfReady(); },
+    /**
+     * An app module was installed or the last one was removed. The first app gets a certificate that covers *.<name> and then the wildcard in DNS; the removal of the last takes the wildcard out of DNS
+     * (the certificate keeps its names until its next renewal, which asks for [name] alone). Never throws.
+     */
+    async appsChanged() {
+      const w = await appsNow();
+      if (w === wantApps || stopped) return;
+      if (w && gate) { await start().catch(() => {}); return; }
+      wantApps = w;
+      await publishIfReady();
+    },
     /** The https origin public links and webhooks use (https://<name>.vyre.run:<port>), or null until the gate is up with a certificate AND the name points here. */
     ingressBase() { return o.ingress && gate && fqdn && at && published ? `https://${fqdn}:${at.port}` : null; },
     /** The address devices dial, or null while there is none (no name, no certificate yet). */

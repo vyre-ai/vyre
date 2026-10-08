@@ -60,8 +60,8 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     check: name => call("GET", `/v1/names/check?name=${encodeURIComponent(name)}`),
     /** @param {string} name @param {string} ip */
     point: (name, ip) => call("POST", "/v1/names/point", { name, ip }),
-    /** The name's A record becomes the public IPv4 this request comes from (never one the caller names): for a box that serves its own network gate. @param {string} name */
-    publish: name => call("POST", "/v1/names/publish", { name }),
+    /** The name's A record becomes the public IPv4 this request comes from (never one the caller names): for a box that serves its own network gate. With `apps`, `*.<name>` follows it (an app module is installed). @param {string} name @param {{ apps?: boolean }} [o] */
+    publish: (name, o) => call("POST", "/v1/names/publish", o && o.apps === true ? { name, apps: true } : { name }),
     /** @param {string} name @param {string} token */
     acme: (name, token) => call("POST", "/v1/names/acme", { name, token }),
     /** @param {string} name */

@@ -320,6 +320,24 @@ test("public gate: claiming a name restarts the network so the address follows i
   await n.stop();
 });
 
+test("public gate apps: netd hands the gate the apps question and passes an app being installed or removed on to it", async () => {
+  const apps = async () => true;
+  const f = fakes(), p = fakePublic();
+  let changed = 0;
+  const n = createNetd(base(f, { name: () => "alex", directory: dirStub, apps, deps: { ...f.deps, createPublicGate: (/** @type {any} */ o) => { const g = p.createPublicGate(o); g.appsChanged = async () => { changed++; }; return g; } } }));
+  await n.start();
+  assert.equal(p.made[0].o.apps, apps);
+  await n.appsChanged();
+  assert.equal(changed, 1);
+  await n.stop();
+  // without a public gate (or with a gate that predates apps) it is a no-op, never an error
+  const f2 = fakes(), p2 = fakePublic();
+  const n2 = createNetd(base(f2, { name: () => null, directory: dirStub, deps: { ...f2.deps, createPublicGate: p2.createPublicGate } }));
+  await n2.start();
+  await n2.appsChanged();
+  await n2.stop();
+});
+
 test("public ingress: netd hands the gate the two loopback ports and reports the origin links use, in plain states", async () => {
   const ports = { hooks: () => 7310, share: () => 7311 };
   const told = /** @type {any[]} */ ([]);

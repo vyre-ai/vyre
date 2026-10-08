@@ -142,6 +142,8 @@ export function createFlows(o) {
     tick: () => runner.tick(),
     /** A watcher found something new (see watcher-bridge.js): starts the Flows armed on it, once per item. */
     watcherItem: w => runner.watcherItem(w),
+    /** An inbound call at a web trigger's path (an app module's webhook, a form): the host has authenticated it and labelled its trust. See runner.handleWeb. */
+    handleWeb: (path, req) => runner.handleWeb(path, req),
     nextWake: () => runner.nextWake(),
     recover: () => runner.recover(),
     text: printFlow,
