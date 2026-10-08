@@ -36,38 +36,10 @@ test("the key id is the one core gives a key", async () => {
   assert.equal(presenceKeyId(k.spki), fingerprint(Buffer.from(k.spki).toString("base64url")));
 });
 
-test("a real core, a server's: the setup key is its first key, and the app's own key is then enrolled by this proof (and by no other)", async t => {
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "cp-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const page = await pageKey(), mine = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const pageB64 = Buffer.from(page.spki).toString("base64url");
-  const myPub = mine.publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const opened = openStore(path.join(dir, "data")); armFirstKey(opened.db, /** @type {string} */ (fingerprintOf(pageB64))); opened.db.close();
-  const socket = path.join(dir, "c.sock");
-  const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, dev: true, server: true, notModel: () => true });
-  t.after(() => c.close());
-  c.presence.softwareOk = () => true;
-  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ header) => coreTool(tool, input, { socket, coreUid: uid, ...(header ? { presence: header } : {}) });
-  assert.ok((await call("presence.enroll.first", { kind: "device", name: "setup page", public_key: pageB64, alg: -7 })).data);
-
-  const hello = await withCoreProof({ public_key: myPub, alg: -7, storage: "software" }, { pageKey: page, name: "the test Mac" });
-  assert.equal(hello.core_name, "the test Mac");
-  const body = { kind: "device", name: hello.core_name, public_key: myPub, alg: -7 };
-  const ok = await call("presence.enroll", body, hello.core_proof);
-  assert.ok(ok.data && ok.data.id, JSON.stringify(ok));
-  assert.equal(c.presence.keys().length, 2);
-
-  // not the key, the name or the tool that was signed
-  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const h2 = await withCoreProof({ public_key: other, alg: -7 }, { pageKey: page, name: "x" });
-  assert.ok((await call("presence.enroll", { ...body, public_key: other }, hello.core_proof)).error, "a proof for another key does not carry");
-  assert.ok((await call("presence.enroll", { kind: "device", name: "y", public_key: other, alg: -7 }, h2.core_proof)).error, "nor for another name");
-  assert.ok((await call("presence.enroll", { kind: "device", name: "x", public_key: other, alg: -7 }, h2.core_proof)).data, "the right one does");
-});
-
-test("with no setup key, or no key to offer, the hello is left as it was", async () => {
+test("with no setup key, or no Secure Enclave key, the hello is left as it was", async () => {
   const pk = { public_key: "abc", alg: -7 };
   assert.deepEqual(await withCoreProof(pk, { name: "n" }), pk);
+  assert.deepEqual(await withCoreProof(pk, { pageKey: await pageKey(), name: "n" }), pk, "a key that is not the Secure Enclave's is not handed over: a release core refuses a software proof");
   assert.equal(await withCoreProof(undefined, { pageKey: await pageKey(), name: "n" }), undefined);
 });
 

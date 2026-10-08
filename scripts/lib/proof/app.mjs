@@ -62,6 +62,8 @@ export function createApp(o) {
     keyId: async () => keyIdFromXY(String(jwk.x), String(jwk.y)),
     sign: async (/** @type {string} */ message) => crypto.sign("sha256", Buffer.from(message), { key: personKey.privateKey }).toString("base64url"),
     nonce: () => crypto.randomBytes(16).toString("base64url"),
+    // a Mac server holds this Mac's key as its Capsule key (stand-in for the Secure Enclave: a release core counts the METHOD, and cannot tell the chip), so it proves as one
+    ...(o.capsule ? { method: /** @type {const} */ ("capsule") } : {}),
   });
   const signPerson = async (/** @type {Uint8Array} */ m) => new Uint8Array(crypto.sign("sha256", Buffer.from(m), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" }));
 
@@ -90,7 +92,7 @@ export function createApp(o) {
     pairing = await pairServer({
       payload: qr, owner: { id: me.id, name: plainName(me.name), vyre: me.name, pin: me.pin },
       signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: me.key.eid, sig: b64u(await me.key.sign(m)) }),
-      name: o.label, crypto: relayCrypto, keyStore, presenceKey: await withCoreProof(presenceKey, { pageKey: ctx && ctx.pageKey, name: o.label }), about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
+      name: o.label, crypto: relayCrypto, keyStore, presenceKey: await withCoreProof(presenceKey, { pageKey: ctx && ctx.pageKey, name: o.label, enclave: o.capsule ? presenceKey.public_key : null }), about, pollMs: 100, deviceKind: "computer", keyStorage: "software",
       onWords: w => { words.push(w); lastWords = w; },
     });
     pairing.words = words;

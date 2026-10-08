@@ -48,17 +48,13 @@ export function spkiOfPoint(point) {
 }
 
 /**
- * The presence key this device offers in its pairing hello, with the proof a Mac server's core needs. With no setup key (a pairing that did not start from an install line) or no key to offer,
- * it is returned as it was. With `enclave` (this Mac's Secure Enclave key, SPKI base64url) the key offered IS that key, as the server's Capsule key: core takes it in the setup key's place, on the setup
+ * The presence key this device offers in its pairing hello, with the proof a Mac server's core needs. With no setup key (a pairing that did not start from an install line) or no Secure Enclave key (a phone's, a browser's key is software to a release core, which refuses it
+ * for this act), it is returned as it was. With `enclave` (this Mac's Secure Enclave key, SPKI base64url) the key offered IS that key, as the server's Capsule key: core takes it in the setup key's place, on the setup
  * key's signature over its enrolment, and its Touch ID proofs are the hardware kind a presence act on a release server needs.
  * @param {any} presenceKey @param {{ pageKey?: any, name: string, enclave?: string | null }} o
  */
 export async function withCoreProof(presenceKey, o) {
-  if (!o.pageKey) return presenceKey;
+  if (!o.pageKey || !o.enclave) return presenceKey;
   const name = String(o.name || "a device").slice(0, 80);
-  if (o.enclave) {
-    return { public_key: o.enclave, alg: -7, storage: "hardware", kind: "capsule", core_name: name, core_proof: await coreEnrolProof({ pageKey: o.pageKey, name, public_key: o.enclave, kind: "capsule" }) };
-  }
-  if (!presenceKey || typeof presenceKey.public_key !== "string") return presenceKey;
-  return { ...presenceKey, core_name: name, core_proof: await coreEnrolProof({ pageKey: o.pageKey, name, public_key: presenceKey.public_key }) };
+  return { public_key: o.enclave, alg: -7, storage: "hardware", kind: "capsule", core_name: name, core_proof: await coreEnrolProof({ pageKey: o.pageKey, name, public_key: o.enclave, kind: "capsule" }) };
 }
