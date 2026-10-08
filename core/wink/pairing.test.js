@@ -1249,6 +1249,46 @@ test("Add a phone: the phone's key-agreement point goes to the identity list wit
   }
 });
 
+test("Add a phone to a server that holds no identity: the request waits for the owner's app, which reports it; if the app never does, the phone is told after three minutes and stays paired", async () => {
+  const noIdentity = async (tool) => (tool === "spaces.identity.enrol" ? { error: { code: "no_identity", message: "Choose your Vyre name first." } } : undefined);
+  const pub = Buffer.alloc(32, 9).toString("base64url");
+  const start = async (clock) => {
+    const w = world({ ...OFF, now: () => clock.t, call: noIdentity });
+    await phoneOpen(w);
+    assert.equal(await w.p.phone.hold(PHONE), true);
+    await w.call("wink.phone.wait", { entry: { publicKey: pub, label: "iPhone" } }, { caller: "device:phoneabcdef" });
+    assert.equal((await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" })).yes, true);
+    return w;
+  };
+  // the owner's app answers
+  const c1 = { t: 1_000_000 };
+  const w = await start(c1);
+  const wait1 = await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
+  assert.equal(wait1.state, "enrolling", "the phone keeps waiting while the owner's app signs");
+  const q = await w.call("wink.phone.pairing");
+  assert.equal(q.asking, false);
+  assert.deepEqual([q.enrol.device, q.enrol.entry.publicKey], ["phoneabcdef", pub], "the owner's app is handed the key to sign");
+  assert.equal(w.events.some(e => e[0] === "wink.enrol-asked"), true);
+  await assert.rejects(() => w.call("wink.phone.enrolled", { device: "other", ok: true }), e => e.code === "not_found");
+  assert.equal((await w.call("wink.phone.enrolled", { device: "phoneabcdef", ok: true, identity: { id: ME, vyre: "alex" } })).ok, true);
+  const done = await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
+  assert.deepEqual([done.state, done.enrolled, done.identity], ["yes", true, { id: ME, vyre: "alex" }]);
+  assert.equal((await w.call("wink.phone.pairing")).enrol, undefined, "served once");
+  // nobody answers
+  const c2 = { t: 1_000_000 };
+  const x = await start(c2);
+  c2.t += 3 * 60_000 - 1;
+  assert.equal((await x.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" })).state, "enrolling", "still inside the three minutes");
+  c2.t += 2;
+  const late = await x.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
+  assert.equal(late.state, "yes");
+  assert.equal(late.enrolled, false);
+  assert.match(late.reason, /did not add this device in time/);
+  assert.equal(x.p.devices.list(ME).length, 1, "the phone stays paired");
+  assert.equal((await x.call("wink.phone.pairing")).enrol, undefined);
+  await assert.rejects(() => x.call("wink.phone.enrolled", { device: "phoneabcdef", ok: true }), e => e.code === "not_found", "a late answer is refused");
+});
+
 test("Add a phone: a no, or the wrong words, adds nothing and lets the phone go", async () => {
   for (const [answer, reasonSeen] of [[{ yes: false }, false], [{ yes: true, words: "amber coral wrong" }, true]]) {
     const w = world(OFF);
