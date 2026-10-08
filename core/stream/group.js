@@ -1077,7 +1077,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         `${name(authorOf)}'s answer:\n${cut(answer, 6000)}`,
       ].filter(Boolean).join("\n\n");
       const visible = `What does ${name(target)} make of ${name(authorOf)}'s answer?`;
-      return api.send({ chat: grp, text: visible, reply_to: message, to: [target], ...(typeof i.surface === "string" ? { surface: i.surface } : {}) }, meta, hidden);
+      // the other assistant works where the one that answered works, so it sees the same files
+      const there = g.bots.get(authorOf);
+      return api.send({ chat: grp, text: visible, reply_to: message, to: [target], ...(there && there.cwd ? { cwd: there.cwd } : {}), ...(typeof i.surface === "string" ? { surface: i.surface } : {}) }, meta, hidden);
     },
 
     /** Keep one answer of a fan-out. @param {any} i @param {any} meta */
