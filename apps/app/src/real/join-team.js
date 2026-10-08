@@ -82,7 +82,7 @@ export async function resolveSpace(d, label, pin) {
     if (!good) throw new Error("bad signature");
   } catch { throw refuse("wrong_space", "That space's record does not check out. Ask for a new invite."); }
   const payload = await openRecord(label, r.sealed);
-  if (!payload || payload.id !== state.id && payload.id === undefined) throw refuse("wrong_space", "That space's record could not be opened.");
+  if (!payload) throw refuse("wrong_space", "That space's record could not be opened.");
   return { id: state.id, payload };
 }
 
@@ -156,8 +156,11 @@ const fingerprintWords = (/** @type {string[] | undefined} */ words, /** @type {
  */
 export async function openInvite(d, link) {
   const p = parseInviteLink(link);
-  const { id: spaceId, payload } = await resolveSpace(d, p.name, p.pin);
-  const rk = spaceFingerprint(spaceId, String(payload.rootPublic || ""));
+  const { id: chainId, payload } = await resolveSpace(d, p.name, p.pin);
+  // The fingerprint is of the space's permanent chain id and its root key; the home's kernel knows the space by the id the owner-signed record carries.
+  const rk = spaceFingerprint(chainId, String(payload.rootPublic || ""));
+  const spaceId = String(payload.id || "");
+  if (!/^spc_[a-z2-7]{12,26}$/.test(spaceId)) throw refuse("wrong_space", "That space's record could not be opened.");
   if (p.rk && rk !== p.rk) throw refuse("forged", "This invite could not be verified. Ask for a new one.");
   const route = payload.route;
   if (!route || typeof route.route !== "string") throw refuse("unreachable", `This space lives on ${payload.ownerName || payload.owner_name ? `${payload.ownerName || payload.owner_name}'s` : "its owner's"} computer and cannot be reached from here. Ask them to move it to their server.`);
@@ -170,7 +173,6 @@ export async function openInvite(d, link) {
     catch (e) {
       const c = String(/** @type {any} */ (e).code || "");
       // the home's door refusing this person (an invite made for someone else, spent, or not admitted) is not an outage
-      if (process.env.JT_DEBUG) console.error("JTDBG", c, /** @type {any} */ (e).message);
       if (/^(denied|not_a_member|forbidden|not_allowed|not_found)$/.test(c)) throw refuse("not_for_you", "This invite cannot be used.");
       throw e;
     }
