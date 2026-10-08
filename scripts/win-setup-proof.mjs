@@ -30,7 +30,7 @@ fs.mkdirSync(OUT, { recursive: true });
 // ---- a small DevTools client: one page target, evaluate, real mouse and text input, screenshots. It never sends Browser.close or anything that disposes of the browser.
 class Cdp {
   constructor(ws, url) { this.ws = ws; this.url = url; this.id = 0; this.waiting = new Map(); this.handlers = []; ws.onmessage = (m) => { const d = JSON.parse(String(m.data)); if (d.id && this.waiting.has(d.id)) { const w = this.waiting.get(d.id); this.waiting.delete(d.id); d.error ? w.rej(new Error(d.error.message)) : w.res(d.result); } else if (d.method) for (const h of this.handlers) h(d.method, d.params); }; }
-  send(method, params = {}) { return new Promise((res, rej) => { const id = ++this.id; this.waiting.set(id, { res, rej }); this.ws.send(JSON.stringify({ id, method, params })); }); }
+  send(method, params = {}) { return new Promise((res, rej) => { const id = ++this.id; this.waiting.set(id, { res, rej: (e) => rej(new Error(`${method}: ${e.message}`)) }); this.ws.send(JSON.stringify({ id, method, params })); }); }
   on(fn) { this.handlers.push(fn); }
   async evaluate(what, arg) {
     const expression = typeof what === "function" ? `(${what.toString()})(${JSON.stringify(arg ?? null)})` : what;
@@ -63,7 +63,7 @@ class Cdp {
   }
   async clickAt({ x, y }) { for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await this.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 }); }
   getByText(text, o = {}) { const self = this; const l = { first: () => l, click: async ({ timeout } = {}) => self.clickAt(await self.find("text", text, o.exact !== false, timeout)), waitFor: async ({ timeout } = {}) => { await self.find("text", text, o.exact !== false, timeout); } }; return l; }
-  getByPlaceholder(text) { const self = this; return { fill: async (value, { timeout } = {}) => { await self.clickAt(await self.find("placeholder", text, true, timeout)); await self.send("Input.insertText", { text: value }); } }; }
+  getByPlaceholder(text) { const self = this; return { fill: async (value, { timeout } = {}) => { await self.clickAt(await self.find("placeholder", text, true, timeout)); for (const ch of value) { await self.send("Input.dispatchKeyEvent", { type: "keyDown", key: ch, text: ch }); await self.send("Input.dispatchKeyEvent", { type: "keyUp", key: ch }); } } }; }
   locator(sel) { const self = this; return { innerText: () => self.evaluate((s) => document.querySelector(s).innerText, sel) }; }
 }
 

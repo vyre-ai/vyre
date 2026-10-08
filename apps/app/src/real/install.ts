@@ -56,7 +56,10 @@ export async function reservedName(code: string): Promise<string> {
  * Claim the person's name from this device, with no box: the key is made here, the claim goes to the names directory, and the identity is kept
  * here. The recovery code is in this answer only: the caller shows it once and drops it.
  */
-export async function createIdentity(code: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+/** A passkey refusal (a WebAuthn DOMException, not a directory or code error): the Windows window then claims with the computer's own key instead. */
+const passkeyRefused = (e: unknown): boolean => { const x = e as { name?: string; code?: string } | null; return !!x && !x.code && /NotAllowed|NotSupported|InvalidState|Security|Abort|Unknown|Constraint|TypeError|Invalid/i.test(String(x.name ?? "")); };
+
+export async function createIdentity(code: string, deviceLabel: string, password = "", o: { noHello?: boolean } = {}): Promise<{ name: string; id: string; recoveryCode: string; software: boolean; notice?: string }> {
   // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
   if (claimBlocked()) throw new Error("Create your name on your iPhone, then pair this browser to it.");
   // The code says which name it holds; nothing is spent until the claim goes through.
@@ -71,7 +74,7 @@ export async function createIdentity(code: string, deviceLabel: string, password
   }
   // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
   // A Windows PC claims with its Windows Hello passkey (identity/windows-claim.js): the DPAPI key is a held one, which a team's server will not take and which cannot change the name's list.
-  const route = await claimRoute({ shell: shellKind(), origin: typeof location !== "undefined" ? location.origin : undefined, helloAvailable: helloHere });
+  const route = o.noHello ? ({ how: "shell-key" } as const) : await claimRoute({ shell: shellKind(), origin: typeof location !== "undefined" ? location.origin : undefined, helloAvailable: helloHere });
   const hello = route.how === "windows-hello" ? route : null;
   const macKey = macKeyAvailable() && !hello ? await macDeviceKey(true) : null;
   if (macKeyAvailable() && !hello && !macKey) throw Object.assign(new Error("This computer would not keep your key, so no name was claimed."), { code: "cannot_keep" });
@@ -91,8 +94,10 @@ export async function createIdentity(code: string, deviceLabel: string, password
         kept = true;
       },
     });
-    return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+    return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software, ...(o.noHello ? { notice: "Windows Hello did not work here, so this computer keeps your key without it." } : {}) };
   } catch (e) {
+    // The passkey could not be made (no usable platform authenticator after all): once, claim with this computer's own key, which nothing has kept yet.
+    if (hello && !kept && passkeyRefused(e)) return createIdentity(code, deviceLabel, password, { noHello: true });
     // The claim itself failed after the key was kept: take the key back out so no identity is left that names nothing.
     // (An unreachable directory is ambiguous: the claim may have landed, so the key stays.)
     if (kept && (e as { code?: string })?.code !== "unreachable") await forgetIdentity().catch(() => {});
