@@ -50,8 +50,8 @@ const plainName = (/** @type {string} */ n) => String(n).replace(/[\p{Cc}\p{Cf}\
  */
 export function createApp(o) {
   fs.mkdirSync(o.dir, { recursive: true });
-  // what this app says it is at the relay: the Mac and Windows windows are web pages (api/relay.web.ts), the phone apps are native (api/relay.native.ts)
-  const about = o.about || { kind: /** @type {const} */ ("web") };
+  // what this app says it is at the relay: the Mac and Windows windows and the phone apps all say "app" (pair-fix-3: a web hello left a typed-code pairing with no person session)
+  const about = o.about || { kind: /** @type {const} */ ("app") };
   const stretch = o.stretch || { memoryKiB: 64, passes: 1 };
   /** @type {any} */ let me = null;
   /** @type {any} */ let pairing = null;
