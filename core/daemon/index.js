@@ -40,6 +40,7 @@ import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor } from "./lent-service.js";
+import { createSidebarService } from "../sidebar/service.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -606,7 +607,7 @@ async function startLocked(opts, root, p, release) {
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
       const homeMoves = () => { try { const w = registry.modules.get("wink"); return w && w.handle ? w.handle.homeMoves : null; } catch { return null; } };
       registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent, services: (/** @type {string} */ space, /** @type {any} */ k) => ({ sidebar: createSidebarService({ space, kernel: k, registry }) }), onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

@@ -1,0 +1,35 @@
+{
+  "name": "sidebar",
+  "version": "0.1.0",
+  "description": "The sidebar each person arranges: the built-in places, an installed module's screens and saved views, with groups, an order and hidden entries. An admin sets the Space's default; each person's own arrangement sits on top of it.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["sidebar.get"],
+    "tools": [
+      { "name": "sidebar.get", "reach": "anyone", "effect": "read" },
+      { "name": "sidebar.edit", "reach": "anyone", "effect": "write" },
+      { "name": "sidebar.team", "reach": "anyone", "effect": "write" },
+      { "name": "sidebar.stored", "reach": "person", "effect": "write" },
+      { "name": "sidebar.serve", "reach": "modules", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["sidebar.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {},
+  "settings": [
+    {
+      "key": "sidebar.default", "group": "appearance", "label": "Sidebar, the Space's default",
+      "help": "The sidebar everyone in a Space starts from, by Space. An admin sets it; each person can arrange their own on top.",
+      "type": "object", "levels": ["account"], "apply": "live", "advanced": true,
+      "store": { "tool": { "get": { "tool": "sidebar.stored", "input": { "key": "default" }, "read": "value" }, "set": { "tool": "sidebar.stored", "input": { "key": "default", "value": "$value" } } } }
+    },
+    {
+      "key": "sidebar.mine", "group": "appearance", "label": "Sidebar, my arrangement",
+      "help": "Your own order, groups and hidden entries, as { entries: [...] }, laid over the Space's default. The same on every device.",
+      "type": "object", "levels": ["account"], "apply": "live", "advanced": true,
+      "store": { "tool": { "get": { "tool": "sidebar.stored", "input": { "key": "mine" }, "read": "value" }, "set": { "tool": "sidebar.stored", "input": { "key": "mine", "value": "$value" } } } }
+    }
+  ]
+}
