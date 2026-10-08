@@ -59,14 +59,16 @@ function ItemRow({ item, dropped, onDrop, onEdit, onRead, onApproveOne }: { item
   );
 }
 
-export function GroupApprovals() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [canSign, setCanSign] = useState<boolean | null>(null);
+/** `sample` draws a given held group with no box behind it (the sample world's screenshots): the same card, signing on, nothing sent. `doneLine` shows the closing line instead. */
+export function GroupApprovals({ sample, doneLine }: { sample?: Group[]; doneLine?: string } = {}) {
+  const [groups, setGroups] = useState<Group[]>(sample ?? []);
+  const [canSign, setCanSign] = useState<boolean | null>(sample ? true : null);
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(doneLine ?? null);
   const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setGroups(groupsFrom(a))).catch(() => setGroups([])); }, []);
   useEffect(() => {
+    if (sample) return;
     if (Platform.OS === "web" && !shellIdentity()) return;
     load();
     void signer().then((s) => setCanSign(!!s));
@@ -74,7 +76,7 @@ export function GroupApprovals() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") load(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [load]);
-  if (Platform.OS === "web" && !shellIdentity()) return null;
+  if (!sample && Platform.OS === "web" && !shellIdentity()) return null;
   if (done) return <View className="px-s4 pb-s3"><Text size="body">{done}</Text></View>;
   if (!groups.length) return null;
   const say = async (g: Group) => {

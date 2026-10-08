@@ -271,9 +271,32 @@ export function assistantScript(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: [a, k].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];
 }
 
+/** The activity scenario (/chat-demo?scenario=activity): a thought, a step, a hand-off to a teammate with the teammate's own steps nested under it, the report-back, the reply. */
+export function activityScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 60;
+  const c = new Clock();
+  const juno = { author: "assistant:juno" };
+  const to = { agent: "kit-billing", role: "billing", name: "kit", project: "Northwind Bakery" };
+  c.push("status", { state: "working", turn: "turn-1" });
+  c.push("user-message", { message: "m1", text: "Chase the overdue invoices, and tell me what Northwind owes.", state: "sent" }, 40);
+  c.say("a1", "Three invoices are over thirty days. Billing should chase them; I will look at Northwind first.", tps, 200, undefined, { reasoning: true });
+  c.push("tool-started", { tool_id: "t1", tool: "records.search", summary: "Looking up overdue invoices" }, 150);
+  c.push("tool-finished", { tool_id: "t1", ok: true }, 400);
+  c.push("handoff", { request: "r_1", to, text: "Chase the overdue invoices this week", state: "queued", at: 1 }, 150, juno);
+  c.push("handoff", { request: "r_1", to, text: "Chase the overdue invoices this week", state: "running", thread: "ses_kit", at: 2 }, 300, juno);
+  c.push("tool-started", { tool_id: "k1", tool: "mail.draft", summary: "Drafting three reminders", via: "r_1" }, 300, { author: "assistant:kit-billing" });
+  c.push("tool-finished", { tool_id: "k1", ok: true, via: "r_1" }, 500, { author: "assistant:kit-billing" });
+  c.push("tool-started", { tool_id: "k2", tool: "records.log", summary: "Logging each on its client", via: "r_1" }, 200, { author: "assistant:kit-billing" });
+  c.push("tool-finished", { tool_id: "k2", ok: true, via: "r_1" }, 500, { author: "assistant:kit-billing" });
+  c.push("handoff", { request: "r_1", to, text: "Chase the overdue invoices this week", state: "done", thread: "ses_kit", result: "Three reminders drafted for Northwind, Oakline and Brightwell. Each waits for your yes.", at: 3 }, 200, juno);
+  c.say("a2", "Kit drafted three reminders. Northwind owes $4,200 across two invoices.", tps, 200);
+  c.push("status", { state: "waiting", turn: "turn-1" }, 60);
+  return [{ gate: null, steps: c.steps }];
+}
+
 export type MockOptions = {
   /** "group": two people, two assistants, a fan-out (groupScript). */
-  scenario?: "group" | "models" | "people" | "assistant";
+  scenario?: "group" | "models" | "people" | "assistant" | "activity";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -292,7 +315,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : script({ tps: opts.tps });
+  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();

@@ -187,6 +187,33 @@ export function SkeletonThread({ wide }: { wide: boolean }) {
   );
 }
 
+
+/** A teammate's own step or words sit under the hand-off they answer, behind a rule (data.via). */
+function Nested({ it, children }: { it: { via?: string }; children: React.ReactNode }) {
+  const { color } = useUiTheme();
+  if (!it.via) return <>{children}</>;
+  return <View style={{ marginLeft: 12, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: color.edge }}>{children}</View>;
+}
+
+/** "Asked kit (billing)", its state, and the teammate's report-back as quoted data: what a teammate wrote is never drawn as the person's words. */
+function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
+  const { color } = useUiTheme();
+  const label = `Asked ${it.name}` + (it.role && it.role !== it.name ? ` (${it.role})` : "");
+  const state = it.state === "running" ? "working" : it.state;
+  return (
+    <View style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`}>
+      <View style={S.s9}>
+        <Face name={it.name || it.agent} family="assistant" size={20} id={`agent:${it.agent}`} />
+        <Text size="caption" strong numberOfLines={1} style={S.s10}>{label}</Text>
+        {it.project ? <Text size="caption" tone="label" numberOfLines={1}>{String(it.project)}</Text> : null}
+        <Text size="caption" tone={it.state === "failed" ? "err" : "label"}>{state}</Text>
+      </View>
+      {it.text ? <Text size="caption" tone="muted" numberOfLines={2}>{it.text}</Text> : null}
+      {it.result ? <View style={{ borderLeftWidth: 3, borderLeftColor: color.edge, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{it.result}</Text></View> : null}
+    </View>
+  );
+}
+
 function ToolLine({ it, running }: { it: any; running: boolean }) {
   return (
     <View style={S.s9}>
@@ -306,8 +333,10 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         </Replyable>
       );
     }
+    case "handoff":
+      return <Frame wide={wide} indent><HandoffLine it={it} store={store} /></Frame>;
     case "tool":
-      return <Frame wide={wide} indent><ToolLine it={it} running={it.status === "running"} /></Frame>;
+      return <Frame wide={wide} indent><Nested it={it}><ToolLine it={it} running={it.status === "running"} /></Nested></Frame>;
     case "block": {
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;

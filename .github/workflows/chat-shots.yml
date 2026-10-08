@@ -1,0 +1,52 @@
+# Screenshots of the app's chat on the sample web export (the mock stream, no server), dark and light, desktop and phone width: the activity rows (a thought, steps, a hand-off with the
+# teammate's steps nested under it, the report-back), the copy buttons, the header, and the held group of three emails with its closing line. For review against the README gif.
+name: chat-shots
+on:
+  push:
+    branches: ["work/chat-shots"]
+    paths: ["apps/app/**", ".github/workflows/chat-shots.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chat-shots-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Export the sample web app
+        run: npm run export:web:mock
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: Shots
+        run: |
+          node scripts/shots.mjs "$RUNNER_TEMP/chat-shots" \
+            "chat-demo?scenario=activity&at=4300&hold=1&note=0" \
+            "chat-demo?scenario=activity&at=9500&hold=1&note=0" \
+            "chat-demo?scenario=group&at=12000&hold=1&note=0&about=0" \
+            "chat-demo?at=6000&hold=1&note=0&composer=1" \
+            "shots-approval" "shots-approval?done=1" \
+            --dist dist --w 390,1280 --theme dark,paper --h 860 --fixed 1 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chat-shots
+          path: ${{ runner.temp }}/chat-shots
+          retention-days: 14
