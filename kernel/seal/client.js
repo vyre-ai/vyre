@@ -2,6 +2,7 @@
 // process holds, and implements the SealApi stud from kernel/contracts/seal.d.ts plus the calls the inference door and the gateway need.
 // Plaintext crosses here once (put, as the person types it) and on a human reveal (it is passed through to the reveal view and never kept).
 import { spawn } from "node:child_process";
+import net from "node:net";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,25 +18,46 @@ export class SealError extends Error { constructor(code) { super(code); this.cod
 export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, software = false, appattest = null, verifiers = null }) {
   const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(software ? { VYRE_SEAL_SOFTWARE: "1" } : {}), ...(appattest ? { VYRE_SEAL_APPATTEST_DEV: "1", ...(appattest.rootPem ? { VYRE_SEAL_APPATTEST_ROOT: appattest.rootPem } : {}), ...(appattest.appIds ? { VYRE_SEAL_APPATTEST_APPS: appattest.appIds.join(",") } : {}) } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
   const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env });
+  return sealerOver({
+    input: child.stdout, write: line => child.stdin.write(line), pid: child.pid,
+    onClose: fn => child.on("exit", fn), timeoutMs,
+    end: () => new Promise(res => { if (child.exitCode !== null) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
+    stdinError: fn => child.stdin.on("error", fn),
+  });
+}
+
+/**
+ * The sealing process behind a named pipe (Windows: a service running as its own account, local/capsule/native-win/seal) or any duplex stream: the same NDJSON, the same SealApi. The service starts a sealing process per connection
+ * and ends it when this connection ends, so the lifetime is exactly what the spawned process has anywhere else.
+ * @param {{ pipe: string, timeoutMs?: number }} o
+ */
+export async function connectSealer({ pipe, timeoutMs = 20_000 }) {
+  const sock = await new Promise((res, rej) => { const c = net.connect(pipe); c.once("connect", () => res(c)); c.once("error", rej); });
+  return sealerOver({ input: sock, write: line => sock.write(line), pid: 0, onClose: fn => { sock.once("close", fn); }, timeoutMs, end: () => new Promise(res => { if (sock.destroyed) return res(); sock.once("close", () => res()); sock.end(); setTimeout(() => sock.destroy(), 2000).unref(); }), stdinError: fn => sock.on("error", fn) });
+}
+
+/** The SealApi over a transport: lines in, lines out. @param {{ input: import("node:stream").Readable, write: (line: string) => void, pid: number, onClose: (fn: () => void) => void, end: () => Promise<void>, stdinError: (fn: () => void) => void, timeoutMs: number }} t */
+function sealerOver(tr) {
+  const { timeoutMs } = tr;
   const pending = new Map(); let n = 0, closed = false;
-  readline.createInterface({ input: child.stdout }).on("line", line => {
+  readline.createInterface({ input: tr.input }).on("line", line => {
     let m; try { m = JSON.parse(line); } catch { return; }
     const p = pending.get(m.id); if (!p) return;
     pending.delete(m.id); clearTimeout(p.t);
     m.ok ? p.res(m.result) : p.rej(new SealError(m.error?.code || "failed"));
   });
   const fail = code => { for (const p of pending.values()) { clearTimeout(p.t); p.rej(new SealError(code)); } pending.clear(); };
-  child.on("exit", () => { closed = true; fail("sealer_down"); });
-  child.stdin.on("error", () => {});
+  tr.onClose(() => { closed = true; fail("sealer_down"); });
+  tr.stdinError(() => {});
   const call = (op, body = {}) => new Promise((res, rej) => {
     if (closed) return rej(new SealError("sealer_down"));
     const id = ++n, t = setTimeout(() => { pending.delete(id); rej(new SealError("timeout")); }, timeoutMs);
     pending.set(id, { res, rej, t });
-    child.stdin.write(JSON.stringify({ id, op, ...body }) + "\n");
+    tr.write(JSON.stringify({ id, op, ...body }) + "\n");
   });
   const withCtx = (op, i, extra = {}) => call(op, { ctx: chainCtx(i.chain), ...(i.approver_chain ? { approver: chainCtx(i.approver_chain) } : {}), ...extra });
   return {
-    pid: child.pid,
+    pid: tr.pid,
     /** SealApi (contracts/seal.d.ts). `use` takes the template body and the slot bindings, which the kernel read from the Template record. */
     api: {
       put: i => withCtx("put", i, { record: i.record, field: i.field, class: i.class, value: i.value, hint_allowed: i.hint_allowed, unique: i.unique }),
@@ -117,6 +139,6 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
       adopt: async i => { const v = fs.readFileSync(i.file, "utf8").trim(); await call("service.put", { name: i.name, value: v }); const n = fs.statSync(i.file).size; fs.writeFileSync(i.file, crypto.randomBytes(n)); fs.unlinkSync(i.file); return { adopted: true }; },
     },
     health: () => call("health"),
-    close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
+    close: () => (closed ? Promise.resolve() : tr.end()),
   };
 }

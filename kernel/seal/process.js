@@ -360,7 +360,7 @@ export class Sealer {
       case "service.get": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); const r = this.store.read("values", serviceMeta(req.name).ref, "_service"); need(r, "not_found"); return { value: r.plaintext }; }
       case "service.delete": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); return { deleted: this.store.drop("values", serviceMeta(req.name).ref), event: { type: "service.deleted", name: req.name } }; }
       case "service.list": { need(!req.ctx?.model_originated, "bad_input"); return { names: this.store.metas("values", "_service").map(m => m.record).sort() }; }
-      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, custody: { master: "file", profile: process.env.VYRE_SEAL_PROFILE || "desktop", platform: process.platform, note: custodyNote() }, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, custody: { master: process.env.VYRE_SEAL_PROFILE === "windows-service" ? "dpapi-service" : "file", profile: process.env.VYRE_SEAL_PROFILE || "desktop", platform: process.platform, note: custodyNote() }, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }
   }
@@ -377,6 +377,22 @@ export function fileMaster(dir) {
 }
 
 /**
+ * The master key as this process is given it. On Windows the sealing service (local/capsule/native-win/seal) runs as its own account, opens the master it sealed with DPAPI under that account,
+ * and starts this process with it in VYRE_SEAL_MASTER_B64 and VYRE_SEAL_PROFILE=windows-service; the variable is read once and removed from this process's environment. Anywhere else the master is the 0600 file.
+ * @param {string} dir @param {Record<string, string | undefined>} [env]
+ */
+export function masterOf(dir, env = process.env) {
+  if (env.VYRE_SEAL_PROFILE === "windows-service") {
+    const b = env.VYRE_SEAL_MASTER_B64;
+    if (env === process.env) delete process.env.VYRE_SEAL_MASTER_B64;
+    const k = Buffer.from(String(b || ""), "base64");
+    if (k.length !== 32) throw Object.assign(new Error("the Windows sealing service gave no 32-byte master"), { safe: true });
+    return k;
+  }
+  return fileMaster(dir);
+}
+
+/**
  * Ship gate (reviewer-2, K3 item 6): a key file beside the values is safe only on a server where this process runs as its own user and no agent
  * or Claude Code session shares that uid. Otherwise any process of that user reads the key and the values, and invariant 5 does not hold.
  * profile "server": refuse when this uid is one of the agent uids (VYRE_AGENT_UIDS, default the box image's 2000 to 2063).
@@ -387,11 +403,12 @@ export function fileMaster(dir) {
 /** What the person is told about where the master lives, plainly. */
 export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop", platform = process.platform) {
   if (profile === "server") return "The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it.";
+  if (profile === "windows-service") return "The sealing key is held by a separate Windows account (NT SERVICE\\VyreSealer) and sealed with Windows data protection under it. Other Windows users cannot read it, and neither can a program running as you through the file system. A program running as you can still ask the sealing service to open what Vyre itself may open, because Windows cannot tell it from Vyre.";
   if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
   return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
 }
-export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
-  if (dev || profile === "desktop") return;
+export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS, platform = process.platform } = {}) {
+  if (dev || profile === "desktop" || (profile === "windows-service" && platform === "win32")) return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
   if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
 }
@@ -400,7 +417,7 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
 
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null } = {}) {
+export function serve({ dir, master = (hostCheck(), masterOf(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null } = {}) {
   const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware, appattest });
   if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
   const rl = readline.createInterface({ input });
