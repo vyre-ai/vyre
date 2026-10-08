@@ -943,7 +943,7 @@ test("join end to end: a second identity's device previews and accepts an invite
   Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
   // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
   const sealDir = tmp("join-e2e-seal");
-  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: !release });
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
   t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
   const ownerSigner = sealSigner(ident.id);
   await enrolDevice(sealer, ownerSigner);
@@ -1264,7 +1264,7 @@ async function teamRig(t, { release = false } = {}) {
   const ident = await standinIdentity(t);
   Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
   const sealDir = tmp("join-team-seal");
-  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: !release });
   t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
   const ownerSigner = sealSigner(ident.id);
   await enrolDevice(sealer, ownerSigner);
