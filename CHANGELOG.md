@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(mac-app): the bundled setup passes --login-only (My Home: a LaunchAgent as the person, no admin password); a Mac that stays on as a server is added with the install line.
 - feat(app): adding a server asks whether it is a Linux machine or a Mac that stays on; a Mac gets the Mac installer's line, and install-mac-server.sh takes VYRE_STORE, shows the four check words and ends with "Back in the Vyre app" when the app made the code.
 - feat(app): after a name the first run offers Join a team, Add a server (your own Cloud) and, on a Mac, My Home; Windows says Home is coming.
 - fix(app): a server paired by the typed code from the Mac or Windows app is an app device with a paired session (the hello said kind web, so presence.person.pair-challenge was "no tool"), and the typed path finishes with the server's adopt and the owner (IR-35).
