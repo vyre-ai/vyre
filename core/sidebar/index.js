@@ -3,7 +3,7 @@
 //
 // Two lists are kept here, in this module's own table, and the settings hub reads and writes them as ordinary settings (a tool store, like the planner's):
 //   sidebar.default   the Space's default, by Space: { "<space id>": [entry, ...] }, "*" for every Space with none of its own. An admin sets it.
-//   sidebar.mine      this person's own arrangement, laid over the default. The same on every device (there is no sidebar per device).
+//   sidebar.mine      this person's own arrangement as { entries: [...] }, laid over the default. The same on every device (there is no sidebar per device).
 // With nothing stored the built-in places are the default (PLACES, the app's old NAV).
 //
 // sidebar.get   the default for a Space, the person's list, the two merged, and the module screens installed here (from their manifests' `screens`).
@@ -56,7 +56,8 @@ export default {
       input: { type: "object", properties: { key: { type: "string", enum: ["default", "mine"] }, value: {} }, required: ["key"] },
       run: async (/** @type {any} */ i) => {
         if (i.key !== "default" && i.key !== "mine") throw refuse("key is default or mine", "bad_input");
-        if (!("value" in i)) return { value: i.key === "default" ? defaults() : mine() };
+        const shown = () => (i.key === "default" ? defaults() : { entries: mine() });
+        if (!("value" in i)) return { value: shown() };
         if (i.key === "mine") write("mine", cleanList(i.value));
         else {
           if (i.value !== null && (typeof i.value !== "object" || Array.isArray(i.value))) throw refuse("sidebar.default is an object by Space", "bad_input");
@@ -64,7 +65,7 @@ export default {
           write("default", Object.keys(d).length ? d : null);
         }
         ctx.events.emit("sidebar.changed", { scope: i.key });
-        return { value: i.key === "default" ? defaults() : mine() };
+        return { value: shown() };
       },
     });
 
