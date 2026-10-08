@@ -205,7 +205,7 @@ export function createPeerDoor(o) {
       const memberStillOk = async a => {
         try {
           const e = typeof o.identityEntry === "function" ? await o.identityEntry(a.identity, a.entry, a.name) : null;
-          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.alg === "webauthn-es256" || e.held === "web") return false;
+          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.held === "web") return false;
           const sv = serverFor(a.space);
           if (!sv) return false;
           const m = await sv.serve(inviteeRequest(a.space, "grants.members.get", [a.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: a.identity, path: "relay" });
