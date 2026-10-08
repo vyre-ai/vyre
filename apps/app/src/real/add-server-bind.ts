@@ -26,10 +26,10 @@ export async function startAddServer(onChange: (s: AddServerState) => void) {
     },
     connect: ({ offer, key, secret }: Parameters<typeof connectSetup>[1]) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret }),
     // The same pairing a scanned code starts: the identity's signature is the proof at the server, so nobody answers a question there.
-    pair: async (qr: string, ctx?: { pageKey?: unknown }) => {
+    pair: async (qr: string) => {
       const code = parseWinkCode(qr);
       if (!code.ok) throw new Error("the server gave a ticket this app cannot read");
-      const session = serverSession(code, undefined, ctx && ctx.pageKey ? { pageKey: ctx.pageKey } : undefined);
+      const session = serverSession(code);
       await session.ready!();
       await session.confirm();
     },

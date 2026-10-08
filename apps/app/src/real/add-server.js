@@ -161,7 +161,7 @@ export function createAddServer(o) {
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }
     try { chan.close(); } catch { /* gone */ }
     if (mine !== run) return;
-    try { await o.pair(qr, { pageKey: p.key }); } catch { if (mine === run) stop("pair"); return; }
+    try { await o.pair(qr); } catch { if (mine === run) stop("pair"); return; }
     if (mine !== run) return;
     set({ stage: "done" });
   }

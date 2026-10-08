@@ -7,8 +7,6 @@
 
 import type { PairingSession } from "../api/pairing-session";
 import { macKeyAvailable } from "../identity/mac-key.ts";
-// A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
-import { withCoreProof } from "./core-proof.js";
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
@@ -19,7 +17,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
-export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: { pageKey?: unknown }): PairingSession {
+export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target): PairingSession {
   // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
   let direct: PairingSession | null = null;
   let stopped = false;
@@ -43,7 +41,7 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     async ready() {
       const { tool, BoxError } = await box();
       if (!direct && code.kind === "ticket" && !(await boxReachable(tool, BoxError))) {
-        const mine = await directSessionFor(code, extra);
+        const mine = await directSessionFor(code);
         if (mine) { direct = mine; await mine.ready!(); return; }
       }
       if (direct) return direct.ready!();
@@ -154,7 +152,7 @@ export async function serverPairInputs() {
  * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
  * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
  */
-async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: { pageKey?: unknown }): Promise<PairingSession | null> {
+async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>): Promise<PairingSession | null> {
   // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
   const { pairServer } = await import("@vyre/relay-client/serverpair.js");
   const inputs = await serverPairInputs();
@@ -173,7 +171,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName() }), signal: abort.signal,
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: inputs.presenceKey, signal: abort.signal,
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
