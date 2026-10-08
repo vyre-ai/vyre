@@ -1,0 +1,223 @@
+// @ts-check
+// One walk of the new install and pairing flow for one store choice. Each step is a line in the report; a step that needs an earlier one is skipped when that one failed.
+import assert from "node:assert/strict";
+import path from "node:path";
+import fs from "node:fs";
+import { createApp } from "./app.mjs";
+import { reserveAnswer } from "../../../site/setup/reserve.js";
+import { codeLooksRight } from "../../../apps/app/screens/install/first-run.js";
+import { startDaemonServer } from "./server-daemon.mjs";
+import { startInstallerServer } from "./server-installer.mjs";
+import { startMacServer } from "./server-mac.mjs";
+import { fileURLToPath } from "node:url";
+
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/** @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", store: "records" | "plain", out: string, inCI: boolean }} w */
+export async function walk(w) {
+  const { run, ins, server, store } = w;
+  const tag = `${store}`;
+  const S = (/** @type {string} */ n) => `${tag}: ${n}`;
+  const dir = path.join(w.out, tag);
+  fs.rmSync(dir, { recursive: true, force: true });   // a walk starts from nothing: a home left by an earlier run would already have an owner
+  fs.mkdirSync(dir, { recursive: true });
+  const pick = store === "records" ? "records" : "plain";
+  const person = `walker${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`;
+  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+  /** @type {any} */ let reservation = null, flow = null, srv = null, session = null;
+
+  try {
+    await run.step(S("reserve a name on the setup page"), async () => {
+      reservation = await mac.reserve(person);
+      assert.match(reservation.code, /^VYRE(-[A-Z0-9]{4}){4}$/);
+      return `${reservation.name}, code ${reservation.code.slice(0, 9)}...`;
+    });
+    await run.step(S("the setup page and the app accept every code the directory can make"), async () => {
+      // the directory's alphabet (names/worker/ids.js ALPHA32) against the page's parser (site/setup/reserve.js) and the app's paste check (first-run.js codeLooksRight)
+      const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const bad = [];
+      for (const ch of alpha) {
+        const code = `VYRE-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`;
+        const page = reserveAnswer(200, { data: { code, expires: 1 } }).ok, app = codeLooksRight(code);
+        if (!page || !app) bad.push(`${ch}${page ? "" : " page"}${app ? "" : " app"}`);
+      }
+      assert.equal(bad.length, 0, `refused characters the directory uses: ${bad.join(", ")} (site/setup/reserve.js and apps/app/screens/install/first-run.js accept A-Z and 2-7; names/worker/ids.js makes A-Z without I and O, and 2-9)`);
+      assert.ok(reservation.page.ok, "the page took this reservation");
+    }, { needs: [S("reserve a name on the setup page")] });
+    await run.step(S("become yourself in the app (the code is spent)"), async () => {
+      const me = await mac.becomeYourself({ name: reservation.name, code: reservation.code });
+      assert.ok(me.id && me.recoveryCode, "an identity and a recovery code");
+      const r = await fetch(`${ins.names}/v1/ids/resolve?name=${reservation.name}`);
+      assert.equal(r.status, 200, "the directory resolves the new name");
+      // the code is good once
+      await assert.rejects(mac.becomeYourself({ name: reservation.name, code: reservation.code }), /./, "a second use of the code is refused");
+      return `${me.id}`;
+    }, { needs: [S("reserve a name on the setup page")] });
+
+    await run.step(S("add a server: the app shows the install line"), async () => {
+      flow = mac.addServer();
+      await flow.begin(pick);
+      const line = flow.state.installLine;
+      assert.ok(line.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
+      assert.ok(line.includes(`VYRE_STORE=${store === "records" ? "auto" : "sqlite"}`), "the line carries the store choice");
+      return line.replace(flow.state.code, "<code>");
+    }, { needs: [S("become yourself in the app (the code is spent)")] });
+
+    await run.step(S(`the server installs from the line (${server})`), async () => {
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store };
+      srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store });
+      return `${srv.kind}`;
+    }, { needs: [S("add a server: the app shows the install line")] });
+
+    await run.step(S("the app finds the server"), async () => {
+      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 60_000, "the app to find the server");
+      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
+      return `${flow.state.box.name || "server"}`;
+    }, { needs: [S(`the server installs from the line (${server})`)] });
+
+    await run.step(S("the four words in the app are the ones the server shows"), async () => {
+      const held = await srv.words();
+      assert.equal(flow.state.box.words.join(" "), held);
+      assert.equal(flow.state.box.words.length, 4);
+      return held;
+    }, { needs: [S("the app finds the server")] });
+
+    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
+      await flow.confirmWords();
+      assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
+      assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
+      return `owner ${JSON.stringify(mac.pairing.owner.id || mac.pairing.owner).slice(0, 40)}`;
+    }, { needs: [S("the four words in the app are the ones the server shows")] });
+
+    await run.step(S("the app reaches the server and calls a tool"), async () => {
+      await mac.openSession();
+      const info = await mac.callTool("system.info");
+      assert.ok(info, "system.info answered");
+      return `system.info ok`;
+    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+
+    const CALL = S("the app reaches the server and calls a tool");
+    /** @type {any} */ let team = null, invite = null;
+    await run.step(S("create a team space on the server (named in the app, signed with the identity)"), async () => {
+      team = await mac.createTeamSpace(`team${person.slice(-6)}`);
+      assert.match(team.space, /^spc_/);
+      const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
+      assert.equal(r.status, 200, "the directory resolves the space's name");
+      return team.name;
+    }, { needs: [CALL] });
+    await run.step(S("invite a second person to the team"), async () => {
+      invite = await mac.callTool("spaces.invites.create", { space: team.space, role: "member", to: "second" });
+      assert.ok(invite && typeof invite.link === "string" && invite.link.length > 10, "the invite has a link");
+      return `a ${invite.role || "member"} invite`;
+    }, { needs: [S("create a team space on the server (named in the app, signed with the identity)")] });
+    await run.step(S("a second identity joins the team from its own app, with no server of its own"), async () => {
+      const bob = createApp({ label: "Proof second Mac", dir: path.join(dir, "second"), directory: ins.names, relay: ins.relay });
+      try {
+        const r = await bob.reserve(`second${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`);
+        await bob.becomeYourself({ name: r.name, code: r.code });
+        await bob.joinTeam({ link: invite.link });
+      } finally { bob.close(); }
+    }, { needs: [S("invite a second person to the team")] });
+    /** @type {any} */ let code = null, askSeen = null;
+    const phone = createApp({ label: "Proof phone", dir: path.join(dir, "phone"), directory: ins.names, relay: ins.relay, about: { kind: "app" } });
+    try {
+      await run.step(S("add a device: the computer shows a code"), async () => {
+        code = await mac.showDeviceCode();
+        assert.match(code.qr, /^vyre:\/\/wink\/2\?/);
+        return "a code for the new device";
+      }, { needs: [CALL] });
+      await run.step(S("add a device: the phone joins the name and the computer says yes to its three words"), async () => {
+        /** @type {string[]} */ const shown = [];
+        const joining = phone.addThisDeviceToName({ payload: code.qr, onWords: w => shown.push(w) });
+        const failed = new Promise((_, rej) => joining.catch(rej));
+        failed.catch(() => {});
+        const ask = /** @type {any} */ (await Promise.race([mac.answerDevice(), failed]));
+        askSeen = ask.seen;
+        await phone.until(() => shown.length, 15_000, "the phone to show its words");
+        await mac.sayYes(shown[0].split(" "), ask.raw);
+        const r = await joining;
+        assert.equal(r.id, mac.identity.id, "the phone joined this person's identity");
+        return `${shown[0]}`;
+      }, { needs: [S("add a device: the computer shows a code")] });
+      await run.step(S("the computer's Devices screen sees the phone asking"), async () => {
+        // the app reads wink.phone.pairing with screens/devices/real.js phoneAsk; a server answer it cannot read leaves the person with no question to answer
+        assert.ok(askSeen && askSeen.asking, "phoneAsk read the server's answer as nobody asking; the server answered {asking, name, choices, until, line} and phoneAsk wants `words` (apps/app/screens/devices/real.js:107, apps/app/screens/pairing/model.ts winkAsking)");
+      }, { needs: [S("add a device: the phone joins the name and the computer says yes to its three words")] });
+      await run.step(S("the phone is on the name's signed list"), async () => {
+        const res = await fetch(`${ins.names}/v1/ids/resolve?name=${mac.identity.name}`);
+        const json = await res.json();
+        const ops = JSON.stringify(json.data.ops);
+        assert.ok(ops.includes(phone.identity.key.eid) || ops.includes(phone.identity.key.publicKey), "the phone's key is on the list");
+      }, { needs: [S("add a device: the phone joins the name and the computer says yes to its three words")] });
+      await run.step(S("the phone reaches the server and calls a tool"), async () => {
+        await phone.openSession();
+        const info = await phone.callTool("system.info");
+        assert.ok(info, "system.info answered");
+      }, { needs: [S("add a device: the phone joins the name and the computer says yes to its three words")] });
+    } finally { phone.close(); }
+  } finally {
+    mac.close();
+    if (srv) {
+      try { fs.writeFileSync(path.join(dir, "server.log"), (srv.logs || []).join("\n") + "\n"); } catch { /* the log is a courtesy */ }
+      await srv.stop().catch(() => {});
+    }
+  }
+}
+
+
+/**
+ * The server's own terminal path (IR-35, the pairing bug): a server installed with no setup code shows a long code and a typed code, and the app pairs it from them. A fresh server used to refuse the
+ * app's hello ("not a paired device") on both. Each way is a fresh server and a fresh identity, then a tool call as the paired app.
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", out: string }} w
+ */
+export async function walkTerminal(w) {
+  const { run, ins, server } = w;
+  for (const way of /** @type {("long code" | "typed code")[]} */ (["long code", "typed code"])) {
+    const tag = `terminal ${way}`;
+    const S = (/** @type {string} */ n) => `${tag}: ${n}`;
+    const dir = path.join(w.out, tag.replace(/ /g, "-"));
+    fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+    const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+    /** @type {any} */ let srv = null, made = null;
+    try {
+      await run.step(S("the app has an identity"), async () => {
+        const r = await mac.reserve(`walkert${Math.random().toString(36).slice(2, 7)}`);
+        await mac.becomeYourself({ name: r.name, code: r.code });
+      });
+      await run.step(S("a fresh server with no setup code shows its code"), async () => {
+        const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain") };
+        srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: "", relay: a.relayForServer, directory: a.namesForServer, store: "plain" });
+        made = await srv.operator("wink.server.code", { qr: true });
+        assert.ok(made && (way === "long code" ? /^vyre:\/\/wink\/2\?/.test(made.qr) : /^WINK-/.test(made.code)), `the server showed a ${way}`);
+        return way === "long code" ? "a long code" : String(made.code).slice(0, 9) + "...";
+      }, { needs: [S("the app has an identity")] });
+      await run.step(S("the app pairs the server and the server names this identity its owner"), async () => {
+        if (way === "long code") {
+          const pairing = mac.pairWithServer(made.qr);
+          pairing.catch(() => {});
+          const ask = await mac.until(async () => { const x = await srv.operator("wink.server.pairing", {}); return x && x.asking ? x : null; }, 30_000, "the server to ask who is pairing");
+          const shown = await mac.until(() => mac.lastWords(), 15_000, "the app to show its three words");
+          assert.ok(ask.choices.includes(shown), "the server offers the words the app shows");
+          await srv.operator("wink.server.pair.answer", { yes: true, pick: ask.choices.indexOf(shown) + 1 });
+          const r = await pairing;
+          assert.ok(r.owner, "the server named an owner");
+        } else {
+          const r = await mac.pairByTypedCode({ input: made.code, typedAck: async ack => { await srv.operator("wink.server.confirm", { offer: made.offer, typed: ack }); } });
+          assert.ok(r.owner, "the server named an owner");
+        }
+      }, { needs: [S("a fresh server with no setup code shows its code")] });
+      await run.step(S("the server made this app a signed-in session"), async () => {
+        const p = mac.pairing;
+        assert.notEqual(p.session, false, "the server paired the app but made it no session (adopt answered session:false), so the app cannot sign in and calls to the server are refused; the long code path gives the same app a session");
+      }, { needs: [S("the app pairs the server and the server names this identity its owner")] });
+      await run.step(S("the paired app reaches the server and calls a tool"), async () => {
+        await mac.openSession();
+        const info = await mac.callTool("system.info");
+        assert.ok(info, "system.info answered");
+      }, { needs: [S("the server made this app a signed-in session")] });
+    } finally {
+      mac.close();
+      if (srv) await srv.stop().catch(() => {});
+    }
+  }
+}

@@ -57,7 +57,11 @@ exit 0`,
      fs.writeFileSync(path.join(h, "vyred.pid"), String(process.pid));
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
      // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
+  // The vyre command a person (and the installer's check words) would call: answers relay.setup.status with four words, anything else with an error.
+  fs.mkdirSync(path.join(src, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(src, "bin", "vyre"), `if (process.argv[3] === "relay.setup.status") console.log(JSON.stringify({ words: "come pilot company release" })); else { console.error("no"); process.exit(1); }\n`);
   const env = {
+    VYRE_WORDS_TRIES: "1",
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "", VYRE_HEADSCALE_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
@@ -129,6 +133,51 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
   assert.ok(!plist.includes(CODE), "the plist never carries the code");
   assert.match(m.calls(), /colima start/);
+});
+
+test("install-mac-server.sh: the Mac comes up as a server: config.json says machine server, and a choice already made is kept", t => {
+  const m = mac(t);
+  const f = path.join(m.env.VYRE_HOME, "config.json");
+  let r = run({ ...m.env }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { machine: "server" });
+  assert.equal(fs.statSync(f).mode & 0o777, 0o600);
+  // the rest of an existing file is kept, a machine the person set stays, and so does the old role word
+  fs.writeFileSync(f, JSON.stringify({ name: "mini", relay: { enabled: true } }));
+  r = run({ ...m.env }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { name: "mini", relay: { enabled: true }, machine: "server" });
+  fs.writeFileSync(f, JSON.stringify({ machine: "device" }));
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).machine, "device");
+  fs.writeFileSync(f, JSON.stringify({ role: "box" }));
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { role: "box" });
+  fs.writeFileSync(f, "{ not json");
+  r = run({ ...m.env }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0); assert.match(r.stderr, /not valid JSON/);
+});
+
+test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
+  const m = mac(t);
+  let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /Check words: come pilot company release/);
+  assert.match(r.stdout, /They should match the four on your screen\./);
+  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
+  assert.ok(!(r.stdout + r.stderr).includes(CODE));
+  r = run({ ...m.env }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
+  assert.match(r.stdout, /wink\.server\.code/);
+  // words that cannot be read are said so, with the command that shows them
+  fs.writeFileSync(path.join(m.env.VYRE_SERVER_DIR, "app", "bin", "vyre"), "process.exit(1)\n");
+  fs.rmSync(path.join(m.src, "bin"), { recursive: true });
+  r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
+  assert.match(r.stdout, /Back in the Vyre app/);
 });
 
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {
