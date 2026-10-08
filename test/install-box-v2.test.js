@@ -431,7 +431,7 @@ test("install-box.sh v2: the check words come from the box, show on the terminal
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Your four words: lantern quiet river oak/);
-  assert.match(r.stdout, /They should match the four on your screen\./);
+  assert.match(r.stdout, /If it shows the same four, choose Same\./);
   assert.ok(r.stdout.indexOf("Your four words") < r.stdout.indexOf("Go back to the Vyre app to finish."), "words, then the plain last line");
   assert.ok(!b.calls().includes("lantern"), "the words are not sent anywhere");
 });
