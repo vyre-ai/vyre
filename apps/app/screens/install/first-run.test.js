@@ -204,3 +204,13 @@ test("the paste check accepts every character the directory can put in a code", 
   for (const ch of ALPHA32) assert.equal(codeLooksRight(`vyre-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), true, ch);
   assert.equal(codeLooksRight("VYRE-IIII-OOOO-0000-1111"), false);
 });
+
+test("a Mac server's line runs the Mac installer with the same code and Records choice; the others are unchanged", () => {
+  const code = "A".repeat(43);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "sqlite", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=sqlite sh`);
+  const base = "https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/";
+  assert.equal(installLine("0.3.0-rc.1", { code, store: "auto", os: "mac" }), `curl -fsSL ${base}install-mac-server.sh | VYRE_BOX_URL=${base} VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+});

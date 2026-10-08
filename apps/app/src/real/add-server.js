@@ -14,6 +14,12 @@ import { installLine } from "../../screens/install/first-run.js";
 export const SETUP_TTL_MS = 3_600_000;
 
 /** The two choices, the same for every space: Records recommended and first, preselected. `store` is VYRE_STORE on the install line. */
+/** Which kind of machine the server is: the line differs (a Linux server or cloud machine, or a Mac that stays on). */
+export const SERVER_KINDS = Object.freeze([
+  { id: "linux", label: "A Linux server or cloud machine", where: "On the server, as yourself (not root), paste this line." },
+  { id: "mac", label: "A Mac that stays on", where: "On the Mac, in Terminal, as yourself (not root), paste this line. It asks for the Mac password once." },
+]);
+
 export const CHOICES = Object.freeze([
   Object.freeze({ id: "records", store: "auto", label: "With Records", note: "Recommended. A server with 8 GB of memory is right; 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
   Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "A small server. 2 GB is enough.", minMb: 1800, recommendedMb: 1800 }),
@@ -79,8 +85,8 @@ export function createAddServer(o) {
   const set = (/** @type {Partial<AddServerState>} */ patch) => { state = { ...state, ...patch }; o.onChange?.(state); };
   const stop = (/** @type {keyof typeof MESSAGES} */ code) => { run++; pending = null; set({ stage: "stopped", error: { code, message: MESSAGES[code] } }); };
 
-  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" or "plain" */
-  async function begin(choice = DEFAULT_CHOICE) {
+  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" or "plain" @param {string} [os] "linux" (the default) or "mac": which installer the line runs */
+  async function begin(choice = DEFAULT_CHOICE, os = "linux") {
     const mine = ++run;
     pending = null;
     const c = choiceOf(choice);
@@ -91,7 +97,7 @@ export function createAddServer(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return stop("key"); }
     if (mine !== run) return;
-    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
+    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store, os }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
     void followMailbox(mine, key, secret);
     void waitForBox(mine, key, secret);
     void (async () => {

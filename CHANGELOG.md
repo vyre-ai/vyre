@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(app): adding a server asks whether it is a Linux machine or a Mac that stays on; a Mac gets the Mac installer's line, and install-mac-server.sh takes VYRE_STORE, shows the four check words and ends with "Back in the Vyre app" when the app made the code.
 - feat(app): after a name the first run offers Join a team, Add a server (your own Cloud) and, on a Mac, My Home; Windows says Home is coming.
 - fix(setup): the reserve page and the app's paste check accept every character the directory puts in a reservation code (A-Z without I and O, 2-9); they refused any code with an 8 or 9.
 - feat(site): vyre.run/setup checks a name, reserves it and shows the code for the app; the browser setup flow (key, install follow, claim, AI, devices) and its relay client copies are removed; staging override and build scripts follow.

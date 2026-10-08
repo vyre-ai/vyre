@@ -139,3 +139,11 @@ test("add-server: starting again drops the old run (its offer and its lines neve
   a.stop();
   assert.equal(a.state.stage, "idle");
 });
+
+test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Records choice", async () => {
+  const f = fakes({ after: 3, lines: [] });
+  const a = make(f);
+  await a.begin("plain", "mac");
+  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "sqlite", os: "mac" }));
+  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=sqlite sh$/);
+});
