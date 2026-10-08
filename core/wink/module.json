@@ -135,7 +135,7 @@
       },
       {
         "name": "wink.server.setup-offer",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {

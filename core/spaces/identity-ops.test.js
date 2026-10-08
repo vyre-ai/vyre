@@ -279,7 +279,7 @@ test("an identity made before the agreement key gets it on its own entry with on
   const priv = privateKeyOf(kp.privateKey), sign = m => crypto.sign(null, Buffer.from(m), priv);
   const g = await C.makeGenesis({ kind: "person", entry: { eid: kp.eid, kind: "device", pub: kp.publicKey }, nonce: "n-old-0001", ts: w.clock.t, sign });
   const state = await C.verifyChain([g], { now: w.clock.t });
-  await w.dir.claim("oldie", state, [g], { by: kp.eid, sign: m => sign(m) }, { v: 1 });
+  await w.dir.finalize("oldie", state, [g], { by: kp.eid, sign: m => sign(m) }, { v: 1 }, (await w.dir.reserve("oldie")).code);
   old.store.join({ privateKey: kp.privateKey, publicKey: kp.publicKey }, [g], "oldie");
   old.store.setChain([g], C.pinOf(state));
   assert.equal(old.store.agree(), null);

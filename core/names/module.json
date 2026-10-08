@@ -21,7 +21,7 @@
       },
       {
         "name": "names.serve",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {

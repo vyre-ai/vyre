@@ -40,13 +40,13 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
-| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run |
+| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link) |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
 | [`vyre gate`](#vyre-gate) | drafts held at the Gate: list, show one, approve (send), reject, or revise the words |
 | [`vyre memory`](#vyre-memory) | what memory holds, or everything about one thing |
-| [`vyre name`](#vyre-name) | this box's address: <you>.vyre.run |
+| [`vyre name`](#vyre-name) | the name this server serves: <space>.vyre.run |
 | [`vyre alarm`](#vyre-alarm) | set an alarm, list them, change, turn off or delete one |
 | [`vyre why`](#vyre-why) | the turns a fact came from |
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
@@ -112,7 +112,7 @@ from, and the command to act on it.
 Start vyred and print the onboarding link, or this box's address.
 
 ```
-vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]
+vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--quiet] [--dry-run] [--json]
 ```
 
 ### vyre down
@@ -346,10 +346,10 @@ vyre unpick <project> <thread>...
 
 ### vyre setup
 
-Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run.
+Where setup stands and where to continue (--new-link: a fresh link).
 
 ```
-vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]
+vyre setup [--new-link] [--json]
 ```
 
 ### vyre agenda
@@ -437,10 +437,10 @@ Change what it holds:
 
 ### vyre name
 
-This box's address: <you>.vyre.run.
+The name this server serves: <space>.vyre.run.
 
 ```
-vyre name [status|check <n>|claim <n>|release] [--json]
+vyre name [status|check <n>] [--json]
 ```
 
 ### vyre alarm

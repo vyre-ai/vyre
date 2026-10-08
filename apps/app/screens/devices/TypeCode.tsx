@@ -31,7 +31,7 @@ export async function redeemInvite(code: string, onAck: (ack: string, expires?: 
 export async function redeemPairing(code: string, onAck: (ack: string, expires?: number) => void): Promise<Typed> {
   const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s: { state: string; code?: string; expires?: number }) => { if (s.state === "ack" && s.code) onAck(s.code, typeof s.expires === "number" ? s.expires : undefined); },
     pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), deviceKind: about.kind === "web" ? "web" : "phone", keyStorage: "software" } });
-  if (!r.ok) throw new Error(inviteReasonSay(r.reason === "closed" ? "refused" : r.reason));
+  if (!r.ok) throw new Error(("message" in r && r.message) || inviteReasonSay(r.reason === "closed" ? "refused" : r.reason === "needs_identity" ? "refused" : r.reason));
   await afterPaired(r.paired);
   return {};
 }

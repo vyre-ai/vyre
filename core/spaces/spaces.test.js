@@ -1293,9 +1293,12 @@ test("spaces.identity.name-of: a claimed name the directory confirms for that id
 
 test("a space whose home is a PAIRED server is hosted by the server: the device asks it (with the owner's proof beside the call), keeps only a row, takes the server's id, and cancel gives it back there; a refusal makes nothing and never falls back to hosting here", async t => {
   const w = world(t);
+  const { hooks } = await import("./index.js");
+  const dirPosts = [];
+  const realFetch = hooks.fetch;
+  hooks.fetch = /** @type {any} */ (async (url, init) => { if (init && init.method === "POST" && String(url).endsWith("/v1/ids/server")) dirPosts.push(JSON.parse(init.body)); return realFetch(url, init); });
   const d = await device(t, { wink: true });
   await d.ok("spaces.identity.create", { name: "alex" });
-  const { hooks } = await import("./index.js");
   /** @type {any[]} */ const recorded = [];
   let counter = 0;
   hooks.sessionFor = async dev => ({ call: async (tool, input) => { recorded.push({ device: dev, tool, input, proof: input.proof }); if (/** @type {any} */ (globalThis).__winkRefuse) throw Object.assign(new Error("the server said no"), { code: "forbidden" }); counter++; return tool === "spaces.host-here" ? { space: "spc_" + "abcdefghjkl" + "mnopqrstuvwx"[counter - 1], existed: false } : { retired: true }; } });
@@ -1305,9 +1308,6 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   const SERVER_ROUTE = "a".repeat(26);
   hooks.route = () => ({ relay: "https://relay.example", route: SERVER_ROUTE, box: "bx" });
   t.after(() => { hooks.route = null; });
-  const dirPosts = [];
-  const realFetch = hooks.fetch;
-  hooks.fetch = /** @type {any} */ (async (url, init) => { if (init && init.method === "POST" && String(url).endsWith("/v1/ids/server")) dirPosts.push(JSON.parse(init.body)); return realFetch(url, init); });
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
   const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
