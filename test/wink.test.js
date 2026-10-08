@@ -105,7 +105,7 @@ async function addPhoneByCode(t, w, code, offer) {
   await until(() => w.events.find(e => e[0] === "wink.found"));
   const typed = await w.call("wink.code.ack", { offer, typed: ack });
   // This box holds no name, so it cannot put the phone's key on a name's list; the owner's app does that and reports it (wink.phone.enrolled). Here the report is "could not", so the waiting phone is told at once.
-  const asked = w.events.find(e => e[0] === "wink.enrol-asked");
+  const asked = await until(() => w.events.find(e => e[0] === "wink.enrol-asked"), 4000).catch(() => null);
   if (asked) assert.equal((await w.call("wink.phone.enrolled", { device: asked[1].device, ok: false, reason: "this test box holds no name" })).data.ok, true);
   return { ack, typed, joining };
 }
