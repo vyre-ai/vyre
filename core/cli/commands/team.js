@@ -14,7 +14,7 @@ const id8 = s => String(s || "").slice(0, 8);
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
 const USAGE = "vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]";
-const FLAGS = { values: ["project", "brief", "instructions", "isolation", "priority", "part"], bool: ["urgent", "wait", "edit"], cmd: "team" };
+const FLAGS = { values: ["project", "brief", "instructions", "isolation", "priority", "part", "model"], bool: ["urgent", "wait", "edit"], cmd: "team" };
 
 /** The Project record id of the project this terminal is in, unless --project (a short name or an id) overrides it: a teammate's rows are keyed by the record's id. */
 async function projectFlag(flags) {
@@ -69,7 +69,7 @@ async function ask(args) {
   if (!role || !text) return usage("vyre team ask <role> <text>", "vyre team lists a project's teammates");
   const project = await projectFlag(flags);
   if (!project) return usage("vyre team ask: say --project, or run this inside a project folder", USAGE);
-  const input = { to: role, text, project, ...(flags.urgent ? { priority: "urgent" } : flags.priority ? { priority: flags.priority } : {}), ...(flags.wait ? { wait: true } : {}) };
+  const input = { to: role, text, project, ...(flags.urgent ? { priority: "urgent" } : flags.priority ? { priority: flags.priority } : {}), ...(flags.wait ? { wait: true } : {}), ...(flags.model ? { model: String(flags.model) } : {}) };
   const r = await tool("team.ask", input);
   if (!r) return 1;
   if (json()) return emit(r);
@@ -116,7 +116,7 @@ const cmd = {
   name: "team",
   summary: "Project teammates: add one, send it work, read what came back",
   usage: USAGE,
-  help: "vyre team                     this project's teammates, states and queues\nvyre team add <role>          add a teammate\nvyre team ask <role> <text>   send it work; --urgent, --wait\nvyre team status <request>    one request's state and result\nvyre team cancel <request>    cancel a queued request\nvyre team notes <agent>       read its notes",
+  help: "vyre team                     this project's teammates, states and queues\nvyre team add <role>          add a teammate\nvyre team ask <role> <text>   send it work; --urgent, --wait, --model codex|grok|provider/model\nvyre team status <request>    one request's state and result\nvyre team cancel <request>    cancel a queued request\nvyre team notes <agent>       read its notes",
   async run(args) {
     const [sub, ...rest] = args;
     if (!sub || sub === "list" || sub === "ls") return list(sub ? rest : args);

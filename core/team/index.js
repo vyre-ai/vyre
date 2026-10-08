@@ -98,10 +98,28 @@ export const MIGRATIONS = [
   // duties steps once made an upgraded box re-run "ADD COLUMN title" and lose the whole team module.) A charter a session drafted waits here, one per teammate, until the person accepts it
   // (team.charter.accept): a charter is a teammate's system prompt.
   `CREATE TABLE team_charter_drafts (teammate TEXT PRIMARY KEY, text TEXT NOT NULL, by TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)`,
+  // team.ask's optional model: a request may ask for a provider (and model) of its own, run in a session made for that request alone; `thread` is that session, so a person can stop it.
+  `ALTER TABLE team_requests ADD COLUMN model TEXT; ALTER TABLE team_requests ADD COLUMN thread TEXT`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
 export const STOP_WAIT_MS = 10_000;
+
+/** The providers a session can run on (core/sessions PROVIDERS). */
+const PROVIDER_IDS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
+/**
+ * What team.ask's `model` means: "codex" or "grok/<model>" or "claude/opus" (a provider, optionally a model of its own), or a bare Claude model name ("opus"). Null for none. Anything else is refused,
+ * so a request never carries a word the launch would read as a flag.
+ * @param {unknown} v @returns {{ provider: string, model?: string, label: string } | null}
+ */
+export function modelChoice(v) {
+  if (v === undefined || v === null || v === "") return null;
+  const m = /^([a-z][a-z0-9-]{0,40})(?:\/([A-Za-z0-9][A-Za-z0-9._:-]{0,80}))?$/.exec(String(v).trim());
+  if (!m) throw Object.assign(new Error("model is a provider (claude, codex, grok, openrouter), a provider/model, or a Claude model name"), { code: "bad_input" });
+  if (PROVIDER_IDS.includes(m[1])) return { provider: m[1], ...(m[2] ? { model: m[2] } : {}), label: String(v).trim() };
+  if (!m[2]) return { provider: "claude", model: m[1], label: `claude/${m[1]}` };
+  throw Object.assign(new Error(`${m[1]} is not a provider; the providers are ${PROVIDER_IDS.join(", ")}`), { code: "bad_input" });
+}
 
 /** The longest charter (characters): a role's purpose and habits, not a manual. */
 export const CHARTER_MAX = 8000;
@@ -244,7 +262,7 @@ export default {
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
       via: JSON.parse(String(r.via)), text: String(r.text), refs: JSON.parse(String(r.refs)), priority: String(r.priority),
       state: String(r.state), result: r.result == null ? null : String(r.result), result_refs: JSON.parse(String(r.result_refs)),
-      attempt: Number(r.attempt), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
+      attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
       finished: r.finished_at == null ? null : Number(r.finished_at) });
 
     const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
@@ -623,11 +641,11 @@ export default {
      * teammate's) and vyred's own (queueing a merge to the integrator). Never checks who may ask
      * this teammate for what; callers that need that (team.ask) check it themselves first.
      */
-    const queueRequest = ({ teammate, project, from_kind, from, reply_to = null, via = [], text, refs = [], priority = "normal", key = null }) => {
+    const queueRequest = ({ teammate, project, from_kind, from, reply_to = null, via = [], text, refs = [], priority = "normal", key = null, model = null }) => {
       const id = `r_${crypto.randomBytes(4).toString("hex")}`;
-      db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, reply_to, via, text, refs, priority, state, attempt, key, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 1, ?, ?)`).run(id, teammate, project, from_kind, from, reply_to,
-        JSON.stringify(via), text, JSON.stringify(refs), priority, key, Date.now());
+      db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, reply_to, via, text, refs, priority, state, attempt, key, created_at, model)
+        VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 1, ?, ?, ?)`).run(id, teammate, project, from_kind, from, reply_to,
+        JSON.stringify(via), text, JSON.stringify(refs), priority, key, Date.now(), model);
       ctx.events.emit("summon.queued", { request: id, teammate, project, priority });
       pump(teammate); // never blocks the caller
       return id;
@@ -784,7 +802,9 @@ export default {
             // from breaking out of the attribute; req.text is the requester's own words, which
             // the teammate is meant to read as an instruction, but never as a second wrapper.
             const rotate = await shouldRotate(tm);
-            const first = !tm.thread || rotate;
+            // A request that names a model runs in a session made for it alone (another provider cannot resume this one), with the teammate's notes and last results carried in as for a rotation; the standing thread stays as it was.
+            const over = modelChoice(req.model);
+            const first = !tm.thread || rotate || Boolean(over);
             // A rotation's notes and last results ride in the first user turn, ahead of the
             // request itself, never in `append` (the system prompt): they are the teammate's own
             // past writing, so untrusted like any other request text (e2e review MEDIUM).
@@ -820,10 +840,11 @@ export default {
               t = await use("threads.launch", { agent, agent_kind: "teammate", project: projectSlug, purpose: "teammate",
                 prompt: wrapped, name: agent, ...(worktreeDir ? { cwd: worktreeDir } : {}),
                 ...(first ? { append: preamble({ ...tm, project_name: projectSlug, charter: charterCurrent(agent)?.text || null, filler_character: filler?.instructions || null }) } : { resume: tm.thread }),
-                ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) });
+                ...(over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) }) });
             } finally { early(); } // always unsubscribed, whether launch succeeded or threw (reviewer LOW, 20d0f121)
             const already = finishedEarly.has(t.id);
-            setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
+            if (over) db.prepare("UPDATE team_requests SET thread = ? WHERE id = ?").run(t.id, req.id);
+            else setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
             if (already) { await onTurnEnded(); }
             else {
               const off = ctx.events.on("thread.finished", e => { if (e.thread === t.id) { off(); waiting.delete(off); if (!stopped) track(onTurnEnded()); } });
@@ -1321,11 +1342,12 @@ export default {
     });
 
     ctx.tool("team.ask", {
-      description: "Send work to a project's teammate by role (\"design\", \"backend\", ...): {to, text, refs?, priority?, wait?, project?}. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.",
+      description: "Send work to a project's teammate by role (\"design\", \"backend\", ...): {to, text, refs?, priority?, wait?, project?, model?}. model (a provider such as codex or grok, provider/model, or a Claude model name) runs this request in a session of its own on that model, through the same Gate and spend as any teammate session. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.",
       input: { type: "object", required: ["to", "text"], properties: { to: { type: "string" }, text: { type: "string" }, refs: { type: "array", items: { type: "string" } },
-        priority: { type: "string", enum: PRIORITIES }, wait: { type: "boolean" }, project: { type: "string" }, key: { type: "string" } } },
+        priority: { type: "string", enum: PRIORITIES }, wait: { type: "boolean" }, project: { type: "string" }, key: { type: "string" }, model: { type: "string" } } },
       callers: TEAM_USE,
       run: async (i, meta) => {
+        const choice = modelChoice(i.model);
         const project = await projectOf(meta, i);
         const tm = byRole(project, i.to) || serving(project).find(x => x.role === i.to);
         if (!tm) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}`), { code: "not_found" });
@@ -1344,18 +1366,18 @@ export default {
         if (!PRIORITIES.includes(priority)) throw Object.assign(new Error(`priority must be one of ${PRIORITIES.join(", ")}`), { code: "bad_input" });
         const from_kind = callerTm ? "teammate" : meta.thread ? "session" : isPerson(meta.caller) ? "person" : "session";
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
-        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key });
+        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null });
         if (i.wait) {
           const done = await new Promise(resolve => {
             const timer = setTimeout(() => { off(); resolve(null); }, ASK_WAIT_MS);
             const off = ctx.events.on("summon.finished", e => { if (e.payload.request === id) { clearTimeout(timer); off(); resolve(e); } });
           });
-          if (done) { const r = mustR(id); return { request: id, state: r.state, result: r.result }; }
+          if (done) { const r = mustR(id); return { request: id, state: r.state, result: r.result, ...(r.model ? { model: r.model } : {}) }; }
         }
         const r = mustR(id);
         const position = r.state === "queued" ? db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued' AND (priority = 'urgent' AND NOT (? = 'urgent') OR created_at <= ?)")
           .get(tm.agent, r.priority, r.created).n : 0;
-        return { request: id, state: r.state, position: Number(position) || 0 };
+        return { request: id, state: r.state, position: Number(position) || 0, ...(r.model ? { model: r.model } : {}) };
       },
     });
 
