@@ -17,16 +17,49 @@ export function recipientsOf(dest, final) {
   return out;
 }
 
+/** The headers and plain text of an RFC 822 message as Gmail's send takes it (base64url `raw`). Null when it is not one. @param {any} raw @returns {{ subject: string, body: string, to: string, cc: string, bcc: string } | null} */
+export function parseRaw(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  let text;
+  try { text = Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); } catch { return null; }
+  const cut = text.search(/\r?\n\r?\n/);
+  const head = (cut < 0 ? text : text.slice(0, cut)).replace(/\r?\n[ \t]+/g, " ");
+  const body = cut < 0 ? "" : text.slice(cut).replace(/^\r?\n\r?\n/, "");
+  /** @param {string} n */ const h = n => { const m = new RegExp(`^${n}:[ \\t]*(.*)$`, "im").exec(head); return m ? m[1].trim() : ""; };
+  const decode = (/** @type {string} */ v) => v.replace(/=\?utf-8\?([bq])\?([^?]*)\?=/gi, (_m, enc, t) => (enc.toLowerCase() === "b" ? Buffer.from(t, "base64").toString("utf8") : t.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_x, hex) => String.fromCharCode(parseInt(hex, 16)))));
+  if (!h("to") && !h("subject")) return null;
+  return { subject: decode(h("subject")), body, to: h("to"), cc: h("cc"), bcc: h("bcc") };
+}
+
+/**
+ * What an email that went out says, from the Gate item: the Gate's own email shape (subject, body, cc), or a Gmail send made through a Connection (the raw message in the request).
+ * @param {any} item @param {string[]} dest @returns {{ subject: string, body: string, dest: string[], final: any } | null}
+ */
+export function emailOf(item, dest) {
+  const final = item.final || item.draft || {};
+  if (typeof final.subject === "string" && typeof final.body === "string") return { subject: final.subject, body: final.body, dest, final };
+  const req = final.request && final.request.body;
+  const path = typeof final.url === "string" ? final.url : "";
+  if (req && /\/gmail\/v1\/users\/[^/]+\/messages\/send(?:[?#]|$)/.test(path)) {
+    const m = parseRaw(req.raw);
+    if (!m) return null;
+    const split = (/** @type {string} */ v) => v.split(",").map(x => x.trim()).filter(Boolean);
+    return { subject: m.subject, body: m.body, dest: split(m.to), final: { cc: m.cc, bcc: m.bcc } };
+  }
+  return null;
+}
+
 /** One sent email, filed. @param {{ kernel: any, chain: () => any, call: (tool: string, input: any) => Promise<any>, log?: (m: string) => void, now?: () => number }} d @param {{ id: string, kind?: string, via?: string, to?: string[] }} released */
 export async function logSent(d, released) {
   if (!released || released.kind !== "send") return null;
   const r = await d.call("gate.get", { id: released.id });
   const item = r && r.data;
   if (!item || item.state !== "sent") return null;
-  const final = item.final || item.draft || {};
   // an email has a subject and a body and goes to addresses; a payment or a post does not
-  if (typeof final.subject !== "string" || typeof final.body !== "string") return null;
-  const people = recipientsOf(Array.isArray(item.to) ? item.to : released.to || [], final);
+  const mail = emailOf(item, Array.isArray(item.to) ? item.to : released.to || []);
+  if (!mail) return null;
+  const final = { ...mail.final, subject: mail.subject, body: mail.body };
+  const people = recipientsOf(mail.dest, final);
   if (!people.length) return null;
   const at = new Date((d.now || Date.now)()).toISOString();
   const excerpt = final.body.replace(/\s+/g, " ").trim().slice(0, 240);

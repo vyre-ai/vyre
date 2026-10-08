@@ -8,7 +8,7 @@ import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createEventLog } from "../../kernel/core/events.js";
 import { createChainBuilder } from "../../kernel/core/chain.js";
 import { CORE_TYPES } from "../../records/core-types.js";
-import { recipientsOf, logSent, watchSentMail } from "../../core/daemon/sent-mail-log.js";
+import { recipientsOf, logSent, watchSentMail, parseRaw, emailOf } from "../../core/daemon/sent-mail-log.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -83,4 +83,22 @@ test("the listener files on gate.released and a failure is a log line, never a t
   subs[1][1]({ payload: { id: "gi_10", kind: "send" } });
   await new Promise(r => setTimeout(r, 50));
   assert.match(lines.join(), /sent-mail log: gate away/);
+});
+
+const rawOf = (text) => Buffer.from(text).toString("base64url");
+
+test("a Gmail send made through a Connection is read from its raw message", async () => {
+  const raw = rawOf("To: Jane Doe <jane@harlow.test>, dana@oakline.test\r\nCc: billing@harlow.test\r\nSubject: Invoice 1042\r\nContent-Type: text/plain\r\n\r\nHi Jane,\r\n\r\nPlease pay.");
+  assert.deepEqual(parseRaw(raw), { subject: "Invoice 1042", body: "Hi Jane,\r\n\r\nPlease pay.", to: "Jane Doe <jane@harlow.test>, dana@oakline.test", cc: "billing@harlow.test", bcc: "" });
+  assert.equal(parseRaw("%%%"), null);
+  assert.equal(parseRaw(rawOf("not a message")), null);
+  const { kernel } = await rig(), R = kernel.records;
+  const jane = await R.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test" });
+  const item = { data: { state: "sent", via: "vault-api", to: ["gmail.googleapis.com"], final: { credential: "conn-gmail", method: "POST", url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", request: { body: { raw } } } } };
+  const out = await logSent({ kernel, chain: owner, call: async () => item, now: () => 1_800_000_900_000 }, { id: "gi_7", kind: "send", via: "vault-api" });
+  assert.deepEqual([out.logged, out.of], [1, 3], "jane, dana and the cc; only jane is a client here");
+  const c = (await R.query(owner(), "communication", { page: { limit: 5 } })).rows[0].data;
+  assert.deepEqual([c.subject, c.direction, c.source_key, c.cc, c.contacts.map(x => x.urn)], ["Invoice 1042", "outbound", "gate:gi_7", "billing@harlow.test", [jane.urn]]);
+  // another call to the same host is not an email
+  assert.equal(emailOf({ final: { url: "https://gmail.googleapis.com/gmail/v1/users/me/labels", request: { body: { raw } } } }, []), null);
 });
