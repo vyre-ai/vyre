@@ -3,15 +3,16 @@
 // at names.vyre.run that holds the only vyre.run DNS credential. A box never sees it. One Durable
 // Object holds every name, so a claim and a limit can never race.
 //
-//   POST   /v1/names/claim           {name}                bind a name to the caller's route for good
+//   POST   /v1/ids/reserve           {name}                hold a free name 24 h behind a code (open: no key, any origin)
+//   POST   /v1/ids/reserved-for      {code}                which name a live code holds (does not spend it)
+//   POST   /v1/ids/finalize          {name, code, ...}     a person's first name: the app's genesis chain + the code
+//   POST   /v1/ids/server            {route, act}          a space lists or drops a server's route (it serves the space's name)
 //   POST   /v1/names/point           {name, ip}            A record, tailnet IPv4 (100.64.0.0/10) only
 //   POST   /v1/names/publish         {name}                A record, the public IPv4 this request came from (a box that serves its own network gate)
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
-//   POST   /v1/names/release         {name}                give the name up (a tombstone if it was ever pointed)
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
-//   POST   /v1/names/admin/rebind    {name, route}        support only: move a name to a route at once; needs the ADMIN_SECRET header
 //   POST   /v1/names/admin/drop      {name}               support only: take a name back from a server, so an identity or a space can claim it; needs the ADMIN_SECRET header
 //   GET    /health
 //
@@ -22,8 +23,8 @@
 // 60 seconds, and the nonce unused. No dependencies: WebCrypto only.
 //
 // Nothing here serves user content, sets a cookie or reads one. CORS is narrow: `GET /v1/ids/resolve` and the name availability check `GET /v1/names/check` are public read-only data and answer any origin (no credentials). `POST /v1/ids/claim`,
-// `/v1/ids/append` and `/v1/ids/update` carry their own proof (the identity's own signature is the authentication), so they also accept the Vyre app's origins (env.APP_ORIGINS, default
-// https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none.
+// `/v1/ids/finalize`, `/v1/ids/reserved-for`, `/v1/ids/append` and `/v1/ids/update` carry their own proof (the identity's own signature is the authentication), so they also accept the Vyre app's origins (env.APP_ORIGINS, default
+// https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none. `POST /v1/ids/reserve` takes no credentials and answers any origin, with a per-address daily limit.
 
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
