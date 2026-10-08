@@ -739,7 +739,7 @@
  "names/worker/ids.test.js": 30,
  "names/worker/worker.test.js": 15,
  "records/calendar/sync.test.js": 10,
- "records/connectors/connection.test.js": 4,
+ "records/connectors/connection.test.js": 5,
  "records/connectors/stripe/stripe.test.js": 10,
  "records/ids.test.js": 4,
  "records/language/compile.test.js": 12,
