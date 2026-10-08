@@ -138,7 +138,7 @@ vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [f
 Check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix.
 
 ```
-vyre doctor [--json]
+vyre doctor [--json] [--repair]
 ```
 
 Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.
