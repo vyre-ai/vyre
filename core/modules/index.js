@@ -1231,7 +1231,9 @@ export class Registry {
         // relay without them would be refused for every person who asks an agent from a device.
         const cur = m.name === "agents" && agentsMayRelay(tool) ? currentCall() : null;
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
-        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed, ...asked });
+        // A view the person opened calls the module's own tool FOR that person (the call it relays came from one), so a tool with no declared reach is judged as acting for the person and not as a timer (RG-2).
+        const viewOrigin = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
+        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewOrigin ? { origin: viewOrigin } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
