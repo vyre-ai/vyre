@@ -17,7 +17,7 @@ function plain(e) {
   const map = /** @type {Record<string, string>} */ ({
     name_taken: "That name is taken.", taken: "That name is taken.", bad_name: "That is not a name Vyre can use.", reserved: "That name is reserved.",
     rate_limited: "Too many names were claimed from here today. Try again tomorrow.", unreachable: "Cannot reach the names directory right now.",
-    bad_code: "That reservation code is not valid. It lasts 24 hours and works once, and reserving the name again replaces it. Reserve the name again at vyre.run/setup.",
+    bad_code: "That code does not work. It may have run out, been used, or been replaced by a newer one. Reserve the name again at vyre.run/setup.",
     reserve_first: "A first name is reserved at vyre.run/setup, then finished here with its code.",
   });
   return map[e && e.code] || (e && e.message) || "That did not work.";

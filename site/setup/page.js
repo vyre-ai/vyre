@@ -40,7 +40,7 @@ $("form").addEventListener("submit", async e => {
   try {
     const r = await json(`${DIRECTORY}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
     out = reserveAnswer(r.status, r.body);
-  } catch { out = { ok: false, say: "Vyre could not reach the directory. Check your connection and try again." }; }
+  } catch { out = { ok: false, say: "Vyre cannot be reached. Check your connection and try again." }; }
   if (!out.ok) { hint.textContent = out.say; go.disabled = false; return; }
   $("pick").hidden = true; $("done").hidden = false;
   $("address").textContent = `${name}.vyre.run`;

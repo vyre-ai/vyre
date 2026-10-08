@@ -621,7 +621,7 @@ export default {
           const held = await dir.reservedFor(code);
           label = String(held.name);
           made = await idops.create({ name: label, password, deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined, code });
-        } catch (e) { const err = /** @type {any} */ (e); if (err.code === "bad_code") throw refuse("That reservation code is not valid. It may have expired (they last 24 hours), been used, or been replaced by a newer one: reserve the name again at vyre.run/setup.", "bad_code"); throw idFail(err); }
+        } catch (e) { const err = /** @type {any} */ (e); if (err.code === "bad_code") throw refuse("That code does not work. It may have run out, been used, or been replaced by a newer one. Reserve the name again at vyre.run/setup.", "bad_code"); throw idFail(err); }
         emit("identity.created", { name: `${label}.vyre.run`, id: made.status.id, at: now() });
         return {
           ...publicIdentity(made.status),
