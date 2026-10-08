@@ -289,7 +289,9 @@ export class ApiRequests {
     if (a.type === "basic") {
       if (/[\r\n]/.test(secret)) throw bad(`${plan.name}'s secret has a line break, which a header cannot carry`, "config");
       const value = `Basic ${Buffer.from(secret, "utf8").toString("base64")}`;
-      known.push(value, Buffer.from(secret, "utf8").toString("base64"));
+      // the pair, its encoding, and the password alone (an API that echoes the password back must not get it past the scrub)
+      const at = secret.indexOf(":");
+      known.push(value, Buffer.from(secret, "utf8").toString("base64"), ...(at >= 0 && secret.length - at > 1 ? [secret.slice(at + 1)] : []));
       return { headers: { authorization: value }, known };
     }
     if (a.type === "api-key" && a.in === "query") {
