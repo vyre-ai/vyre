@@ -843,7 +843,7 @@
  "test/presence-cli.test.js": 4,
  "test/project-arg.test.js": 2,
  "test/projects-cli.test.js": 5,
- "test/proof-install-run.test.js": 3,
+ "test/proof-install-run.test.js": 4,
  "test/reach-asked.test.js": 1,
  "test/reach-classes.test.js": 5,
  "test/reach-explicit.test.js": 2,

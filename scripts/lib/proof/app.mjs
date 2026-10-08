@@ -32,6 +32,12 @@ import { addDeviceCore } from "../../../apps/app/src/identity/add-device-core.js
 import { phoneAsk, added } from "../../../apps/app/screens/devices/real.js";
 import * as C from "../../../kernel/identity/chain.js";
 import { enrolDevice } from "../../../apps/app/src/identity/enrol-device.js";
+import { openInvite, callTeam } from "../../../apps/app/src/real/join-team.js";
+import { kernelWire } from "../../../apps/app/src/real/kernel-wire.js";
+import { createTeamInvite, listTeamInvites } from "../../../apps/app/src/real/team-invite.js";
+import { openServerPeer } from "../../../relay/client/peerclient.js";
+import { WORDS } from "../../../relay/client/words.js";
+import { serveEnrolWith } from "../../../apps/app/src/real/enrol-serve.js";
 
 const b64u = (/** @type {Uint8Array} */ b) => Buffer.from(b).toString("base64url");
 const until = async (/** @type {() => any} */ fn, ms = 30_000, what = "the app") => { const end = Date.now() + ms; while (Date.now() < end) { const v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, 40)); } throw new Error(`timed out waiting for ${what}`); };
@@ -39,13 +45,13 @@ const until = async (/** @type {() => any} */ fn, ms = 30_000, what = "the app")
 const plainName = (/** @type {string} */ n) => String(n).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/ {2,}/g, " ").trim().slice(0, 64);
 
 /**
- * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number }, about?: { kind: "app" | "web" } }} o
+ * @param {{ label: string, dir: string, directory: string, relay: string, stretch?: { memoryKiB: number, passes: number }, about?: { kind: "app" | "web" }, capsule?: boolean }} o
  * `directory` is the names directory's base (a stand-in), `relay` the relay's ws address, `dir` this app's own folder for its relay keys.
  */
 export function createApp(o) {
   fs.mkdirSync(o.dir, { recursive: true });
-  // what this app says it is at the relay: the Mac and Windows windows are web pages (api/relay.web.ts), the phone apps are native (api/relay.native.ts)
-  const about = o.about || { kind: /** @type {const} */ ("web") };
+  // what this app says it is at the relay: the Mac and Windows windows and the phone apps all say "app" (pair-fix-3: a web hello left a typed-code pairing with no person session)
+  const about = o.about || { kind: /** @type {const} */ ("app") };
   const stretch = o.stretch || { memoryKiB: 64, passes: 1 };
   /** @type {any} */ let me = null;
   /** @type {any} */ let pairing = null;
@@ -115,6 +121,20 @@ export function createApp(o) {
     const r = /** @type {any} */ (await joining);
     if (!r.ok) throw Object.assign(new Error(`the typed code did not pair: ${r.reason}${r.message ? " (" + r.message + ")" : ""}`), { code: r.code || r.reason });
     pairing = { ...r.paired, owner: r.done && r.done.owner, session: r.done ? r.done.session : undefined, relay: r.paired.relay || o.relay };
+    return pairing;
+  }
+
+  /**
+   * What a stranger with only the typed code can do: redeem it and be a device, with NO owner identity proof (`server` left out of joinWithCode). Used to prove such a device gets no signed-in session.
+   * @param {{ input: string, typedAck: (ack: string) => Promise<void> }} a
+   */
+  async function pairByTypedCodeNoProof(a) {
+    let acked = false;
+    const r = /** @type {any} */ (await joinWithCode({ relay: o.relay, input: a.input, name: o.label, pollMs: 100, waitMs: 30_000,
+      onState: s => { if (s.state === "ack" && !acked) { acked = true; void a.typedAck(String(s.code)).catch(() => {}); } },
+      pairOptions: { crypto: relayCrypto, keyStore, about, presenceKey } }));
+    if (!r.ok) throw Object.assign(new Error(`the typed code did not pair: ${r.reason}`), { code: r.code || r.reason });
+    pairing = { ...r.paired, relay: r.paired.relay || o.relay };
     return pairing;
   }
 
@@ -189,20 +209,19 @@ export function createApp(o) {
 
   /**
    * Serve the pending device enrolment: the server could not put the new device's key on the name's list (the key lives in this app), so this app signs the list change, sends it to the directory and tells
-   * the server. apps/app/src/real/enrol-phone.ts serveEnrol does this on the phone and the computer; that file is TypeScript on the app's box client, so its steps are repeated here around the app's own
-   * enrolDevice (identity/enrol-device.js) and must be kept in step with it. Resolves true when a request was served.
-   * @param {{ timeoutMs?: number }} [a]
+   * the server. The steps are the app's own (apps/app/src/real/enrol-serve.js serveEnrolWith, the same one the Devices screen runs) with this headless app's call, identity and signer handed in.
+   * Resolves true when a request was served. @param {{ timeoutMs?: number }} [a]
    */
   async function serveEnrol(a = {}) {
-    const ask = /** @type {any} */ (await until(async () => { const r = await callTool("wink.phone.pairing", {}); return r && r.enrol ? r : null; }, a.timeoutMs || 20_000, "the server to ask this app to add the device"));
-    const e = ask.enrol;
-    const tell = (/** @type {boolean} */ ok, /** @type {string} */ reason, /** @type {any} */ identity) => callTool("wink.phone.enrolled", { device: e.device, ok, ...(reason ? { reason } : {}), ...(identity ? { identity } : {}) });
-    try {
-      const done = await enrolDevice({ name: me.name, eid: me.key.eid, pin: me.pin, base: o.directory, sign: (/** @type {Uint8Array} */ m) => me.key.sign(m), entry: e.entry });
-      me = { ...me, ops: done.ops, pin: done.pin };
-      await tell(true, "", { id: me.id, vyre: me.name });
-    } catch (err) { await tell(false, String(/** @type {Error} */ (err).message || "The device could not be added to your name."), null); throw err; }
-    return true;
+    await until(async () => { const r = await callTool("wink.phone.pairing", {}); return r && r.enrol ? r : null; }, a.timeoutMs || 20_000, "the server to ask this app to add the device");
+    let failure = null;
+    const served = await serveEnrolWith({
+      call: async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "wink.phone.enrolled" && input && input.ok === false) failure = input.reason; return callTool(tool, input || {}); },
+      identity: async () => me, held: async () => false, signers: async (/** @type {any} */ mine) => ({ sign: (/** @type {Uint8Array} */ m) => mine.key.sign(m) }),
+      enrol: enrolDevice, save: async (/** @type {any} */ i) => { me = { ...me, ops: i.ops, pin: i.pin }; }, base: o.directory,
+    });
+    if (failure) throw new Error(String(failure));
+    return served;
   }
 
   /** This (new, name-less) device joins the name held by another device: the app's addDeviceCore with the relay's phonepair as its pairing. @param {{ payload: string, onWords?: (w: string) => void }} a */
@@ -224,13 +243,40 @@ export function createApp(o) {
   }
 
   /**
-   * "Join a team": paste the invite, run on the org's server with no server of your own (spec 0.3.0 part 10, 2b). There is no app module for this yet that an identity with no server can use:
-   * previewInvite and acceptInvite (apps/app/src/real/install.ts) call spaces.invites.preview and spaces.invites.accept on THIS person's own server, which this person does not have.
-   * @param {{ link: string }} a
+   * The owner's side of a team invite, as the app does it (apps/app/src/real/team-invite.js over kernel-wire.js on the paired peer stream): the server holds no identity, so the home's kernel asks THIS
+   * app's key for its yes. `signPresence` is that key (the walk hands in the development sealing process's software signer; a release server wants a hardware key).
+   * @param {{ space: string, name: string, to: string, signPresence: (card: any) => Promise<any> }} a
+   */
+  async function makeTeamInvite(a) {
+    if (!me || !pairing) throw new Error("this app has no identity or no server yet");
+    const conn = connect({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: o.label, crypto: relayCrypto, keyStore });
+    const peer = await openServerPeer(conn);
+    const wire = kernelWire(peer, a.space, { person: me.id, signPresence: a.signPresence });
+    const dir = { wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory };
+    const made = await createTeamInvite(dir, { space: a.space, name: a.name, role: "member", to: a.to });
+    const rows = await listTeamInvites(dir);
+    return { ...made, rows, close() { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } } };
+  }
+
+  /**
+   * "Join a team": paste the invite; this identity has no server of its own and joins through the team's server (apps/app/src/real/join-team.js openInvite, accept, callTeam), the same code team-join.ts
+   * gives the app. `signPresence` and `presenceKey` are this app's yes key (the walk hands in a development software signer).
+   * @param {{ link: string, signPresence: (req: any) => Promise<any>, presenceKey: (invite: string) => Promise<any> }} a
    */
   async function joinTeam(a) {
-    void a;
-    throw Object.assign(new Error("no app code joins a team from an identity with no server of its own: the join path (real/install.ts previewInvite/acceptInvite) calls the person's own box, and there is none (spec 0.3.0 part 10, Join a team)"), { code: "not_built" });
+    if (!me) throw new Error("this app has no identity yet");
+    const rows = new Map();
+    const deps = {
+      who: { id: me.id, name: me.name, eid: me.key.eid, sign: (/** @type {Uint8Array} */ m) => me.key.sign(m) },
+      fetch: globalThis.fetch.bind(globalThis), base: o.directory, connect, openServerPeer, crypto: relayCrypto, words: WORDS,
+      signPresence: a.signPresence, presenceKey: a.presenceKey,
+      store: { get: async (/** @type {string} */ k) => rows.get(k), put: async (/** @type {string} */ k, /** @type {any} */ v) => { rows.set(k, v); } },
+    };
+    const inv = await openInvite(deps, a.link);
+    try {
+      const joined = await inv.accept();
+      return { joined, card: inv.card, call: (/** @type {string} */ call, /** @type {any[]} */ args) => callTeam(deps, joined.space, call, args) };
+    } finally { inv.close(); }
   }
 
   /** A team space on the server this app is paired with: the app's claimServerSpace, with the server hosting it (spaces.host-here) and the names directory holding its record. @param {string} name */
@@ -244,7 +290,7 @@ export function createApp(o) {
   }
 
   return {
-    label: o.label, serveEnrol, joinTeam, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },

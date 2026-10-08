@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
-/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string }} o */
+/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, noCodeProbe?: boolean }} o */
 export async function startMacServer(o) {
   if (process.env.GITHUB_ACTIONS !== "true" || process.platform !== "darwin") throw new Error("the Mac server runs on a GitHub macOS runner only: it installs a system service and makes an account");
   const work = path.join(process.env.RUNNER_TEMP || "/tmp", "mac-proof-install");
@@ -27,6 +27,7 @@ export async function startMacServer(o) {
   const exit = await new Promise(res => child.on("close", res));
   fs.mkdirSync(o.dir, { recursive: true });
   fs.writeFileSync(path.join(o.dir, "install.log"), all.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
+  if (o.noCodeProbe) return { output: all, exit };
   if (exit !== 0) throw new Error(`the Mac installer exited ${exit}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
   const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const call = (/** @type {string} */ tool, /** @type {any} */ input = {}) => spawnSync(process.execPath, [path.join(o.repo, "bin/vyre"), "call", tool, JSON.stringify(input)], { encoding: "utf8", env: { ...process.env, VYRE_HOME: vhome } });

@@ -34,3 +34,10 @@ test("the last line sums the run and the exit code is 0 only when nothing failed
   assert.equal(run.finish(), 0);
   assert.equal(lines[lines.length - 1], "PASS  1 passed, 0 failed, 0 skipped");
 });
+
+test("a step that throws with skip: true is SKIPped with its message and is not a failure", async () => {
+  const { lines, run } = make();
+  await run.step("a", () => { throw Object.assign(new Error("cannot do this here"), { skip: true }); });
+  assert.equal(lines[0], "SKIP  a: cannot do this here");
+  assert.equal(run.finish(), 0);
+});
