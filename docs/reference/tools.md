@@ -5464,7 +5464,7 @@ ADR 0039: how Vyre runs on this machine. solo (everything here) or server (alway
 Checks <name>.vyre.run, or reads which space's name this server serves. A server holds no name: a space is named in the app, and the app tells the server to serve it (names.serve).
 
 - Input:
-  - `action` "check" or "status"
+  - `action` string
   - `name` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `onboard`, `tailnet`
 
