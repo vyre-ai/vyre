@@ -1216,7 +1216,7 @@ export class Registry {
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
-        if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential") && !(tool === "vault.delete" && input && typeof input === "object" && /^conn-[a-z0-9-]+$/.test(String(input.name)))) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, and to vault.delete for a connection's own conn-<id> credential, only`);
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
