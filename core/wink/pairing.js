@@ -1334,16 +1334,21 @@ export function createPairing(o) {
     // not ride it (it asks through its own tools, which the server gates by the model's own caller).
     /** The servers this device is paired to, as { id, name } rows (those with a known channel), first paired first. */
     const homes = async () => (devices.list(String(await o.identity())).filter((/** @type {any} */ x) => x.kind === "server" && meta.get(`channel:${x.id}`))).map((/** @type {any} */ x) => ({ id: String(x.id), name: String(x.name || "") }));
+    /** Only Vyre's own modules reach another machine: an added module is refused before any pairing check or forward. */
+    const notAddedModule = (/** @type {any} */ meta0, /** @type {string} */ tool) => {
+      if (String((meta0 && meta0.caller) || "").startsWith("module:") && !(meta0 && meta0.firstParty)) throw fail("denied", `${tool} reaches the server as this device; only Vyre's own modules may use it`);
+    };
     ctx.tool("wink.server.home", {
       description: "Is this device paired to a server (its home), and which: { linked, server?: { id, name }, servers: [{ id, name }] }. Read only; it names no secret.",
       input: obj(), callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
-      run: async () => { const all = await homes(); return { linked: all.length > 0, ...(all[0] ? { server: all[0] } : {}), servers: all }; },
+      run: async (_i, meta0 = {}) => { notAddedModule(meta0, "wink.server.home"); const all = await homes(); return { linked: all.length > 0, ...(all[0] ? { server: all[0] } : {}), servers: all }; },
     });
     ctx.tool("wink.server.call", {
       description: "Run one tool on the server this device is paired to (its home), over the Wink peer session, as this device: { tool, input?, device? }. With no `device`, the first server paired to this identity. Answers the tool's own answer, or the server's error; no_link when this device has no server, box_unreachable when it cannot be reached.",
       input: obj({ tool: str, input: { type: "object" }, device: str }, ["tool"]),
       callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
       run: async (input, meta0 = {}) => {
+        notAddedModule(meta0, "wink.server.call");
         const caller = String((meta0 && meta0.caller) || "");
         if (meta0 && (meta0.agent || meta0.origin) && !/^(cli|local|deck|capsule|mobile)$/.test(String(meta0.origin || caller))) throw fail("denied", "wink.server.call is the person's own; a module acting for a model session may not use it");
         const servers = await homes();

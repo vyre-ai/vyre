@@ -1252,6 +1252,8 @@ export class Registry {
       // A tool on this device's home server, from a module on this device: the Wink module carries it over the open peer session (wink.server.call). Resolves like call(), and to
       // { error: { code: "box_unreachable" } } when the server cannot be reached, so a caller can fall back to what this machine has; { error: { code: "no_link" } } with no server paired.
       remote: async (tool, input = {}) => {
+        // Only Vyre's own modules reach another machine. An added module gets an answer, not a forward.
+        if (!firstPartyRec()) return { error: { code: "denied", message: "only Vyre's own modules may reach another machine" } };
         const r = await this.call("wink.server.call", { tool, input }, `module:${m.name}`, { door: true });
         return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a server" } } : r;
       },

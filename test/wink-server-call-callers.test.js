@@ -10,7 +10,7 @@ import { tempHome, present } from "./helpers.js";
 
 test("HD-3: wink.server.call is refused for every model and agent caller before anything is forwarded, and not for the person's own surfaces", { timeout: 60_000 }, async t => {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [] }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", machine: "device", transcripts: [] }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   for (const caller of ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "guest:sam@harlow.example", "anonymous"]) {

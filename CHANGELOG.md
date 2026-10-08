@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(security): only first-party modules may reach another machine. wink.server.call, wink.server.home and ctx.remote refuse an added module before any pairing check or forward; Vyre's own modules are unchanged. test/remote-first-party.test.js covers every model, hook and added-module caller; the HD-3 test now runs with the device machine, where the tool exists.
 - refactor!: the 0.3.0 cleanup lands on the current main (work/cleanup-tailnet merged as cleanup-tailnet-2): Mac federation, every tailnet caller kind, the mounted-folder Drive (Taildrive), the old owner wizard (web/onboard) and the old Deck onboarding page are gone, and main's newer code wins everywhere else. The no-tailscale ratchet falls from 197 files to 110, known-red loses the three test files that went with federation and the link (federation-answer, federation-send, link), and kernel/golden matches cells by caller and world name so a dropped caller no longer reads as every later caller changing.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
 - fix(release): the Android release-notes line no longer ends the release job with an apostrophe inside a single-quoted printf; every bash run step in the workflows is now checked with bash -n (test/workflows-yaml.test.js).
