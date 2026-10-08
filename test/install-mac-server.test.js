@@ -425,7 +425,7 @@ test("install-mac-server.sh: the full install is a server (config.json says mach
   assert.notEqual(x.r.status, 0); assert.match(x.r.stderr, /not valid JSON/);
 });
 
-test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
+test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it points to the app and prints no pairing code", t => {
   let m = sys(t);
   let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
@@ -438,7 +438,8 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   r = run({ ...m.env }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.ok(!/Your four words|Go back to the Vyre app/.test(r.stdout));
-  assert.match(r.stdout, /wink\.server\.code/);
+  assert.match(r.stdout, /Open the Vyre app, choose "Add a server", and run the line it shows on this Mac\./);
+  assert.ok(!/wink\.server\.code|long code/i.test(r.stdout), "no terminal pairing text");
   // words that cannot be read are said so, with the command that shows them
   m = sys(t);
   fs.rmSync(path.join(m.src, "bin"), { recursive: true });
