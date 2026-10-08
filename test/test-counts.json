@@ -724,7 +724,7 @@
  "modules/vault-extension/keyfind.test.js": 6,
  "modules/vault-extension/passkey.test.js": 17,
  "names/worker/ids.test.js": 13,
- "names/worker/worker.test.js": 25,
+ "names/worker/worker.test.js": 23,
  "records/calendar/sync.test.js": 10,
  "records/connectors/stripe/stripe.test.js": 10,
  "records/ids.test.js": 4,
