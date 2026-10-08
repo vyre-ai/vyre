@@ -174,6 +174,7 @@ export const PERSON_ONLY = new Map([
   ["link.pair.deny", "needs the person's Face ID or presence: pairing and devices"],
   ["link.signout", "needs the person's Face ID or presence: pairing and devices"],
   ["link.unpair", "needs the person's Face ID or presence: pairing and devices"],
+  ["sidebar.stored", "the settings hub's own store for the sidebar lists: the person's settings act"],
   ["names.serve", "needs the person's Face ID or presence: the person's name and domain"],
   ["names.unserve", "needs the person's Face ID or presence: the person's name and domain"],
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
@@ -289,6 +290,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "sidebar.get", "sidebar.edit", // the person's own sidebar: an assistant may arrange it ("put Documents in my sidebar"); the tool refuses the team's default to anyone but the person at their own surface
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",
