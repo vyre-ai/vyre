@@ -55,6 +55,15 @@ test("install: installs, then prints the QR and the long code to paste, and how 
   assert.match(r.calls(), /wink\.server\.code \{"qr":true\}/);
 });
 
+test("install: the Vyre app's Add a server line (VYRE_CODE) runs the release installer with the code and shows no terminal pairing: the app adopts by the four words", t => {
+  const r = rig(t);
+  const out = r.run({ VYRE_CODE: "WINK-TEST-CODE" });
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(r.calls(), /^installer/m, "the release installer ran");
+  assert.doesNotMatch(r.calls(), /wink\.server\.(code|pairing)/, "no pairing code is made and nobody is waited for");
+  assert.doesNotMatch(out.stdout, /Pair this server|Scan this with the Vyre app|vyre:\/\/wink|Nobody asked/, "no QR, no long code, no wait");
+});
+
 test("install: idempotent. An installed server is left alone and a code is still shown", t => {
   const r = rig(t, { installed: true });
   const out = r.run();

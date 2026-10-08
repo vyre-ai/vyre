@@ -225,7 +225,11 @@ main() {
   check_system
   TMP=$(mktemp -d)
   trap cleanup EXIT
+  # The Vyre app's Add a server line carries the app's one-time setup code (VYRE_CODE). The release installer then shows the four words and the app
+  # adopts the server; there is nothing left to pair here, so the old terminal pairing (a QR, a long code, a wait) is not shown.
+  from_app=${VYRE_CODE:+yes}
   install_box "$@"
+  [ -z "$from_app" ] || return 0
   show_code
 }
 
