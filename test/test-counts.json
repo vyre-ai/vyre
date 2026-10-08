@@ -502,7 +502,7 @@
  "core/wink/node/real.test.js": 1,
  "core/wink/node/relay-peer.test.js": 3,
  "core/wink/node/shim.test.js": 6,
- "core/wink/pairing.test.js": 65,
+ "core/wink/pairing.test.js": 66,
  "core/wink/reset.test.js": 16,
  "core/wink/storage/bridge.test.js": 18,
  "core/wink/storage/discover.test.js": 6,
@@ -902,6 +902,6 @@
  "web/js/phone-code.test.js": 12,
  "web/js/trace.test.js": 2,
  "web/onboard/device/link.test.js": 5,
- "test/pair-fix.test.js": 8,
+ "test/pair-fix.test.js": 10,
  "web/vendor/jsqr/jsqr.test.js": 2
 }

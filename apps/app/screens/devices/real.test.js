@@ -57,7 +57,10 @@ test("wink.phone.pairing and the answer", () => {
   assert.deepEqual(phoneAsk({ asking: false }), { asking: false });
   const a = phoneAsk({ asking: true, name: "Alex's iPhone", words: "cedar harbor violet", until: 1, line: "Say yes only if the words match." });
   assert.deepEqual([a.asking, a.name, a.words], [true, "Alex's iPhone", ["cedar", "harbor", "violet"]]);
-  assert.equal(phoneAsk({ asking: true, words: "two words" }).asking, false);
+  // the server's own answer carries choices and no words: still a device asking
+  const b = phoneAsk({ asking: true, name: "Sam's phone", choices: ["a b c", "d e f", "g h i"], until: 1, line: "Is this the phone?" });
+  assert.deepEqual([b.asking, b.name, b.words, b.line], [true, "Sam's phone", null, "Is this the phone?"]);
+  assert.equal(phoneAsk({ asking: false, name: "x" }).asking, false);
   assert.equal(added({ answered: true, yes: true, name: "x" }), true);
   assert.equal(added({ answered: true, yes: false }), false);
   assert.equal(added({ answered: false }), false);

@@ -16,7 +16,7 @@ import { AckCode } from "./TypeCode";
 import { leftOf } from "./typed-model.js";
 
 type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
-type Ask = { name: string; line: string; words: [string, string, string] };
+type Ask = { name: string; line: string; words: [string, string, string] | null };
 
 /**
  * Adding a device against the real box: only the side this device is. A server: scan or paste what it printed, see the three words, say yes
@@ -40,6 +40,14 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
   useEffect(() => {
     if (kind !== "server") return;
     tool("wink.pair.targets").then((d) => { const t = targetsOf(d); setTargets(t); setTarget(t[0] ?? null); }).catch((e) => setSaid(said(e)));
+  }, [kind]);
+
+  // A phone's key is signed onto the name's list by this app (the server holds no identity): asked while this screen is up and again on the wink events, so a typed code's yes is served too.
+  useEffect(() => {
+    if (kind === "server") return;
+    const run = () => { void import("../../src/real/enrol-phone").then((m) => m.serveEnrol()).catch(() => {}); };
+    const t = setInterval(run, 2000);
+    return () => clearInterval(t);
   }, [kind]);
 
   // A phone or computer: poll for the new device asking, every 2 s while the code is up.
