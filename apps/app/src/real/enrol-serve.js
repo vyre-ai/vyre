@@ -35,7 +35,7 @@ export async function serveEnrolWith(d) {
     await d.save({ name: mine.name, id: mine.id, eid: mine.eid, ops: done.ops, pin: done.pin, key: mine.key });
     await tell(true, "", { id: mine.id, vyre: mine.name });
   } catch (err) {
-    await tell(false, (err && /** @type {Error} */ (err).message) || "The device could not be added to your name.");
+    await tell(false, String((err && /** @type {Error} */ (err).message) || "The device could not be added to your name."));
   } finally { serving.delete(e.device); }
   return true;
 }
