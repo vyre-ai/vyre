@@ -28,7 +28,7 @@ async function world(t, { armed, server = true, notModel = true, now }) {
   const c = await startCore({ socket, dataDir, ownerUid: uid, version: "test", dev: true, server, notModel: () => notModel, ...(now ? { now } : {}) });
   t.after(() => c.close());
   c.presence.softwareOk = () => true;
-  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ header) => coreTool(tool, input, { socket, ...(header ? { presence: header } : {}) });
+  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ header) => coreTool(tool, input, { socket, coreUid: uid, ...(header ? { presence: header } : {}) });
   return { c, call };
 }
 const enrolBody = (/** @type {Buffer} */ pub, extra = {}) => ({ kind: "device", name: "the test Mac", public_key: b64(pub), alg: -7, ...extra });
