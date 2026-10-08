@@ -31,6 +31,7 @@
 
 import crypto from "node:crypto";
 import https from "node:https";
+import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
 import { registerService } from "./service.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
@@ -131,7 +132,12 @@ export function httpsTransport({ url, address, method, headers, body, timeoutMs 
   return new Promise((resolve, reject) => {
     const h = { ...headers };
     if (body !== undefined) h["content-length"] = String(Buffer.byteLength(body));
-    const req = https.request(pinnedOptions(url, address, { method, headers: h, timeout: timeoutMs }), res => {
+    // The one plain-http target there is: an app module's API on this machine (appTarget), never a name, only 127.0.0.1. Everything else is https to a checked, pinned address.
+    if (url.protocol === "http:" && address !== "127.0.0.1") return reject(new Error("plain http is only for an app on this machine"));
+    const opts = url.protocol === "http:"
+      ? { protocol: "http:", hostname: "127.0.0.1", port: Number(url.port), path: url.pathname + url.search, method, headers: { ...h, host: url.host }, agent: false, timeout: timeoutMs }
+      : pinnedOptions(url, address, { method, headers: h, timeout: timeoutMs });
+    const req = (url.protocol === "http:" ? http : https).request(opts, res => {
       /** @type {Buffer[]} */ const chunks = [];
       let n = 0, truncated = false, done = false;
       const finish = () => {
@@ -211,6 +217,24 @@ export class ApiRequests {
   // ---- building the plan: everything a decision needs, from the request alone ----
 
   /**
+   * An app module's API on this machine, for a Connection with `app`. The address a caller gives is the sentinel one (<app>.app.invalid), checked like any other address for its shape; the real
+   * origin is the app's own to say, and only while it runs (`appmods.origin`), and is taken only if it is exactly http://127.0.0.1:<port> with a port from 1024: nothing else is ever reached, and a
+   * name an app module gives that is anything but that is refused here.
+   * @param {any} config @param {string} rawUrl @returns {Promise<{ url: URL, addresses: string[], display: URL }>}
+   */
+  async appTarget(config, rawUrl) {
+    const sentinel = `${config.app}.app.invalid`;
+    const shaped = await checkTarget(rawUrl, [sentinel], { lookup: async () => [{ address: "203.0.113.1", family: 4 }] });
+    if (!this.deps.call) throw bad("the apps are not running, so an app's connection has nowhere to go", "unavailable");
+    const r = await this.deps.call("appmods.origin", { name: config.app });
+    const origin = r && r.data && typeof r.data.origin === "string" ? r.data.origin : "";
+    if (!origin) throw bad("the app is not running", "unavailable");
+    const m = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(origin);
+    if (!m || Number(m[1]) < 1024 || Number(m[1]) > 65535) throw bad("the app named an address this machine will not send a key to", "denied");
+    return { url: new URL(shaped.url.pathname + shaped.url.search, origin), addresses: ["127.0.0.1"], display: shaped.url };
+  }
+
+  /**
    * A public document by its https address, for a person who pointed at it (an API description to import): a plain GET with no credential and no cookie, the address resolved and checked against
    * private, loopback, link-local and metadata ranges at every hop, the connection pinned to the address that was checked, at most 3 redirects (each checked the same way), a size cap, and a timeout.
    * It sends nothing of the person's. The caller decides who may ask (the connectors module, for a person's own import).
@@ -274,7 +298,7 @@ export class ApiRequests {
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
     const rawUrl = buildUrl(input.url, input.query);
-    const target = await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
+    const target = config.app ? await this.appTarget(config, rawUrl) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
     const url = target.url;
     checkQuery(url);
     let body;
@@ -294,7 +318,8 @@ export class ApiRequests {
     const preset = presetFor(method, pathAndQuery);
     const parsed = cls.kind === "read" ? { recipients: [] } : parseFields(preset, { body, contentType: headers["content-type"] });
     const actingAs = config.auth.type === "service-account" ? config.auth.subject : row.name;
-    const href = url.toString();
+    // an app's address is its port of the day: what is approved and shown is the stable name (<app>.app.invalid), not the port
+    const href = target.display ? target.display.toString() : url.toString();
     const hash = approvalHash({ credential: row.name, method, url: href, headers, body });
     return { name: row.name, ver: Number(row.ver || 0), config, secret, method, url, href, headers, body, kind: cls.kind, classified: cls, parsed, actingAs, hash,
       to: parsed.recipients.length ? parsed.recipients : [url.hostname],
@@ -497,12 +522,13 @@ export class ApiRequests {
       let url = plan.url, method = plan.method, hops = 0, tooMany = 0;
       /** @type {Reply} */ let reply;
       for (;;) {
-        const t = await checkTarget(withKey(url).toString(), plan.config.hosts, { lookup: this.deps.lookup });
+        const t = plan.config.app ? { url: withKey(url), addresses: ["127.0.0.1"] } : await checkTarget(withKey(url).toString(), plan.config.hosts, { lookup: this.deps.lookup });
         await this.throttle(plan);
         reply = await this.transport({ url: t.url, address: t.addresses[0], method, headers, ...(plan.body !== undefined && method === plan.method ? { body: plan.body } : {}),
           timeoutMs: TIMEOUT_MS, maxBytes: MAX_RESPONSE });
         // "Too many requests" means the provider did not act on it, so waiting out its Retry-After and trying again is safe for any method; the cooldown is shared by every caller.
         if (reply.status === 429 && tooMany < MAX_429_RETRIES && this.coolDown(plan.name, reply) > 0) { tooMany++; continue; }
+        if (plan.config.app && reply.status >= 300 && reply.status < 400) throw bad("an app on this machine answered a redirect, which is not followed", "redirect");
         if (reply.status >= 300 && reply.status < 400 && reply.headers.location) {
           if (method !== "GET" && method !== "HEAD") throw bad("the API answered a redirect to a write, which is refused; call the address it names directly", "redirect");
           let next;

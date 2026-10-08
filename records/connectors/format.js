@@ -52,7 +52,9 @@ export function checkFixedHeaders(h) {
  *   readback?: { op: string, args: Record<string, string>, compare?: Record<string, string> }, wrap?: string }} Op */
 /** @typedef {{ op: string, items?: string, id: string, at?: string, title?: string, args?: { query?: Record<string, any>, params?: Record<string, string> }, since?: { lookback_days?: number },
  *   expand?: { op: string, args: Record<string, string>, query?: Record<string, any> }, map: Record<string, any>, every_minutes?: number, label?: string }} Poll */
-/** @typedef {{ id: string, label: string, version: number, base_url: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
+/** The host name a Connection to an app on this machine is given, so every address the vault builds for it is one nothing on the internet answers; the vault swaps in the app's real local origin. @param {string} app */
+export const appHost = app => `${app}.app.invalid`;
+/** @typedef {{ id: string, label: string, version: number, base_url?: string, app?: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
  *   ops: Record<string, Op>, headers?: Record<string, string>, poll?: Record<string, Poll>, inbound?: { webhook: { events: string[], emits: string } }, deny?: { method?: string, path: string }[] }} Declaration */
 
 /** @param {any} s @param {string} path @param {string[]} out */
@@ -83,7 +85,13 @@ export function checkDeclaration(d) {
   if (typeof d.label !== "string" || !d.label || d.label.length > 80) out.push("label: a short name");
   if (!Number.isInteger(d.version) || d.version < 1) out.push("version: a whole number from 1");
   let host = "";
-  try {
+  if (d.app !== undefined) {
+    // an app module's own API on this machine: no address of its own, and only the sign-ins that need no browser
+    if (typeof d.app !== "string" || !/^[a-z][a-z0-9-]{1,40}$/.test(d.app)) out.push("app: the module's name, lowercase letters, digits and -");
+    if (d.base_url !== undefined) out.push("base_url: an app's connection has none (the app is reached on this machine)");
+    if (isObj(d.auth) && !["bearer", "api-key", "basic"].includes(d.auth.type)) out.push("auth.type: an app's connection signs in with bearer, api-key or basic");
+    if (d.poll !== undefined || d.inbound !== undefined) out.push("poll, inbound: not for an app's connection yet");
+  } else try {
     const u = new URL(String(d.base_url));
     if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || (u.pathname !== "/" && u.pathname !== "")) throw new Error("x");
     host = u.hostname;
@@ -216,7 +224,7 @@ export function declarationParts(d) {
   // The vault's classes are read, send, spend and delete; a change in the service is held like a send, and a draft is the one non-read thing that is not held.
   const cls = (/** @type {Op} */ op) => (op.kind === "read" || op.kind === "draft" ? "read" : op.kind === "change" ? "send" : op.kind);
   return {
-    hosts: [new URL(d.base_url).hostname],
+    hosts: [d.app ? appHost(d.app) : new URL(/** @type {string} */ (d.base_url)).hostname], ...(d.app ? { app: d.app } : {}),
     endpoints: Object.values(d.ops).map(op => ({ method: op.method, path: patternOf(op.path), kind: cls(op) })),
     ...(d.rate ? { rate: { per_minute: d.rate.per_minute } } : {}),
     ...(d.headers && Object.keys(d.headers).length ? { headers: { ...d.headers } } : {}),

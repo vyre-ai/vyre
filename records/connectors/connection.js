@@ -2,7 +2,7 @@
 // A Connection is a connector declaration a person made themselves (team/0.3/SPEC-0.3.0.md part 4): one pinned host, one Vault credential that already exists, and the
 // declaration format.js already checks. This file is the pure part: the quick form becomes a declaration, and a check's answer becomes plain words. It opens nothing and holds no secret.
 
-import { defineConnector, toCredentialConfig } from "./format.js";
+import { defineConnector, toCredentialConfig, appHost } from "./format.js";
 
 /** How the key is sent, in the words of the form, and what each is in the declaration's `auth`. */
 export const SEND_HOWS = Object.freeze(["bearer", "header", "basic", "query"]);
@@ -63,7 +63,7 @@ export function operationsOf(d) {
 
 /**
  * The quick form as a declaration. The one check request becomes a read op named `check`; the generic request (any method and path on the pinned host) needs no op at all.
- * @param {{ label: string, id?: string, base_url: string, send: { how: string, name?: string }, credential: { item: string, field?: string }, headers?: Record<string, string>,
+ * @param {{ label: string, id?: string, base_url?: string, app?: string, send: { how: string, name?: string }, credential: { item: string, field?: string }, headers?: Record<string, string>,
  *   vars?: Record<string, string>, check: { path: string }, operations?: any[] }} form
  * @returns {{ id: string, declaration: import("./format.js").Declaration, credential: { item: string, field?: string }, check: { method: "GET", path: string } }}
  */
@@ -86,8 +86,10 @@ export function fromForm(form) {
   const path = fill(chk.path, vars, true);
   const { ops, poll } = opsFromForm(form.operations);
   if (Object.hasOwn(ops, "check")) throw fail("operations: `check` is the connection's own check request");
+  if (form.app !== undefined && form.base_url) throw fail("an app's connection has an app, not an address");
+  if (form.app !== undefined && Object.keys(poll).length) throw fail("a poll is not available for an app's connection yet");
   const declaration = defineConnector({
-    id, label, version: 1, base_url: String(form.base_url || "").replace(/\/+$/, ""), auth,
+    id, label, version: 1, ...(form.app !== undefined ? { app: form.app } : { base_url: String(form.base_url || "").replace(/\/+$/, "") }), auth,
     ...(Object.keys(headers).length ? { headers } : {}),
     // the check is one of the declared operations when it names the same call; the format does not take one call twice
     ops: { ...(Object.values(ops).some(o => o.method === "GET" && o.path === path) ? {} : { check: { method: "GET", path, kind: "read", label: "Check the connection" } }), ...ops },
@@ -122,6 +124,7 @@ export const credentialName = id => `conn-${id}`;
 export function outcomeOf({ reply, error }) {
   if (error) {
     const m = String(error.message || ""), c = String(error.code || "");
+    if (/app is not running|apps are not running/i.test(m)) return { light: "red", words: "the app is not running" };
     if (/timed? ?out|ETIMEDOUT|ESOCKETTIMEDOUT|no answer/i.test(m)) return { light: "red", words: "no answer from the host (timeout)" };
     if (/ENOTFOUND|EAI_AGAIN|does not resolve|could not resolve/i.test(m)) return { light: "red", words: "that address does not resolve" };
     if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH/i.test(m)) return { light: "red", words: "the host refused the connection" };
@@ -145,16 +148,17 @@ export function outcomeOf({ reply, error }) {
  */
 export function cardOf(made, item) {
   const d = made.declaration, a = d.auth;
+  const where = d.app ? `the ${d.app} app on this machine` : new URL(/** @type {string} */ (d.base_url)).hostname;
   const how = a.type === "bearer" ? "as a bearer token" : a.type === "basic" ? "as a username and password" : a.in === "query" ? `in the address, as ${a.param}` : `in the ${a.header || "x-api-key"} header`;
   const kindWords = /** @type {Record<string, string>} */ ({ read: "reads", draft: "prepares a draft in", change: "changes things in", send: "sends from", spend: "spends money at", delete: "deletes in" });
   return {
     title: `Connect ${d.label}?`,
-    reaches: new URL(d.base_url).hostname,
+    reaches: where,
     lines: [
-      `It can reach ${new URL(d.base_url).hostname} and nothing else.`,
+      `It can reach ${where} and nothing else.`,
       `It uses the key in your Vault item ${item}, sent ${how}. The key is never shown to the assistant.`,
       `Any call to it that is not a plain read waits for your yes.`,
-      ...Object.entries(d.ops).filter(([n]) => n !== "check").map(([n, o]) => `${n}: ${kindWords[o.kind] || o.kind} ${new URL(d.base_url).hostname} (${o.method} ${o.path})`),
+      ...Object.entries(d.ops).filter(([n]) => n !== "check").map(([n, o]) => `${n}: ${kindWords[o.kind] || o.kind} ${where} (${o.method} ${o.path})`),
     ],
   };
 }
