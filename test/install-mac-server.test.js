@@ -131,6 +131,36 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
+test("install-mac-server.sh: with a code from the app it writes the Records choice once, shows the four check words and ends by sending the person back to the app", t => {
+  const m = mac(t);
+  fs.mkdirSync(path.join(m.src, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(m.src, "bin", "vyre"), 'console.log(JSON.stringify({ words: "amber lake moss pine" }));\n');
+  const r = run({ ...m.env, VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_WORDS_TRIES: "3" }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const text = fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8");
+  assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1);
+  assert.match(text, /^VYRE_STORE=sqlite$/m);
+  assert.match(r.stdout, /Check words: amber lake moss pine/);
+  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.ok(!/Pair it from your Vyre app/.test(r.stdout), "no terminal pairing when the app is driving");
+  assert.ok(!(r.stdout + r.stderr).includes(CODE));
+  // Without VYRE_STORE the default is Records (auto); a line already there is kept.
+  const m2 = mac(t);
+  fs.mkdirSync(m2.env.VYRE_HOME, { recursive: true });
+  const r2 = run({ ...m2.env, VYRE_CODE: CODE, VYRE_WORDS_TRIES: "1" }, ["--yes", "--from", m2.src]);
+  assert.equal(r2.status, 0, r2.stderr + r2.stdout);
+  assert.match(fs.readFileSync(path.join(m2.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m);
+  assert.match(r2.stdout, /check words did not show here/);
+});
+
+test("install-mac-server.sh: VYRE_STORE is auto or sqlite and nothing else", t => {
+  const m = mac(t);
+  const r = run({ ...m.env, VYRE_CODE: CODE, VYRE_STORE: "mongo" }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /VYRE_STORE is auto \(Records\) or sqlite/);
+  assert.deepEqual(fs.readdirSync(m.home), [], "nothing was installed");
+});
+
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {
   const m = mac(t);
   fs.mkdirSync(m.env.VYRE_HOME, { recursive: true });

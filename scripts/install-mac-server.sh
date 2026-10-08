@@ -10,7 +10,8 @@
 #   --uninstall        stop and remove the service, the wrapper and the app; ~/.vyre stays
 #   --purge            with --uninstall: also delete ~/.vyre and Vyre's system data, after asking
 #
-# Environment: VYRE_CODE (the setup code from the install line: never an argument), VYRE_BOX_URL
+# Environment: VYRE_CODE (the setup code from the install line: never an argument), VYRE_STORE (auto, the default: each space on Records when this Mac has room;
+# or sqlite: the small built-in store; only read with a code), VYRE_BOX_URL
 # (default https://vyre.run/box/), VYRE_HOME (default ~/.vyre, where vyre.env lives).
 #
 # DEFAULT (system service, ADR 0040 section 5): Vyre starts at boot with nobody signed in. This
@@ -542,6 +543,8 @@ write_env() {
   [ ! -f "$f" ] || grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$f" >"$TMP/vyre.env" || true
   grep -q '^DOCKER_HOST=' "$TMP/vyre.env" || printf 'DOCKER_HOST=unix://%s/.colima/default/docker.sock\n' "$HOME" >>"$TMP/vyre.env"
   if [ -n "$CODE" ]; then printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"; fi
+  # The Records choice made in the app rides with the code; written once, so a later edit by hand is kept.
+  if [ -n "$CODE" ] && ! grep -q '^VYRE_STORE=' "$TMP/vyre.env"; then printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.env"; fi
   chmod 600 "$TMP/vyre.env"
   cat "$TMP/vyre.env" >"$f.new"; chmod 600 "$f.new"; mv "$f.new" "$f"
   step "settings are in $f"
@@ -726,6 +729,20 @@ uninstall() {
   say "Vyre is off this Mac. Colima and Node were left as they are: brew services stop colima, if you want it off too."
 }
 
+# show_words: the four check words the server computed for this code, on the terminal only; the app shows the same four, and they match only
+# if this is the server the app is talking to. Without them readable, the one command that shows them is said.
+show_words() {
+  [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  n=0
+  while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
+    out=$("$BIN/vyre" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
+    words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    if [ -n "$words" ]; then say "  Check words: $words"; say "  They should match the four on your screen."; return 0; fi
+    n=$((n + 1)); sleep 1
+  done
+  say "  The check words did not show here. Read them on this Mac with: $BIN/vyre call relay.setup.status"
+}
+
 main() {
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -742,6 +759,7 @@ main() {
     shift
   done
   [ "$PURGE" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--purge goes with --uninstall"
+  case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
   [ "$UNAME_S" = Darwin ] || die "this installer is for a Mac; on Linux use the Docker install line"
   [ "$(id -u)" != 0 ] || die "run this as your own account, not root: Vyre never runs as root here"
   [ -z "$FROM" ] || [ "$SYSTEM" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--from installs a checkout, which has no signed release for the system service to verify; add --login-only to install it for your own account"
@@ -759,12 +777,14 @@ main() {
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
-    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
+    if [ -n "$CODE" ]; then show_words; say "Done. Back in the Vyre app."
+    else say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."; fi
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
   else
     write_plist
     start_service
-    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
+    if [ -n "$CODE" ]; then show_words; say "Done. Back in the Vyre app."
+    else say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."; fi
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
   fi
 }

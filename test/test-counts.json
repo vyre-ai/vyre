@@ -804,7 +804,7 @@
  "test/import-e2e.test.js": 2,
  "test/install-box-look.test.js": 4,
  "test/install-box-v2.test.js": 40,
- "test/install-mac-server.test.js": 29,
+ "test/install-mac-server.test.js": 31,
  "test/install-windows-served.test.js": 2,
  "test/installer-copy.test.js": 3,
  "test/journey.test.js": 2,
