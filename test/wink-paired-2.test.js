@@ -1339,3 +1339,55 @@ test("join a team with no server, end to end: a second identity that has only a 
   await assert.rejects(() => openInvite(deps, "https://harlow.example.com/join/" + id0 + "." + blob), e => e.code === "bad_input");
   assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted by the door");
 });
+
+test("a team invite made by the owner's app and joined by the invitee's app, on a real server: the server holds no identity, the home's kernel asks the owner's key for its yes on the invite, the link carries the pinned list, and kit joins with it", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { kernelWire } = await import("../apps/app/src/real/kernel-wire.js");
+  const { createTeamInvite, listTeamInvites, revokeTeamInvite } = await import("../apps/app/src/real/team-invite.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, session, made, hosted, ownerChain, sealSigner, ownerSigner, ROUTE } = await teamRig(t);
+  const kit = await ident.another("kit");
+  const kitSigner = sealSigner(kit.id);
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  // the owner's app: its paired session to the server, and its key answering the home's challenge (the proof names the home and the challenge)
+  const asked = [];
+  const wire = kernelWire(session, made.space, { person: ident.id, signPresence: async card => { asked.push(card); return ownerSigner.proof(ownerChain, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }); } });
+  const dir = { wire, fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1" };
+  const mine = await createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: kit.id });
+  assert.match(mine.link, /^https:\/\/harlow\.vyre\.run\/join\/inv_[0-9a-f]{32}\./);
+  assert.equal(mine.needs_confirm, false);
+  assert.deepEqual(asked.map(c => c.op), ["grant.invite"], "the owner's key was asked once, for this invite");
+  assert.match(asked[0].home, /\S/);
+  // the link carries the pin and the fingerprint the joiner checks against the record
+  const blob = JSON.parse(Buffer.from(mine.token.split(".")[1], "base64url").toString());
+  assert.deepEqual(blob.chain, made.pin);
+  assert.equal(blob.rk, crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32));
+  const rows = await listTeamInvites(dir);
+  assert.deepEqual(rows.map(r => [r.id, r.status, r.role]), [[mine.id, "pending", "member"]]);
+  // kit joins with it (the joiner's app, no server)
+  const store = new Map();
+  const deps = {
+    who: { id: kit.id, name: "kit", eid: kit.eid, sign: async m => new Uint8Array(await kit.store.sign(Buffer.from(m))) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: async req => kitSigner.proof(inviteeChain, req.op, req.fields),
+    presenceKey: async () => kitSigner.enrolment,
+    store: { get: async k => store.get(k), put: async (k, v) => { store.set(k, v); } },
+  };
+  const inv = await openInvite(deps, mine.link);
+  t.after(() => inv.close());
+  assert.equal(inv.card.role, "member");
+  const joined = await inv.accept();
+  assert.equal(joined.joined, true);
+  assert.deepEqual((await listTeamInvites(dir)).map(r => r.status), ["used"]);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.id)).role, "member");
+  // a cancelled invite shows the invitee nothing
+  const second = await createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: kit.id });
+  await revokeTeamInvite(dir, second.id);
+  assert.deepEqual(asked.map(c => c.op), ["grant.invite", "grant.invite", "grant.invite"], "creating asked once; cancelling asked once more");
+  await assert.rejects(() => openInvite({ ...deps, store: { get: async () => undefined, put: async () => {} } }, second.link), e => e.code === "not_for_you");
+  // an invite for a name nobody has, and a challenge the home did not make for this call, make nothing
+  await assert.rejects(() => createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: "nobody-has-this-name" }), e => e.code === "not_found");
+  const lying = kernelWire({ call: async (tool, req) => ({ v: 1, id: req.id, ok: false, error: { code: "presence_required", message: "x", challenge: { call: req.call, space: req.space, home: "h", nonce: "n".repeat(16), args_hash: "wrong", op: "grant.invite", fields: {}, payload_hash: "z" } } }) }, made.space, { person: ident.id, signPresence: async () => { throw new Error("must not sign"); } });
+  await assert.rejects(() => lying.call("grants.invites.create", [{ role: "member" }]), e => e.code === "presence_required");
+  assert.equal(f.w.logs.filter(l => /kernel remote: grants.invites.create .* refused as (bad_binding|bad_challenge)/.test(l)).length, 0);
+});
