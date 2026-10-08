@@ -1059,6 +1059,8 @@ export function createPairing(o) {
         // (this code runs only after it) and the verified identity proof. The key the paired session is bound to is the device's own presence key when it offered one, else this pairing itself.
         const pk = /** @type {any} */ (await ctx.call("relay.device.presence", { id: device }).catch(() => null));
         const keyId = pk && pk.data && pk.data.key ? String(pk.data.key) : `pairing:${device}`;
+        // A ticket the relay did not gate (a server's typed code) was never confirmed through the relay's pending door, so its key comes from what the device offered in its hello.
+        if (!(confirmed && confirmed.key) && pk && pk.data && typeof pk.data.public_key === "string") confirmed = { ...(confirmed || {}), key: pk.data.public_key, alg: pk.data.alg, storage: pk.data.storage };
         if (!(confirmed && confirmed.key)) ctx.log(`wink: ${device} offered no device key in its pairing hello (presenceKey: { public_key: P-256 SPKI base64url, alg: -7 }), so it cannot be given a paired session`);
         session = await openPairedSession(device, identity, { keyId }, { ...(confirmed || {}), ...(input.keyStorage && !(confirmed && confirmed.storage) ? { storage: input.keyStorage } : {}) });
         // (the home's owner was decided above, before this device had any row or session)

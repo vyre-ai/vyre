@@ -310,6 +310,8 @@ export default {
      * windowed ticket makes nothing before it is confirmed. `match` names how the ticket was made (via: start, ring, module, window, gated).
      * @param {Buffer} pub @param {string} id @param {string} name @param {any} hello @param {any} match
      */
+    /** The public key a device offered in its hello, by device id, kept briefly so the module that owns the pairing can bind the device's paired session to it when the ticket was not gated (a typed server code). @type {Map<string, { public_key: string, alg: number, storage: string }>} */
+    const offeredKeys = new Map();
     async function enrol(pub, id, name, hello, match) {
       // One pairing path (lead ruling, 4 Oct 2026): a browser that completed it, three words confirmed, is one of the person's devices like any other: a row of kind app, whose key is
       // software (WebCrypto). Only the older one-step pairings (the classic QR, no gate) still make a limited `web` row.
@@ -324,7 +326,11 @@ export default {
       const pk = hello.presenceKey;
       if (pk && typeof pk.public_key === "string") {
         const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
-        if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
+        if (r && r.data && (r.data.keyId || r.data.id)) {
+          presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" };
+          // kept briefly, for the module that owns the pairing when the ticket was not gated (a server's typed code); a P-256 key only, which is what a paired session binds to
+          if (pk.alg === undefined || pk.alg === -7) { offeredKeys.set(id, { public_key: pk.public_key, alg: -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" }); if (offeredKeys.size > 64) offeredKeys.delete(offeredKeys.keys().next().value); }
+        }
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
       const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
@@ -1260,7 +1266,7 @@ export default {
       input: obj({ id: str }, ["id"]),
       run: async input => {
         const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
-        return { key: (row && row.presence_key) || null };
+        return { key: (row && row.presence_key) || null, ...(row && offeredKeys.get(String(input.id)) ? offeredKeys.get(String(input.id)) : {}) };
       },
     });
 
