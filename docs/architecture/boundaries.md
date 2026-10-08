@@ -62,7 +62,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
 | `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
-| `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
 | `core/recall -> core/transcripts` | index.js | transcripts is the one reader of Claude Code's files | lib |
 | `core/watchers -> core/spawner` | client.js | the box's watcher wall is the root spawner's; loaded only when a spawner socket exists | lib |
 | `core/sessions -> core/spawner` | client.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
