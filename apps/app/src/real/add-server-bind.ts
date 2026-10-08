@@ -24,7 +24,7 @@ export async function startAddServer(onChange: (s: AddServerState) => void) {
       if (!me) throw new Error("no identity on this device");
       return { id: me.id };
     },
-    connect: ({ offer, key, secret }: { offer: string; key: Uint8Array; secret: string }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret }),
+    connect: ({ offer, key, secret }: Parameters<typeof connectSetup>[1]) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret }),
     // The same pairing a scanned code starts: the identity's signature is the proof at the server, so nobody answers a question there.
     pair: async (qr: string) => {
       const code = parseWinkCode(qr);
