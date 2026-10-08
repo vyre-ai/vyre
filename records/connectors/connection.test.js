@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fromForm, toConfig, outcomeOf, slug, credentialName } from "./connection.js";
+import { fromForm, toConfig, outcomeOf, slug, credentialName, operationsOf, kindOfMethod } from "./connection.js";
 import { checkDeclaration } from "./format.js";
 import { normalize, classify } from "../../core/vault/api-request.js";
 import { routeAllowed } from "../../core/vault/service.js";
@@ -89,4 +89,27 @@ test("the generic request: any method and path on the pinned host, classified by
   // only the person's word makes a write a read
   assert.throws(() => defineConnector({ ...m.declaration, ops: { ...m.declaration.ops, "x.go": { method: "POST", path: "/x", kind: "read" } } }), /a read is a GET or HEAD/);
   assert.throws(() => defineConnector({ ...m.declaration, ops: { ...m.declaration.ops, "x.go": { method: "GET", path: "/x", kind: "read", relabeled: false } } }), /relabeled/);
+});
+
+test("operations in the form: the method sets the kind, the person may relabel, a poll makes a watcher source, and the record lists them back", () => {
+  const m = fromForm(ghl({ operations: [
+    { name: "contacts.get", method: "GET", path: "/contacts/{id}", input: { params: { id: { type: "string", required: true } } } },
+    { name: "contacts.search", method: "POST", path: "/contacts/search", relabeled: true, kind: "read", label: "Search contacts" },
+    { name: "contacts.create", method: "POST", path: "/contacts" },
+    { name: "contacts.delete", method: "DELETE", path: "/contacts/{id}", input: { params: { id: { type: "string", required: true } } } },
+    { name: "contacts.recent", method: "GET", path: "/contacts", label: "New contacts", poll: { items: "contacts", id: "id", title: "contactName", at: "dateAdded", args: { query: { locationId: "$location", limit: "100" } } } },
+  ] }));
+  assert.deepEqual(checkDeclaration(m.declaration), []);
+  const kinds = Object.fromEntries(Object.entries(m.declaration.ops).map(([n, o]) => [n, o.kind]));
+  assert.deepEqual(kinds, { check: "read", "contacts.get": "read", "contacts.search": "read", "contacts.create": "change", "contacts.delete": "delete", "contacts.recent": "read" });
+  assert.equal(kindOfMethod("PUT"), "change");
+  assert.deepEqual(m.declaration.poll["contacts.recent"].map, { title: "contactName", at: "dateAdded" });
+  const back = operationsOf(m.declaration);
+  assert.deepEqual(back.map(o => o.name), ["contacts.get", "contacts.search", "contacts.create", "contacts.delete", "contacts.recent"]);
+  assert.equal(back.find(o => o.name === "contacts.search")?.relabeled, true);
+  assert.equal(back.find(o => o.name === "contacts.recent")?.poll?.id, "id");
+  // an operation cannot be named check, a POST is not a read unless relabeled, a poll needs the item's id
+  assert.throws(() => fromForm(ghl({ operations: [{ name: "check", method: "GET", path: "/x" }] })), /check/);
+  assert.throws(() => fromForm(ghl({ operations: [{ name: "a.b", method: "POST", path: "/x", kind: "read" }] })), /a read is a GET or HEAD/);
+  assert.throws(() => fromForm(ghl({ operations: [{ name: "a.b", method: "GET", path: "/x", poll: {} }] })), /poll is/);
 });

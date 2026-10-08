@@ -165,9 +165,19 @@ export default {
     });
     tool("watchers.preset", {
       description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). kind \"connector\": project, connector (a declared connector: gmail, google-calendar, stripe), poll (one of its polls), credential (the vault credential for it; for gmail and google-calendar not a credential but google: the name of a connected Google account), vars (what the poll needs: mailbox or calendar), when, lookback_days (optional); polls any declared connector with no code of its own, files each new item once, read only. kind \"pr\": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
-      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, google: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str, session: str, maxPerDay: { type: "integer" }, connector: str, poll: str, vars: { type: "object" }, lookback_days: { type: "integer" } } },
+      input: { type: "object", required: ["kind", "project"], properties: { kind: str, connection: str, project: str, credential: str, google: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str, session: str, maxPerDay: { type: "integer" }, connector: str, poll: str, vars: { type: "object" }, lookback_days: { type: "integer" } } },
       // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
-      run: async (i, meta = {}) => { const c = await rt.createPreset(i); remember(meta, c); return c; },
+      run: async (i, meta = {}) => {
+        // kind "connector" with `connection`: a poll of a Connection the person made. Its declaration comes from the connectors module, and its credential is the Connection's own (conn-<id>) unless named.
+        let resolved = {};
+        if (i.kind === "connector" && i.connection) {
+          const g = /** @type {any} */ (await ctx.call("connectors.connection.get", { id: String(i.connection) }));
+          if (g.error || !g.data) throw new Error(`no Connection ${String(i.connection).slice(0, 40)}; connectors.connection.list shows them`);
+          resolved = { declaration: g.data.declaration };
+          i = { ...i, connector: g.data.declaration.id, credential: i.credential === undefined ? `conn-${g.data.id}` : i.credential };
+        }
+        const c = await rt.createPreset(i, resolved); remember(meta, c); return c;
+      },
     });
     ctx.tool("watchers.pause", { callers: [...PEOPLE, "module", ...MODEL], description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const m = /** @type {any} */ (meta); return rt.pause(name, `paused by ${m.agent || m.caller || "someone"}`); } });

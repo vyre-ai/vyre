@@ -217,7 +217,7 @@ export default {
       return who;
     };
     const formShape = obj({ label: str, id: str, base_url: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
-      headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]) }, ["label", "base_url", "send", "credential", "check"]);
+      headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]), operations: { type: "array" } }, ["label", "base_url", "send", "credential", "check"]);
     const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
     ctx.tool("connectors.connection.create", {
       effect: "write",

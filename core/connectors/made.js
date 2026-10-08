@@ -4,7 +4,7 @@
 // person's own surface, so a row is made, changed and rebuilt in a person's act; a credential found changed behind the row's back shows as out of step until that act rebuilds it.
 
 import { defineConnector } from "../../records/connectors/format.js";
-import { fromForm, toConfig, credentialName, outcomeOf } from "../../records/connectors/connection.js";
+import { fromForm, toConfig, credentialName, outcomeOf, operationsOf } from "../../records/connectors/connection.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
@@ -17,9 +17,13 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   const row = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM connectors_made WHERE id = ?").get(id));
   const shape = (/** @type {any} */ r, /** @type {boolean} */ stale) => {
     const d = JSON.parse(r.declaration);
-    return { id: r.id, label: r.label, host: new URL(d.base_url).hostname, auth: d.auth.type === "api-key" && d.auth.in === "query" ? "query" : d.auth.type, credential: r.credential_item, origin: r.origin,
+    const a = d.auth;
+    const auth = a.type === "api-key" ? (a.in === "query" ? { kind: "query", name: a.param } : { kind: "header", name: a.header || "x-api-key" }) : { kind: a.type };
+    const f = r.form ? JSON.parse(r.form) : {};
+    return { id: r.id, label: r.label, host: new URL(d.base_url).hostname, auth, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, headers: f.headers || {}, vars: f.vars || {},
+      check: { method: "GET", path: r.check_path }, origin: r.origin,
       light: stale ? "out_of_step" : r.light, reason: stale ? "the Vault credential was changed outside this connection; save the connection again to rebuild it" : r.reason, checked_at: r.checked_at, created: r.created,
-      ops: Object.entries(d.ops).map(([name, op]) => ({ name, label: /** @type {any} */ (op).label || name, kind: /** @type {any} */ (op).kind })) };
+      operations: operationsOf(d) };
   };
 
   /** The vault item names and when each was last written, for spotting drift. */
@@ -54,9 +58,10 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     if (had && !o.replace) throw fail(`there is already a connection ${made.id}; update it to change it`, "exists");
     if (!had && o.replace) throw fail(`no connection ${made.id}`, "not_found");
     const t = now();
-    const values = [made.id, made.declaration.label, JSON.stringify(made.declaration), made.credential.item, made.credential.field || null, made.check.path, o.origin || "form", o.as, t, t];
-    if (had) db.prepare("UPDATE connectors_made SET label=?, declaration=?, credential_item=?, credential_field=?, check_path=?, origin=?, made_by=?, light='unknown', reason=NULL, updated=? WHERE id=?").run(...values.slice(1, 8), t, made.id);
-    else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?)").run(...values);
+    const formJson = JSON.stringify({ send: form.send, headers: form.headers || {}, vars: form.vars || {}, check: form.check });
+    const values = [made.id, made.declaration.label, JSON.stringify(made.declaration), made.credential.item, made.credential.field || null, made.check.path, o.origin || "form", o.as, formJson, t, t];
+    if (had) db.prepare("UPDATE connectors_made SET label=?, declaration=?, credential_item=?, credential_field=?, check_path=?, origin=?, made_by=?, form=?, light='unknown', reason=NULL, updated=? WHERE id=?").run(...values.slice(1, 9), t, made.id);
+    else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, form, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(...values);
     try { await materialize(row(made.id), o.as); }
     catch (e) { if (!had) db.prepare("DELETE FROM connectors_made WHERE id = ?").run(made.id); throw e; }
     emit(had ? "connectors.connection-updated" : "connectors.connection-created", { id: made.id });
@@ -89,7 +94,10 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   return {
     save, check, row,
     list: async () => { return { connections: await Promise.all(/** @type {any[]} */ (db.prepare("SELECT * FROM connectors_made ORDER BY label").all()).map(async r => shape(r, await isStale(r)))) }; },
-    get: async (/** @type {string} */ id) => { const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found"); return { ...shape(r, await isStale(r)), declaration: JSON.parse(r.declaration), credential_field: r.credential_field }; },
+    get: async (/** @type {string} */ id) => {
+      const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");
+      return { ...shape(r, await isStale(r)), declaration: JSON.parse(r.declaration) };
+    },
     rebuild: async (/** @type {string} */ id, /** @type {string} */ as) => { const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found"); return { id, credential: await materialize(r, as) }; },
     remove: async (/** @type {string} */ id, /** @type {string} */ as) => {
       if (!row(id)) throw fail(`no connection ${id}`, "not_found");
