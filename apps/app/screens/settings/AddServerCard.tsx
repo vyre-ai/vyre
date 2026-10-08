@@ -3,7 +3,7 @@ import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Row, Text, showToast } from "@vyre/ui";
 import { CHOICES, DEFAULT_CHOICE, GAINS } from "../../src/real/add-server.js";
-import { startAddServer, type AddServerState } from "../../src/real/add-server";
+import { startAddServer, type AddServerState } from "../../src/real/add-server-bind";
 
 /**
  * Upgrade to My Cloud: the one way a server joins. What a server unlocks, the two choices (With Records first and selected), then the install line to paste on the server; the app finds the server by itself,
