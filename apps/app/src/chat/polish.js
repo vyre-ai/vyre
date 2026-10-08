@@ -69,7 +69,7 @@ export function keyAction(e, c) {
   return null;
 }
 
-/** The last message the person sent: its message id and words, from the rows and the items. @param {{ key: string, kind: string }[]} rows @param {(key: string) => any} item @param {(key: string) => boolean} mine */
+/** The last message the person sent: its message id and words, from the rows and the items. @param {readonly { key: string, kind: string }[]} rows @param {(key: string) => any} item @param {(key: string) => boolean} mine */
 export function lastOwnMessage(rows, item, mine) {
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i];
