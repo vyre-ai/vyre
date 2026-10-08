@@ -15,6 +15,7 @@
     "allow-identity-sign",
     "allow-identity-has",
     "allow-identity-forget",
+    "allow-setup-finished",
     "allow-enclave-public",
     "allow-enclave-sign",
     "allow-agree-public",

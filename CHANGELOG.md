@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(windows-app): one origin for the life of the app: the window is always the bundled app at https://vyreapp.localhost (before and after pairing), a Windows build without the web build fails, and the app starts hidden in the tray once the page says setup has finished (setup_finished).
 - fix(app): a server paired by the typed code from the Mac or Windows app is an app device with a paired session (the hello said kind web, so presence.person.pair-challenge was "no tool"), and the typed path finishes with the server's adopt and the owner (IR-35).
 - feat(app): an identity with no server can join a team. The app reads the invite itself (src/real/join-team.js): the space's record from the names directory gives the home's route, a throwaway invitee channel opens the home's invitee door with a hello signed by the identity key, the join card comes from the home's kernel with the home proving it holds the space, and the person's yes (their hardware key over exactly that card) is accepted there; the accept enrols the device's key on that server. The member row is kept so the app reaches the space with a member call. install.ts previews and accepts here whenever the app holds the name. Test: test/wink-paired-2.test.js (two identities, one real server and relay).
 - feat(windows-app): the TPM key's refusals carry the provider's status code, the app logs its start, setup and exit, and the Windows proof drives the shell's own yes/no box for a list change.

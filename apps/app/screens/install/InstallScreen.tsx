@@ -13,7 +13,7 @@ import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "..
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
-import { isWindowsShell, shell } from "../../src/shell/shell";
+import { isWindowsShell, shell, shellSetupDone } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
 import { codeLooksRight, codeRoute, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
@@ -251,6 +251,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     const t = setTimeout(() => want.forEach((n) => { asked.current.add(n); void checkName(n).then((a) => { if (a === "unknown") asked.current.delete(n); setTaken((m) => ({ ...m, [n]: a })); }); }), 400);
     return () => clearTimeout(t);
   }, [step, name, spaceSlug, recheck]);
+  // The Windows app starts hidden in the tray once setup has finished: tell it when this is the end (a space made or joined).
+  useEffect(() => { if (!MOCK && (step === "done" || (step === "spaces" && owned > 0))) void shellSetupDone(); }, [step, owned]);
   // Every setup step is kept on the box so another device can carry on; the last one clears it.
   useEffect(() => {
     if (MOCK || !spaceId) return;

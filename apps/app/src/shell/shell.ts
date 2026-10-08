@@ -12,6 +12,8 @@ export type MacShell = {
     sign(message: string): Promise<string>;
     has(): Promise<boolean>;
     forget(): Promise<void>;
+    /** Windows only: the page says setup has finished (a server paired or a team joined), so the app starts hidden in the tray from now on. */
+    setupDone?(): Promise<void>;
     /** Settings' "Make this Mac a server": the Mac app runs its own setup (an explicit choice, never automatic). */
     makeServer?(): Promise<void>;
     /** The Secure Enclave key of this Mac's entry (Touch ID per signature): its raw uncompressed point, and a raw r||s signature. Absent or rejecting on a Mac with no Secure Enclave. */
@@ -70,4 +72,9 @@ export function listenCommands(go: (route: string) => void, back: () => void, fo
     else if (c.kind === "back") back();
     else if (c.kind === "forward") forward();
   });
+}
+
+/** Tell the Windows app that setup has finished. Nothing happens in a browser, on a phone or on a Mac (their windows have no such call). Failures are the shell's to log; the page carries on. */
+export async function shellSetupDone(): Promise<void> {
+  try { await shellIdentity()?.setupDone?.(); } catch { /* the app keeps opening its window until this lands */ }
 }
