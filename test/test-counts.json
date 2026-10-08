@@ -905,5 +905,6 @@
  "web/js/trace.test.js": 2,
  "web/onboard/device/link.test.js": 5,
  "web/vendor/jsqr/jsqr.test.js": 2,
- "core/cli/commands/words.test.js": 2
+ "core/cli/commands/words.test.js": 2,
+ "test/workflows-yaml.test.js": 2
 }
