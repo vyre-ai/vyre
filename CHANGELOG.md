@@ -3,7 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
-- ci(windows-app): the installer carries the app's web build (capsule-win.yml), and a dispatchable windows-setup-proof workflow builds and drives the Windows app on windows-latest against a stand-in names directory (first run, identity bridge, app log, restart keeps the identity and relay keys).
+- ci(windows-app): the installer carries the app's web build (capsule-win.yml), and a dispatch-only proof job in capsule-win.yml builds and drives the Windows app on windows-latest against a stand-in names directory (first run, identity bridge, app log, restart keeps the identity and relay keys).
 - feat(windows-app): the Windows app opens the app's own web build in its window with no server (a vyreapp scheme served by the shell, origin http://vyreapp.localhost), so reserve, become yourself, Join or Add a server can run on Windows; the page has identity.has and identity.forget; every key failure goes to %LOCALAPPDATA%\Vyre\logs\app.log with its real reason, and the claim screen shows the shell's reason instead of one generic line.
 - fix(names): the directory takes identity claims from the Mac app's window (origin vyreapp://box) as well as app.vyre.run (IR-32).
 - fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
