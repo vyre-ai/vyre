@@ -114,7 +114,7 @@ const PROVIDER_IDS = ["claude", "codex", "grok", "openrouter", "openai-compatibl
  */
 export function modelChoice(v) {
   if (v === undefined || v === null || v === "") return null;
-  const m = /^([a-z][a-z0-9-]{0,40})(?:\/([A-Za-z0-9][A-Za-z0-9._:-]{0,80}))?$/.exec(String(v).trim());
+  const m = /^([a-z][a-z0-9-]{0,40})(?:\/([A-Za-z0-9][A-Za-z0-9._:/-]{0,80}))?$/.exec(String(v).trim());
   if (!m) throw Object.assign(new Error("model is a provider (claude, codex, grok, openrouter), a provider/model, or a Claude model name"), { code: "bad_input" });
   if (PROVIDER_IDS.includes(m[1])) return { provider: m[1], ...(m[2] ? { model: m[2] } : {}), label: String(v).trim() };
   if (!m[2]) return { provider: "claude", model: m[1], label: `claude/${m[1]}` };
