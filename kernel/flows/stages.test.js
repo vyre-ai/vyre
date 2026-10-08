@@ -38,6 +38,17 @@ for (const which of ["real"]) {
     assert.equal((await tasksOf(w)).length, 2);
   });
 
+  test(`stages (${which}): a stage owner is the escalate_to of the stage's tasks that have a due offset, and a stage without one has none`, async () => {
+    const w = await mk();
+    await open(w);
+    const [research, welcome] = await tasksOf(w);
+    assert.deepEqual([research.escalate_after, research.escalate_to.id], [86_400_000, "per_alex"], "late by its due offset, the owner hears of it");
+    assert.equal(welcome.escalate_to, undefined, "no due offset, nothing to be late against");
+    const r2 = await open(w, "Engagement");
+    void r2;
+    assert.equal((await byTitle(w, "Engagement letter signed")).escalate_to, undefined, "Engagement names no owner");
+  });
+
   test(`stages (${which}): finishing the required tasks moves the record on by itself, once`, async () => {
     const w = await mk();
     const r = await open(w);
