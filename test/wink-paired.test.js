@@ -345,7 +345,6 @@ async function standinIdentity(t, { passkey = false } = {}) {
   const store = fileIdentityStore(path.join(home, "spaces"));
   const idDir = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
   const ops = createIdentityOps({ store, dir: idDir, seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
-  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone", code: (await idDir.reserve("alex")).code });
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
@@ -355,7 +354,7 @@ async function standinIdentity(t, { passkey = false } = {}) {
     const made = await claimIdentityWithPasskey({ name: "alex", password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, webauthn: auth });
     return { id: made.id, home, state, clock, auth, sign: async m => ({ eid: made.eid, sig: Buffer.from(await made.key.sign(m)).toString("base64url") }) };
   }
-  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
+  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone", code: (await idDir.reserve("alex")).code });
   return { id: store.status().id, home, state, store, ops: () => store.ops(), clock,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
