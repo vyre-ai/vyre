@@ -456,7 +456,7 @@ test("a kernel whose chats cannot stream or gate a reply refuses (unavailable) a
 test("ask another model on an answer: one short line from the person, and the other assistant is given the question, the answer and the earlier turns from the chat's own log", async t => {
   const r = rig(t, PORTS[0]);
   r.fk.create("c9", ["bob"], ["kit", "juno"]);
-  await r.send("c9", "bob", "q0", "we are talking about the Harlow retainer", ["assistant:kit"]);
+  await r.send("c9", "bob", "q0", "we are talking about the Harlow retainer", ["assistant:kit"]); // cwd /tmp
   const kit = r.threadOf("c9", "assistant:kit");
   r.say(kit, "m0", { delta: "Understood." }); r.say(kit, "m0", { done: true });
   await r.send("c9", "bob", "q1", "what is the fee for the estate plan?", ["assistant:kit"]);
