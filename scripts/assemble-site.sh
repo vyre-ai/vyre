@@ -46,6 +46,15 @@ mkdir -p "$out/box"
 # appbuild.json, setup.json, shell.json and install-mac-server.sh) and the check below fails on the files it did not fetch
 gh release download "$tag" -R vyre-ai/vyre --dir "$out/box" --clobber
 (cd "$out/box" && sum -c --quiet SHA256SUMS) || { echo "assemble-site: the release files do not match their SHA256SUMS" >&2; exit 1; }
+# Cloudflare Pages takes no file over 25 MiB. The apps (the Mac dmg and zip, the Android APK) are linked from the GitHub release, not served here,
+# so a file over the limit is left out; one the installers fetch (the --check list below) must never be, so that refuses.
+for f in "$out"/box/*; do
+  [ "$(wc -c <"$f")" -le 26214400 ] && continue
+  case " VERSION SHA256SUMS SHA256SUMS.sig manifest.json release.json vyre vyre.tgz compose.yml install-box.sh install-mac-server.sh " in
+    *" $(basename "$f") "*) echo "assemble-site: $(basename "$f") is over the 25 MiB Pages limit and the installers need it" >&2; exit 1 ;;
+  esac
+  rm -f "$f"
+done
 cp "$out/box/install-box.sh" "$out/install.sh"
 
 say "from the tag's source"
