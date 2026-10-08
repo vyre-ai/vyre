@@ -8,6 +8,7 @@
 
 import { enterCode, hmac512, ackCode } from "./code.js";
 import { pairTicket, resolveTicket } from "./client.js";
+import { adoptServer, waitPhone } from "./finish.js";
 
 const SEED_LABEL = new TextEncoder().encode("vyre-wink-ticket-seed-v1");
 
@@ -56,11 +57,17 @@ export async function finishJoin(o) {
 
 /**
  * Type a code, show the ack, wait for it to be typed back, then pair.
+ *
+ * A box that GATES its ticket (X-1: a server's, a phone's) makes the redeemer a waiting pairing, not a device, until it finishes over its own channel; the box names the gate in its reply. This
+ * finishes it: a phone's or computer's with wink.phone.wait (`entry`: the identity key a device joining a name offers), a server's with wink.server.adopt, which needs `server` (who will own the
+ * server, and the proof). Without it a server's pairing cannot be finished here and the answer is `needs_identity`. The typed ack is the person's yes at the other end, so no words are compared.
  * @param {{ relay: string, input: string, name?: string, onState?: (s: { state: string, code?: string, expires?: number }) => void,
- *   waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, pairOptions?: object, sleep?: (ms: number) => Promise<void> }} o
+ *   waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, pairOptions?: any, sleep?: (ms: number) => Promise<void>,
+ *   entry?: any, server?: Omit<Parameters<typeof adoptServer>[1], "relay" | "ticket" | "typed" | "deviceName" | "crypto" | "keyStore" | "WebSocket">,
+ *   onWords?: (words: string) => void, signal?: AbortSignal, finishPollMs?: number, finishTimeoutMs?: number }} o
  *   relay: the relay's ws(s) address. States: `checking`, `ack` (show `code`: "type this on your other device"; `expires` is the typed code's end in epoch ms when the relay said it, and the wait for the ack
  *   runs to it unless `waitMs` is given), `waiting`, `joining`.
- * @returns {Promise<{ ok: true, paired: any } | { ok: false, reason: "format" | "busy" | "offline" | "refused" | "closed" | "expired" }>}
+ * @returns {Promise<{ ok: true, paired: any, done?: any } | { ok: false, reason: "format" | "busy" | "offline" | "refused" | "closed" | "expired" | "needs_identity", code?: string, message?: string }>}
  */
 export async function joinWithCode(o) {
   const say = o.onState || (() => {});
@@ -70,9 +77,29 @@ export async function joinWithCode(o) {
   say({ state: "ack", code: t.ack, ...(t.expires ? { expires: t.expires } : {}) });
   say({ state: "waiting" });
   const f = await finishJoin({ relay: o.relay, seed: t.seed, name: o.name, waitMs: o.waitMs ?? (t.expires ? Math.max(1000, t.expires - Date.now()) : undefined), pollMs: o.pollMs, fetch: o.fetch, pairOptions: o.pairOptions, sleep: o.sleep });
-  if (f.ok) say({ state: "joining" });
-  return f;
+  if (!f.ok) return f;
+  say({ state: "joining" });
+  if (!f.paired.pending) return f;
+  const ticket = b64u(t.seed);
+  const po = o.pairOptions || {};
+  const common = { relay: o.relay, ticket, deviceName: o.name, crypto: po.crypto, keyStore: po.keyStore, WebSocket: po.WebSocket, ...(o.onWords ? { onWords: o.onWords } : {}), ...(o.signal ? { signal: o.signal } : {}),
+    ...(o.finishPollMs !== undefined ? { pollMs: o.finishPollMs } : {}), ...(o.finishTimeoutMs !== undefined ? { timeoutMs: o.finishTimeoutMs } : {}) };
+  try {
+    if (f.paired.gate === "server") {
+      if (!o.server) return { ok: false, reason: "needs_identity", code: "needs_identity", message: "Pairing a server needs the name that will own it." };
+      const done = await adoptServer(f.paired, { ...common, typed: true, ...o.server });
+      return { ok: true, paired: f.paired, done };
+    }
+    const done = await waitPhone(f.paired, { ...common, ...(o.entry ? { entry: o.entry } : {}) });
+    return { ok: true, paired: f.paired, done };
+  } catch (e) {
+    const code = String(/** @type {any} */ (e).code || "");
+    const reason = code === "busy" ? "busy" : code === "expired" ? "expired" : code === "unreachable" ? "offline" : "closed";
+    return { ok: false, reason, code, message: String(/** @type {Error} */ (e).message || "") };
+  }
 }
+
+const b64u = (/** @type {Uint8Array} */ b) => { let s = ""; for (const x of b) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 
 /**
  * Redeem the typed code of an INVITATION from a device with no box of its own (a browser, a fresh phone): the same PAKE as joinWithCode, but the sealed record the ticket holds carries the invitation's

@@ -286,7 +286,7 @@ export default {
       if (waiting) {
         // The same device again while its pairing waits (the app connects afresh for each call): still only the waiting pairing, still nothing enrolled.
         if (!crypto.timingSafeEqual(waiting.pub, pub)) throw new Error("not a paired device");
-        return { v: 1, box: { name: boxName() }, pending: id };
+        return { v: 1, box: { name: boxName() }, pending: id, gate: waiting.gate };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
@@ -409,7 +409,7 @@ export default {
       if (p.timer.unref) p.timer.unref();
       pendingPairs.set(id, p);
       ctx.events.emit("pairing.pending", { device: id, name, fingerprint: keyFingerprint(pub), gate: p.gate, via: String(match.via || "ticket") });
-      return { v: 1, box: { name: boxName() }, pending: id };
+      return { v: 1, box: { name: boxName() }, pending: id, gate: p.gate };
     }
     /** The yes: enrol the device now (row, presence key, notice). The waiting channels stay a moment so an answer still in flight reaches the app, then close. */
     const pendingConfirm = async (id, { trusted = false } = {}) => {

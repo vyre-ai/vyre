@@ -365,7 +365,7 @@ export function createPairing(o) {
     const input = { owner: { ...target, ...(x.ownerName ? { name: String(x.ownerName).slice(0, 64) } : {}), ...(vyre ? { vyre: String(vyre) } : {}), ...(pin && pin.head ? { pin: { id: String(pin.id), seq: Number(pin.seq), head: String(pin.head) } } : {}) }, identity: x.identity, peerSecret: x.peerSecret, handover: hand, deviceKind: "computer", deviceName: String(ctx.config.name || "a computer").slice(0, 64) };
     // A server installed to pair to one identity asks for proof that this app IS that identity: a signature by a key on its list over this pairing's box and device (Q-3).
     if (typeof o.signIdentity === "function" && paired && paired.box && paired.device) {
-      const sigTag = x.seed ? await ticketTag(b64url(x.seed)) : "";
+      const sigTag = x.seed ? await ticketTag(b64url(x.seed)) : x.typedSeed ? await ticketTag(b64url(x.typedSeed)) : "";
       const sig = await Promise.resolve(o.signIdentity(pairToMessage(String(paired.box), String(paired.device), sigTag))).catch(() => null);
       if (sig && sig.eid && sig.sig) /** @type {any} */ (input).proof = { eid: String(sig.eid), sig: String(sig.sig), ...(sig.esig ? { esig: String(sig.esig) } : {}) };
     }
@@ -948,7 +948,8 @@ export function createPairing(o) {
       const notThem = () => fail(open ? "denied_wrong_proof" : "denied", words(open ? "pairNotProven" : "pairWrongIdentity", open ? { name: shownName } : { name: to }));
       if (!e || e.eid !== pr.eid || typeof e.pub !== "string") { ctx.log(`wink: the identity proof named an entry that ${to} does not have${claimed ? " in the directory" : ""}`); throw notThem(); }
       // PI-3: the open flow's message carries this pairing's own ticket tag, so a proof from an earlier pairing of the same device and box is no proof; a release build requires the tag
-      const tag = input.pairing && typeof input.pairing.tag === "string" ? input.pairing.tag : "";
+      // a typed code's ticket is named `typed_tag` (never `tag`: the server keeps no seed for it), and its proof binds to that tag as a scanned one binds to its own
+      const tag = input.pairing && typeof input.pairing.tag === "string" ? input.pairing.tag : input.pairing && typeof input.pairing.typed_tag === "string" ? input.pairing.typed_tag : "";
       const release = o.releaseProof ?? isReleaseBuild(o.buildRoot);
       if (open && release && !tag) { ctx.log("wink: the identity proof carried no pairing tag"); throw notThem(); }
       // PI-2: on a release build the app always says which head and length of its own chain it last saw (the prover is a phone, which holds its chain); a development build may pair with no pin and says so
