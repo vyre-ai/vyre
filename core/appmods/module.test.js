@@ -7,11 +7,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { seam, handleWebhook, pick, connectionForm } from "./index.js";
+import { createGate, NOT_FOUND } from "../wink/control/gate.js";
 
 const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.json", import.meta.url), "utf8"));
 
@@ -275,4 +277,40 @@ test("install through the host helper: no hand-over from the host is a failed in
   const r = await w.cli("appmods.install", { name: "docuseal" });
   assert.match(r.error.message, /gave no hand-over/);
   assert.equal((await w.cli("appmods.list")).data.apps[0].state, "failed");
+});
+
+test("through the public gate: an app's host reaches the apps' front, the ticket buys the cookie, the app answers, and a host that is not a running app is the gate's plain 404", async t => {
+  const w = await world(t);
+  await w.cli("appmods.install", { name: "docuseal" });
+  // the gate as the Wink module builds it: the apps' front port and the hosts of the running apps, asked per request
+  const apps = async () => {
+    const f = await w.d.registry.call("appmods.front", {}, "module:wink"), h = await w.cli("appmods.hosts", {});
+    return { port: f.data.port, hosts: h.data.hosts.map(x => x.replace(/:\d+$/, "")) };
+  };
+  const be = http.createServer((q, r) => { r.writeHead(404).end(); });   // a stand-in for Headscale: it must never be asked
+  let asked = 0; be.on("request", () => { asked++; });
+  await new Promise(r => be.listen(0, "127.0.0.1", r)); t.after(() => { be.close(); be.closeAllConnections(); });
+  const gate = createGate({ upstream: { port: be.address().port }, ingress: { hooks: () => null, share: () => null, apps, appsSuffix: ".localhost" } });
+  await gate.listen(); t.after(() => gate.close());
+  const gp = gate.address().port;
+  const at = (method, p, host, headers = {}) => new Promise((resolve, reject) => {
+    const q = http.request({ host: "127.0.0.1", port: gp, path: p, method, headers: { host, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString() })); });
+    q.on("error", reject); q.end();
+  });
+  assert.equal((await at("GET", "/", "docuseal.localhost")).status, 404, "no ticket, no cookie: the front's own plain 404");
+  const url = (await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).data.url;
+  const enter = await at("GET", "/__vyre/enter" + new URL(url).search, "docuseal.localhost:9999");
+  assert.equal(enter.status, 302, enter.text);
+  const cookie = /vyre_app=([A-Za-z0-9_-]+)/.exec(String(enter.headers["set-cookie"]))[1];
+  const home = await at("GET", "/", "docuseal.localhost:9999", { cookie: `vyre_app=${cookie}` });
+  assert.equal(home.status, 200, home.text.slice(0, 200));
+  assert.ok(home.text.includes('href="/templates/1"'), "the app's page came through the gate untouched");
+  // a host that is not a running app: the gate's 404 bytes, and the front is never asked
+  const raw = await new Promise(resolve => { const c = net.connect(gp, "127.0.0.1", () => c.write("GET / HTTP/1.1\r\nHost: nothere.localhost\r\nConnection: close\r\n\r\n")); const b = []; c.on("data", d => b.push(d)); c.on("close", () => resolve(Buffer.concat(b))); });
+  assert.deepEqual(raw, NOT_FOUND);
+  // after the app is stopped its host is not a running app any more
+  await w.cli("appmods.stop", { name: "docuseal" });
+  const gone = await new Promise(resolve => { const c = net.connect(gp, "127.0.0.1", () => c.write("GET / HTTP/1.1\r\nHost: docuseal.localhost\r\nConnection: close\r\n\r\n")); const b = []; c.on("data", d => b.push(d)); c.on("close", () => resolve(Buffer.concat(b))); });
+  assert.deepEqual(gone, NOT_FOUND);
+  assert.equal(asked, 0, "Headscale was never asked");
 });

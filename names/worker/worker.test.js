@@ -263,6 +263,35 @@ test("publish: the name's A record is the public IPv4 the request came from, and
   assert.ok(code(await b.post("/v1/names/publish", { name: "pubby" }, { ip: "93.184.216.34" })), "another route cannot publish a name it does not hold");
 });
 
+test("publish with apps: `*.<name>` points at the same address while the box has an app installed, is cleared when the last is removed, and goes with the name", async t => {
+  const w = world(t, { ADMIN_SECRET: "s".repeat(48) }), a = boxOf(w);
+  await sv(w, a, "appy");
+  const ip = { ip: "93.184.216.34" };
+  const none = data(await a.post("/v1/names/publish", { name: "appy" }, ip));
+  assert.equal(none.apps, false);
+  assert.deepEqual(w.dns.at("*.appy.vyre.run", "A"), [], "no wildcard until an app is installed");
+  const on = data(await a.post("/v1/names/publish", { name: "appy", apps: true }, ip));
+  assert.equal(on.apps, true);
+  assert.deepEqual(w.dns.at("*.appy.vyre.run", "A").map(r => r.content), ["93.184.216.34"]);
+  assert.deepEqual(w.dns.at("appy.vyre.run", "A").map(r => r.content), ["93.184.216.34"], "the name itself is unchanged");
+  data(await a.post("/v1/names/publish", { name: "appy", apps: true }, { ip: "93.184.216.40" }));
+  assert.deepEqual(w.dns.at("*.appy.vyre.run", "A").map(r => r.content), ["93.184.216.40"], "a new address moves the wildcard with the name");
+  assert.equal(data(await a.post("/v1/names/publish", { name: "appy", apps: "yes" }, ip)).apps, false, "only the boolean true turns it on");
+  assert.deepEqual(w.dns.at("*.appy.vyre.run", "A"), [], "the last app's removal clears it");
+  data(await a.post("/v1/names/publish", { name: "appy", apps: true }, ip));
+  // another route cannot publish a wildcard under a name it does not hold, and the wildcard is only ever an A record under a held name
+  const b = boxOf(w);
+  assert.ok(code(await b.post("/v1/names/publish", { name: "appy", apps: true }, ip)), "another route is refused");
+  assert.equal(w.dns.records.filter(r => r.name.startsWith("*")).length, 1, "one wildcard, the holder's");
+  // dropping a name takes the wildcard with it
+  const c = boxOf(w);
+  legacy(w, c, "dropme");
+  data(await c.post("/v1/names/publish", { name: "dropme", apps: true }, ip));
+  assert.equal(w.dns.at("*.dropme.vyre.run", "A").length, 1);
+  assert.equal((await adminDrop(w, { name: "dropme" })).status, 200);
+  assert.equal(w.dns.records.filter(r => r.name.includes("dropme")).length, 0, "the name, its wildcard and its challenges are gone");
+});
+
 const ADMIN = "s".repeat(48);
 const adminDrop = (w, body, secret = ADMIN) => worker.fetch(new Request(BASE + "/v1/names/admin/drop", {
   method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }) }, body: JSON.stringify(body),

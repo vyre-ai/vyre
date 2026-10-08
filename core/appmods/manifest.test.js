@@ -74,6 +74,9 @@ test("the card is built from the manifest only and says what the app may reach",
   assert.deepEqual(c.shows, ["Signatures"]);
   assert.equal(c.opensFor, "the owner and the admins of this Space");
   assert.equal(c.notes.length, 2);
+  assert.match(c.screensNeed, /need a server with a public address/);
+  assert.match(c.screensNeed, /still runs the app for your Flows and its webhooks/);
+  const bare = docuseal(); bare.screens = []; assert.equal(cardOf(bare).screensNeed, null, "no screens, nothing to say");
   assert.equal(c.saves, "the files it gets back, in Signed/ in your Drive");
   const m = docuseal(); m.app.egress = []; assert.deepEqual(cardOf(m).reaches, ["nothing outside this server"]);
 });

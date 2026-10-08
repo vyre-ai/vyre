@@ -8,16 +8,17 @@ import crypto from "node:crypto";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { createPublicGate } from "./publicgate.js";
 import * as certsReal from "../../../lib/acme/certs.js";
+import * as acmeReal from "../../../lib/acme/acme.js";
 import { certPin } from "./gate.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "pubgate-"));
 
 /** A self-signed certificate for `host` made with the key given (so a renewal with the same key keeps the same pin). Needs openssl, which every test box has. */
-async function selfSigned(host, keyPem) {
+async function selfSigned(host, keyPem, names = [host]) {
   const { execFileSync } = await import("node:child_process");
   const d = tmp(), k = path.join(d, "k.pem");
   fs.writeFileSync(k, keyPem);
-  const crt = execFileSync("openssl", ["req", "-new", "-x509", "-key", k, "-subj", `/CN=${host}`, "-addext", `subjectAltName=DNS:${host}`, "-days", "90"], { encoding: "utf8" });
+  const crt = execFileSync("openssl", ["req", "-new", "-x509", "-key", k, "-subj", `/CN=${host}`, "-addext", `subjectAltName=${names.map(n => `DNS:${n}`).join(",")}`, "-days", "90"], { encoding: "utf8" });
   return crt;
 }
 const newKey = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -27,9 +28,10 @@ function world({ name = /** @type {string | null} */ ("alex"), failIssue = false
   const issued = /** @type {any[]} */ ([]);
   const dirCalls = /** @type {string[]} */ ([]);
   const gates = /** @type {any[]} */ ([]);
-  const directory = { async acme(/** @type {string} */ n, /** @type {string} */ t) { dirCalls.push(`acme ${n}`); }, async acmeClear(/** @type {string} */ n) { dirCalls.push(`clear ${n}`); }, async publish(/** @type {string} */ n) { dirCalls.push(`publish ${n}`); } };
+  const directory = { async acme(/** @type {string} */ n, /** @type {string} */ t) { dirCalls.push(`acme ${n}`); }, async acmeClear(/** @type {string} */ n) { dirCalls.push(`clear ${n}`); }, async publish(/** @type {string} */ n, /** @type {any} */ o) { dirCalls.push(`publish ${n}${o && o.apps ? " apps" : ""}`); } };
   const acme = {
     DIRECTORIES: { production: "https://prod/dir", staging: "https://stg/dir" },
+    covers: acmeReal.covers,
     needsRenewal: (/** @type {string} */ pem, /** @type {number} */ now, /** @type {number} */ days) => { const x = new crypto.X509Certificate(pem); return Date.parse(x.validTo) - now <= days * 86400000; },
     async issue(/** @type {any} */ o) {
       issued.push({ names: o.names, directory: o.directory, hasKey: Boolean(o.certKey) });
@@ -37,7 +39,7 @@ function world({ name = /** @type {string | null} */ ("alex"), failIssue = false
       await o.dns.set("_acme-challenge." + o.names[0], "v".repeat(43));   // goes to the directory, not DNS
       await o.dns.clear("alex");
       const key = o.certKey || newKey();
-      const cert = await selfSigned(o.names[0], key);
+      const cert = await selfSigned(o.names[0], key, o.names);
       return { cert, key, expires: Date.parse(new crypto.X509Certificate(cert).validTo), accountUri: "acct" };
     },
   };
@@ -169,5 +171,65 @@ test("public ingress: a gate with no ingress never has an origin and passes noth
   await g.start();
   assert.equal(w.gates[0].o.ingress, undefined);
   assert.equal(g.ingressBase(), null);
+  await g.stop();
+});
+
+test("apps: a box with no app asks for [name] and publishes the name alone; the first app gets [name, *.name] and then the wildcard in DNS; the last one's removal takes the wildcard out of DNS", async () => {
+  const w = world();
+  let installed = false;
+  const g = w.mk({ publish: true, apps: () => installed, ingress: { hooks: () => null, share: () => null, apps: () => ({ port: 9, hosts: [] }) } });
+  await g.start();
+  assert.deepEqual(w.issued.map(i => i.names), [["alex.vyre.run"]]);
+  assert.deepEqual(w.dirCalls.filter(c => c.startsWith("publish")), ["publish alex"]);
+  assert.equal(w.gates[0].o.ingress.appsSuffix, ".alex.vyre.run", "the gate is told which suffix is an app host");
+  assert.equal(g.status().apps, false);
+  // the first app: a new certificate for both names with the SAME key, then the wildcard
+  installed = true;
+  await g.appsChanged();
+  assert.deepEqual(w.issued.map(i => [i.names, i.hasKey]), [[["alex.vyre.run"], false], [["alex.vyre.run", "*.alex.vyre.run"], true]]);
+  assert.deepEqual(w.dirCalls.filter(c => c.startsWith("publish")), ["publish alex", "publish alex apps"]);
+  assert.equal(g.status().apps, true);
+  assert.equal(w.gates.length, 1, "the same gate, new certificate");
+  assert.equal(w.gates[0].tlsSet.length, 1);
+  // nothing changed: no new order, no new publish
+  await g.appsChanged();
+  assert.equal(w.issued.length, 2);
+  assert.equal(w.dirCalls.filter(c => c.startsWith("publish")).length, 2);
+  // the last app removed: the wildcard goes from DNS, the certificate is left (its next renewal asks for the name alone)
+  installed = false;
+  await g.appsChanged();
+  assert.deepEqual(w.dirCalls.filter(c => c.startsWith("publish")), ["publish alex", "publish alex apps", "publish alex"]);
+  assert.equal(g.status().apps, false);
+  assert.equal(w.issued.length, 2);
+  await g.stop();
+});
+
+test("apps: a certificate that already covers both names is not ordered again, one that does not is, and a failing apps question means no apps", async () => {
+  const w = world();
+  const dir = tmp();
+  const first = w.mk({ publish: true, dir, apps: () => true });
+  await first.start(); await first.stop();
+  assert.deepEqual(w.issued.map(i => i.names), [["alex.vyre.run", "*.alex.vyre.run"]]);
+  const again = w.mk({ publish: true, dir, apps: () => true });
+  await again.start(); await again.stop();
+  assert.equal(w.issued.length, 1, "restart with the cert in hand: no order");
+  assert.ok(w.dirCalls.includes("publish alex apps"));
+  const w2 = world();
+  const d2 = tmp();
+  const plain = w2.mk({ publish: true, dir: d2 }); await plain.start(); await plain.stop();
+  const later = w2.mk({ publish: true, dir: d2, apps: () => true }); await later.start(); await later.stop();
+  assert.deepEqual(w2.issued.map(i => i.names), [["alex.vyre.run"], ["alex.vyre.run", "*.alex.vyre.run"]], "a name-only certificate is replaced when an app appears");
+  const w3 = world();
+  const broken = w3.mk({ publish: true, apps: () => { throw new Error("down"); } });
+  await broken.start(); await broken.stop();
+  assert.deepEqual(w3.issued.map(i => i.names), [["alex.vyre.run"]]);
+});
+
+test("apps: the wildcard is published only once the certificate that covers it is in hand", async () => {
+  const w = world({ failIssue: true });
+  const g = w.mk({ publish: true, apps: () => true });
+  const s = await g.start();
+  assert.equal(s.state, "failed");
+  assert.deepEqual(w.dirCalls.filter(c => c.startsWith("publish")), [], "no certificate, no address of any kind");
   await g.stop();
 });

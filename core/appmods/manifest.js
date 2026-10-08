@@ -215,6 +215,7 @@ export function cardOf(m) {
     opensFor: "the owner and the admins of this Space",
     notes: m.notes || [],
     shows: (m.screens || []).map((/** @type {any} */ s) => s.label),
+    screensNeed: (m.screens || []).length ? "Its screens open on your server's own address under your Vyre name, so they need a server with a public address. A server with none still runs the app for your Flows and its webhooks, but cannot show its screens." : null,
     tells: (m.events || []).map((/** @type {any} */ e) => e.event),
     connection: m.connection ? m.connection.label : null,
   };

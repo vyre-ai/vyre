@@ -5449,9 +5449,10 @@ Clear this box's ACME challenge record (Wink module only).
 
 ### `names.directory.publish`
 
-Point this box's name at the public IPv4 the directory sees it at (Wink module only).
+Point this box's name at the public IPv4 the directory sees it at (Wink module only). With apps: true, *.<name> points there too (the box has an app module installed).
 
-- Input: none
+- Input:
+  - `apps` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `names.domain.check`
