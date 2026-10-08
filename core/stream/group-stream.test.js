@@ -484,5 +484,5 @@ test("ask another model on an answer: one short line from the person, and the ot
   await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: answerId, to: "assistant:kit" }, meta), /different assistant/);
   await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: answerId, to: "person:bob" }, meta), /not an assistant/);
   await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "nope", to: "assistant:juno" }, meta), /not in this chat/);
-  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "q1", to: "assistant:juno" }, meta), /assistant's answer/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "q1", to: "assistant:juno" }, meta), /not in this chat/);
 });
