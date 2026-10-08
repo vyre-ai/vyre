@@ -125,11 +125,12 @@ function deviceZone() {
 
 /**
  * Opens a peer stream to the paired server on a relay `connect()` connection and returns the calling side. Rejects with { code: "denied" | "rate_limited" | "unreachable" }.
- * @param {{ ready(): Promise<any> }} conn @param {{ space?: string, timeoutMs?: number }} [o]
+ * `invitee`: the signed hello of a person who is not a member yet (core/daemon/peer-door.js); the channel itself must have said so (client.js `invitee: true`).
+ * @param {{ ready(): Promise<any> }} conn @param {{ space?: string, timeoutMs?: number, invitee?: any }} [o]
  */
 export async function openServerPeer(conn, o = {}) {
   const ch = await conn.ready();
-  const s = ch.open({ peer: "wink", space: o.space || "home" });
+  const s = ch.open({ peer: "wink", space: o.space || "home", ...(o.invitee ? { invitee: o.invitee } : {}) });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => { s.reset("no answer"); reject(err("unreachable", "the server did not accept the peer stream")); }, o.timeoutMs ?? 10_000);
     s.onhead = (/** @type {any} */ h) => { clearTimeout(timer); h && h.status === 200 ? resolve(undefined) : reject(err(h && h.status === 429 ? "rate_limited" : "denied", `the server refused the peer stream (${h && h.status})`)); };

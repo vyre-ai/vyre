@@ -204,10 +204,11 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Alex's Mac", crypto: nodeCrypto(), keyStore: ks });
   t.after(() => c.close());
   // the leftover is the same usable device the long code makes: its channel reaches the paired-session door (not "no tool"), and the server made it a session
-  const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device: r.paired.device }) });
+  const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   const chBody = await ch.json().catch(() => ({}));
   assert.notEqual(chBody.error && chBody.error.code, "no_such_tool", JSON.stringify(chBody));
   assert.equal(ch.status === 404, false, JSON.stringify(chBody));
+  assert.equal(typeof (chBody.data && chBody.data.challenge), "string", `the typed-code device is given the challenge it signs in with: ${JSON.stringify(chBody)}`);
   assert.ok(c.reply && c.reply.device === r.paired.device, `the reconnect is the paired device: ${JSON.stringify(c.reply)}`);
 });
 
@@ -395,4 +396,26 @@ test("Add a device: when the owner's app cannot sign (a Windows computer), the p
   const r = await joining;
   assert.equal(r.enrolled, false);
   assert.match(r.reason, /cannot add a device/);
+});
+
+test("a typed-code device that says it is a browser (kind web) is the limited kind and has no door to the person's session; the Mac and Windows windows therefore say app", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const ks = keystore(t);
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's browser", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "web" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: nodeCrypto(), keyStore: ks } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(rows(w, r.paired.device).map(x => x.kind), ["web"]);
+  const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "again", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const body = await ch.json().catch(() => ({}));
+  assert.equal(body.error && body.error.code, "no_such_tool", "this is what 'no tool presence.person.pair-challenge' was");
 });

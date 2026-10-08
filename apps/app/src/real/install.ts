@@ -109,8 +109,9 @@ export async function resumeSpace(space: string): Promise<Created> {
 export const listSpaces = () => tool<any[]>("spaces.list");
 export const saveSetup = (space: string, setup: Record<string, unknown> | null) => tool("spaces.setup.save", { space, setup });
 export const claimSetup = (space: string) => tool<{ space: string; setup: any; moved?: boolean }>("spaces.setup.claim", { space });
-export const previewInvite = (link: string) => tool<any>("spaces.invites.preview", { link });
-export const acceptInvite = (link: string) => tool<any>("spaces.invites.accept", { link });
+// A device that keeps the person's name itself (this app, with or without a server) joins from here: its name's key is in this app, and a server holds no identity to accept for it (join-team.ts).
+export const previewInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.previewTeamInvite(link) : tool<any>("spaces.invites.preview", { link }); };
+export const acceptInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.acceptTeamInvite(link) : tool<any>("spaces.invites.accept", { link }); };
 
 /** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
 export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {

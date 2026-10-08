@@ -2,4 +2,4 @@
 export type PeerStream = { id: string; result: any; close(): void };
 export type Peer = { readonly closed: boolean; call(tool: string, input?: unknown, opt?: { timeoutMs?: number }): Promise<any>; openStream(tool: string, input: unknown, h: { onframe(data: any, seq: number): void; onend(why: string): void }): Promise<PeerStream>; close(): void };
 export function peerClient(stream: unknown, o?: { timeoutMs?: number }): Peer;
-export function openServerPeer(conn: { ready(): Promise<any> }, o?: { space?: string; timeoutMs?: number }): Promise<Peer>;
+export function openServerPeer(conn: { ready(): Promise<any> }, o?: { space?: string; timeoutMs?: number; invitee?: unknown }): Promise<Peer>;
