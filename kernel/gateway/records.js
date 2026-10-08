@@ -539,7 +539,7 @@ export function createRecords(cfg) {
       if (!expr) throw new KernelError("unavailable", "this stage has an entry condition and no evaluator is wired, so the change was refused");
       if (!holds(entering.enter_if, merged, expr, order)) throw new KernelError("stage_entry_refused", `${type} cannot enter ${to}: ${entering.enter_if} does not hold`);
     }
-    return to !== undefined && to !== null ? { entered: { stage: String(to), templates: (entering && entering.tasks) || [] } } : {};
+    return to !== undefined && to !== null ? { entered: { stage: String(to), templates: (entering && entering.tasks) || [], ...(entering && entering.owner ? { owner: entering.owner } : {}) } } : {};
   }
 
   /**
