@@ -14,7 +14,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(lumen): a failed identity key step says the shell's own reason on screen and in ~/Library/Logs/Vyre/app.log, and `defaults write sh.vyre.capsule inspect -bool true` makes the window inspectable (IR-31).
 
 ## 0.2.11 (8 Oct 2026)
-- fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
 
 ## 0.2.10 (8 Oct 2026)
 - fix(lumen): an ad hoc signed Mac app keeps the identity key in the login Keychain when macOS refuses the this-device-only class (errSecMissingEntitlement); before, "This Mac would not keep your key" and no name could be claimed.
@@ -33,7 +32,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(installer): IR-2 with a setup code (a browser install) the terminal shows the four check words only: no pairing QR, long code or typed code, which was a second pairing path beside the page's.
 - fix(installer): IR-3 the installer starts vyre with `vyre up --quiet`, so a fresh install no longer reads "vyred is already running" or "not paired yet, run vyre call wink.server.code"; the installer says what comes next itself.
 - fix(installer): IR-1 the check words are read through sudo when the account cannot reach the box itself, and the terminal names the command that shows them when they cannot be read.
-- fix(acme): the public gate waits for public DNS (1.1.1.1 and 8.8.8.8) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
+- fix(acme): the public gate waits for public DNS (Cloudflare's and Google's resolvers) to carry the _acme-challenge record before the CA looks (lib/acme/dnswait.js); 0.2.10 asked the CA two seconds after writing it and every issue failed with NXDOMAIN.
 - fix(wink): the public gate's ACME challenge reaches the name directory as the challenge value; 0.2.9 sent the name instead, so no box got a certificate or a published <name>.vyre.run address (nameDirectory, with a test).
 - fix(perf-check): a refused memory.curate (personal memory answers only a proven person) no longer fails the check; the quiet wait covers curation. test(wink): the linked-root test removes its link.
 - fix(kernel): a log consumer that ran before a restart goes on from its durable cursor instead of from 0, so a restart no longer hands every consumer the whole log again, read back from disk (about 9 s of a busy vyred after boot in a thread test, and the cause of the threads-watch restart test timing out on the CI runners); tested.
