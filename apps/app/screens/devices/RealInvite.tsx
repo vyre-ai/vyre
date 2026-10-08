@@ -12,6 +12,7 @@ import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text,
 import { Page } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
+import { invitesHere } from "../../src/real/team-join";
 import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
@@ -38,7 +39,7 @@ export function RealInvite() {
 
   const refresh = useCallback(() => {
     if (!space) return;
-    tool<{ invites?: unknown[] }>("spaces.invites.list", { space }).then((r) => { const rows = (r?.invites ?? []).map(inviteRow); setOpen(rows.filter((i) => i.open)); setJoined(rows.filter((i) => !i.open && i.who)); }).catch(() => setOpen([]));
+    void (async () => (await invitesHere() ? (await import("../../src/real/team-join")).teamInvites(space) : tool<{ invites?: unknown[] }>("spaces.invites.list", { space })))().then((r) => { const rows = (r?.invites ?? []).map(inviteRow); setOpen(rows.filter((i) => i.open)); setJoined(rows.filter((i) => !i.open && i.who)); }).catch(() => setOpen([]));
   }, [space]);
   useEffect(refresh, [refresh]);
 
@@ -47,7 +48,11 @@ export function RealInvite() {
     setProblem(""); setWords("");
     if (!anyone && !to.trim()) { setProblem("Name the person this is for, or choose Anyone with the link."); return; }
     setBusy(true);
-    tool("spaces.invites.create", createInput({ space: card.id, role, to, anyone, days: Number(days) })).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
+    // This app keeps the name and the server holds none: the invite is made by this app, answering the home's yes with the name's key (src/real/team-invite.js).
+    void (async () => {
+      const input = createInput({ space: card.id, role, to, anyone, days: Number(days) });
+      return (await invitesHere()) ? (await import("../../src/real/team-join")).makeTeamInvite({ space: card.id, name: card.name, role: input.role, ...(input.to ? { to: input.to } : {}), ...(input.expires ? { expires: input.expires } : {}) }) : tool("spaces.invites.create", input);
+    })().then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
       setProblem(why(e));
       if ((e as { code?: string }).code !== "this_computer") return;
       // The way forward depends on whether a server is paired (wink.access, rows of kind server): make a space on it, or pair one first.
@@ -58,9 +63,9 @@ export function RealInvite() {
   const confirm = () => {
     if (!card || !made || !words.trim()) return;
     setBusy(true); setProblem("");
-    tool("spaces.invites.confirm", { space: card.id, id: made.id, words: words.trim() }).then(() => { setMade({ ...made, needsConfirm: false }); showToast("Confirmed. The link works now."); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
+    void (async () => ((await invitesHere()) ? (await import("../../src/real/team-join")).confirmTeamInviteWords(card.id, made.id, words.trim()) : tool("spaces.invites.confirm", { space: card.id, id: made.id, words: words.trim() })))().then(() => { setMade({ ...made, needsConfirm: false }); showToast("Confirmed. The link works now."); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
   };
-  const revoke = (id: string) => tool("spaces.invites.revoke", { space: card?.id, id }).then(() => { showToast("The link no longer works."); refresh(); }).catch((e) => showToast(why(e)));
+  const revoke = (id: string) => void (async () => ((await invitesHere()) ? (await import("../../src/real/team-join")).cancelTeamInvite(String(card?.id), id) : tool("spaces.invites.revoke", { space: card?.id, id })))().then(() => { showToast("The link no longer works."); refresh(); }).catch((e) => showToast(why(e)));
 
   if (loading && !card) return <Page title="Invite someone" sub="They read one card and tap Join." back="/u/wink"><Card><EmptyState title="Loading" body="Asking your Vyre." /></Card></Page>;
   if (error && !card) return <Page title="Invite someone" sub="They read one card and tap Join." back="/u/wink"><Card><EmptyState title="Spaces did not answer" body={error} action={{ label: "Try again", onPress: () => void load() }} /></Card></Page>;

@@ -81,3 +81,39 @@ export async function teamCall(space: string, call: string, args: unknown[] = []
   if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   return callTeam(d, space, call, args);
 }
+
+// ---- the owner's side: invites made, listed, confirmed and cancelled from this app over its paired session to the server (team-invite.js) ----
+
+/** Does this app make invites itself? When it keeps the name and reaches its server over the peer wire: the server holds no identity to make them. */
+export async function invitesHere(): Promise<boolean> {
+  const { peerWanted } = await import("./peer");
+  return peerWanted() && (await holdsName());
+}
+
+async function inviteDeps(space: string) {
+  const mine = await loadIdentity();
+  if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const { openPeer } = await import("./peer");
+  const { kernelWire } = await import("./kernel-wire.js");
+  const { DIRECTORY } = await import("./install");
+  const yes = await yesSigner();
+  const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
+  return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
+}
+
+export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
+  const { createTeamInvite } = await import("./team-invite.js");
+  return createTeamInvite(await inviteDeps(i.space), i);
+}
+export async function teamInvites(space: string) {
+  const { listTeamInvites } = await import("./team-invite.js");
+  return { invites: await listTeamInvites(await inviteDeps(space)) };
+}
+export async function confirmTeamInviteWords(space: string, id: string, words: string) {
+  const { confirmTeamInvite } = await import("./team-invite.js");
+  return confirmTeamInvite(await inviteDeps(space), id, words);
+}
+export async function cancelTeamInvite(space: string, id: string) {
+  const { revokeTeamInvite } = await import("./team-invite.js");
+  return revokeTeamInvite(await inviteDeps(space), id);
+}
