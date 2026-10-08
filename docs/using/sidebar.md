@@ -26,10 +26,14 @@ Or ask your assistant: "put Documents in my sidebar". It finds the place or modu
 
 ## Yours and the team's
 
-An admin sets the default for a Space: choose **The team's** at the top of the editor. Everyone in the Space starts from it. Each person's own arrangement sits on top: your order, your groups and what you hid are yours. When an admin adds something to the default later, it reaches you too, in the place the admin put it. The sidebar is the same on every device you use; it is not set per device.
+The Space's owner or an admin sets the default for a Space: choose **The team's** at the top of the editor (it only shows for them). Everyone in the Space starts from it. Each person's own arrangement sits on top: your order, your groups and what you hid are yours. When an admin adds something to the default later, it reaches you too, in the place the admin put it.
 
-When you install a module that has screens, Vyre offers to add them to the sidebar for you or for the team.
+Your own list is kept on the team's server, one per person, so it is the same on every device you use. It is not set per device.
+
+If you ask your assistant to change the team's sidebar, it asks first: the change waits for an owner's or admin's yes. Your assistant can change your own list at once.
+
+When you install a module that has screens, Vyre offers to add them to the sidebar for you, or for the team if you are an owner or admin. A module's screen opens in the main pane (in a browser, or the Mac and Windows apps) or in a new window (on a phone).
 
 ## Where it is kept
 
-The two lists are ordinary settings, `sidebar.default` (the team's) and `sidebar.mine` (yours). With nothing stored, the sidebar is the built-in places in their usual order.
+On a server you own, the two lists are also ordinary settings, `sidebar.default` (the team's) and `sidebar.mine` (yours). With nothing stored, the sidebar is the built-in places in their usual order.
