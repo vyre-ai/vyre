@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(records): with Records on (Twenty), every gated call from a space whose record store was not up yet when its gateway was built failed as "no such record" (the owner app's team invite among them): the not-yet-attached store handed the gateway a refusing function where its attribute map belongs. It now holds a real map, replays it onto the store when that attaches, and forwards to it after.
 - test: every workflow and composite action must parse as YAML with a trigger and jobs (test/workflows-yaml.test.js); an unquoted colon in a step name had made release.yml invalid.
 - fix(release): the release workflow parses again (a step name with an unquoted colon made the whole file invalid, so no release or dry run could start).
 - feat(copy): the first run, the installers and the reserve page use the approved plain wording (no internal names); the installer ends on "Go back to the Vyre app to finish"; new `vyre words` prints the four words to compare with the app; the Windows paste-code screen says the key is made with Windows Hello; Mobile and the phone page now describe the sideloaded apps (Android APK, iPhone build) instead of the home-screen web app.
