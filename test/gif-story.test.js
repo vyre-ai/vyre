@@ -50,11 +50,11 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_LOG: log, VYRE_SESSION_SANDBOX_OFF: "1" });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" }, modules: { disable: ["mail"] },
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
-  // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool, `mail.send`, that files the message at the Gate. The real mail module is switched off for it.
-  writeModule(mods, "mail", { version: "0.1.0", does: { tools: [{ name: "mail.send", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("mail.send", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); return {}; } };`);
+  // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
+  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
@@ -86,7 +86,7 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
 
   // 2: juno hands it to kit by role. Its team.ask is made through its own bound session, as a model's MCP call is.
   const S2 = step(2, "juno hands it to kit");
-  const script = CLIENTS.map(c => `vyre mail.send ${JSON.stringify({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: `partner@harlow.example` })}`).join("\n");
+  const script = CLIENTS.map(c => `vyre billing.email ${JSON.stringify({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: `partner@harlow.example` })}`).join("\n");
   let ask;
   try { ask = await call("team.ask", { to: "billing", project: record, text: script }, { root, caller: "mcp", session: junoSession, timeout: 60_000 }); } catch (e) { assert.fail(S2(/** @type {Error} */ (e).message)); }
   assert.equal(ask.error, undefined, S2(JSON.stringify(ask.error)));
@@ -108,7 +108,7 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   // 4: kit asks to send three emails: held as ONE group
   const S4 = step(4, "the three emails are held as one group");
   const pending = async () => (await asPerson("approvals.pending", {}));
-  const held = await until(async () => { const p = await pending(); return p.approvals.filter((/** @type {any} */ a) => a.request && a.request.op === "mail.send").length >= 3 ? p : null; }, S4("kit's calls were not held as cards: " + JSON.stringify(await pending())));
+  const held = await until(async () => { const p = await pending(); return p.approvals.filter((/** @type {any} */ a) => a.request && a.request.op === "billing.email").length >= 3 ? p : null; }, S4("kit's calls were not held as cards: " + JSON.stringify(await pending())));
   const group = groupsFrom(held)[0];
   assert.ok(group, S4("the cards are not in a group"));
   assert.equal(group.items.length, 3, S4(`the group holds ${group.items.length} cards, not 3`));
@@ -135,7 +135,7 @@ async function story(/** @type {import("node:test").TestContext} */ t, /** @type
   try { answered = await approveGroup({ group, signer, call: appCall, person: owner }); } catch (e) { assert.fail(S6("the group yes was refused: " + /** @type {Error} */ (e).message)); }
   assert.deepEqual(answered.results.map((/** @type {any} */ r) => r.answered), ["approved", "approved", "approved"], S6(JSON.stringify(answered.results)));
   // kit retries each call with its card, in a second request
-  const retries = group.items.map((/** @type {any} */ i) => `vyre mail.send ${JSON.stringify({ ...CLIENTS.map(c => ({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: "partner@harlow.example" })).find(m => m.to === i.request.fields.to), approval: i.id })}`).join("\n");
+  const retries = group.items.map((/** @type {any} */ i) => `vyre billing.email ${JSON.stringify({ ...CLIENTS.map(c => ({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: "partner@harlow.example" })).find(m => m.to === i.request.fields.to), approval: i.id })}`).join("\n");
   const again = await call("team.ask", { to: "billing", project: record, text: retries, wait: true }, { root, caller: "cli", timeout: 60_000 });
   assert.equal(again.error, undefined, S6(JSON.stringify(again.error)));
   // the Gate now has the three messages. They must be on their way, not held again.
