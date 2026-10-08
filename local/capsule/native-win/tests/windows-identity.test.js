@@ -108,12 +108,12 @@ test("the bundled app page (its own origin, served by the shell) gets the identi
   const cap = JSON.parse(read("../app/capabilities/main-identity-bundled.json"));
   assert.deepEqual(cap.windows, ["main"]);
   assert.deepEqual(cap.remote.urls, ["https://vyreapp.localhost/*"]);
-  assert.deepEqual(cap.permissions, [...FOUR.slice(0, 2), "identity_has", "identity_forget", ...FOUR.slice(2)].map((c) => "allow-" + c.replace(/_/g, "-")));
+  assert.deepEqual(cap.permissions, [...FOUR.slice(0, 2), "identity_has", "identity_forget", "setup_finished", ...FOUR.slice(2)].map((c) => "allow-" + c.replace(/_/g, "-")));
   assert.ok(!cap.permissions.some((p) => /core:|shell|fs|opener|notification|pair|drive|autostart|link/.test(p)), "no other permission");
   const rs = read("../app/src/main.rs");
   const build = read("../app/build.rs");
   const handler = /generate_handler!\[([^\]]*)\]/.exec(rs)[1];
-  for (const c of ["identity_has", "identity_forget"]) {
+  for (const c of ["identity_has", "identity_forget", "setup_finished"]) {
     assert.ok(build.includes(`"${c}"`) && handler.includes(c), c);
     const body = rs.slice(rs.indexOf(`fn ${c}(`), rs.indexOf("\n}\n", rs.indexOf(`fn ${c}(`)));
     assert.match(body, /from_pinned\(&app, &webview, &request\)\?;/, c);
@@ -128,4 +128,15 @@ test("every key failure is written to the app log with its real reason, and the 
   assert.match(rs, /applog::path\(std::env::var\("LOCALAPPDATA"\)/);
   for (const c of ["enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`logged\\("${c}", ncrypt::`), c);
   assert.match(rs, /log\("fail", "identity_seed", e\)/);
+});
+
+test("one origin and one first run: the window is always the bundled app, a build without the web build fails, and setup_finished is the one signal for starting hidden", () => {
+  const rs = read("../app/src/main.rs");
+  const panel = /fn show_panel\([\s\S]*?\n}\n/.exec(rs)[0];
+  assert.match(panel, /show_app\(app, path\)/);
+  assert.ok(!/pinned\(|url_for|navigate/.test(panel), "the window is never sent to the server's own page");
+  assert.match(/fn show_first_run\([\s\S]*?\n}\n/.exec(rs)[0], /show_app\(app, ""\)/);
+  assert.match(rs, /if !setup_done\(&handle\) \{ show_first_run/);
+  assert.match(read("../app/build.rs"), /app-web\/index\.html is missing/);
+  assert.match(readFileSync(new URL("../../../../.github/workflows/capsule-win.yml", import.meta.url), "utf8"), /name: win-web-app\n\s+path: local\/capsule\/native-win\/app\/app-web/);
 });

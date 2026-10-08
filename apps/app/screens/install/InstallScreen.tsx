@@ -13,7 +13,8 @@ import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "..
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { RealInvite } from "../devices/RealInvite";
-import { isWindowsShell, shell } from "../../src/shell/shell";
+import { isWindowsShell, shell, shellSetupDone } from "../../src/shell/shell";
+import { helloHere } from "../../src/identity/windows-claim.js";
 import { pairSayHere } from "../../src/real/pair-say";
 import { FIRST, firstChoices, codeLooksRight, codeRoute, ADD_PHONE, BROWSER, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
@@ -106,6 +107,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
   const [reserveCode, setReserveCode] = useState("");
+  // Windows only: does this PC have Windows Hello for a passkey? The paste screen promises it only where it is there.
+  const [helloOk, setHelloOk] = useState(false);
+  useEffect(() => { if (isWindowsShell()) void helloHere().then(setHelloOk).catch(() => setHelloOk(false)); }, []);
   const [reservedAddress, setReservedAddress] = useState("");
   const [recName, setRecName] = useState("");
   const [recCode, setRecCode] = useState("");
@@ -250,6 +254,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     const t = setTimeout(() => want.forEach((n) => { asked.current.add(n); void checkName(n).then((a) => { if (a === "unknown") asked.current.delete(n); setTaken((m) => ({ ...m, [n]: a })); }); }), 400);
     return () => clearTimeout(t);
   }, [step, name, spaceSlug, recheck]);
+  // The Windows app starts hidden in the tray once setup has finished: tell it when this is the end (a space made or joined).
+  useEffect(() => { if (!MOCK && (step === "done" || (step === "spaces" && owned > 0))) void shellSetupDone(); }, [step, owned]);
   // Every setup step is kept on the box so another device can carry on; the last one clears it.
   useEffect(() => {
     if (MOCK || !spaceId) return;
@@ -335,12 +341,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     // A person's first name is reserved on the web (vyre.run/setup) and finished here with the key this device makes: paste the code the page gave.
     const held = MOCK ? "alex.vyre.run" : reservedAddress;
     body = (
-      <Page title="Paste your code" sub={isWindowsShell() ? "You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN." : MOCK ? "You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this Mac, and the key never leaves it." : `You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this ${device}, and the key never leaves it.`}>
+      <Page title="Paste your code" sub={isWindowsShell() ? "You reserved your name at vyre.run/setup. Paste the code it gave you. " + (helloOk ? "Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN." : "Vyre makes your key on this computer, and the key stays here.") : MOCK ? "You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this Mac, and the key never leaves it." : `You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this ${device}, and the key never leaves it.`}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Field label="Code" value={reserveCode} onChangeText={(v: string) => { setReserveCode(v); setWrong(""); }} placeholder="VYRE-XXXX-XXXX-XXXX-XXXX" help="It works once, for 24 hours." />
         {held ? <Text tone="muted">{held} is yours.</Text> : null}
         <Button kind="primary" label={busy ? "Creating your name" : "Continue"} disabled={!codeLooksRight(reserveCode) || busy}
-          onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(reserveCode, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
+          onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(reserveCode, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); if (r.notice) showToast(r.notice); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
         <Button kind="ghost" label="I need a code" onPress={() => { Linking.openURL("https://vyre.run/setup").catch(() => {}); }} />
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
       </Page>

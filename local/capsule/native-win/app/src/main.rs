@@ -84,6 +84,7 @@ fn shell_signal(version: &str, boxless: bool) -> String {
     sign: function (message) {{ return inv("identity_sign", {{ message: message }}); }},
     has: function () {{ return inv("identity_has", {{}}); }},
     forget: function () {{ return inv("identity_forget", {{}}); }},
+    setupDone: function () {{ return inv("setup_finished", {{}}); }},
     enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
     enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }},
     agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
@@ -148,8 +149,6 @@ fn bundled_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 /// Open (or reveal) the app's own window: the bundled web build at its own origin, with this computer's keys behind it and no server needed. This is the first run on Windows (paste the
 /// reservation code, become yourself, then Join a team or Add a server) and every run after.
-static SETUP_WINDOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 fn show_app(app: &AppHandle, path: &str) {
     let url = format!("{}{}", bundled::START, path.trim_start_matches('/'));
     if let Some(w) = app.get_webview_window("main") {
@@ -160,11 +159,20 @@ fn show_app(app: &AppHandle, path: &str) {
     }
     let nav_app = app.clone();
     let popup_app = app.clone();
-    let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")));
+    // A build made for the Windows proof (VYRE_PROOF_DEVTOOLS_PORT set when it was COMPILED, never at run time) lets the test driver read the page over the DevTools protocol. A release is not built with it.
+    // (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not open the port: wry passes its own arguments, which win.)
+    #[cfg(windows)]
+    let builder = match option_env!("VYRE_PROOF_DEVTOOLS_PORT") {
+        Some(port) => builder.additional_browser_args(&format!("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}")),
+        None => builder,
+    };
+    let built = builder
         .title(APP_NAME)
         .inner_size(560.0, 760.0)
         // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
         .use_https_scheme(true)
+        .on_page_load(|w, p| log("note", "page", &format!("{:?} {}", p.event(), p.url())))
         .initialization_script(shell_signal(&app.package_info().version.to_string(), true))
         .on_navigation(move |url| {
             if bundled::is_page(url.as_str()) { return true; }
@@ -178,7 +186,7 @@ fn show_app(app: &AppHandle, path: &str) {
         .build();
     match built {
         Ok(w) => {
-            SETUP_WINDOW.store(true, std::sync::atomic::Ordering::SeqCst);
+            log("note", "show_app", "the window was built");
             let w2 = w.clone();
             w.on_window_event(move |e| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = e {
@@ -192,61 +200,15 @@ fn show_app(app: &AppHandle, path: &str) {
 }
 
 fn show_first_run(app: &AppHandle) {
-    if bundled_dir(app).is_some() { return show_app(app, ""); }
-    if let Some(w) = app.get_webview_window("first-run") {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let _ = WebviewWindowBuilder::new(app, "first-run", WebviewUrl::App("first-run.html".into()))
-        .title(APP_NAME)
-        // Tall enough for the pairing code (QR, 13 words, buttons) without scrolling much.
-        .inner_size(520.0, 760.0)
-        .build();
+    // The app's own window is the only first run. The release always carries the web build (build.rs refuses to build without it), so there is no second, older first-run page to fall back to.
+    show_app(app, "");
 }
 
 /// Open (or reveal) the main panel at `path` on the pinned origin.
 fn show_panel(app: &AppHandle, path: &str) {
-    let Some(pin) = pinned(app) else { return show_first_run(app) };
-    // Paired: the main window loads the person's server. A window that was the setup window (the bundled app) is closed first and built again, so nothing of it (its page, its boxless signal) carries over.
-    if SETUP_WINDOW.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        if let Some(w) = app.get_webview_window("main") { let _ = w.destroy(); }
-    }
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.navigate(pin.url_for(path).parse().expect("pinned url"));
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let nav_pin = pin.clone();
-    let nav_app = app.clone();
-    let popup_app = app.clone();
-    let popup_pin = pin.clone();
-    let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(pin.url_for(path).parse().expect("pinned url")))
-        .title(APP_NAME)
-        .inner_size(560.0, 720.0)
-        .initialization_script(shell_signal(&app.package_info().version.to_string(), false))
-        .on_navigation(move |url| {
-            if nav_pin.allows(url.as_str()) { return true; }
-            open_external(&nav_app, url.as_str());
-            false
-        })
-        .on_new_window(move |url, _features| {
-            // No in-panel popups: off-origin links go to the system browser, same-origin
-            // ones are simply refused.
-            if !popup_pin.allows(url.as_str()) { open_external(&popup_app, url.as_str()); }
-            NewWindowResponse::Deny
-        })
-        .build();
-    if let Ok(w) = built {
-        let w2 = w.clone();
-        w.on_window_event(move |e| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                api.prevent_close();
-                let _ = w2.hide();
-            }
-        });
-    }
+    // One origin for the life of the app (lead ruling, 8 Oct): the window stays on https://vyreapp.localhost before and after pairing, so the identity key (a Windows Hello passkey bound to that origin's rp)
+    // signs in the same place, and the person's server is reached over the relay, as the Mac's window does at vyreapp://box.
+    show_app(app, path);
 }
 
 fn toggle_panel(app: &AppHandle) {
@@ -498,6 +460,21 @@ fn identity_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::R
     Ok(b64u(&vyre_capsule_win::identity::sign(&identity_seed(&app, false)?, &m)))
 }
 
+fn setup_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_data_dir().map(|d| d.join("setup.done")).map_err(|e| e.to_string())
+}
+
+fn setup_done(app: &AppHandle) -> bool { setup_path(app).map(|p| p.exists()).unwrap_or(false) }
+
+/// The page says setup has finished (the person paired a server or joined a team): from now on the app starts hidden in the tray.
+#[tauri::command]
+fn setup_finished(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    from_pinned(&app, &webview, &request)?;
+    let path = setup_path(&app)?;
+    if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| format!("Could not make the app folder: {e}"))?; }
+    logged("setup_finished", std::fs::write(&path, b"1").map_err(|e| format!("Could not save that setup is finished: {e}")))
+}
+
 /// Is there an identity key on this computer? Answers without opening it.
 #[tauri::command]
 fn identity_has(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>) -> Result<bool, String> {
@@ -715,7 +692,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
@@ -750,7 +727,8 @@ fn main() {
 
             // Start in the tray; show the panel only when first-run is needed.
             // Not paired yet: the first run (the bundled app when this build has it: reserve, become yourself, Join or Add a server). Paired: the tray.
-            if pinned(&handle).is_none() { show_first_run(&handle); }
+            // A computer that has finished setup starts hidden in the tray; one that has not opens the app. The page says when setup is finished (`setup_finished`), and that is the one signal.
+            if !setup_done(&handle) { show_first_run(&handle); }
             ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
             log("note", "setup", "done");
@@ -765,6 +743,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("vyre app")
         .run(|_app, event| {
+            { // every event but the idle ones, so a window that closes or an exit that nobody asked for has a line
+                let name = format!("{event:?}");
+                if !name.starts_with("MainEventsCleared") && !name.starts_with("Resumed") { log("event", "run", &name.chars().take(160).collect::<String>()); }
+            }
             // A tray app keeps running with no window open: closing the last window (finishing pairing closes
             // the first-run page before the panel exists) asks to exit with no code, and that is refused.
             // Quit from the tray exits with a code and goes through.
