@@ -69,7 +69,7 @@ export async function createIdentity(code: string, deviceLabel: string, password
   }
   // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
   const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
-  if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This Mac would not keep your key, so no name was claimed."), { code: "cannot_keep" });
+  if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This computer would not keep your key, so no name was claimed."), { code: "cannot_keep" });
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
   // The Mac and Windows apps' windows are web pages too, but they hold their own key: they claim with it, never with a browser passkey (IR-32).
   const claim = !macKey && Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
@@ -105,8 +105,9 @@ export async function resumeSpace(space: string): Promise<Created> {
 export const listSpaces = () => tool<any[]>("spaces.list");
 export const saveSetup = (space: string, setup: Record<string, unknown> | null) => tool("spaces.setup.save", { space, setup });
 export const claimSetup = (space: string) => tool<{ space: string; setup: any; moved?: boolean }>("spaces.setup.claim", { space });
-export const previewInvite = (link: string) => tool<any>("spaces.invites.preview", { link });
-export const acceptInvite = (link: string) => tool<any>("spaces.invites.accept", { link });
+// A device that keeps the person's name itself (this app, with or without a server) joins from here: its name's key is in this app, and a server holds no identity to accept for it (join-team.ts).
+export const previewInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.previewTeamInvite(link) : tool<any>("spaces.invites.preview", { link }); };
+export const acceptInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.acceptTeamInvite(link) : tool<any>("spaces.invites.accept", { link }); };
 
 /** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
 export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {

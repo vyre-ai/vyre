@@ -57,7 +57,11 @@ exit 0`,
      fs.writeFileSync(path.join(h, "vyred.pid"), String(process.pid));
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
      // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
+  // The vyre command a person (and the installer's check words) would call: answers relay.setup.status with four words, anything else with an error.
+  fs.mkdirSync(path.join(src, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(src, "bin", "vyre"), `if (process.argv[3] === "relay.setup.status") console.log(JSON.stringify({ words: "come pilot company release" })); else { console.error("no"); process.exit(1); }\n`);
   const env = {
+    VYRE_WORDS_TRIES: "1",
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "", VYRE_HEADSCALE_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
@@ -131,34 +135,18 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
-test("install-mac-server.sh: with a code from the app it writes the Records choice once, shows the four check words and ends by sending the person back to the app", t => {
+test("install-mac-server.sh: the Records choice from the install line lands in vyre.env: auto by default, sqlite when asked, a later choice replaces an older one, anything else refuses", t => {
   const m = mac(t);
-  fs.mkdirSync(path.join(m.src, "bin"), { recursive: true });
-  fs.writeFileSync(path.join(m.src, "bin", "vyre"), 'console.log(JSON.stringify({ words: "amber lake moss pine" }));\n');
-  const r = run({ ...m.env, VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_WORDS_TRIES: "3" }, ["--yes", "--from", m.src]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  const text = fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8");
-  assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1);
-  assert.match(text, /^VYRE_STORE=sqlite$/m);
-  assert.match(r.stdout, /Check words: amber lake moss pine/);
-  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
-  assert.ok(!/Pair it from your Vyre app/.test(r.stdout), "no terminal pairing when the app is driving");
-  assert.ok(!(r.stdout + r.stderr).includes(CODE));
-  // Without VYRE_STORE the default is Records (auto); a line already there is kept.
-  const m2 = mac(t);
-  fs.mkdirSync(m2.env.VYRE_HOME, { recursive: true });
-  const r2 = run({ ...m2.env, VYRE_CODE: CODE, VYRE_WORDS_TRIES: "1" }, ["--yes", "--from", m2.src]);
-  assert.equal(r2.status, 0, r2.stderr + r2.stdout);
-  assert.match(fs.readFileSync(path.join(m2.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m);
-  assert.match(r2.stdout, /check words did not show here/);
-});
-
-test("install-mac-server.sh: VYRE_STORE is auto or sqlite and nothing else", t => {
-  const m = mac(t);
-  const r = run({ ...m.env, VYRE_CODE: CODE, VYRE_STORE: "mongo" }, ["--yes", "--from", m.src]);
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /VYRE_STORE is auto \(Records\) or sqlite/);
-  assert.deepEqual(fs.readdirSync(m.home), [], "nothing was installed");
+  const f = path.join(m.env.VYRE_HOME, "vyre.env");
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=auto$/m);
+  assert.equal(run({ ...m.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", m.src]).status, 0);
+  assert.equal(fs.readFileSync(f, "utf8").match(/^VYRE_STORE=/gm)?.length, 1);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m);
+  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
+  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m, "no choice named keeps the one made");
+  const bad = run({ ...m.env, VYRE_STORE: "twenty" }, ["--yes", "--from", m.src]);
+  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto/);
 });
 
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {
@@ -343,6 +331,7 @@ function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail
   // The fake root installer.
   const pkg = path.join(m.base, "pkg", "vyre"); fs.mkdirSync(path.join(pkg, "core", "daemon"), { recursive: true }); fs.mkdirSync(path.join(pkg, "core", "vyre-core"), { recursive: true });
   fs.copyFileSync(path.join(m.src, "core", "daemon", "main.js"), path.join(pkg, "core", "daemon", "main.js"));
+  fs.mkdirSync(path.join(pkg, "bin")); fs.copyFileSync(path.join(m.src, "bin", "vyre"), path.join(pkg, "bin", "vyre"));
   fs.writeFileSync(path.join(pkg, "core", "vyre-core", "install-main.js"), `import fs from "node:fs"; import path from "node:path"; import { spawn } from "node:child_process";
 const a = process.argv.slice(2), cmd = a[0];
 const flag = k => a[a.indexOf(k) + 1];
@@ -388,6 +377,11 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.equal(a[0], "install");
   assert.equal(a[a.indexOf("--owner-uid") + 1], String(process.getuid?.()), "the person's own uid, never root");
   assert.equal(a[a.indexOf("--vyred-wrapper") + 1], path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-serve"));
+  // the full install is a server, and core is told which key the install line named: the last 16 bytes of the code, as hex (the secret half never goes)
+  assert.ok(a.includes("--server"));
+  assert.equal(a[a.indexOf("--first-key-fp") + 1], Buffer.from(CODE, "base64url").subarray(16).toString("hex"));
+  assert.ok(!JSON.stringify(a).includes(Buffer.from(CODE, "base64url").subarray(0, 16).toString("hex")), "not the secret half");
+  assert.ok(!JSON.stringify(a).includes(CODE), "not the code");
   // Root ran the installer, its node and its release files from a root-made folder, never from the person's.
   const roottmp = path.join(m.base, "roottmp");
   assert.ok(calls[0].from.startsWith(roottmp + path.sep) || calls[0].from.includes("/roottmp/"), calls[0].from);
@@ -404,6 +398,59 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
   assert.ok(!fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes(ENROL));
   assert.ok(!(r.stdout + r.stderr).includes(CODE), "the setup code is never shown either");
+});
+
+test("install-mac-server.sh: the full install is a server (config.json says machine server, a choice already made is kept); the light --login-only install is My Home and writes none", t => {
+  const login = mac(t);
+  assert.equal(run({ ...login.env }, ["--yes", "--from", login.src]).status, 0);
+  assert.ok(!fs.existsSync(path.join(login.env.VYRE_HOME, "config.json")), "a login-only install stays a Home: nothing says server");
+  const full = (pre, extra = {}) => {
+    const m = sys(t);
+    const f = path.join(m.env.VYRE_HOME, "config.json");
+    if (pre !== undefined) { fs.mkdirSync(m.env.VYRE_HOME, { recursive: true }); fs.writeFileSync(f, pre); }
+    const r = run({ ...m.env, ...extra }, ["--yes", "--system"]);
+    return { r, f, m };
+  };
+  let x = full();
+  assert.equal(x.r.status, 0, x.r.stderr + x.r.stdout);
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { machine: "server" });
+  assert.equal(fs.statSync(x.f).mode & 0o777, 0o600);
+  x = full(JSON.stringify({ name: "mini", relay: { enabled: true } }));
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { name: "mini", relay: { enabled: true }, machine: "server" });
+  x = full(JSON.stringify({ machine: "device" }));
+  assert.equal(JSON.parse(fs.readFileSync(x.f, "utf8")).machine, "device");
+  x = full(JSON.stringify({ role: "box" }));
+  assert.deepEqual(JSON.parse(fs.readFileSync(x.f, "utf8")), { role: "box" });
+  x = full("{ not json");
+  assert.notEqual(x.r.status, 0); assert.match(x.r.stderr, /not valid JSON/);
+});
+
+test("install-mac-server.sh: with the app's install line it prints the four check words and ends 'Back in the Vyre app'; without one it names the long code", t => {
+  let m = sys(t);
+  let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /Check words: come pilot company release/);
+  assert.match(r.stdout, /They should match the four on your screen\./);
+  assert.match(r.stdout, /Done\. Back in the Vyre app\./);
+  assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
+  assert.ok(!(r.stdout + r.stderr).includes(CODE));
+  m = sys(t);
+  r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
+  assert.match(r.stdout, /wink\.server\.code/);
+  // words that cannot be read are said so, with the command that shows them
+  m = sys(t);
+  fs.rmSync(path.join(m.src, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(m.base, "pkg", "vyre", "bin", "vyre"), "process.exit(1)\n");
+  execFileSync("tar", ["-czf", path.join(m.site, "vyre.tgz"), "-C", path.join(m.base, "pkg"), "vyre"]);
+  // the manifest and signature name the old tarball; the words case only needs the final lines, so use a login-only run for it
+  const l = mac(t);
+  fs.writeFileSync(path.join(l.src, "bin", "vyre"), "process.exit(1)\n");
+  r = run({ ...l.env, VYRE_CODE: CODE }, ["--yes", "--from", l.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
+  assert.match(r.stdout, /Back in the Vyre app/);
 });
 
 test("install-mac-server.sh: a failing root installer stops the script, says so, and shows no code", t => {

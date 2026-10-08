@@ -67,11 +67,11 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
 }
 
 /** The computer's side of adding a phone: the three words typed from the phone are the answer. */
-export function phoneAnswerSession(words: [string, string, string]): PairingSession {
+export function phoneAnswerSession(words: [string, string, string] | null): PairingSession {
   let over = false;
   return {
     kind: "answer",
-    words: () => words,
+    words: () => words ?? ["", "", ""],
     choices: () => [],
     async answer(given) {
       const { tool } = await box();

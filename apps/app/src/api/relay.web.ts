@@ -6,6 +6,7 @@ import { indexedDbKeyStore, webCrypto } from "@vyre/relay-client/webcrypto.js";
 import { b64url } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.web.ts on the web, which exports no b64url (the presence key was never offered)
 import { personKey } from "../auth/person.web";
 import { loadIdentity } from "../identity/store";
+import { shellIdentity } from "../shell/shell.ts";
 import { passkeyPresenceKey } from "../identity/passkey.js";
 import { readPairing, type Pairing } from "./pairing";
 
@@ -31,7 +32,9 @@ export async function presenceKey(): Promise<{ public_key: string; alg: number; 
   }
 }
 
-export const about = { kind: "web" as const };
+// The Mac and Windows windows are the app, not a browser: a "web" device is the limited kind (the box sees it as `web:<id>`, which has no door to the person's paired session), so a typed code that enrols the
+// redeemer at once would leave the window unable to sign in. A browser keeps "web".
+export const about = shellIdentity() ? { kind: "app" as const } : { kind: "web" as const };
 
 export function deviceName(): string {
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
