@@ -77,7 +77,14 @@ async function identity(w, first, { kind = "person", ctxFor } = {}) {
     me.state = await C.verifyChain(me.ops, { now: ts, ownerOps: ctxFor });
     return me;
   };
-  me.claim = (name, sealed = "c2VhbGVk", by, via) => me.post("/v1/ids/claim", { name, ops: me.ops, ...me.sealRecord(name, sealed, by, via) });
+  // A person's first name goes through a reservation and its code; a space's name is claimed outright, signed by its owner.
+  me.claim = async (name, sealed = "c2VhbGVk", by, via) => {
+    const body = { name, ops: me.ops, ...me.sealRecord(name, sealed, by, via) };
+    if (kind === "space") return me.post("/v1/ids/claim", body);
+    const r = await me.post("/v1/ids/reserve", { name });
+    if (!r.json || !r.json.data) return r;
+    return me.post("/v1/ids/finalize", { ...body, code: r.json.data.code });
+  };
   me.append = async (body, signer, { via } = {}) => {
     const op = await C.makeOp(me.state, body, { by: kind === "space" ? me.state.entries[0].eid : signer.eid, via, viaPos: me.pos, ts: w.clock.t, sign: signer.sign });
     return op;

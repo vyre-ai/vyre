@@ -182,13 +182,13 @@ function unb64url(s) {
 }
 const enc = new TextEncoder();
 const hex = /** @param {ArrayBuffer} b */ b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
-const sha256 = /** @param {string} s */ async s => hex(await crypto.subtle.digest("SHA-256", enc.encode(s)));
+export const sha256 = /** @param {string} s */ async s => hex(await crypto.subtle.digest("SHA-256", enc.encode(s)));
 /** The route id: the first 26 base32 characters of sha256 of the route key. @param {Uint8Array} pub */
 export async function routeId(pub) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", pub))).slice(0, 26); }
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export async function routeHash(route) { return base32(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${ZONE_TAG}\n${route}`)))).slice(0, 26); }
 /** Equal strings, in time that depends only on length. */
-function same(a, b) {
+export function same(a, b) {
   const x = enc.encode(a), y = enc.encode(b);
   if (x.length !== y.length || x.length === 0) return false;
   let d = 0;
@@ -211,12 +211,15 @@ const reply = (status, body) => new Response(JSON.stringify(body), { status, hea
 const fail = e => reply(e.status, { error: { code: e.code, message: e.message } });
 
 /** The routes a browser page of the Vyre app may call: signed by the identity's own key, so the Origin check adds nothing. */
-const APP_OPS = new Set(["idClaim", "idAppend", "idUpdate"]);
+const APP_OPS = new Set(["idClaim", "idFinalize", "idAppend", "idUpdate"]);
+/** Reserving a name takes no key and returns a code only to its asker: the web page (any origin) may call it, with no credentials. */
+const OPEN_OPS = new Set(["idReserve"]);
 const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
 /** The CORS headers for this request on this route, or null. resolve: any origin, never credentials. App routes: the exact allowed origin only. */
 function corsHeaders(request, env, op) {
   const origin = request.headers.get("origin");
   if (op === "idResolve" || op === "check") return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+  if (OPEN_OPS.has(op)) return { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   if (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin)) return { "access-control-allow-origin": origin, "vary": "origin", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
   return null;
 }
@@ -271,7 +274,7 @@ async function route(request, env, url) {
       // request the browser marks cross-site.
       const origin = request.headers.get("origin");
       // The Vyre app's origins may call the routes that carry their own proof (APP_OPS): the identity's signature authenticates, and the Origin must match one exactly.
-      const fromApp = APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin);
+      const fromApp = OPEN_OPS.has(op) || (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin));
       if (!fromApp) {
         if (origin !== null && origin !== (env.ORIGIN || "https://names.vyre.run")) return fail(err(403, "origin", "not for browsers"));
         if (request.headers.get("sec-fetch-site") === "cross-site") return fail(err(403, "origin", "not for browsers"));
@@ -525,7 +528,7 @@ export class Directory {
       throw e;
     });
     if (total === max) console.warn(`names: ALERT the daily claim ceiling (${max}) is now reached`);
-    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    if (await this.load(v.name) || await this.idLoad(v.name) || await this.idReservation(v.name)) throw err(409, "taken", "someone else has that name");
     const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] };
     await this.save(rec);
     await this.store.put(`r/${a.route}`, v.name);
@@ -670,6 +673,7 @@ export class Directory {
       await this.wipeDns({ name });
       await this.store.delete(key);
     }
+    for (const [key, r] of await this.store.list({ prefix: "rsv/" })) if (this.now() >= r.exp) await this.store.delete(key);
     const stale = [...(await this.store.list({ prefix: "c/" })).keys()].filter(k => Number(k.split("/")[2]) < this.day() - 1);
     for (let i = 0; i < stale.length; i += 100) await this.store.delete(stale.slice(i, i + 100));
   }

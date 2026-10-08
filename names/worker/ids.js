@@ -18,18 +18,21 @@
 // stale or forked answer. There is no recovery wait here: recovery is a chain op (the code, or two contacts), and the 24 hour newcomer
 // rule inside the chain is what stops a takeover. Nothing here publishes a DNS record.
 
-import { verdict, base32, dnsFor } from "./index.js";
+import { verdict, base32, dnsFor, same, sha256 } from "./index.js";
 import * as C from "./chain.js";
 
 export const RECORD_TAG = "vyre-id-record-v1";
 export const ALIAS_TAG = "vyre-id-alias-v1";
 export const ACT_TAG = "vyre-id-act-v1";
+export const RESERVE_TAG = "vyre-id-reserve-v1";
 export const KINDS = Object.freeze(["person", "space"]);
 export const ID_LIMITS = Object.freeze({
   /** characters of the sealed record */
   sealed: 2048,
   /** own domains one identity may alias */
   aliases: 5,
+  /** a reservation code lives this long */
+  reserveMs: 24 * 3_600_000,
   /** how far a record's own time may be from the directory's */
   recordSkewMs: 5 * 60_000,
   /** a name released within this time of its claim is freed; later it is a tombstone for good */
@@ -43,6 +46,9 @@ export const ID_LIMITS = Object.freeze({
 });
 
 const enc = new TextEncoder();
+const ALPHA32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/** The only thing the directory keeps of a reservation code: a hash that names the name and the code (ignoring case, dashes and spaces). @param {string} name @param {string} code */
+export async function reserveHash(name, code) { return sha256(`${RESERVE_TAG}\n${name}\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
 const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
@@ -145,8 +151,60 @@ export const idOps = {
     return state;
   },
 
-  /** @this {any} */
+  /**
+   * Claim a name for a SPACE, signed by an owner identity that already exists (the chain's own owner lookup checks it). A person's first name is never claimed here: it comes
+   * from a reservation made on the web and finalized with the code (op_idFinalize), so no identity is created any other way.
+   * @this {any}
+   */
   async op_idClaim(b, _a, ip) {
+    return this.idClaimCore(b, ip, null);
+  },
+
+  /**
+   * A reservation: the name is held for this person for 24 hours and a code is returned, once. Only a hash of it is kept (so the Worker cannot read it back), it is good for one finalize, and
+   * reserving the same name again replaces the hash, so the older code stops working. Nothing here needs a key or a server: the web page only reserves.
+   * @this {any}
+   */
+  async op_idReserve(b, _a, ip) {
+    const v = verdict(b.name);
+    if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
+    if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
+    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    await this.count("rsvip", ip, Number(this.env.RESERVES_PER_IP_PER_DAY) || 20, "too many names reserved from this address today");
+    await this.count("rsv", "all", Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500, "the directory is busy today; try again tomorrow");
+    const raw = Array.from(crypto.getRandomValues(new Uint8Array(20)), x => ALPHA32[x & 31]).join("");   // 20 characters of 5 bits: 100 bits
+    const code = "VYRE-" + raw.match(/.{4}/g).join("-");
+    const expires = this.now() + ID_LIMITS.reserveMs;
+    await this.store.put(`rsv/${v.name}`, { hash: await reserveHash(v.name, code), exp: expires });
+    return { name: v.name, code, expires };
+  },
+
+  /** A live reservation of a name, or null; an expired one is dropped. @this {any} @param {string} name */
+  async idReservation(name) {
+    const r = await this.store.get(`rsv/${name}`);
+    if (!r) return null;
+    if (this.now() >= r.exp) { await this.store.delete(`rsv/${name}`); return null; }
+    return r;
+  },
+
+  /**
+   * A person's first name: the genesis chain the app made with its own key, plus the reservation code. The code is checked before anything else is learned, burns when the claim goes through,
+   * and one answer covers every way it can be wrong.
+   * @this {any}
+   */
+  async op_idFinalize(b, _a, ip) {
+    const v = verdict(b.name);
+    if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
+    const bad = () => err(403, "bad_code", "that reservation code is not valid; it may have expired, been used, or been replaced");
+    const r = v.status === "reserved" ? null : await this.idReservation(v.name);
+    if (!r || typeof b.code !== "string" || !same(await reserveHash(v.name, b.code), r.hash)) throw bad();
+    const out = await this.idClaimCore(b, ip, "person");
+    await this.store.delete(`rsv/${v.name}`);
+    return out;
+  },
+
+  /** @this {any} @param {any} b @param {string} ip @param {"person"|null} viaCode a person's genesis is accepted only with the code */
+  async idClaimCore(b, ip, viaCode) {
     const v = verdict(b.name);
     if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
     if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
@@ -154,6 +212,8 @@ export const idOps = {
     if (!ops.length || ops.length > ID_LIMITS.appendBatch) throw err(400, "bad_chain", "send the identity's chain from its genesis");
     let state;
     try { state = await C.verifyChain(ops, this.idLive()); } catch (e) { throw err(400, String(/** @type {any} */ (e).code || "bad_chain"), String(/** @type {any} */ (e).message)); }
+    // A person is created one way only; a space one way only.
+    if (viaCode ? state.kind !== "person" : state.kind !== "space") throw err(403, viaCode ? "not_a_person" : "reserve_first", viaCode ? "a reservation is for a person's first name" : "a first name is reserved at vyre.run/setup, then finished in the app");
     const held = await this.store.get(`ii/${state.id}`);
     if (held) {
       if (held === v.name) return { name: v.name, kind: state.kind, id: state.id, mine: true };
@@ -161,8 +221,8 @@ export const idOps = {
     }
     const rec0 = { name: v.name };
     const sig = await this.idCheckRecord(rec0, state, b.rec, b.sealed);
-    // One namespace: a name used by a box, or by any identity, is taken.
-    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    // One namespace: a name used by a box, or by any identity, is taken. Another person's live reservation holds it too.
+    if (await this.load(v.name) || await this.idLoad(v.name) || (!viaCode && await this.idReservation(v.name))) throw err(409, "taken", "someone else has that name");
     await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || 5, "too many names claimed from this address today");
     const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500;
     await this.count("all", "all", max, "the directory is busy today; try again tomorrow");
@@ -346,9 +406,9 @@ export const idOps = {
 };
 
 export const ID_ROUTES = Object.freeze({
-  "POST /v1/ids/claim": "idClaim", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
+  "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
   "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
   "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));
