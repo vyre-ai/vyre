@@ -652,3 +652,19 @@ test("reserve: reserving is limited per address, not per person, and answers any
   assert.equal(code(await ask("dddd", "203.0.113.70")), "rate_limited");
   assert.equal((await ask("dddd", "203.0.113.71")).status, 200, "another address is not held back by the first");
 });
+
+test("reserve: the app that is pasted a code asks which name it is for (reserved-for), and that spends nothing; a wrong, replaced or expired code answers alike", async t => {
+  const w = world(t);
+  const ask = (code, ip = "203.0.113.80") => raw(w, "POST", "/v1/ids/reserved-for", { origin: "https://app.vyre.run", headers: { "cf-connecting-ip": ip }, body: { code } });
+  const c1 = await codeFor(w, "alex");
+  const got = await ask(c1.toLowerCase().replace(/-/g, " "));
+  assert.deepEqual([got.status, got.json.data.name, got.json.data.expires], [200, "alex", w.clock.t + 24 * HOUR]);
+  assert.equal((await ask(c1)).status, 200, "asking twice spends nothing");
+  assert.equal(code(await ask("VYRE-AAAA-AAAA-AAAA-AAAA")), "bad_code");
+  assert.equal(code(await ask(undefined)), "bad_code");
+  const c2 = await codeFor(w, "alex");
+  assert.equal(code(await ask(c1)), "bad_code", "reserving again cancelled the first code, index and all");
+  assert.equal((await ask(c2)).status, 200);
+  w.clock.t += 24 * HOUR + 1000;
+  assert.equal(code(await ask(c2)), "bad_code", "expired");
+});

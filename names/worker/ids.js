@@ -49,6 +49,8 @@ const enc = new TextEncoder();
 const ALPHA32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /** The only thing the directory keeps of a reservation code: a hash that names the name and the code (ignoring case, dashes and spaces). @param {string} name @param {string} code */
 export async function reserveHash(name, code) { return sha256(`${RESERVE_TAG}\n${name}\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
+/** The index key of a code on its own (so a pasted code finds its name): a hash, never the code. @param {string} code */
+export async function codeHash(code) { return sha256(`${RESERVE_TAG}-index\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
 const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
@@ -175,15 +177,32 @@ export const idOps = {
     const raw = Array.from(crypto.getRandomValues(new Uint8Array(16)), x => ALPHA32[x & 31]).join("");   // 16 characters of 5 bits: 80 bits
     const code = "VYRE-" + raw.match(/.{4}/g).join("-");
     const expires = this.now() + ID_LIMITS.reserveMs;
-    await this.store.put(`rsv/${v.name}`, { hash: await reserveHash(v.name, code), exp: expires });
+    // Re-reserving the same name cancels the older code: its lookup entry goes with it.
+    const was = await this.store.get(`rsv/${v.name}`);
+    if (was && was.by) await this.store.delete(`rsc/${was.by}`);
+    const by = await codeHash(code);
+    await this.store.put(`rsv/${v.name}`, { hash: await reserveHash(v.name, code), by, exp: expires });
+    await this.store.put(`rsc/${by}`, v.name);
     return { name: v.name, code, expires };
+  },
+
+  /**
+   * Which name a live code is for, so the app that is pasted a code can make the identity for that name. Reads only; the code is not spent. One answer for a wrong, an expired and a used code.
+   * @this {any}
+   */
+  async op_idReservedFor(b, _a, ip) {
+    await this.count("rsvlook", ip, 60, "too many tries from this address; wait a little");
+    const name = typeof b.code === "string" ? await this.store.get(`rsc/${await codeHash(b.code)}`) : null;
+    const r = name ? await this.idReservation(name) : null;
+    if (!r || !same(await reserveHash(name, b.code), r.hash)) throw err(403, "bad_code", "that reservation code is not valid; it may have expired, been used, or been replaced");
+    return { name, expires: r.exp };
   },
 
   /** A live reservation of a name, or null; an expired one is dropped. @this {any} @param {string} name */
   async idReservation(name) {
     const r = await this.store.get(`rsv/${name}`);
     if (!r) return null;
-    if (this.now() >= r.exp) { await this.store.delete(`rsv/${name}`); return null; }
+    if (this.now() >= r.exp) { await this.store.delete(`rsv/${name}`); if (r.by) await this.store.delete(`rsc/${r.by}`); return null; }
     return r;
   },
 
@@ -200,6 +219,7 @@ export const idOps = {
     if (!r || typeof b.code !== "string" || !same(await reserveHash(v.name, b.code), r.hash)) throw bad();
     const out = await this.idClaimCore(b, ip, "person");
     await this.store.delete(`rsv/${v.name}`);
+    if (r.by) await this.store.delete(`rsc/${r.by}`);
     return out;
   },
 
@@ -406,9 +426,9 @@ export const idOps = {
 };
 
 export const ID_ROUTES = Object.freeze({
-  "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
+  "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/reserved-for": "idReservedFor", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
   "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
   "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));

@@ -211,7 +211,7 @@ const reply = (status, body) => new Response(JSON.stringify(body), { status, hea
 const fail = e => reply(e.status, { error: { code: e.code, message: e.message } });
 
 /** The routes a browser page of the Vyre app may call: signed by the identity's own key, so the Origin check adds nothing. */
-const APP_OPS = new Set(["idClaim", "idFinalize", "idAppend", "idUpdate"]);
+const APP_OPS = new Set(["idClaim", "idFinalize", "idReservedFor", "idAppend", "idUpdate"]);
 /** Reserving a name takes no key and returns a code only to its asker: the web page (any origin) may call it, with no credentials. */
 const OPEN_OPS = new Set(["idReserve"]);
 const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
@@ -673,7 +673,7 @@ export class Directory {
       await this.wipeDns({ name });
       await this.store.delete(key);
     }
-    for (const [key, r] of await this.store.list({ prefix: "rsv/" })) if (this.now() >= r.exp) await this.store.delete(key);
+    for (const [key, r] of await this.store.list({ prefix: "rsv/" })) if (this.now() >= r.exp) { await this.store.delete(key); if (r.by) await this.store.delete(`rsc/${r.by}`); }
     const stale = [...(await this.store.list({ prefix: "c/" })).keys()].filter(k => Number(k.split("/")[2]) < this.day() - 1);
     for (let i = 0; i < stale.length; i += 100) await this.store.delete(stale.slice(i, i + 100));
   }
