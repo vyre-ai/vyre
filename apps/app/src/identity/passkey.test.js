@@ -129,7 +129,7 @@ async function standIn(/** @type {any} */ t) {
 test("a name is claimed from a browser with a passkey: the directory takes the passkey genesis and the record it signed, and anyone reads the chain back", { timeout: 60_000 }, async t => {
   const base = await standIn(t);
   const auth = authenticator({ highS: true });
-  const made = await claimIdentityWithPasskey({ name: "passalex", password: "four words in a row", base, params: FAST, webauthn: auth });
+  const made = await claimIdentityWithPasskey({ name: "passalex", code: await reserveAt(base, "passalex"), password: "four words in a row", base, params: FAST, webauthn: auth });
   assert.match(made.id, /^per_[a-z2-7]{26}$/);
   assert.equal(auth.seen.creates, 1);
   assert.equal(auth.seen.gets, 2, "one assertion for the genesis, one for the claim's record");
@@ -181,6 +181,8 @@ test("a browser that refuses the passkey for this origin (SecurityError) gets th
 });
 
 import { passkeyPresenceKey } from "./passkey.js";
+/** The code the web page hands a person for a free name (the directory's reserve, no key). */
+const reserveAt = async (base, name) => (await (await fetch(`${base}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json()).data.code;
 test("a kept passkey offers its P-256 SPKI as the presence key, signer webauthn_platform with its site; anything else offers nothing", () => {
   const real = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" });
   const pub = new Uint8Array(real.subarray(-65));

@@ -14,25 +14,15 @@ export function identityFrom(s) {
 }
 
 /**
- * Whether a name can be claimed, from the directory's answer to spaces.identity.resolve: a name that resolves is taken, `not_found` is free,
- * anything else (offline, a refusal) is unknown and says so instead of guessing.
- * @param {{ ok: true } | { ok: false, code: string }} answer
- * @returns {"free"|"taken"|"unknown"}
+ * The directory's answer to GET /v1/names/check?name= (people, spaces and anything else that holds a name share one namespace): ok is free, taken and reserved are not, and anything else
+ * (offline, a limit, a body that is not JSON) is unknown and says so instead of guessing.
+ * @param {number} status @param {any} body @returns {"free"|"taken"|"unknown"}
  */
-export function nameAnswer(answer) {
-  if (answer.ok) return "taken";
-  return answer.code === "not_found" ? "free" : "unknown";
-}
-
-/**
- * The directory's answer to GET /v1/ids/resolve?name=, as nameAnswer's input: a chain back is a name taken, `not_found` a free one,
- * anything else (a limit, an outage, a body that is not JSON) is unknown. Only the status and code are read; the chain is not trusted here.
- * @param {number} status @param {any} body @returns {{ ok: true } | { ok: false, code: string }}
- */
-export function directoryAnswer(status, body) {
-  if (status === 200 && body && body.data && typeof body.data === "object") return { ok: /** @type {true} */ (true) };
-  const code = body && body.error && typeof body.error.code === "string" ? body.error.code : "unknown";
-  return { ok: /** @type {false} */ (false), code: status === 404 && code === "not_found" ? "not_found" : code };
+export function nameAnswerChecked(status, body) {
+  const st = status === 200 && body && body.data && typeof body.data.status === "string" ? body.data.status : "";
+  if (st === "ok" || st === "mine") return "free";
+  if (st === "taken" || st === "reserved") return "taken";
+  return "unknown";
 }
 
 /**
@@ -62,7 +52,7 @@ export function nameNoteReal(st, space) {
   return "";
 }
 
-/** The input of spaces.create. @param {{ slug: string, name: string, where: "server"|"vps"|"here" }} o */
+/** The input of spaces.create. @param {{ slug: string, name: string, where: "server"|"here" }} o */
 export function createInput(o) {
   const home = o.where === "here" ? { kind: "this-computer", confirmed: true } : { kind: o.where };
   return { name: o.slug, displayName: o.name, home };
@@ -115,7 +105,7 @@ export function applyClaim(a) {
     name: String(s.name ?? ""),
     addr: s.address ? String(s.address).replace(/\.vyre\.run$/, "") : null,
     look: String(s.look ?? "amber"),
-    where: s.where === "vps" || s.where === "here" ? s.where : "server",
+    where: s.where === "here" ? s.where : "server",
     connectors: Array.isArray(s.picks?.connectors) ? s.picks.connectors.map(String) : [],
     kit: s.picks?.kit ? String(s.picks.kit) : null,
     who: ["team", "client", "personal"].includes(s.picks?.who) ? String(s.picks.who) : "team",

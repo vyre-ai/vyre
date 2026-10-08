@@ -8,6 +8,7 @@ import { proofHeader } from "../../src/real/approvals.js";
 import { hashMatches } from "../../src/real/payload-hash.js";
 import { yesSigner } from "../../src/personal/signer";
 import { createSpace } from "../../src/real/install";
+import { AddServerCard } from "./AddServerCard";
 import { MOVE, SET_UP, approvalLine, blockersOf, canMove, cloudState, offerFor, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
 
 type Step = { kind: "idle" } | { kind: "plan"; plan: any } | { kind: "report"; report: ReturnType<typeof reportLines> };
@@ -29,8 +30,19 @@ export function MyCloudCard() {
   useEffect(load, []);
   const state = cloudState(rows ?? []);
   const offer = offerFor(state, servers.length > 0);
-  if (rows === null || offer === "none") return null;
   const guard = async (go: () => Promise<void>) => { setBusy(true); setProblem(""); try { await go(); } catch (e) { setProblem(refusalLine(e) || said(e)); } finally { setBusy(false); } };
+  if (rows === null || offer === "none") return null;
+  // The server just joined: make My Cloud on it and show what would move, so the person's next press is the one approval (the card carries the rest as it always has).
+  const onPaired = () => guard(async () => {
+    const list = serversOf(await tool("spaces.servers"));
+    setServers(list);
+    if (!list[0]) { load(); return; }
+    const made = await createSpace(setupInput(list[0]));
+    if (made.state === "failed") throw new Error(made.say);
+    load();
+    setStep({ kind: "plan", plan: await tool("spaces.upgrade.plan", { to: made.id }) });
+  });
+  if (offer === "add") return <AddServerCard onDone={() => void onPaired()} />;
 
   const setUp = () => guard(async () => {
     const made = await createSpace(setupInput(servers[0]));
