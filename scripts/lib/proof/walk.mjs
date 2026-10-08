@@ -122,7 +122,11 @@ export async function walk(w) {
     const phone = createApp({ label: "Proof phone", dir: path.join(dir, "phone"), directory: ins.names, relay: ins.relay, about: { kind: "app" } });
     try {
       await run.step(S("add a device: the computer shows a code"), async () => {
-        code = await mac.showDeviceCode();
+        try { code = await mac.showDeviceCode(); } catch (e) {
+          // A release server takes presence only from a hardware key (Touch ID, Face ID, a phone's chip); this headless app has a software key, so it cannot answer the server's request. Not a product fault.
+          if (/** @type {any} */ (e).code === "presence_required" && /software/.test(String(/** @type {Error} */ (e).message))) throw Object.assign(new Error("a release server wants a hardware presence key (Touch ID, Face ID); this headless app has a software key, so Add a device is walked only on the daemon server"), { skip: true });
+          throw e;
+        }
         assert.match(code.qr, /^vyre:\/\/wink\/2\?/);
         return "a code for the new device";
       }, { needs: [CALL] });
@@ -189,7 +193,8 @@ export async function walkTerminal(w) {
       await run.step(S("a fresh server with no setup code shows its code"), async () => {
         const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain") };
         srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: "", relay: a.relayForServer, directory: a.namesForServer, store: "plain" });
-        made = await srv.operator("wink.server.code", { qr: true });
+        // the relay link of a fresh server can still be coming up; the server says "try again in a minute", so try for half of one
+        for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 15 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) throw e; await new Promise(r => setTimeout(r, 2000)); } }
         assert.ok(made && (way === "long code" ? /^vyre:\/\/wink\/2\?/.test(made.qr) : /^WINK-/.test(made.code)), `the server showed a ${way}`);
         return way === "long code" ? "a long code" : String(made.code).slice(0, 9) + "...";
       }, { needs: [S("the app has an identity")] });
