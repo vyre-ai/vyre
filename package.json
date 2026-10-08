@@ -1,6 +1,6 @@
 {
   "name": "vyre",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Your team and your AI agents, working together on a server you own. Open source, self-hosted, any model.",
   "type": "module",
   "bin": {
