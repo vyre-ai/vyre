@@ -43,7 +43,7 @@ test("names: serve and unserve refuse a model session, an agent, a hook, a guest
 test("names: the person's surfaces and the named modules still reach what they need", async t => {
   const d = await box(t);
   // allowed callers are not refused by the reach check (the call itself may still fail on its own terms)
-  for (const [tool, input, who] of [["names.serve", { name: "a" }, "cli"], ["names.serve", { name: "a" }, "deck"], ["names.serve", { name: "a" }, "module:launch"],
+  for (const [tool, input, who] of [["names.serve", { name: "a" }, "cli"], ["names.serve", { name: "a" }, "deck"], 
     ["names.unserve", {}, "cli"], ["names.serve", { name: "a" }, "device:abcdefghijklmnop"]]) {
     const r = await d.registry.call(tool, input, who);
     assert.notEqual(r.error && r.error.code, "denied", `${tool} from ${who}: ${JSON.stringify(r).slice(0, 200)}`);
@@ -52,4 +52,5 @@ test("names: the person's surfaces and the named modules still reach what they n
   // but a module that is not onboard, launch or network is not one of them, and onboard may not unserve or reassign the owner
   assert.ok(refused(await d.registry.call("names.unserve", {}, "module:onboard")));
   assert.ok(refused(await d.registry.call("names.serve", { name: "a" }, "module:onboard")), "onboard only checks and reads a name");
+  assert.ok(refused(await d.registry.call("names.serve", { name: "a" }, "module:launch")), "a module does not name the server");
 });
