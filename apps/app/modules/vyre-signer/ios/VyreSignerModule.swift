@@ -174,8 +174,12 @@ public class VyreSignerModule: Module {
     // ask again for the second and third signature. The context is closed to further prompts after the one, so a signature that would need another fails instead of asking twice.
     // Runs off the main queue like sign: the evaluation blocks until the person answers.
     AsyncFunction("signMany") { (alias: String, messages: [String], options: SignOptions) throws -> [String] in
+      // The count in the Face ID reason is written here, never taken from JS: a page that says "Approve 1 item" cannot get ten signed. The JS prompt may follow it.
+      if messages.isEmpty || messages.count > 20 { throw fail("ERR_INPUT", "a group is 1 to 20 items") }
       let context = LAContext()
-      let reason = options.prompt ?? "Approve"
+      defer { context.invalidate() }
+      let count = "Approve \(messages.count) item\(messages.count == 1 ? "" : "s")"
+      let reason = options.prompt.map { "\(count): \($0.prefix(80))" } ?? count
       context.localizedReason = reason
       var evalError: Error?
       let done = DispatchSemaphore(value: 0)
