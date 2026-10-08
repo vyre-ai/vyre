@@ -48,7 +48,7 @@ export function checkFixedHeaders(h) {
 
 /** @typedef {{ type: string, required?: boolean, enum?: any[], max?: number, items?: Shape, fields?: Record<string, Shape> }} Shape */
 /** @typedef {{ params?: Record<string, Shape>, query?: Record<string, Shape>, body?: Record<string, Shape>, headers?: Record<string, Shape>, encoding?: "json" | "form" }} OpInput */
-/** @typedef {{ method: string, path: string, kind: string, label?: string, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
+/** @typedef {{ method: string, path: string, kind: string, label?: string, relabeled?: true, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
  *   readback?: { op: string, args: Record<string, string>, compare?: Record<string, string> }, wrap?: string }} Op */
 /** @typedef {{ op: string, items?: string, id: string, at?: string, title?: string, args?: { query?: Record<string, any>, params?: Record<string, string> }, since?: { lookback_days?: number },
  *   expand?: { op: string, args: Record<string, string>, query?: Record<string, any> }, map: Record<string, any>, every_minutes?: number, label?: string }} Poll */
@@ -111,7 +111,9 @@ export function checkDeclaration(d) {
     if (!METHODS.includes(op.method)) out.push(`${p}.method: ${METHODS.join(", ")}`);
     if (typeof op.path !== "string" || !/^\/[A-Za-z0-9._~\/{}:*-]{0,200}$/.test(op.path) || op.path.split("/").includes("..") || /\*/.test(op.path)) out.push(`${p}.path: starts with /, plain segments and {params}, no wildcard`);
     if (!KINDS.includes(op.kind)) out.push(`${p}.kind: ${KINDS.join(", ")}`);
-    if (op.kind === "read" && !["GET", "HEAD"].includes(op.method)) out.push(`${p}: a read is a GET or HEAD`);
+    // a POST that only reads (a search) is a read when the PERSON said so (`relabeled`); nothing else makes a write a read
+    if (op.kind === "read" && !["GET", "HEAD"].includes(op.method) && op.relabeled !== true) out.push(`${p}: a read is a GET or HEAD (or an operation the person relabeled as a read)`);
+    if (op.relabeled !== undefined && op.relabeled !== true) out.push(`${p}.relabeled: true, or left out`);
     if (op.kind !== "read" && ["GET", "HEAD"].includes(op.method)) out.push(`${p}: a ${op.kind} is not a GET or HEAD`);
     const sig = `${op.method} ${String(op.path).replace(/\{[^}]*\}/g, "*")}`;
     if (seen.has(sig)) out.push(`${p}: ${sig} is declared twice, so a request could not tell which op it is`); seen.add(sig);

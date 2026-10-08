@@ -5,7 +5,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fromForm, toConfig, outcomeOf, slug, credentialName } from "./connection.js";
 import { checkDeclaration } from "./format.js";
-import { normalize } from "../../core/vault/api-request.js";
+import { normalize, classify } from "../../core/vault/api-request.js";
+import { routeAllowed } from "../../core/vault/service.js";
+import { defineConnector } from "./format.js";
 
 const ghl = (o = {}) => ({
   label: "GoHighLevel Sales", base_url: "https://services.leadconnectorhq.com/", send: { how: "bearer" }, credential: { item: "ghl-sales-pat" },
@@ -62,4 +64,29 @@ test("a check's answer is said in plain words", () => {
   assert.equal(w({ error: { message: "getaddrinfo ENOTFOUND nope.example.com" } }), "that address does not resolve");
   assert.match(w({ error: { code: "config", message: "conn-x names the vault item k, which is not there" } }), /could not be read from the Vault/);
   for (const s of [301, 401, 404, 500]) assert.equal(l({ reply: { status: s } }), "red");
+});
+
+test("the generic request: any method and path on the pinned host, classified by its method; a declared operation sits on top and wins", () => {
+  const m = fromForm(ghl());
+  const decl = defineConnector({ ...m.declaration, ops: { ...m.declaration.ops,
+    "contacts.search": { method: "POST", path: "/contacts/search", kind: "read", relabeled: true, label: "Search contacts" },
+    "contacts.create": { method: "POST", path: "/contacts", kind: "change", label: "Add a contact" } } });
+  const n = normalize(toConfig({ ...m, declaration: decl }));
+  const kind = (/** @type {string} */ method, /** @type {string} */ path) => classify(method, path, n.endpoints).kind;
+  // nothing declared about these: the method decides
+  assert.equal(kind("GET", "/anything/at/all"), "read");
+  assert.equal(kind("HEAD", "/x"), "read");
+  assert.equal(kind("POST", "/x"), "send");
+  assert.equal(kind("PUT", "/x/1"), "send");
+  assert.equal(kind("PATCH", "/x/1"), "send");
+  assert.equal(kind("DELETE", "/x/1"), "delete");
+  // a declared operation wins: the search is a read because the person relabeled it, the create is held
+  assert.equal(kind("POST", "/contacts/search"), "read");
+  assert.equal(kind("POST", "/contacts"), "send");
+  // the Flow rules: every method on any path of the host is reachable by the generic request
+  assert.equal(routeAllowed(n.service, "DELETE", "/deep/er/path"), true);
+  assert.equal(routeAllowed(n.service, "GET", "/"), true);
+  // only the person's word makes a write a read
+  assert.throws(() => defineConnector({ ...m.declaration, ops: { ...m.declaration.ops, "x.go": { method: "POST", path: "/x", kind: "read" } } }), /a read is a GET or HEAD/);
+  assert.throws(() => defineConnector({ ...m.declaration, ops: { ...m.declaration.ops, "x.go": { method: "GET", path: "/x", kind: "read", relabeled: false } } }), /relabeled/);
 });

@@ -57,7 +57,13 @@ export function fromForm(form) {
  * @param {{ declaration: import("./format.js").Declaration, credential: { item: string, field?: string }, check: { path: string } }} c
  */
 export function toConfig(c) {
-  return { ...toCredentialConfig(c.declaration, { item: c.credential.item, ...(c.credential.field ? { field: c.credential.field } : {}) }), readers: [{ module: "connectors", paths: [c.check.path] }] };
+  const base = toCredentialConfig(c.declaration, { item: c.credential.item, ...(c.credential.field ? { field: c.credential.field } : {}) });
+  // The generic `request` (any method and path on the pinned host) is what the declared operations sit on top of: the declared ones come first, so the first match decides, and anything they do not
+  // name is classified by its method (GET and HEAD read, POST PUT PATCH send, DELETE delete), which the vault holds for a yes. Flows reach the same by the allow rule at the end.
+  const generic = [{ method: "GET", path: "/*", kind: "read" }, { method: "HEAD", path: "/*", kind: "read" }, { method: "POST", path: "/*", kind: "send" }, { method: "PUT", path: "/*", kind: "send" },
+    { method: "PATCH", path: "/*", kind: "send" }, { method: "DELETE", path: "/*", kind: "delete" }];
+  return { ...base, endpoints: [...base.endpoints, ...generic], service: { ...base.service, allow: [...base.service.allow, { path: "/*" }] },
+    readers: [{ module: "connectors", paths: [c.check.path] }] };
 }
 
 /** The Vault item a Connection compiles to. @param {string} id */
