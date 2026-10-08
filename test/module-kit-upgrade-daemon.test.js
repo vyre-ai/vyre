@@ -76,9 +76,10 @@ test("an added module ships a Kit, and an upgrade keeps its records, its tables,
 
   // a project, and two items, one of them on the project
   const project = await d.kernel.gateway.records.create(chainOf(d), "project", { name: "Harlow intake" });
-  const a = (await d.registry.call("tasker.add", { title: "Call the court", project: project.urn }, "local")).data;
-  const b = (await d.registry.call("tasker.add", { title: "File the motion" }, "local")).data;
-  assert.ok(a && a.urn && b && b.urn, "the module made records of the type its Kit defined");
+  const ra = await d.registry.call("tasker.add", { title: "Call the court", project: project.urn }, "local");
+  const rb = await d.registry.call("tasker.add", { title: "File the motion" }, "local");
+  const a = ra.data, b = rb.data;
+  assert.ok(a && a.urn && b && b.urn, `the module made records of the type its Kit defined: ${JSON.stringify([ra.error, rb.error])}`);
   const linked = (await d.registry.call("records.linked", { urn: project.urn }, "cli", await meta(d))).data;
   assert.ok(JSON.stringify(linked).includes(a.urn) && !JSON.stringify(linked).includes(b.urn), `the project shows exactly the item linked to it: ${JSON.stringify(linked).slice(0, 200)}`);
   assert.deepEqual((await d.registry.call("tasker.count", {}, "local")).data, { n: 2, list: 2 });
