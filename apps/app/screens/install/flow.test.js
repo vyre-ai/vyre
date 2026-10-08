@@ -30,10 +30,11 @@ test("the note says what happened", () => {
   assert.equal(nameNote(nameStatus(""), true), "");
 });
 
-test("back from the add-a-server step goes to where the space lives", () => {
-  assert.equal(backOf("cmd"), "where");
+test("back from the add-a-server step goes to the space's name; there is no server-less step", () => {
+  assert.equal(backOf("cmd"), "create");
   assert.equal(backOf("scanwords"), "scan");
-  assert.equal(backOf("where"), "create");
+  assert.equal(backOf("where"), null, "no where step");
+  assert.equal(backOf("here"), null, "no on-this-computer step");
   assert.equal(backOf("recovery"), null);
 });
 
@@ -43,8 +44,8 @@ test("each route starts at its step", () => {
   assert.equal(startStep(undefined), "name");
 });
 
-test("a space made on this computer says it sleeps", () => {
-  assert.match(homeLine("here"), /Unreachable while it sleeps/);
+test("a space made says it lives on a server", () => {
+  assert.equal(homeLine("server"), "Lives on your server.");
 });
 
 test("setup carries on after the home: look, members, connectors, kit, done", () => {

@@ -37,14 +37,6 @@ test("a browser's pairing goes back to its own screen, and the not-set-up screen
   assert.equal(backOf("browser"), null);
 });
 
-test("a Mac chooses where Vyre runs before the space, and goes on without asking again", () => {
-  assert.equal(backOf("create", { macFlow: true }), "macwhere");
-  assert.equal(backOf("cmd", { macFlow: true }), "create");
-  assert.equal(backOf("here", { macFlow: true }), "create");
-  assert.equal(backOf("create"), "spaces");
-  assert.equal(backOf("here"), "where");
-});
-
 test("the empty-state actions open the routes that exist", () => {
   assert.equal(startStep("phone"), "addphone");
   assert.equal(startStep("connect"), "scan");
