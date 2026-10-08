@@ -47,7 +47,7 @@ export async function joinDeps(): Promise<JoinDeps | null> {
   return {
     who: { id: mine.id, name: mine.name, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) },
     fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, connect: client.connect, openServerPeer: peer.openServerPeer, crypto: relayCrypto(), words: WORDS as unknown as string[],
-    ...(yes ? { signPresence: (req) => yes.signer.signPresence(req), presenceKey: () => enrolment(yes.kind) } : {}),
+    ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: () => enrolment(yes.kind) } : {}),
     store,
   };
 }

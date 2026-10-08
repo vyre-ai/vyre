@@ -24,7 +24,7 @@ export async function serveEnrolWith(d) {
   const e = ask && ask.enrol;
   if (!e || serving.has(e.device)) return false;
   serving.add(e.device);
-  const tell = (/** @type {boolean} */ ok, /** @type {string} */ reason, /** @type {any} */ identity) => d.call("wink.phone.enrolled", { device: e.device, ok, ...(reason ? { reason } : {}), ...(identity ? { identity } : {}) }).catch(() => null);
+  const tell = (/** @type {boolean} */ ok, /** @type {string} */ reason = "", /** @type {any} */ identity = undefined) => d.call("wink.phone.enrolled", { device: e.device, ok, ...(reason ? { reason } : {}), ...(identity ? { identity } : {}) }).catch(() => null);
   try {
     const mine = await d.identity();
     if (!mine) { await tell(false, "This device does not hold your Vyre name, so it cannot add another."); return true; }

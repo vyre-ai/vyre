@@ -17,7 +17,7 @@ export async function enrolDevice(o) {
   const f = o.fetch ?? globalThis.fetch;
   const now = o.now ?? Date.now;
   const root = String(o.base).replace(/\/+$/, "");
-  const get = async (/** @type {string} */ path, /** @type {any} */ body) => {
+  const get = async (/** @type {string} */ path, /** @type {any} */ body = undefined) => {
     let res;
     try { res = await f(root + path, body === undefined ? { headers: { accept: "application/json" } } : { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(body) }); }
     catch { throw refuse("Cannot reach the names directory right now.", "unreachable"); }
