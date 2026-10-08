@@ -466,3 +466,22 @@ test("app helper: purge-app keeps an image another app that still has a folder h
   assert.equal(a.code, 0, a.out);
   assert.match(r.calls(), /image rm docuseal\/docuseal/, "the last one takes it");
 });
+
+test("app helper: APP_URL is the public address (https://<module>.<name>.vyre.run:<port>) when the box has a name on vyre.run, read through the vyre container but kept only if it has that shape; otherwise the internal one", opts, async t => {
+  const r = await ready(t);
+  const urlOf = () => /APP_URL: "([^"]*)"/.exec(read(path.join(r.priv, "apps", "docuseal", "compose.yml")))[1];
+  assert.equal((await r.appUp()).st.state, "ok");
+  assert.equal(urlOf(), "http://vyre-app-docuseal:3000", "no name on vyre.run: the internal address");
+  for (const bad of ["alex.evil 7443", "alex 99999999", "Alex 7443", "alex 7443\nhttp://x", "alex -1", "al$(id) 7443", "alex"]) {
+    r.flag("public", bad);
+    assert.equal((await r.appUp()).st.state, "ok", bad);
+    assert.equal(urlOf(), "http://vyre-app-docuseal:3000", `${JSON.stringify(bad)} is not a name and a port: the internal address stays`);
+  }
+  r.flag("public", "alex 7443");
+  assert.equal((await r.appUp()).st.state, "ok");
+  assert.equal(urlOf(), "https://docuseal.alex.vyre.run:7443");
+  // and the setup (a first start with the same name) is told the same address
+  const r2 = await ready(t, { public: "alex 7443" });
+  assert.equal((await r2.appUp()).st.state, "ok");
+  assert.match(read(path.join(r2.F, "exec-env")), /^APP_URL=https:\/\/docuseal\.alex\.vyre\.run:7443$/m);
+});
