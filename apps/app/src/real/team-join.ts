@@ -24,8 +24,14 @@ async function yesSigner() {
 }
 
 /** The presence key to enrol on the team's server with the accept: what a signed proof names (key id, signer) and the key itself. */
-async function enrolment(kind: "shell" | "phone") {
-  if (kind === "phone") { const m = await import("../../modules/vyre-signer"); return m.presenceKey(); }
+async function enrolment(kind: "shell" | "phone", invite: string) {
+  if (kind === "phone") {
+    const m = await import("../../modules/vyre-signer");
+    const key = await m.presenceKey();
+    // A release server enrols a phone's first key on this invite only attested or as a secure-chip key it marks unattested; App Attest vouches for the key over "join:" + the invite id (kernel/seal/proof.js join). Where it is not available the key goes as it is.
+    const attestation = await m.enrolAttestation(`join:${invite}`).catch(() => null);
+    return attestation ? { ...key, attestation } : key;
+  }
   const { macEnclavePublic } = await import("../identity/mac-key.ts");
   const { shellKind } = await import("../shell/shell.ts");
   const { fromB64url, keyIdOf, spkiFromXY, b64 } = await import("../../modules/vyre-signer/presence-proof.js");
@@ -47,7 +53,7 @@ export async function joinDeps(): Promise<JoinDeps | null> {
   return {
     who: { id: mine.id, name: mine.name, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) },
     fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, connect: client.connect, openServerPeer: peer.openServerPeer, crypto: relayCrypto(), words: WORDS as unknown as string[],
-    ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: () => enrolment(yes.kind) } : {}),
+    ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: (invite: string) => enrolment(yes.kind, invite) } : {}),
     store,
   };
 }
@@ -80,4 +86,40 @@ export async function teamCall(space: string, call: string, args: unknown[] = []
   const d = await joinDeps();
   if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   return callTeam(d, space, call, args);
+}
+
+// ---- the owner's side: invites made, listed, confirmed and cancelled from this app over its paired session to the server (team-invite.js) ----
+
+/** Does this app make invites itself? When it keeps the name and reaches its server over the peer wire: the server holds no identity to make them. */
+export async function invitesHere(): Promise<boolean> {
+  const { peerWanted } = await import("./peer");
+  return peerWanted() && (await holdsName());
+}
+
+async function inviteDeps(space: string) {
+  const mine = await loadIdentity();
+  if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const { openPeer } = await import("./peer");
+  const { kernelWire } = await import("./kernel-wire.js");
+  const { DIRECTORY } = await import("./install");
+  const yes = await yesSigner();
+  const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
+  return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
+}
+
+export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
+  const { createTeamInvite } = await import("./team-invite.js");
+  return createTeamInvite(await inviteDeps(i.space), i);
+}
+export async function teamInvites(space: string) {
+  const { listTeamInvites } = await import("./team-invite.js");
+  return { invites: await listTeamInvites(await inviteDeps(space)) };
+}
+export async function confirmTeamInviteWords(space: string, id: string, words: string) {
+  const { confirmTeamInvite } = await import("./team-invite.js");
+  return confirmTeamInvite(await inviteDeps(space), id, words);
+}
+export async function cancelTeamInvite(space: string, id: string) {
+  const { revokeTeamInvite } = await import("./team-invite.js");
+  return revokeTeamInvite(await inviteDeps(space), id);
 }

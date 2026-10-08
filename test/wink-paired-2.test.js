@@ -1255,17 +1255,16 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
 });
 
 
-test("join a team with no server, end to end: a second identity that has only a name opens the invite, is admitted as a member through the invitee door of the real server, enrols its key there, and reaches the space with a member call", { timeout: 180_000 }, async t => {
+/** A real paired server with a team space "harlow" hosted on it by alex, whose name and key live in the (stand-in) app: the rig of the team tests below. */
+async function teamRig(t, { release = false } = {}) {
   const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
   const { startSealer } = await import("../kernel/seal/client.js");
   const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
   const { proofRequest } = await import("../kernel/remote/proof.js");
-  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
-  const { WORDS } = await import("../relay/client/words.js");
   const ident = await standinIdentity(t);
   Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
   const sealDir = tmp("join-team-seal");
-  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: !release });
   t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
   const ownerSigner = sealSigner(ident.id);
   await enrolDevice(sealer, ownerSigner);
@@ -1279,8 +1278,6 @@ test("join a team with no server, end to end: a second identity that has only a 
   const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
     host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
   assert.ok(f.w.d.kernel.spaces.hosts(made.space));
-  // kit has a name in the same directory and NO server: no daemon is started for kit, only the app's libraries
-  const kit = await ident.another("kit");
   const hosted = f.w.d.kernel.spaces.hosted(made.space);
   const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
   const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
@@ -1290,6 +1287,15 @@ test("join a team with no server, end to end: a second identity that has only a 
     const inv = await hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) });
     return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
   };
+  return { ident, f, links, session, made, hosted, ownerChain, rkFp, linkFor, sealer, ownerSigner, sealSigner, ROUTE };
+}
+
+test("join a team with no server, end to end: a second identity that has only a name opens the invite, is admitted as a member through the invitee door of the real server, enrols its key there, and reaches the space with a member call", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealer, sealSigner, ROUTE } = await teamRig(t);
+  // kit has a name in the same directory and NO server: no daemon is started for kit, only the app's libraries
+  const kit = await ident.another("kit");
   const mine = await linkFor(kit.id);
   const kitSigner = sealSigner(kit.id);
   const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
@@ -1332,4 +1338,94 @@ test("join a team with no server, end to end: a second identity that has only a 
   await assert.rejects(() => openInvite(deps, `https://harlow.vyre.run/join/${id0}.${Buffer.from(JSON.stringify(bad)).toString("base64url")}`), e => e.code === "forged");
   await assert.rejects(() => openInvite(deps, "https://harlow.example.com/join/" + id0 + "." + blob), e => e.code === "bad_input");
   assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted by the door");
+});
+
+test("a team invite made by the owner's app and joined by the invitee's app, on a real server: the server holds no identity, the home's kernel asks the owner's key for its yes on the invite, the link carries the pinned list, and kit joins with it", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { kernelWire } = await import("../apps/app/src/real/kernel-wire.js");
+  const { createTeamInvite, listTeamInvites, revokeTeamInvite } = await import("../apps/app/src/real/team-invite.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, session, made, hosted, ownerChain, sealSigner, ownerSigner, ROUTE } = await teamRig(t);
+  const kit = await ident.another("kit");
+  const kitSigner = sealSigner(kit.id);
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  // the owner's app: its paired session to the server, and its key answering the home's challenge (the proof names the home and the challenge)
+  const asked = [];
+  const wire = kernelWire(session, made.space, { person: ident.id, signPresence: async card => { asked.push(card); return ownerSigner.proof(ownerChain, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }); } });
+  const dir = { wire, fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1" };
+  const mine = await createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: kit.id });
+  assert.match(mine.link, /^https:\/\/harlow\.vyre\.run\/join\/inv_[0-9a-f]{32}\./);
+  assert.equal(mine.needs_confirm, false);
+  assert.deepEqual(asked.map(c => c.op), ["grant.invite"], "the owner's key was asked once, for this invite");
+  assert.match(asked[0].home, /\S/);
+  // the link carries the pin and the fingerprint the joiner checks against the record
+  const blob = JSON.parse(Buffer.from(mine.token.split(".")[1], "base64url").toString());
+  assert.deepEqual(blob.chain, made.pin);
+  assert.equal(blob.rk, crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32));
+  const rows = await listTeamInvites(dir);
+  assert.deepEqual(rows.map(r => [r.id, r.status, r.role]), [[mine.id, "pending", "member"]]);
+  // kit joins with it (the joiner's app, no server)
+  const store = new Map();
+  const deps = {
+    who: { id: kit.id, name: "kit", eid: kit.eid, sign: async m => new Uint8Array(await kit.store.sign(Buffer.from(m))) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: async req => kitSigner.proof(inviteeChain, req.op, req.fields),
+    presenceKey: async () => kitSigner.enrolment,
+    store: { get: async k => store.get(k), put: async (k, v) => { store.set(k, v); } },
+  };
+  const inv = await openInvite(deps, mine.link);
+  t.after(() => inv.close());
+  assert.equal(inv.card.role, "member");
+  const joined = await inv.accept();
+  assert.equal(joined.joined, true);
+  assert.deepEqual((await listTeamInvites(dir)).map(r => r.status), ["used"]);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.id)).role, "member");
+  // a cancelled invite shows the invitee nothing
+  const second = await createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: kit.id });
+  await revokeTeamInvite(dir, second.id);
+  assert.deepEqual(asked.map(c => c.op), ["grant.invite", "grant.invite", "grant.invite"], "creating asked once; cancelling asked once more");
+  await assert.rejects(() => openInvite({ ...deps, store: { get: async () => undefined, put: async () => {} } }, second.link), e => e.code === "not_for_you");
+  // an invite for a name nobody has, and a challenge the home did not make for this call, make nothing
+  await assert.rejects(() => createTeamInvite(dir, { space: made.space, name: "harlow", role: "member", to: "nobody-has-this-name" }), e => e.code === "not_found");
+  const lying = kernelWire({ call: async (tool, req) => ({ v: 1, id: req.id, ok: false, error: { code: "presence_required", message: "x", challenge: { call: req.call, space: req.space, home: "h", nonce: "n".repeat(16), args_hash: "wrong", op: "grant.invite", fields: {}, payload_hash: "z" } } }) }, made.space, { person: ident.id, signPresence: async () => { throw new Error("must not sign"); } });
+  await assert.rejects(() => lying.call("grants.invites.create", [{ role: "member" }]), e => e.code === "presence_required");
+  assert.equal(f.w.logs.filter(l => /kernel remote: grants.invites.create .* refused as (bad_binding|bad_challenge)/.test(l)).length, 0);
+});
+
+
+test("join on a release server (the sealing process takes no unattested-by-switch keys): a secure-chip key joins, a software key is refused and nothing is left behind", { timeout: 180_000 }, async t => {
+  const { openInvite } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealer, sealSigner } = await teamRig(t, { release: true });
+  assert.equal((await sealer.health()).unattested_allowed, false, "this is the release rule");
+  const mk = async (name, signerKind) => {
+    const who = await ident.another(name);
+    const sg = sealSigner(who.id, undefined, signerKind);
+    const chain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: who.id, vouched: true });
+    const tokens = [];
+    const deps = {
+      who: { id: who.id, name, eid: who.eid, sign: async m => new Uint8Array(await who.store.sign(Buffer.from(m))) },
+      fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+      signPresence: async req => sg.proof(chain, req.op, req.fields),
+      presenceKey: async invite => { tokens.push(invite); return sg.enrolment; },
+      store: { get: async () => undefined, put: async () => {} },
+    };
+    return { who, deps, tokens };
+  };
+  // a phone's secure-chip key: taken unattested on a release server (marked so), joined
+  const kit = await mk("kit", "secure_enclave");
+  const inv = await linkFor(kit.who.id);
+  const open = await openInvite(kit.deps, inv.link);
+  t.after(() => open.close());
+  assert.equal((await open.accept()).joined, true);
+  assert.deepEqual(kit.tokens, [inv.id], "the app asks for its key's enrolment with the invite id, which is what an attestation is made over");
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.who.id)).role, "member");
+  // a software key (a browser or a page's own key) is not a key a release server takes: the accept fails whole
+  const sw = await mk("sam", "software");
+  const inv2 = await linkFor(sw.who.id);
+  const open2 = await openInvite(sw.deps, inv2.link);
+  t.after(() => open2.close());
+  await assert.rejects(() => open2.accept(), e => /software_refused|bad_signer|unattested/.test(String(e.code)), "a software key is refused");
+  await assert.rejects(() => hosted.gateway.grants.members.get(ownerChain, sw.who.id), e => e.code === "not_found", "no membership was made");
+  assert.equal((await hosted.gateway.grants.invites.get(ownerChain, inv2.id)).status, "pending", "the invite is not spent");
 });
