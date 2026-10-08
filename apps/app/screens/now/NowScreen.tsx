@@ -5,6 +5,7 @@ import { useMembers } from "../spaces/state";
 import { PhoneApprovals } from "../shell/PhoneApprovals";
 import { ModuleNowCards } from "../modules/ModuleNowCards";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
+import { UpdateNotice } from "./UpdateNotice";
 import { useSpaces } from "../shell/state";
 import { PairingCards } from "../pairing/PairingCards";
 import { CreateAssistantCard } from "../assistants/CreateAssistantCard";
@@ -32,6 +33,7 @@ export default function NowScreen() {
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       {real ? <GapNotice /> : null}
+      {real ? <UpdateNotice /> : null}
       {real ? <PairingCards /> : null}
       {real ? <CreateAssistantCard role={mine} /> : null}
       {real ? <WaitingOnYou /> : null}
