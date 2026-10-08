@@ -22,7 +22,7 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
-import { build, swWithBuild, htmlWithBuild } from "./build.js";
+import { build, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
@@ -1536,14 +1536,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     return serveApp(res, url.pathname);
   }
-  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
-  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
-  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
-  // then the Deck answers as before.
   // The pre-app pages live in web/ (plain pages the app signs in through), in both modes; a file web/ does not hold falls through.
   if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
-  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
-  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
+  // config app.root: the app answers every other page address from an export built for the root (npm run export:web:root). An export built for /app/ (or none) cannot serve at /, so that is 404 no_app: no other web app answers.
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname)) {
+    if (appBase(APP_DIST) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/ or not built; build it for the root with npm run export:web:root" } });
+    return serveApp(res, url.pathname);
+  }
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
 
@@ -1634,45 +1633,6 @@ export function serveWeb(res, pathname, cfg) {
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
   return true;
-}
-
-/**
- * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
- * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
- * ever served, whatever the path says.
- */
-function serveDeck(res, pathname, cfg) {
-  const dir = path.join(REPO, "deck");
-  const shell = path.join(dir, "index.html");
-  let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
-  if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  // Sample data (deck/fixtures, deck/chat/fixtures) is for dev worlds and tests only: a real box
-  // never serves it, so no ?fixtures=1 link can put sample threads in front of a person (0.2
-  // honesty pass, PLAN.md D2). Dev worlds set VYRE_DECK_FIXTURES=1.
-  if (process.env.VYRE_DECK_FIXTURES !== "1" && path.relative(dir, file).split(path.sep).includes("fixtures")) {
-    return send(res, 404, { error: { code: "not_found", message: pathname } });
-  }
-  // A path that is not a file at all (any client route) wants the one shell. A path that IS a
-  // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
-  // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
-  // nothing about the URL said "this is a module", only that a browser asked for a page.
-  let wantsShell = false;
-  // The release's signed files (deck/sw.js verifyShell): a missing one is a plain 404, never the shell.
-  if (/^\/release\/(SHA256SUMS|SHA256SUMS\.sig|shell\.json)$/.test(pathname) && !fs.existsSync(file)) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
-  catch { file = shell; wantsShell = true; }
-  let buf;
-  try { buf = fs.readFileSync(file); }
-  catch {
-    if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
-    if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
-  }
-  // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
-  // at once (deck/sw.js BUILD).
-  if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  if (file === shell || wantsShell) buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
-  res.end(buf);
 }
 
 /**
