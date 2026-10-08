@@ -317,7 +317,7 @@ test("peer: a person's label from under a claude is the session's own, for every
   const root = tempHome(t);
   // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
   // (a callers list, as core/team, settings and mail check a person's label).
-  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.who", "probe.mine"] } }, `export default { async start(ctx) {
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.who", "probe.mine"], reads: ["probe.who", "probe.mine"] } }, `export default { async start(ctx) {
     ctx.tool("probe.who", { effect: "read", input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller, thread: meta.thread || null }) });
     ctx.tool("probe.mine", { effect: "read", input: { type: "object" }, callers: ["cli", "local", "deck", "capsule"], run: async () => ({ ok: true }) });
     return {};
@@ -713,8 +713,10 @@ test("peer: a leader whose exe cannot be read is a server keyed uid0 only when r
   const leader = { 30: { ppid: 1, pgid: 30, args: "sshd: /usr/sbin/sshd -D" }, 31: { ppid: 30, args: "-bash" }, 32: { ppid: 31, args: "vyre gate approve g1" } };
   const lk = pid => leader[pid] || null;
   const common = { look: lk, exe: () => null, started: () => "Mon Sep 28 08:00:00 2026", self: 999999 };
-  assert.deepEqual(insideClaude(32, { ...common, uid: () => 0 }),
-    { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026", uid: 0 } });
+  // The server also carries the leader's kernel name and command line (isLoginServer reads them to tell a root sshd from a user process called sshd); the name is read from this machine's /proc, so it is not compared.
+  const root0 = insideClaude(32, { ...common, uid: () => 0 });
+  assert.deepEqual({ ...root0, server: { ...root0.server, comm: undefined } },
+    { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026", uid: 0, cmd: "sshd: /usr/sbin/sshd -D", comm: undefined } });
   assert.deepEqual(insideClaude(32, { ...common, uid: () => 1000 }), { inside: false, unknown: true, unreadable: true });
   assert.deepEqual(insideClaude(32, { ...common, uid: () => null }), { inside: false, unknown: true, unreadable: true });
   // No readable start time, no key: refused flat rather than trusting a pid that could be reused.
