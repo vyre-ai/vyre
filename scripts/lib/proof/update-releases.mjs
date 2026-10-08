@@ -20,11 +20,11 @@ function serve(root) {
   return new Promise(ok => srv.listen(0, "127.0.0.1", () => ok({ url: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`, close: () => new Promise(r => srv.close(() => r(undefined))) })));
 }
 
-/** @param {{ work: string, oldTag?: string }} o */
+/** @param {{ work: string, oldTag?: string, log?: string }} o */
 export async function buildUpdateReleases(o) {
   const r = spawnSync("sh", [path.join(here, "build-update-releases.sh"), o.work, o.oldTag || "v0.2.11"], { encoding: "utf8", maxBuffer: 64 << 20 });
   fs.mkdirSync(o.work, { recursive: true });
-  fs.writeFileSync(path.join(o.work, "build.log"), `${r.stdout}\n${r.stderr}`);
+  if (o.log) fs.writeFileSync(o.log, `${r.stdout}\n${r.stderr}`);
   if (r.status !== 0) throw new Error(`the releases did not build: ${String(r.stderr || r.stdout).split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500)}`);
   const read = (/** @type {string} */ f) => fs.readFileSync(path.join(o.work, f), "utf8").trim();
   const oldBox = path.join(o.work, "old", "site", "box"), newBox = path.join(o.work, "new", "site", "box");
