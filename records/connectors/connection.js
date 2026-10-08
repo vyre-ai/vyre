@@ -40,6 +40,12 @@ export function opsFromForm(operations) {
     if (o.poll !== undefined) {
       const p = o.poll;
       if (!isObj(p) || typeof p.id !== "string") throw fail(`operation ${o.name}: poll is { id (the item's own id), items?, at?, title?, args?, every_minutes? }`);
+      // what a poll asks of its list call must be something the call takes: a name it did not declare is declared here as text
+      for (const part of ["query", "params"]) for (const k of Object.keys((p.args && p.args[part]) || {})) {
+        const inp = (ops[o.name].input = ops[o.name].input || {});
+        inp[part] = inp[part] || {};
+        if (!inp[part][k]) inp[part][k] = { type: "string" };
+      }
       poll[o.name] = { op: o.name, id: p.id, ...(p.items ? { items: String(p.items) } : {}), ...(p.args ? { args: p.args } : {}), ...(p.every_minutes ? { every_minutes: p.every_minutes } : {}),
         label: String(o.label || o.name), map: { ...(p.title ? { title: String(p.title) } : {}), ...(p.at ? { at: String(p.at) } : {}) } };
     }
