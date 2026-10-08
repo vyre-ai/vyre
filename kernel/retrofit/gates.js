@@ -10,7 +10,7 @@
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
 import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst, classReach, PERSON_FREE } from "../../core/modules/index.js";
-import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
+import { PERSON_ONLY } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
