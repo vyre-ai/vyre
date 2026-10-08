@@ -578,6 +578,7 @@
  "kernel/seal/ledger.test.js": 8,
  "kernel/seal/recovery.test.js": 9,
  "kernel/seal/seal.test.js": 27,
+ "kernel/seal/service-transport.test.js": 4,
  "kernel/seal/uses.test.js": 11,
  "kernel/size.test.js": 1,
  "kernel/spaces/spaces.test.js": 10,
