@@ -1429,3 +1429,40 @@ test("join on a release server (the sealing process takes no unattested-by-switc
   await assert.rejects(() => hosted.gateway.grants.members.get(ownerChain, sw.who.id), e => e.code === "not_found", "no membership was made");
   assert.equal((await hosted.gateway.grants.invites.get(ownerChain, inv2.id)).status, "pending", "the invite is not spent");
 });
+
+test("a Windows PC joins a team on a release server with its Windows Hello passkey as the presence key: the passkey is made for the window's site, enrolled as webauthn_platform with that rp, and its WebAuthn assertion is the yes", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
+  const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, made, hosted, ownerChain, linkFor, sealer } = await teamRig(t, { release: true });
+  assert.equal((await sealer.health()).unattested_allowed, false);
+  const kit = await ident.another("kit");
+  const auth = authenticator({ rp: "kit-pc.vyre.run" });
+  const kept = new Map();
+  const store = { get: async k => kept.get(k), put: async (k, v) => { kept.set(k, v); } };
+  // the window's own site decides the passkey's rp; a page the shell does not take makes none
+  assert.equal(await windowsPasskey({ origin: "https://example.com", store, webauthn: auth }), null);
+  assert.equal(auth.seen.creates, 0);
+  const wp = await windowsPasskey({ origin: "https://kit-pc.vyre.run", store, webauthn: auth });
+  assert.equal(wp.rp, "kit-pc.vyre.run");
+  assert.equal(wp.enrolment.signer, "webauthn_platform");
+  assert.equal(auth.seen.creates, 1);
+  const again = await windowsPasskey({ origin: "https://kit-pc.vyre.run", store, webauthn: auth });
+  assert.equal(again.enrolment.key_id, wp.enrolment.key_id, "the kept passkey is used again, none is made");
+  assert.equal(auth.seen.creates, 1);
+  const deps = {
+    who: { id: kit.id, name: "kit", eid: kit.eid, sign: async m => new Uint8Array(await kit.store.sign(Buffer.from(m))) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: req => wp.signer.signPresence(req),
+    presenceKey: async () => wp.enrolment,
+    store: { get: async () => undefined, put: async () => {} },
+  };
+  const inv = await linkFor(kit.id);
+  const open = await openInvite(deps, inv.link);
+  t.after(() => open.close());
+  const joined = await open.accept();
+  assert.equal(joined.joined, true);
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.id)).role, "member");
+  assert.ok(auth.seen.gets >= 1, "the Hello prompt (the authenticator's get) was asked for the yes");
+});
