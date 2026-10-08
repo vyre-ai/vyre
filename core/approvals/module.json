@@ -39,6 +39,10 @@
         "reach": "person"
       },
       {
+        "name": "approvals.item-view", "effect": "read",
+        "reach": "person"
+      },
+      {
         "name": "approvals.edit-item", "effect": "write",
         "reach": "person"
       },

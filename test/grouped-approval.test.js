@@ -188,3 +188,44 @@ test("a call too large to show whole is partial: the card says so, and it cannot
   const d = (await pending(reg)).approvals.find((/** @type {any} */ x) => x.request.fields.to === "Eastgate");
   assert.equal(d.partial, true);
 });
+
+test("a partial item is read in full across pages before it can be approved on its own", async t => {
+  const reg = await world(t);
+  const rows = Array.from({ length: 300 }, (_, i) => ({ id: i, memo: `row ${i}` }));
+  const longBody = "word ".repeat(2000);
+  const big = { to: "Northwind", subject: "s", body: longBody, rows };
+  await send(reg, big);
+  const card = (await pending(reg)).approvals[0];
+  assert.equal(card.partial, true);
+  // approving it on its own before reading it is refused
+  const early = await reg.call("approvals.answer", { id: card.id, approve: true }, "cli", { proof: proofFor(card) });
+  assert.equal(early.error && early.error.code, "needs_view");
+  // the page reads: nothing cut, every value once, in order, about 50 values or 8000 characters a page
+  const seen = [];
+  let offset = 0, pages = 0, total = 0;
+  for (;;) {
+    const p = await reg.call("approvals.item-view", { id: card.id, offset }, "cli");
+    assert.equal(p.error, undefined, JSON.stringify(p.error));
+    pages++; total = p.data.total;
+    assert.ok(p.data.words.length <= 50 && p.data.words.reduce((n, w) => n + w.text.length, 0) <= 8000 + 4000, "a page is bounded");
+    seen.push(...p.data.words);
+    if (p.data.next === null) break;
+    assert.ok(p.data.next > offset, "the pages move on");
+    offset = p.data.next;
+  }
+  assert.ok(pages > 6, `300 rows and a long body take several pages (${pages})`);
+  assert.equal(seen.length, total);
+  assert.equal(seen.filter(w => w.field === "body").map(w => w.text).join(""), longBody, "the long value comes back whole, in parts");
+  assert.ok(seen.filter(w => w.field === "body").every(w => /^\d+\/\d+$/.test(String(w.part))), "and each part says which");
+  for (const i of [0, 149, 299]) {
+    assert.equal(seen.find(w => w.field === `rows[${i}].memo`)?.text, `row ${i}`);
+    assert.equal(seen.find(w => w.field === `rows[${i}].id`)?.text, String(i));
+  }
+  assert.equal(seen.filter(w => /^rows\[\d+\]\.memo$/.test(w.field)).length, 300, "every row, none cut");
+  // having read to the end, the refusal is gone (what is left is the proof the test does not give the module)
+  const after = await reg.call("approvals.answer", { id: card.id, approve: true }, "cli", { proof: proofFor(card) });
+  assert.notEqual(after.error && after.error.code, "needs_view");
+  // the asker cannot read it, and an unknown id is not found
+  assert.ok((await reg.call("approvals.item-view", { id: card.id }, ASKER)).error);
+  assert.equal((await reg.call("approvals.item-view", { id: "ap_nope" }, "cli")).error.code, "not_found");
+});

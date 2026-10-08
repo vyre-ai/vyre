@@ -78,6 +78,7 @@ export const PERSON_ONLY = new Map([
   ["approvals.pending", "what is waiting for the person's approval, shown on their phone"],
   ["approvals.answer", "the person's own answer, with their proof"],
   ["approvals.answer-group", "the person's own answer to a group of held calls, each approved item with its own proof"],
+  ["approvals.item-view", "the person reads every value of one held call, in pages, before approving it"],
   ["approvals.edit-item", "the person changes the words of one held call before approving it"],
   ["approvals.status", "hands the approving proof back to the session that asked, once"],
   ["modules.list.reset", "drops the accepted first-party module list for a rollback: the owner with their presence"],

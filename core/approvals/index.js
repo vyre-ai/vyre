@@ -7,7 +7,7 @@ import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
-import { holdFields, viewOf, editedInput } from "../../lib/hold-fields.js";
+import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
@@ -22,7 +22,7 @@ const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {stri
 export default {
   async start(ctx) {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
-    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, group?: string, input?: any, edited?: boolean }>} */
+    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
     const open = new Map();
     const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > ASK_MS) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
     const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
@@ -187,6 +187,8 @@ export default {
           if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" };
           a.state = "refused"; return { answered: "refused" };
         }
+        // A call whose card says part of it is not shown is approved only after the person has read all of it (approvals.item-view, to the end).
+        if (a.moment === "outward" && a.input && viewOf(a.input).partial && !a.seenAll) throw refuse("part of this call is not shown on the card: read all of it first (approvals.item-view), then approve", "needs_view");
         const given = ctx.kernel && typeof ctx.kernel.proofFrom === "function" ? ctx.kernel.proofFrom(meta) : null;
         const proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }`, the option a kernel call takes
         if (!proof || typeof proof !== "object" || JSON.stringify(proof).length > MAX_PROOF) throw refuse("this needs your presence: approve it on your device", "needs_presence");
@@ -256,6 +258,20 @@ export default {
         return { group, results };
       },
     });
+    ctx.tool("approvals.item-view", {
+      description: "The whole of one held call, nothing cut, in pages: { id, offset? } answers { words: [{ field, text, part? }], total, offset, next }. About 50 values or 8000 characters a page; next is the offset to ask for, null at the end. A call whose card says part of it is not shown must be read to the end before it can be approved.",
+      input: obj({ id: { type: "string" }, offset: { type: "integer" } }, ["id"]),
+      callers: SURFACES,
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        sweep();
+        const a = open.get(String(input.id));
+        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id", "not_found");
+        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot read its own card", "denied");
+        const v = pageOf(a.input, Number(input.offset) || 0);
+        if (v.next === null) a.seenAll = true;
+        return v;
+      },
+    });
     ctx.tool("approvals.edit-item", {
       description: "The person changes some of the words of one held call before saying yes: { id, edits: { <text field>: <new text> } }. The card is made again over the changed call (a new payload_hash to sign), and when the asker retries it, the call that runs is the edited one. Only text fields the call already has; only from the person's own surface, never the asker's.",
       input: obj({ id: { type: "string" }, edits: { type: "object" } }, ["id", "edits"]),
@@ -271,7 +287,7 @@ export default {
         const request = cardRequest("outward", { op: a.request.op, fields: holdFields(next) });
         if (!request) throw refuse("that call does not fit an outward card once edited", "bad_input");
         const sg = signOf("outward", request);
-        a.input = next; a.request = request; a.op = sg.op; a.fields = sg.fields; a.payload_hash = payloadHash(sg.op, a.space, sg.fields); a.edited = true; a.at = now();
+        a.input = next; a.request = request; a.op = sg.op; a.fields = sg.fields; a.payload_hash = payloadHash(sg.op, a.space, sg.fields); a.edited = true; a.seenAll = false; a.at = now();
         a.line = lineOfOp(request.op, request.fields, a.line.split(" wants to ")[0]);
         { const v = viewOf(next); return { id: a.id, payload_hash: a.payload_hash, words: v.words, ...(v.partial ? { partial: true } : {}), line: a.line }; }
       },
