@@ -37,7 +37,7 @@ test("FileVault: on, off, and unknown are three answers, and unknown is never re
   assert.equal(fileVault(() => "FileVault is Off.\n"), "off");
   assert.equal(fileVault(() => { throw new Error("no fdesetup"); }), "unknown");
   assert.equal(fileVault(() => "something else"), "unknown");
-  assert.match(FILEVAULT_NOTICE, /FileVault is on: after a power cut this Mac waits for someone to sign in\. For a server, turn FileVault off, or keep it and accept that\./);
+  assert.match(FILEVAULT_NOTICE, /FileVault is on\. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then\. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again\. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1\./);
 });
 
 test("a planned restart uses authrestart only when FileVault is on and it is supported", () => {
