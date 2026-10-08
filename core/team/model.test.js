@@ -6,6 +6,8 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { modelChoice } from "./index.js";
+import { open as openStore } from "../store/index.js";
+import { paths } from "../config/index.js";
 import { boot, until } from "./team-fixture.js";
 
 test("modelChoice: a provider, provider/model or a bare Claude model name; nothing else", () => {
@@ -49,13 +51,17 @@ test("team.ask with a model runs that request in a session of its own on that mo
   assert.ok(tm.agent);
 });
 
-test("team.ask refuses a model it cannot read, and a request for a provider with no account fails plainly instead of falling back to Claude", { timeout: 120_000 }, async t => {
-  const { tool, project, raw } = await boot(t);
+test("team.ask refuses a model it cannot read, and a request for another provider is launched on that provider", { timeout: 120_000 }, async t => {
+  const { tool, project, raw, root } = await boot(t);
   await tool("team.add", { project: project.record, role: "qa" });
   const bad = await raw("team.ask", { to: "qa", project: project.record, text: "x", model: "--dangerously-skip-permissions" });
   assert.equal(bad.error.code, "bad_input");
-  const ask = await tool("team.ask", { to: "qa", project: project.record, wait: true, model: "codex", text: "check it" });
-  assert.equal(ask.state, "failed", JSON.stringify(ask));
-  assert.match(ask.result, /could not start/);
-  assert.equal(ask.model, "codex");
+  // the test box runs every provider on the fake session driver, so the request starts; what matters is which provider the launch was made for
+  const ask = await tool("team.ask", { to: "qa", project: project.record, wait: true, model: "codex/gpt-5", text: "check it" });
+  assert.equal(ask.model, "codex/gpt-5");
+  const status = await tool("team.status", { request: ask.request });
+  const db = openStore(paths(root).db);
+  const run = /** @type {any} */ (db.prepare("SELECT provider, model FROM threads_runs WHERE id = ?").get(status.thread));
+  db.close();
+  assert.deepEqual([run.provider, run.model], ["codex", "gpt-5"]);
 });
