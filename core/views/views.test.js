@@ -12,8 +12,8 @@ import { call } from "../daemon/client.js";
 import { validate } from "../modules/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { keyOf } from "../../lib/sidebar/model.js";
-import { boardFrame, summaryFrame } from "./frames.js";
-import { commandsOf, kindOf } from "./engine.js";
+import { boardFrame, summaryFrame } from "../../lib/views/frames.js";
+import { commandsOf, kindOf } from "../../lib/views/engine.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
