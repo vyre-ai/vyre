@@ -64,7 +64,7 @@ export async function walk(w) {
     }, { needs: [S("become yourself in the app (the code is spent)")] });
 
     await run.step(S(`the server installs from the line (${server})`), async () => {
-      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, namesForServer: ins.namesForServer, store };
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store };
       srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store });
       return `${srv.kind}`;
     }, { needs: [S("add a server: the app shows the install line")] });
@@ -185,7 +185,7 @@ export async function walkTerminal(w) {
         await mac.becomeYourself({ name: r.name, code: r.code });
       });
       await run.step(S("a fresh server with no setup code shows its code"), async () => {
-        const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain") };
+        const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain") };
         srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: "", relay: a.relayForServer, directory: a.namesForServer, store: "plain" });
         made = await srv.operator("wink.server.code", { qr: true });
         assert.ok(made && (way === "long code" ? /^vyre:\/\/wink\/2\?/.test(made.qr) : /^WINK-/.test(made.code)), `the server showed a ${way}`);

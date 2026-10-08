@@ -1,6 +1,6 @@
 // @ts-check
 // A Mac server made by the REAL installer, on the hosted macOS runner: scripts/install-mac-server.sh with the runner's own passwordless sudo, against a test release signed with a throwaway key
-// (scripts/mac-proof/release.mjs, the way scripts/mac-proof/run.sh does it), with the one-time code the app's install line carries in VYRE_CODE. Never on a person's Mac: it installs a system service
+// (scripts/lib/proof/mac-release.mjs: scripts/mac-proof/release.mjs plus the signed module list), with the one-time code the app's install line carries in VYRE_CODE. Never on a person's Mac: it installs a system service
 // and makes an account. vyred runs under launchd as the runner's user, so the stand-ins on loopback are its relay and names directory.
 import fs from "node:fs";
 import path from "node:path";
@@ -11,7 +11,7 @@ export async function startMacServer(o) {
   if (process.env.GITHUB_ACTIONS !== "true" || process.platform !== "darwin") throw new Error("the Mac server runs on a GitHub macOS runner only: it installs a system service and makes an account");
   const work = path.join(process.env.RUNNER_TEMP || "/tmp", "mac-proof-install");
   fs.rmSync(work, { recursive: true, force: true }); fs.mkdirSync(work, { recursive: true });
-  const rel = spawnSync(process.execPath, [path.join(o.repo, "scripts/mac-proof/release.mjs"), work], { encoding: "utf8" });
+  const rel = spawnSync(process.execPath, [path.join(o.repo, "scripts/lib/proof/mac-release.mjs"), work], { encoding: "utf8" });
   if (rel.status !== 0) throw new Error(`the test release was not made: ${rel.stderr.slice(0, 300)}`);
   const key = fs.readFileSync(path.join(work, "release-key.pub"), "utf8").trim();
   const script = path.join(work, "install-mac-server.sh");
@@ -19,9 +19,7 @@ export async function startMacServer(o) {
   const vhome = path.join(process.env.HOME || "/tmp", ".vyre-proof"), sdir = path.join(process.env.HOME || "/tmp", ".vyre-server");
   fs.mkdirSync(vhome, { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(vhome, "config.json"), JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } }));
-  // The test release is signed with a throwaway key, so its modules are not first party and the relay would not start ("modules from outside Vyre run only under the module supervisor"): the
-  // development path rule lets them run. This is the one difference from a published release, and it is why this walk proves the install and the pairing, not the release signature.
-  fs.writeFileSync(path.join(vhome, "vyre.env"), "VYRE_KERNEL_PATH_RULE=1\n", { mode: 0o600 });
+  // The test release carries a signed module list made with a throwaway key (mac-release.mjs), so its modules are first party and run with no development switch; a packaged daemon ignores the path rule.
   const env = { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", VYRE_BOX_URL: `file://${work}/site/`, VYRE_HOME: vhome, VYRE_SERVER_DIR: sdir, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_NO_DIALOGS: "1", VYRE_STORE: o.store === "plain" ? "sqlite" : "auto" };
   const child = spawn("sh", [script, "--yes"], { env, stdio: ["ignore", "pipe", "pipe"] });
   let all = ""; child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });

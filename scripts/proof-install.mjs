@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // scripts/proof-install.mjs: the install and pairing walk, end to end, printing one line per step (PASS, FAIL with the reason, or SKIP when an earlier step it needs failed).
 //
-//   node scripts/proof-install.mjs [--server daemon|installer|mac] [--store records|plain|both] [--out DIR]
+//   node scripts/proof-install.mjs [--server daemon|installer|mac] [--store records|plain|both] [--out DIR] [--live-relay]
+//   --live-relay uses the real wss://relay.vyre.run as transport only (a live service can run older code than the repo); names stay on the stand-in
 //
 // Everything is real except the person's clicks and the places a person would not reach from here: the names directory (the Worker's own code on the fake runtime) and the relay
 // (the real relay), both local; nothing touches vyre.run, names.vyre.run or relay.vyre.run. The app side is scripts/lib/proof/app.mjs, which imports the app's own modules.
@@ -19,6 +20,7 @@ import { walk, walkTerminal } from "./lib/proof/walk.mjs";
 const argv = process.argv.slice(2);
 const take = (/** @type {string} */ f, /** @type {string} */ d = "") => { const i = argv.indexOf(f); return i < 0 ? d : argv[i + 1]; };
 const server = /** @type {"daemon" | "installer" | "mac"} */ (take("--server", "daemon"));
+const liveRelay = argv.includes("--live-relay") ? "wss://relay.vyre.run" : "";
 const storeArg = take("--store", "both");
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `proof-install-${process.pid}`)));
 if (!["daemon", "installer", "mac"].includes(server)) { console.error("proof-install: --server is daemon, installer or mac"); process.exit(64); }
@@ -29,7 +31,7 @@ const run = createRun({ out });
 const inCI = process.env.GITHUB_ACTIONS === "true";
 // A server in a container reaches the stand-ins on the runner's own address (the way scripts/matrix/j1.sh does); a daemon in this process and a Mac server reach them on loopback.
 const hostIp = process.env.PROOF_HOST_IP || Object.values(os.networkInterfaces()).flat().find(n => n && n.family === "IPv4" && !n.internal)?.address || "127.0.0.1";
-const ins = await startStandins({ out, ...(server === "installer" ? { host: "0.0.0.0", publicHost: hostIp } : {}) });
+const ins = await startStandins({ out, ...(liveRelay ? { liveRelay } : {}), ...(server === "installer" ? { host: "0.0.0.0", publicHost: hostIp } : {}) });
 let code = 1;
 try {
   for (const store of stores) await walk({ run, ins, server, store, out, inCI });

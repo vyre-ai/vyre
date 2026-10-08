@@ -26,21 +26,23 @@ async function waitPort(port, host, ms = 15_000) {
 }
 
 /**
- * @param {{ out: string, host?: string, publicHost?: string }} o `host` is where they listen (127.0.0.1, or 0.0.0.0 for a container); `publicHost` is the address a server in a container uses for them.
+ * @param {{ out: string, host?: string, publicHost?: string, liveRelay?: string }} o `host` is where they listen (127.0.0.1, or 0.0.0.0 for a container); `publicHost` is the address a server in a container uses for them.
  */
 export async function startStandins(o) {
   const host = o.host || "127.0.0.1", pub = o.publicHost || "127.0.0.1";
   fs.mkdirSync(o.out, { recursive: true });
-  const relay = createRelay({});
-  const relayUrl = await relay.listen(0, host);
-  const relayPort = Number(new URL(relayUrl.replace(/^ws/, "http")).port);
+  // --live-relay: the real relay is the transport only (pairing tickets and channels are its normal use); the names directory stays the stand-in, so no name is ever written for real.
+  const relay = o.liveRelay ? null : createRelay({});
+  const relayUrl = relay ? await relay.listen(0, host) : "";
+  const relayPort = relay ? Number(new URL(relayUrl.replace(/^ws/, "http")).port) : 0;
   const port = await freePort();
   const logFd = fs.openSync(path.join(o.out, "standin-directory.log"), "a");
   const dir = spawn(process.execPath, [path.join(repo, "scripts/standin-directory.mjs"), "--port", String(port), "--host", host, "--zone", "vyre.test", "--claims-per-ip", "1000"], { stdio: ["ignore", logFd, logFd] });
   await waitPort(port, host === "0.0.0.0" ? "127.0.0.1" : host);
   return {
-    relay: `ws://127.0.0.1:${relayPort}`, names: `http://127.0.0.1:${port}`,
-    relayForServer: `ws://${pub}:${relayPort}`, namesForServer: `http://${pub}:${port}`,
-    async stop() { try { dir.kill("SIGTERM"); } catch { /* gone */ } try { await relay.close(); } catch { /* closed */ } },
+    relay: o.liveRelay || `ws://127.0.0.1:${relayPort}`, names: `http://127.0.0.1:${port}`,
+    // a server in a container takes only a loopback ws relay, so it is given the same ws://127.0.0.1 address and the installer walk forwards it (server-installer.mjs)
+    relayForServer: o.liveRelay || `ws://127.0.0.1:${relayPort}`, relayPort, hostIp: pub, namesForServer: `http://${pub}:${port}`,
+    async stop() { try { dir.kill("SIGTERM"); } catch { /* gone */ } try { if (relay) await relay.close(); } catch { /* closed */ } },
   };
 }
